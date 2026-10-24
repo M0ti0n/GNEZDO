@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api } from "./api/api";
-import type { JobPart, JobSummary, PartSummary } from "./api/types";
+import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { HomePage, type HomeAction } from "./pages/HomePage";
 import { JobPage } from "./pages/JobPage";
+import { JobSearchPage } from "./pages/JobSearchPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
-import { HOME, initialTabs, jobTab, pageTab, projectTab, tabsReducer, type Tab } from "./state/tabs";
+import { HOME, initialTabs, jobTab, pageTab, tabsReducer, type Tab } from "./state/tabs";
 
 const USER_NAME = "Fab"; // until sign-in exists
 
@@ -17,6 +18,13 @@ export function App() {
   const [jobParts, setJobParts] = useState<Record<string, JobPart[] | undefined>>({});
   const [toast, setToast] = useState<string | null>(null);
   const newJobCount = useRef(0);
+  // Last job search: results show in the "Job search" tab on the main screen.
+  const [jobSearch, setJobSearch] = useState<{ filter: JobFilter | null; run: number }>({ filter: null, run: 0 });
+
+  const runJobSearch = (filter: JobFilter) => {
+    setJobSearch((s) => ({ filter, run: s.run + 1 }));
+    dispatch({ type: "open", tab: pageTab("jobSearch") });
+  };
 
   const active = state.tabs.find((t) => t.id === state.activeId) ?? HOME;
   const open = (tab: Tab) => dispatch({ type: "open", tab });
@@ -61,11 +69,9 @@ export function App() {
     switch (a.kind) {
       case "import": return open(pageTab("import"));
       case "newJob": return newJob();
-      case "jobSearch": return setDrawer("jobs");
-      case "projects": return open(pageTab("projects"));
+      case "jobSearch": setDrawer("jobs"); return runJobSearch({}); // "All jobs"
       case "openJob": return openJob(a.job);
       case "openImport": return open(pageTab("import"));
-      case "openProject": return open(projectTab(a.project.code));
     }
   };
 
@@ -96,7 +102,7 @@ export function App() {
           onMode={setDrawer}
           targetJob={job}
           onAddToJob={(parts) => job && addParts(job.id, job.title, parts)}
-          onOpenJob={openJob}
+          onJobSearch={runJobSearch}
         />
         <div className="workspace">
           <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />
@@ -114,7 +120,11 @@ export function App() {
                 onOpenParts={() => setDrawer("parts")}
               />
             )}
-            {active.kind !== "home" && active.kind !== "job" && <PlaceholderPage tab={active} />}
+            {active.kind === "jobSearch" && (
+              <JobSearchPage filter={jobSearch.filter} run={jobSearch.run} onOpenJob={openJob}
+                onShowFilters={() => setDrawer("jobs")} />
+            )}
+            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && <PlaceholderPage tab={active} />}
           </main>
         </div>
       </div>

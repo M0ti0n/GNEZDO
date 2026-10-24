@@ -16,6 +16,8 @@ export interface JobSummary {
   status: JobStatus;
   modifiedAt: string;      // ISO 8601
   modifiedBy: string;
+  createdAt: string;       // ISO 8601
+  projects: string[];      // project codes of the parts in the job
 }
 
 export interface ImportSummary {
@@ -84,11 +86,16 @@ export interface PartFilter {
   engraved?: boolean;      // true = only parts with engraving
 }
 
+/** Job search, as in the Job search panel. Empty fields are ignored. */
 export interface JobFilter {
-  text?: string;
+  name?: string;           // job name contains
+  material?: string;       // job contains parts of this material
+  thicknessMm?: number;    // ... and thickness
+  project?: string;        // job contains parts of a project whose code contains this
+  created?: DateFilter;
+  modified?: DateFilter;
+  part?: string;           // job contains a part whose name contains this
   status?: JobStatus;
-  material?: string;
-  days?: number;           // changed within the last N days
 }
 
 /** A part placed in a job, with the quantity to cut in this job. */

@@ -54,6 +54,7 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.ModifiedBy).HasMaxLength(100);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => x.ModifiedAt);
         });
 

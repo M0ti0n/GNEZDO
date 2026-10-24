@@ -66,6 +66,7 @@ public class Job
     public required string Name { get; set; }
     public JobStatus Status { get; set; }
     public int SheetCount { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ModifiedAt { get; set; }
     public string ModifiedBy { get; set; } = "";
     public List<JobPart> Parts { get; set; } = [];

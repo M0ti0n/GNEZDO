@@ -51,7 +51,7 @@ public static class SampleData
         string Key, string Name, string Description, string Project, string Material, decimal ThicknessMm, int Qty,
         double W, double H, double AreaMm2, string Path, bool Engraved, string ImportKey,
         double CreatedHoursAgo, double ModifiedHoursAgo);
-    private sealed record SeedJob(string Name, string Status, int Sheets, double HoursAgo, string By, List<JsonElement> Parts);
+    private sealed record SeedJob(string Name, string Status, int Sheets, double CreatedHoursAgo, double HoursAgo, string By, List<JsonElement> Parts);
 
     public static async Task SeedAsync(GnezdoDb db, DateTimeOffset now, CancellationToken ct = default)
     {
@@ -85,6 +85,7 @@ public static class SampleData
             Name = j.Name,
             Status = Enum.Parse<JobStatus>(j.Status, ignoreCase: true),
             SheetCount = j.Sheets,
+            CreatedAt = Ago(j.CreatedHoursAgo),
             ModifiedAt = Ago(j.HoursAgo),
             ModifiedBy = j.By,
             // each entry is ["partKey", qty]

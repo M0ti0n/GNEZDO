@@ -45,14 +45,14 @@ public sealed class HomeTests(ApiFixture api)
     {
         var cut = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs?status=cut");
         Assert.Equal(3, cut!.Count);
-        var konzole = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs?text=konzole");
+        var konzole = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs?name=konzole");
         Assert.Single(konzole!);
     }
 
     [Fact]
     public async Task Job_parts_of_the_test_job()
     {
-        var jobs = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs?text=Miha2787");
+        var jobs = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs?name=Miha2787");
         var parts = await api.Client.GetFromJsonAsync<List<JobPartDto>>($"/api/jobs/{jobs![0].Id}/parts");
         Assert.Equal(30, parts!.Count);
         Assert.Equal(531, parts.Sum(p => p.Qty));

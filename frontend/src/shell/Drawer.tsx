@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, materialKey, type PartFacets } from "../api/api";
-import type { JSX } from "react";
-import type { DateMode, JobStatus, JobSummary, PartFilter, PartSummary } from "../api/types";
-import { IconChevronLeft, IconLibrary, IconSearch } from "../components/Icons";
+import type { DateMode, JobFilter, PartFilter, PartSummary } from "../api/types";
+import { DateLine, PanelHead, SizeLine } from "../components/FilterFields";
+import { IconLibrary, IconSearch } from "../components/Icons";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
-import { mm, when } from "../components/format";
+import { JobsPanel } from "./JobsPanel";
 
 export type DrawerMode = "parts" | "jobs";
 
@@ -16,12 +16,12 @@ interface Props {
   onMode: (m: DrawerMode | null) => void;
   targetJob: { id: string; title: string } | null; // job tab that is open now
   onAddToJob: (parts: PartSummary[]) => void;
-  onOpenJob: (job: JobSummary) => void;
+  onJobSearch: (filter: JobFilter) => void;   // results open on the main screen
 }
 
 // Left side: a rail with two buttons that opens a docked panel for
 // finding imported parts (to drag into a job) or searching jobs.
-export function Drawer({ mode, onMode, targetJob, onAddToJob, onOpenJob }: Props) {
+export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch }: Props) {
   const toggle = (m: DrawerMode) => onMode(mode === m ? null : m);
   return (
     <aside className={`drawer${mode ? " is-open" : ""}`}>
@@ -39,7 +39,7 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onOpenJob }: Props
         <div className="drawer-panel">
           {mode === "parts"
             ? <PartsPanel targetJob={targetJob} onAddToJob={onAddToJob} onClose={() => onMode(null)} />
-            : <JobsPanel onOpenJob={onOpenJob} onClose={() => onMode(null)} />}
+            : <JobsPanel onSearch={onJobSearch} onClose={() => onMode(null)} />}
         </div>
       )}
     </aside>
@@ -47,18 +47,6 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onOpenJob }: Props
 }
 
 /* ------------------------------------------------------------------ */
-
-function PanelHead({ title, onClose, children }: { title: string; onClose: () => void; children?: React.ReactNode }) {
-  return (
-    <div className="drawer-head">
-      <h2>{title}</h2>
-      {children}
-      <button className="icon-btn" onClick={onClose} aria-label="Close panel" title="Close panel">
-        <IconChevronLeft size={18} />
-      </button>
-    </div>
-  );
-}
 
 /** What is typed in the filter panel. Date and size filters only count when ticked. */
 interface Draft {
@@ -290,130 +278,5 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
         )}
       </div>
     </>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
-const STATUS: Record<JobStatus, string> = { draft: "Draft", nested: "Nested", released: "Released", cut: "Cut" };
-
-function JobsPanel({ onOpenJob, onClose }: Pick<Props, "onOpenJob"> & { onClose: () => void }) {
-  const [text, setText] = useState("");
-  const [status, setStatus] = useState<JobStatus | "">("");
-  const [days, setDays] = useState(0);
-  const [jobs, setJobs] = useState<JobSummary[] | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    setJobs(null);
-    const t = setTimeout(() => {
-      api.searchJobs({ text, status: status || undefined, days: days || undefined }).then((j) => alive && setJobs(j));
-    }, 150);
-    return () => { alive = false; clearTimeout(t); };
-  }, [text, status, days]);
-
-  return (
-    <>
-      <PanelHead title="Job search" onClose={onClose} />
-      <div className="filters">
-        <input className="field" type="search" placeholder="Job name or order number" value={text}
-          onChange={(e) => setText(e.target.value)} aria-label="Search jobs" />
-        <div className="filter-pair">
-          <select className="field" value={status} onChange={(e) => setStatus(e.target.value as JobStatus | "")} aria-label="Status">
-            <option value="">Any status</option>
-            {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-          <select className="field" value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Changed">
-            <option value={0}>Any time</option>
-            <option value={1}>Last 24 hours</option>
-            <option value={7}>Last 7 days</option>
-            <option value={30}>Last 30 days</option>
-          </select>
-        </div>
-      </div>
-      <div className="result-bar"><span>{jobs ? `${jobs.length} jobs` : "Searching…"}</span></div>
-      <ul className="job-results">
-        {jobs && jobs.length === 0 && <li className="state">No jobs match these filters.</li>}
-        {(jobs ?? []).map((j) => (
-          <li key={j.id}>
-            <button className="job-result" onClick={() => onOpenJob(j)}>
-              <span className="row-title">{j.name}</span>
-              <span className={`status status-${j.status}`}>{STATUS[j.status]}</span>
-              <span className="row-meta">
-                <span>{j.material} {mm(j.thicknessMm)}</span><span>{j.partCount} parts</span>
-              </span>
-              <span className="row-when">{when(j.modifiedAt)}, {j.modifiedBy}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
-// Pictograms: the bar is the chosen date, hatching marks the side that is left out.
-const DATE_MODES: { id: DateMode; label: string; icon: JSX.Element }[] = [
-  {
-    id: "upTo", label: "Up to this date",
-    icon: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h9M7 8l-4 4 4 4" /><path className="bar" d="M14 4v16" /><path className="hatch" d="M16.5 8.5 20.5 4.5M16.5 13.5l4-4M16.5 18.5l4-4" /></svg>,
-  },
-  {
-    id: "on", label: "On this date",
-    icon: <svg viewBox="0 0 24 24" aria-hidden="true"><path className="hatch" d="M1.5 8.5l3-3M1.5 13.5l3-3M1.5 18.5l3-3M19.5 8.5l3-3M19.5 13.5l3-3M19.5 18.5l3-3" /><path className="bar" d="M7 4v16M17 4v16" /><path d="M9.5 12h5M11.5 9.5 9.5 12l2 2.5M12.5 9.5l2 2.5-2 2.5" /></svg>,
-  },
-  {
-    id: "from", label: "From this date on",
-    icon: <svg viewBox="0 0 24 24" aria-hidden="true"><path className="hatch" d="M3.5 8.5l4-4M3.5 13.5l4-4M3.5 18.5l4-4" /><path className="bar" d="M10 4v16" /><path d="M12 12h9M17 8l4 4-4 4" /></svg>,
-  },
-];
-
-function DateLine({ label, on, value, onToggle, onChange }: {
-  label: string; on: boolean; value: { mode: DateMode; date: string };
-  onToggle: (on: boolean) => void; onChange: (v: { mode: DateMode; date: string }) => void;
-}) {
-  return (
-    <div className={`date-line${on ? "" : " is-off"}`} role="group" aria-label={`${label} date`}>
-      <label className="line-check">
-        <input type="checkbox" checked={on} onChange={(e) => onToggle(e.target.checked)} aria-label={`Use ${label.toLowerCase()} date`} />
-        <span className="date-label">{label}</span>
-      </label>
-      <div className="date-field">
-        <input className="field" type="date" value={value.date} title={`${label} date`} aria-label={`${label} date`}
-          onChange={(e) => onChange({ ...value, date: e.target.value })} />
-        <div className="date-modes" role="radiogroup" aria-label={`${label}: compare`}>
-          {DATE_MODES.map((m) => (
-            <button key={m.id} type="button" role="radio" aria-checked={value.mode === m.id} aria-label={m.label}
-              title={m.label} className={`date-mode${value.mode === m.id ? " is-on" : ""}`}
-              onClick={() => onChange({ ...value, mode: m.id })}>
-              {m.icon}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SizeLine({ label, on, min, max, onToggle, onChange }: {
-  label: string; on: boolean; min: string; max: string;
-  onToggle: (on: boolean) => void; onChange: (min: string, max: string) => void;
-}) {
-  return (
-    <div className={`date-line${on ? "" : " is-off"}`} role="group" aria-label={`${label} in mm`}>
-      <label className="line-check">
-        <input type="checkbox" checked={on} onChange={(e) => onToggle(e.target.checked)} aria-label={`Use ${label}`} />
-        <span className="date-label">{label}</span>
-      </label>
-      <div className="size-row">
-        <input className="field" type="number" min={0} inputMode="numeric" placeholder="min" value={min}
-          aria-label={`${label} minimum`} onChange={(e) => onChange(e.target.value, max)} />
-        <span className="dash">–</span>
-        <input className="field" type="number" min={0} inputMode="numeric" placeholder="max" value={max}
-          aria-label={`${label} maximum`} onChange={(e) => onChange(min, e.target.value)} />
-        <span className="unit">mm</span>
-      </div>
-    </div>
   );
 }

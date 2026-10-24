@@ -3,6 +3,23 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Gnezdo.Api.Endpoints;
 
+/// <summary>Query string of GET /api/jobs (the Job search panel). Empty fields are ignored.</summary>
+public sealed class JobQuery
+{
+    public string? Name { get; set; }
+    public string? Material { get; set; }
+    public decimal? ThicknessMm { get; set; }
+    /// <summary>Jobs containing parts of a project whose code contains this text.</summary>
+    public string? Project { get; set; }
+    /// <summary>"on:yyyy-mm-dd", "upTo:yyyy-mm-dd" or "from:yyyy-mm-dd".</summary>
+    public string? Created { get; set; }
+    public string? Modified { get; set; }
+    /// <summary>Jobs that use a part whose name contains this text.</summary>
+    public string? Part { get; set; }
+    public string? Status { get; set; }
+    public int? Take { get; set; }
+}
+
 /// <summary>Lists on the home page, the import list of the parts panel, and job search.</summary>
 public static class HomeEndpoints
 {
@@ -56,34 +73,71 @@ public static class HomeEndpoints
     }
 
     private static async Task<IResult> SearchJobsAsync(
-        GnezdoDb db, string? text, string? status, string? material, int? days, CancellationToken ct)
+        [AsParameters] JobQuery q, GnezdoDb db, ShopTime time, CancellationToken ct)
     {
+        var errors = new Dictionary<string, string[]>();
+        DateFilter? created = null, modified = null;
+        if (!string.IsNullOrWhiteSpace(q.Created))
+        {
+            if (DateFilter.TryParse(q.Created, out var f)) created = f;
+            else errors["created"] = ["Use on:yyyy-mm-dd, upTo:yyyy-mm-dd or from:yyyy-mm-dd."];
+        }
+        if (!string.IsNullOrWhiteSpace(q.Modified))
+        {
+            if (DateFilter.TryParse(q.Modified, out var f)) modified = f;
+            else errors["modified"] = ["Use on:yyyy-mm-dd, upTo:yyyy-mm-dd or from:yyyy-mm-dd."];
+        }
+        JobStatus? status = null;
+        if (!string.IsNullOrWhiteSpace(q.Status))
+        {
+            if (Enum.TryParse<JobStatus>(q.Status, ignoreCase: true, out var s)) status = s;
+            else errors["status"] = ["Use draft, nested, released or cut."];
+        }
+        if (errors.Count > 0) return Results.ValidationProblem(errors);
+
         IQueryable<Job> jobs = db.Jobs.AsNoTracking();
-        if (!string.IsNullOrWhiteSpace(text))
+
+        var name = Clean(q.Name);
+        if (name is not null) jobs = jobs.Where(j => j.Name.Contains(name));
+
+        // Material and thickness must match on the same part of the job.
+        var material = Clean(q.Material);
+        if (material is not null || q.ThicknessMm is not null)
         {
-            var t = text.Trim();
-            jobs = jobs.Where(j => j.Name.Contains(t));
-        }
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            if (!Enum.TryParse<JobStatus>(status, ignoreCase: true, out var s))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["status"] = ["Use draft, nested, released or cut."],
-                });
-            jobs = jobs.Where(j => j.Status == s);
-        }
-        if (days is > 0)
-        {
-            var since = DateTimeOffset.UtcNow.AddDays(-days.Value);
-            jobs = jobs.Where(j => j.ModifiedAt >= since);
+            var t = q.ThicknessMm;
+            jobs = jobs.Where(j => j.Parts.Any(jp =>
+                (material == null || jp.Part.Material.Name == material) &&
+                (t == null || jp.Part.ThicknessMm == t)));
         }
 
-        var list = await SummariesAsync(db, jobs.OrderByDescending(j => j.ModifiedAt).Take(500), ct);
-        if (!string.IsNullOrWhiteSpace(material))
-            list = list.Where(j => Format.MaterialKey(j.Material, j.ThicknessMm) == material.Trim()).ToList();
-        return Results.Ok(list);
+        // Project: jobs that contain parts of a project whose code contains the text.
+        var project = Clean(q.Project);
+        if (project is not null)
+            jobs = jobs.Where(j => j.Parts.Any(jp => jp.Part.Project != null && jp.Part.Project.Code.Contains(project)));
+
+        // Part name: every job the part is used in.
+        var part = Clean(q.Part);
+        if (part is not null) jobs = jobs.Where(j => j.Parts.Any(jp => jp.Part.Name.Contains(part)));
+
+        if (created is { } c)
+        {
+            var (from, to) = c.ToRange(time);
+            if (from is { } f) jobs = jobs.Where(j => j.CreatedAt >= f);
+            if (to is { } tt) jobs = jobs.Where(j => j.CreatedAt < tt);
+        }
+        if (modified is { } m)
+        {
+            var (from, to) = m.ToRange(time);
+            if (from is { } f) jobs = jobs.Where(j => j.ModifiedAt >= f);
+            if (to is { } tt) jobs = jobs.Where(j => j.ModifiedAt < tt);
+        }
+        if (status is { } st) jobs = jobs.Where(j => j.Status == st);
+
+        var take = Math.Clamp(q.Take ?? 500, 1, 500);
+        return Results.Ok(await SummariesAsync(db, jobs.OrderByDescending(j => j.ModifiedAt).Take(take), ct));
     }
+
+    private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
     /// <summary>
     /// Job rows with part count and main material (the material/thickness with the most pieces).
@@ -91,12 +145,16 @@ public static class HomeEndpoints
     private static async Task<List<JobSummaryDto>> SummariesAsync(GnezdoDb db, IQueryable<Job> jobs, CancellationToken ct)
     {
         var rows = await jobs
-            .Select(j => new { j.Id, j.Name, j.Status, j.SheetCount, j.ModifiedAt, j.ModifiedBy })
+            .Select(j => new { j.Id, j.Name, j.Status, j.SheetCount, j.CreatedAt, j.ModifiedAt, j.ModifiedBy })
             .ToListAsync(ct);
         var ids = rows.Select(r => r.Id).ToList();
         var lines = await db.JobParts.AsNoTracking()
             .Where(jp => ids.Contains(jp.JobId))
-            .Select(jp => new { jp.JobId, jp.Qty, Material = jp.Part.Material.Name, jp.Part.ThicknessMm })
+            .Select(jp => new
+            {
+                jp.JobId, jp.Qty, Material = jp.Part.Material.Name, jp.Part.ThicknessMm,
+                Project = jp.Part.Project != null ? jp.Part.Project.Code : null,
+            })
             .ToListAsync(ct);
         var byJob = lines.ToLookup(l => l.JobId);
 
@@ -110,7 +168,8 @@ public static class HomeEndpoints
             return new JobSummaryDto(
                 r.Id.ToString(), r.Name, main.Material, main.ThicknessMm,
                 byJob[r.Id].Sum(l => l.Qty), r.SheetCount,
-                r.Status.ToString().ToLowerInvariant(), r.ModifiedAt, r.ModifiedBy);
+                r.Status.ToString().ToLowerInvariant(), r.CreatedAt, r.ModifiedAt, r.ModifiedBy,
+                byJob[r.Id].Select(l => l.Project).OfType<string>().Distinct().Order(StringComparer.OrdinalIgnoreCase).ToList());
         }).ToList();
     }
 

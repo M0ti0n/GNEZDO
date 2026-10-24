@@ -1,5 +1,5 @@
 import type {
-  ImportSummary, JobFilter, JobPart, JobSummary, PartFilter, PartSummary, ProjectSummary,
+  ImportSummary, JobFilter, JobPart, JobStatus, JobSummary, PartFilter, PartSummary, ProjectSummary,
 } from "./types";
 import { otherParts, testJobParts } from "./sampleParts";
 
@@ -15,13 +15,21 @@ async function get<T>(url: string): Promise<T> {
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
 
-const sampleJobs: JobSummary[] = [
-  { id: "j-2787", name: "Miha2787", material: "HARDOX", thicknessMm: 1, partCount: 531, sheetCount: 8, status: "nested", modifiedAt: hoursAgo(0.4), modifiedBy: "Miha" },
-  { id: "j-2786", name: "26-0412 Konzole", material: "S235", thicknessMm: 3, partCount: 148, sheetCount: 3, status: "released", modifiedAt: hoursAgo(3), modifiedBy: "Miha" },
-  { id: "j-2785", name: "26-0409 Prirobnice", material: "S355", thicknessMm: 10, partCount: 64, sheetCount: 2, status: "cut", modifiedAt: hoursAgo(20), modifiedBy: "Rok" },
-  { id: "j-2784", name: "26-0410 Ohišje", material: "INOX 1.4301", thicknessMm: 2, partCount: 37, sheetCount: 0, status: "draft", modifiedAt: hoursAgo(26), modifiedBy: "Miha" },
-  { id: "j-2781", name: "Ostanki teden 43", material: "S235", thicknessMm: 5, partCount: 22, sheetCount: 1, status: "cut", modifiedAt: hoursAgo(50), modifiedBy: "Rok" },
-  { id: "j-2779", name: "26-0398 Nosilci", material: "S235", thicknessMm: 8, partCount: 210, sheetCount: 4, status: "cut", modifiedAt: hoursAgo(75), modifiedBy: "Miha" },
+export const materialKey = (m: string, t: number) => `${m} ${t} mm`;
+
+// Jobs and their parts: same contents as the server's sample data.
+interface SampleJob {
+  id: string; name: string; status: JobStatus; sheetCount: number;
+  createdHoursAgo: number; modifiedHoursAgo: number; modifiedBy: string;
+  parts: [partId: string, qty: number][] | "test30";
+}
+const sampleJobRows: SampleJob[] = [
+  { id: "j-2787", name: "Miha2787", status: "nested", sheetCount: 8, createdHoursAgo: 0.5, modifiedHoursAgo: 0.4, modifiedBy: "Miha", parts: "test30" },
+  { id: "j-2786", name: "26-0412 Konzole", status: "released", sheetCount: 3, createdHoursAgo: 3.5, modifiedHoursAgo: 3, modifiedBy: "Miha", parts: [["k-01", 24], ["k-02", 12], ["k-03", 48]] },
+  { id: "j-2785", name: "26-0409 Prirobnice", status: "cut", sheetCount: 2, createdHoursAgo: 25, modifiedHoursAgo: 20, modifiedBy: "Rok", parts: [["p-01", 4]] },
+  { id: "j-2784", name: "26-0410 Ohišje", status: "draft", sheetCount: 0, createdHoursAgo: 26.5, modifiedHoursAgo: 26, modifiedBy: "Miha", parts: [["o-01", 2], ["o-02", 1]] },
+  { id: "j-2781", name: "Ostanki teden 43", status: "cut", sheetCount: 1, createdHoursAgo: 60, modifiedHoursAgo: 50, modifiedBy: "Rok", parts: [["n-02", 5]] },
+  { id: "j-2779", name: "26-0398 Nosilci", status: "cut", sheetCount: 4, createdHoursAgo: 78, modifiedHoursAgo: 75, modifiedBy: "Miha", parts: [["n-01", 16], ["n-02", 15]] },
 ];
 
 const sampleImports: ImportSummary[] = [
@@ -68,6 +76,32 @@ const sampleParts: PartSummary[] = [
   };
 });
 
+const jobPartsOf = (j: SampleJob): JobPart[] =>
+  j.parts === "test30"
+    ? sampleParts.filter((p) => p.importId === "i-912").map((p) => ({ part: p, qty: p.qty }))
+    : j.parts.map(([id, qty]) => ({ part: sampleParts.find((p) => p.id === id)!, qty }));
+
+const sampleJobs: (JobSummary & { lines: JobPart[] })[] = sampleJobRows.map((j) => {
+  const lines = jobPartsOf(j);
+  const byMat = new Map<string, { material: string; thicknessMm: number; qty: number }>();
+  for (const l of lines) {
+    const k = materialKey(l.part.material, l.part.thicknessMm);
+    const e = byMat.get(k) ?? { material: l.part.material, thicknessMm: l.part.thicknessMm, qty: 0 };
+    e.qty += l.qty;
+    byMat.set(k, e);
+  }
+  const main = [...byMat.values()].sort((a, b) => b.qty - a.qty)[0];
+  return {
+    id: j.id, name: j.name, status: j.status, sheetCount: j.sheetCount, modifiedBy: j.modifiedBy,
+    material: main?.material ?? "", thicknessMm: main?.thicknessMm ?? 0,
+    partCount: lines.reduce((n, l) => n + l.qty, 0),
+    createdAt: hoursAgo(j.createdHoursAgo), modifiedAt: hoursAgo(j.modifiedHoursAgo),
+    projects: [...new Set(lines.map((l) => l.part.project))].sort(),
+    lines,
+  };
+});
+const summary = ({ lines: _lines, ...j }: JobSummary & { lines: JobPart[] }): JobSummary => j;
+
 const dayStart = (ymd: string) => new Date(`${ymd}T00:00:00`).getTime();
 const inDate = (iso: string, f?: { mode: string; date: string }) => {
   if (!f?.date) return true;
@@ -80,7 +114,7 @@ const inRange = (v: number, min?: number, max?: number) =>
   (min === undefined || v >= min) && (max === undefined || v <= max);
 
 /** Query string for the server: dates as created=on:2026-10-24, empty fields left out. */
-const partQuery = (f: PartFilter) => {
+const partQuery = (f: object) => {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(f)) {
     if (v === undefined || v === "" || v === false) continue;
@@ -94,7 +128,6 @@ export interface PartFacets {
   thicknesses: { material: string; thicknessMm: number }[];
 }
 
-export const materialKey = (m: string, t: number) => `${m} ${t} mm`;
 
 const matches = (hay: string, needle?: string) =>
   !needle || hay.toLowerCase().includes(needle.trim().toLowerCase());
@@ -126,20 +159,25 @@ export const api = {
     }),
   searchJobs: (f: JobFilter) =>
     useApi
-      ? get<JobSummary[]>(`/api/jobs?${new URLSearchParams(f as Record<string, string>)}`)
+      ? get<JobSummary[]>(`/api/jobs?${partQuery(f)}`)
       : delay(sampleJobs.filter((j) =>
-          matches(j.name, f.text) &&
-          (!f.status || j.status === f.status) &&
-          (!f.material || materialKey(j.material, j.thicknessMm) === f.material) &&
-          (!f.days || Date.now() - new Date(j.modifiedAt).getTime() < f.days * 86_400_000))),
+          matches(j.name, f.name) &&
+          (!f.material && f.thicknessMm === undefined ||
+            j.lines.some((l) => (!f.material || l.part.material === f.material) &&
+              (f.thicknessMm === undefined || l.part.thicknessMm === f.thicknessMm))) &&
+          (!f.project || j.lines.some((l) => matches(l.part.project, f.project))) &&
+          (!f.part || j.lines.some((l) => matches(l.part.name, f.part))) &&
+          inDate(j.createdAt, f.created) &&
+          inDate(j.modifiedAt, f.modified) &&
+          (!f.status || j.status === f.status)).map(summary)),
   /** Parts already in a job (sample: Miha2787 holds the 30-part test job). */
   jobParts: (jobId: string) =>
     useApi
       ? get<JobPart[]>(`/api/jobs/${jobId}/parts`)
-      : delay<JobPart[]>(jobId === "j-2787" ? sampleParts.filter((p) => p.importId === "i-912").map((p) => ({ part: p, qty: p.qty })) : []),
+      : delay<JobPart[]>(sampleJobs.find((j) => j.id === jobId)?.lines ?? []),
   imports: () => (useApi ? get<ImportSummary[]>("/api/imports") : delay(sampleImports)),
   recentJobs: (take = 8) =>
-    useApi ? get<JobSummary[]>(`/api/jobs/recent?take=${take}`) : delay(sampleJobs.slice(0, take)),
+    useApi ? get<JobSummary[]>(`/api/jobs/recent?take=${take}`) : delay(sampleJobs.slice(0, take).map(summary)),
   recentProjects: (take = 8) =>
     useApi ? get<ProjectSummary[]>(`/api/projects/recent?take=${take}`) : delay(sampleProjects.slice(0, take)),
   recentImports: (take = 8) =>

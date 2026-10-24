@@ -867,7 +867,8 @@
      "pt-30",
      100
     ]
-   ]
+   ],
+   "createdHoursAgo": 0.5
   },
   {
    "name": "26-0412 Konzole",
@@ -888,7 +889,8 @@
      "k-03",
      48
     ]
-   ]
+   ],
+   "createdHoursAgo": 3.5
   },
   {
    "name": "26-0409 Prirobnice",
@@ -901,7 +903,8 @@
      "p-01",
      4
     ]
-   ]
+   ],
+   "createdHoursAgo": 25
   },
   {
    "name": "26-0410 Ohišje",
@@ -918,7 +921,8 @@
      "o-02",
      1
     ]
-   ]
+   ],
+   "createdHoursAgo": 26.5
   },
   {
    "name": "Ostanki teden 43",
@@ -931,7 +935,8 @@
      "n-02",
      5
     ]
-   ]
+   ],
+   "createdHoursAgo": 60
   },
   {
    "name": "26-0398 Nosilci",
@@ -948,7 +953,8 @@
      "n-02",
      15
     ]
-   ]
+   ],
+   "createdHoursAgo": 78
   }
  ]
 }

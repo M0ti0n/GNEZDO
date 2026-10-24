@@ -49,7 +49,8 @@ the Docker builds on every push.
 | `GET /api/parts?name=&material=&thicknessMm=&project=&description=&created=on:2026-10-24&modified=upTo:2026-10-24&xMin=&xMax=&yMin=&yMax=&engraved=true` | parts, newest change first (max 500) |
 | `GET /api/parts/facets` | materials and thicknesses for the filter lists |
 | `GET /api/imports/recent`, `GET /api/imports` | import batches |
-| `GET /api/jobs/recent`, `GET /api/jobs?text=&status=&days=` | job summaries |
+| `GET /api/jobs/recent` | latest changed jobs |
+| `GET /api/jobs?name=&material=&thicknessMm=&project=&created=on:2026-10-24&modified=upTo:2026-10-24&part=` | job search: `project` = jobs containing parts of that project, `part` = jobs a part is used in |
 | `GET /api/jobs/{id}/parts` | parts in a job with quantities |
 | `GET /api/projects/recent` | projects by last activity |
 | `GET /api/health` | `{ "status": "ok" }` |
