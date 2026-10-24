@@ -41,8 +41,24 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - run: dotnet build backend/Gnezdo.slnx -c Release
-      - run: dotnet test backend/Gnezdo.slnx -c Release --no-build --logger "console;verbosity=normal"
+      - name: Build
+        run: |
+          set -o pipefail
+          dotnet build backend/Gnezdo.slnx -c Release 2>&1 | tee build.log
+      - name: Test
+        run: |
+          set -o pipefail
+          dotnet test backend/Gnezdo.slnx -c Release --no-build --logger "console;verbosity=normal" 2>&1 | tee test.log
+      - name: Report failures as annotations
+        if: failure()
+        run: |
+          # Put errors and failed tests where they show on the PR page.
+          for f in build.log test.log; do
+            [ -f "$f" ] || continue
+            msg=$(grep -E "error|Error|FAIL|Failed |Assert|Exception" "$f" | grep -v "0 Error" | sort -u | head -60 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')
+            [ -n "$msg" ] && echo "::error title=$f::$msg"
+          done
+          exit 0
 
   docker:
     name: Docker images build
