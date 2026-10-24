@@ -102,11 +102,11 @@ public static class HomeEndpoints
 
         return rows.Select(r =>
         {
-            var main = byJob[r.Id]
-                .GroupBy(l => (l.Material, l.ThicknessMm))
+            (string Material, decimal ThicknessMm) main = byJob[r.Id]
+                .GroupBy(l => (Material: l.Material, ThicknessMm: l.ThicknessMm))
                 .OrderByDescending(g => g.Sum(l => l.Qty))
                 .Select(g => g.Key)
-                .FirstOrDefault(("", 0m));
+                .FirstOrDefault((Material: "", ThicknessMm: 0m));
             return new JobSummaryDto(
                 r.Id.ToString(), r.Name, main.Material, main.ThicknessMm,
                 byJob[r.Id].Sum(l => l.Qty), r.SheetCount,
