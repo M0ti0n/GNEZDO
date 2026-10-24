@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { TabKind } from "../state/tabs";
+import type { PageKind } from "../state/tabs";
 import {
   IconFolder, IconImport, IconLayers, IconLibrary, IconLock, IconNest, IconNewJob,
   IconReport, IconSearch, IconStock,
@@ -19,7 +19,7 @@ export type ToolAction = (toolId: string) => void;
 
 // Tools shown under the tabs, one set per kind of tab.
 // Tools that are not built yet are shown disabled so the layout is already final.
-export const toolsFor = (kind: TabKind): Tool[] => {
+export const toolsFor = (kind: PageKind): Tool[] => {
   switch (kind) {
     case "home":
       return [
@@ -27,11 +27,6 @@ export const toolsFor = (kind: TabKind): Tool[] => {
         { id: "newJob", label: "New job", icon: <IconNewJob />, tone: "green" },
         { id: "jobSearch", label: "Job search", icon: <IconSearch />, tone: "yellow" },
         { id: "parts", label: "Imported parts", icon: <IconLibrary />, tone: "brown" },
-      ];
-    case "jobSearch":
-      return [
-        { id: "jobSearch", label: "Job filters", icon: <IconSearch />, tone: "yellow" },
-        { id: "newJob", label: "New job", icon: <IconNewJob />, tone: "green" },
       ];
     case "import":
       return [

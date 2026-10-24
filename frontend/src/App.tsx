@@ -8,25 +8,29 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
-import { HOME, initialTabs, jobTab, pageTab, tabsReducer, type Tab } from "./state/tabs";
+import { VIEW_TITLE, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
 
 const USER_NAME = "Fab"; // until sign-in exists
 
 export function App() {
-  const [state, dispatch] = useReducer(tabsReducer, initialTabs);
+  const [state, dispatch] = useReducer(shellReducer, initialShell);
   const [drawer, setDrawer] = useState<DrawerMode | null>(null);
   const [jobParts, setJobParts] = useState<Record<string, JobPart[] | undefined>>({});
   const [toast, setToast] = useState<string | null>(null);
   const newJobCount = useRef(0);
-  // Last job search: results show in the "Job search" tab on the main screen.
+  // Last job search: results show in the Job search view on the main screen.
   const [jobSearch, setJobSearch] = useState<{ filter: JobFilter | null; run: number }>({ filter: null, run: 0 });
 
   const runJobSearch = (filter: JobFilter) => {
     setJobSearch((s) => ({ filter, run: s.run + 1 }));
-    dispatch({ type: "open", tab: pageTab("jobSearch") });
+    dispatch({ type: "view", view: "jobSearch" });
   };
 
-  const active = state.tabs.find((t) => t.id === state.activeId) ?? HOME;
+  const showView = (view: ViewKind) => dispatch({ type: "view", view });
+  const activeTab = state.tabs.find((t) => t.id === state.activeId) ?? null;
+  // what the main area shows: the active document tab, else the current view
+  const active: { kind: PageKind; title: string; jobId?: string } =
+    activeTab ?? { kind: state.view, title: VIEW_TITLE[state.view] };
   const open = (tab: Tab) => dispatch({ type: "open", tab });
 
   // Load the part list when a job tab is opened for the first time.
@@ -67,24 +71,24 @@ export function App() {
 
   const onHome = (a: HomeAction) => {
     switch (a.kind) {
-      case "import": return open(pageTab("import"));
+      case "import": return showView("import");
       case "newJob": return newJob();
       case "jobSearch": setDrawer("jobs"); return runJobSearch({}); // "All jobs"
       case "openJob": return openJob(a.job);
-      case "openImport": return open(pageTab("import"));
+      case "openImport": return showView("import");
     }
   };
 
   const onTool = (toolId: string) => {
     switch (toolId) {
-      case "import": return open(pageTab("import"));
+      case "import": return showView("import");
       case "newJob": return newJob();
-      case "jobSearch": return setDrawer("jobs");
+      case "jobSearch": setDrawer("jobs"); return showView("jobSearch");
       case "parts": case "addParts": return setDrawer("parts");
     }
   };
 
-  const job = active.kind === "job" && active.jobId ? { id: active.jobId, title: active.title } : null;
+  const job = activeTab?.kind === "job" && activeTab.jobId ? { id: activeTab.jobId, title: activeTab.title } : null;
 
   return (
     <div className="app">
@@ -94,7 +98,7 @@ export function App() {
         userName={USER_NAME}
         onActivate={(id) => dispatch({ type: "activate", id })}
         onClose={(id) => dispatch({ type: "close", id })}
-        onMenu={(id) => open(pageTab(id))}
+        onMenu={(id) => showView(id)}
       />
       <div className={`body${drawer ? " has-drawer" : ""}`}>
         <Drawer
@@ -103,10 +107,12 @@ export function App() {
           targetJob={job}
           onAddToJob={(parts) => job && addParts(job.id, job.title, parts)}
           onJobSearch={runJobSearch}
+          homeActive={!activeTab && state.view === "home"}
+          onHome={() => showView("home")}
         />
         <div className="workspace">
-          <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />
-          <main className="page" role="tabpanel" aria-label={active.title}>
+          {active.kind !== "jobSearch" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
+          <main className={`page${active.kind === "jobSearch" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && (
               <JobPage

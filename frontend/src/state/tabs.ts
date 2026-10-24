@@ -1,7 +1,9 @@
-// Open tabs, like a browser: Home is always first and cannot be closed.
-// Each job opens in its own tab; the other pages open once and are re-used.
+// The main area shows either a *view* (Home, Job search, Import, Settings ...), chosen from the
+// side rail or the GNEZDO menu, or an open *document tab* (a job, later a part) from the green bar.
 
-export type TabKind = "home" | "import" | "jobSearch" | "projects" | "settings" | "library" | "stock" | "technology" | "job" | "project";
+export type ViewKind = "home" | "jobSearch" | "import" | "projects" | "settings" | "stock" | "technology";
+export type TabKind = "job" | "part";
+export type PageKind = ViewKind | TabKind;
 
 export interface Tab {
   id: string;
@@ -10,33 +12,29 @@ export interface Tab {
   jobId?: string;
 }
 
-export interface TabsState {
+export interface ShellState {
+  view: ViewKind;
   tabs: Tab[];
-  activeId: string;
+  activeId: string | null;   // null = the view is shown
 }
 
-export type TabsAction =
+export type ShellAction =
+  | { type: "view"; view: ViewKind }
   | { type: "open"; tab: Tab }
   | { type: "activate"; id: string }
   | { type: "close"; id: string };
 
-export const HOME: Tab = { id: "home", kind: "home", title: "Home" };
+export const initialShell: ShellState = { view: "home", tabs: [], activeId: null };
 
-export const initialTabs: TabsState = { tabs: [HOME], activeId: HOME.id };
-
-export const pageTab = (kind: Exclude<TabKind, "home" | "job" | "project">): Tab => ({
-  id: kind,
-  kind,
-  title: {
-    import: "Import",
-    jobSearch: "Job search",
-    projects: "Projects",
-    settings: "Settings",
-    library: "Parts library",
-    stock: "Stock & remnants",
-    technology: "Technology table",
-  }[kind],
-});
+export const VIEW_TITLE: Record<ViewKind, string> = {
+  home: "Home",
+  jobSearch: "Job search",
+  import: "Import",
+  projects: "Projects",
+  settings: "Settings",
+  stock: "Stock & remnants",
+  technology: "Technology table",
+};
 
 export const jobTab = (jobId: string, name: string): Tab => ({
   id: `job:${jobId}`,
@@ -45,31 +43,25 @@ export const jobTab = (jobId: string, name: string): Tab => ({
   jobId,
 });
 
-export const projectTab = (code: string): Tab => ({
-  id: `project:${code}`,
-  kind: "project",
-  title: code,
-});
-
-export function tabsReducer(state: TabsState, action: TabsAction): TabsState {
+export function shellReducer(state: ShellState, action: ShellAction): ShellState {
   switch (action.type) {
+    case "view":
+      return { ...state, view: action.view, activeId: null };
     case "open": {
       const exists = state.tabs.some((t) => t.id === action.tab.id);
-      return {
-        tabs: exists ? state.tabs : [...state.tabs, action.tab],
-        activeId: action.tab.id,
-      };
+      return { ...state, tabs: exists ? state.tabs : [...state.tabs, action.tab], activeId: action.tab.id };
     }
     case "activate":
       return { ...state, activeId: action.id };
     case "close": {
-      if (action.id === HOME.id) return state;
       const i = state.tabs.findIndex((t) => t.id === action.id);
       if (i < 0) return state;
       const tabs = state.tabs.filter((t) => t.id !== action.id);
-      const activeId =
-        state.activeId === action.id ? tabs[Math.min(i, tabs.length - 1)].id : state.activeId;
-      return { tabs, activeId };
+      // closing the shown tab shows its neighbour, or the view when it was the last one
+      const activeId = state.activeId !== action.id
+        ? state.activeId
+        : tabs.length ? tabs[Math.min(i, tabs.length - 1)].id : null;
+      return { ...state, tabs, activeId };
     }
   }
 }
