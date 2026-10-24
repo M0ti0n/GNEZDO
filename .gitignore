@@ -1,0 +1,16 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Node / Vite
+node_modules/
+dist/
+.env.local
+
+# Local settings and secrets
+.env
+*.log
+.DS_Store
