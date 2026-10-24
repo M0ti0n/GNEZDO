@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/api";
-import type { DateFilter, JobFilter, JobStatus, JobSummary } from "../api/types";
+import { DEFAULT_SORT, defaultDir, type DateFilter, type JobFilter, type JobStatus, type JobSummary, type SortKey, type SortOrder } from "../api/types";
+import { SortArrow, loadSort, saveSort } from "../components/SortControl";
 import { fullDate, mm, when } from "../components/format";
 
 const STATUS: Record<JobStatus, string> = { draft: "Draft", nested: "Nested", released: "Released", cut: "Cut" };
@@ -31,18 +32,24 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters }: {
 }) {
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortOrder>(() => loadSort("jobs", DEFAULT_SORT));
+  const sortBy = (key: SortKey) => {
+    const next: SortOrder = sort.key === key ? { key, dir: sort.dir === "asc" ? "desc" : "asc" } : { key, dir: defaultDir(key) };
+    setSort(next);
+    saveSort("jobs", next);
+  };
 
   useEffect(() => {
     if (!filter) return;
     let alive = true;
     setJobs(null);
     setError(null);
-    api.searchJobs(filter).then(
+    api.searchJobs(filter, sort).then(
       (j) => alive && setJobs(j),
       (e: Error) => alive && setError(e.message),
     );
     return () => { alive = false; };
-  }, [filter, run]);
+  }, [filter, run, sort]);
 
   if (!filter) {
     return (
@@ -76,8 +83,15 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters }: {
           <table className="grid">
             <thead>
               <tr>
-                <th>Job</th><th>Status</th><th>Material</th><th className="num">Parts</th>
-                <th className="num">Sheets</th><th>Projects</th><th>Created</th><th>Modified</th>
+                <SortTh k="name" sort={sort} onSort={sortBy}>Job</SortTh>
+                <th>Status</th>
+                <SortTh k="material" sort={sort} onSort={sortBy}>Material</SortTh>
+                <SortTh k="thickness" sort={sort} onSort={sortBy} num>Thickness</SortTh>
+                <th className="num">Parts</th>
+                <th className="num">Sheets</th>
+                <SortTh k="project" sort={sort} onSort={sortBy}>Projects</SortTh>
+                <SortTh k="created" sort={sort} onSort={sortBy}>Created</SortTh>
+                <SortTh k="modified" sort={sort} onSort={sortBy}>Modified</SortTh>
               </tr>
             </thead>
             <tbody>
@@ -87,7 +101,8 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters }: {
                     <button className="row-open" onClick={(e) => { e.stopPropagation(); onOpenJob(j); }}>{j.name}</button>
                   </td>
                   <td><span className={`status status-${j.status}`}>{STATUS[j.status]}</span></td>
-                  <td className="nowrap">{j.material ? `${j.material} ${mm(j.thicknessMm)}` : "–"}</td>
+                  <td className="nowrap">{j.material || "–"}</td>
+                  <td className="num nowrap">{j.material ? mm(j.thicknessMm) : "–"}</td>
                   <td className="num">{j.partCount}</td>
                   <td className="num">{j.sheetCount || "–"}</td>
                   <td>{j.projects.join(", ") || "–"}</td>
@@ -100,5 +115,21 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters }: {
         </section>
       )}
     </div>
+  );
+}
+
+/** Column header that sorts the results; click again to reverse. */
+function SortTh({ k, sort, onSort, num, children }: {
+  k: SortKey; sort: SortOrder; onSort: (k: SortKey) => void; num?: boolean; children: string;
+}) {
+  const on = sort.key === k;
+  return (
+    <th className={num ? "num" : undefined} aria-sort={on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button type="button" className={`th-sort${on ? " is-on" : ""}`} onClick={() => onSort(k)}
+        title={`Sort by ${children.toLowerCase()}`}>
+        {children}
+        <span className="th-arrow">{on ? <SortArrow dir={sort.dir} /> : null}</span>
+      </button>
+    </th>
   );
 }

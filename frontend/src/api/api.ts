@@ -1,3 +1,7 @@
+import {
+  DEFAULT_SORT,
+  type SortOrder,
+} from "./types";
 import type {
   ImportSummary, JobFilter, JobPart, JobStatus, JobSummary, PartFilter, PartSummary, ProjectSummary,
 } from "./types";
@@ -114,8 +118,34 @@ const inRange = (v: number, min?: number, max?: number) =>
   (min === undefined || v >= min) && (max === undefined || v <= max);
 
 /** Query string for the server: dates as created=on:2026-10-24, empty fields left out. */
-const partQuery = (f: object) => {
+const text = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: false });
+
+interface Sortable { name: string; createdAt: string; modifiedAt: string; material: string; thicknessMm: number; project: string }
+
+/** Same order as the server: chosen key, then name. */
+function sortRows<T>(rows: T[], s: SortOrder, view: (r: T) => Sortable): T[] {
+  const sign = s.dir === "desc" ? -1 : 1;
+  const cmp = (x: T, y: T) => {
+    const a = view(x), b = view(y);
+    let c = 0;
+    switch (s.key) {
+      case "name": c = text(a.name, b.name); break;
+      case "created": c = a.createdAt.localeCompare(b.createdAt); break;
+      case "modified": c = a.modifiedAt.localeCompare(b.modifiedAt); break;
+      case "material": c = text(a.material, b.material) || a.thicknessMm - b.thicknessMm; break;
+      case "thickness": c = (a.thicknessMm - b.thicknessMm) || sign * text(a.material, b.material); break;
+      case "project":
+        if (!a.project !== !b.project) return a.project ? -1 : 1; // no project last
+        c = text(a.project, b.project); break;
+    }
+    return sign * c || text(a.name, b.name);
+  };
+  return [...rows].sort(cmp);
+}
+
+const partQuery = (f: object, s?: SortOrder) => {
   const q = new URLSearchParams();
+  if (s) { q.set("sort", s.key); q.set("dir", s.dir); }
   for (const [k, v] of Object.entries(f)) {
     if (v === undefined || v === "" || v === false) continue;
     q.set(k, typeof v === "object" ? `${v.mode}:${v.date}` : String(v));
@@ -135,10 +165,10 @@ const matches = (hay: string, needle?: string) =>
 const delay = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), 150));
 
 export const api = {
-  searchParts: (f: PartFilter) =>
+  searchParts: (f: PartFilter, sort: SortOrder = DEFAULT_SORT) =>
     useApi
-      ? get<PartSummary[]>(`/api/parts?${partQuery(f)}`)
-      : delay(sampleParts.filter((p) =>
+      ? get<PartSummary[]>(`/api/parts?${partQuery(f, sort)}`)
+      : delay(sortRows(sampleParts.filter((p) =>
           matches(p.name, f.name) &&
           (!f.material || p.material === f.material) &&
           (f.thicknessMm === undefined || p.thicknessMm === f.thicknessMm) &&
@@ -148,7 +178,7 @@ export const api = {
           inDate(p.modifiedAt, f.modified) &&
           inRange(p.w, f.xMin, f.xMax) &&
           inRange(p.h, f.yMin, f.yMax) &&
-          (!f.engraved || p.engraved))),
+          (!f.engraved || p.engraved)), sort, (p) => p)),
   /** Distinct materials and thicknesses for the filter lists. */
   partFacets: (): Promise<PartFacets> =>
     useApi ? get<PartFacets>("/api/parts/facets") : delay({
@@ -157,10 +187,10 @@ export const api = {
         .map((s) => { const [m, t] = s.split("|"); return { material: m, thicknessMm: Number(t) }; })
         .sort((a, b) => a.thicknessMm - b.thicknessMm),
     }),
-  searchJobs: (f: JobFilter) =>
+  searchJobs: (f: JobFilter, sort: SortOrder = DEFAULT_SORT) =>
     useApi
-      ? get<JobSummary[]>(`/api/jobs?${partQuery(f)}`)
-      : delay(sampleJobs.filter((j) =>
+      ? get<JobSummary[]>(`/api/jobs?${partQuery(f, sort)}`)
+      : delay(sortRows(sampleJobs.filter((j) =>
           matches(j.name, f.name) &&
           (!f.material && f.thicknessMm === undefined ||
             j.lines.some((l) => (!f.material || l.part.material === f.material) &&
@@ -169,7 +199,13 @@ export const api = {
           (!f.part || j.lines.some((l) => matches(l.part.name, f.part))) &&
           inDate(j.createdAt, f.created) &&
           inDate(j.modifiedAt, f.modified) &&
-          (!f.status || j.status === f.status)).map(summary)),
+          (!f.status || j.status === f.status)), sort, (j) => ({
+            ...j,
+            // jobs sort by the smallest material / thickness / project among their parts
+            material: [...new Set(j.lines.map((l) => l.part.material))].sort(text)[0] ?? "",
+            thicknessMm: Math.min(...j.lines.map((l) => l.part.thicknessMm)),
+            project: j.projects[0] ?? "",
+          })).map(summary)),
   /** Parts already in a job (sample: Miha2787 holds the 30-part test job). */
   jobParts: (jobId: string) =>
     useApi

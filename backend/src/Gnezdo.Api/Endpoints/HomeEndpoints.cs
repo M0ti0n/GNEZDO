@@ -17,6 +17,10 @@ public sealed class JobQuery
     /// <summary>Jobs that use a part whose name contains this text.</summary>
     public string? Part { get; set; }
     public string? Status { get; set; }
+    /// <summary>name, created, modified (default), material, thickness, project.</summary>
+    public string? Sort { get; set; }
+    /// <summary>asc or desc; dates default to desc, others to asc.</summary>
+    public string? Dir { get; set; }
     public int? Take { get; set; }
 }
 
@@ -93,6 +97,8 @@ public static class HomeEndpoints
             if (Enum.TryParse<JobStatus>(q.Status, ignoreCase: true, out var s)) status = s;
             else errors["status"] = ["Use draft, nested, released or cut."];
         }
+        if (!Sort.TryParse(q.Sort, q.Dir, out var sort, out var sortError))
+            errors[sortError!.StartsWith("dir") ? "dir" : "sort"] = [sortError];
         if (errors.Count > 0) return Results.ValidationProblem(errors);
 
         IQueryable<Job> jobs = db.Jobs.AsNoTracking();
@@ -134,7 +140,7 @@ public static class HomeEndpoints
         if (status is { } st) jobs = jobs.Where(j => j.Status == st);
 
         var take = Math.Clamp(q.Take ?? 500, 1, 500);
-        return Results.Ok(await SummariesAsync(db, jobs.OrderByDescending(j => j.ModifiedAt).Take(take), ct));
+        return Results.Ok(await SummariesAsync(db, sort.Apply(jobs).Take(take), ct));
     }
 
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
