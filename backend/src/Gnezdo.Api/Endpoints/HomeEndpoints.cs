@@ -175,7 +175,9 @@ public static class HomeEndpoints
                 r.Id.ToString(), r.Name, main.Material, main.ThicknessMm,
                 byJob[r.Id].Sum(l => l.Qty), r.SheetCount,
                 r.Status.ToString().ToLowerInvariant(), r.CreatedAt, r.ModifiedAt, r.ModifiedBy,
-                byJob[r.Id].Select(l => l.Project).OfType<string>().Distinct().Order(StringComparer.OrdinalIgnoreCase).ToList());
+                byJob[r.Id].Select(l => l.Project).OfType<string>().Distinct().Order(StringComparer.OrdinalIgnoreCase).ToList(),
+                byJob[r.Id].Select(l => l.Material).Distinct().Order(StringComparer.OrdinalIgnoreCase).ToList(),
+                byJob[r.Id].Select(l => l.ThicknessMm).Distinct().Order().ToList());
         }).ToList();
     }
 
