@@ -30,9 +30,9 @@ interface SampleJob {
 const sampleJobRows: SampleJob[] = [
   { id: "j-2787", name: "Miha2787", status: "nested", sheetCount: 8, createdHoursAgo: 0.5, modifiedHoursAgo: 0.4, modifiedBy: "Miha", parts: "test30" },
   { id: "j-2786", name: "26-0412 Konzole", status: "released", sheetCount: 3, createdHoursAgo: 3.5, modifiedHoursAgo: 3, modifiedBy: "Miha", parts: [["k-01", 24], ["k-02", 12], ["k-03", 48]] },
-  { id: "j-2785", name: "26-0409 Prirobnice", status: "cut", sheetCount: 2, createdHoursAgo: 25, modifiedHoursAgo: 20, modifiedBy: "Rok", parts: [["p-01", 4]] },
+  { id: "j-2785", name: "26-0409 Prirobnice", status: "cut", sheetCount: 2, createdHoursAgo: 25, modifiedHoursAgo: 20, modifiedBy: "Rok", parts: [["p-01", 4], ["p-02", 2]] },
   { id: "j-2784", name: "26-0410 Ohišje", status: "draft", sheetCount: 0, createdHoursAgo: 26.5, modifiedHoursAgo: 26, modifiedBy: "Miha", parts: [["o-01", 2], ["o-02", 1]] },
-  { id: "j-2781", name: "Ostanki teden 43", status: "cut", sheetCount: 1, createdHoursAgo: 60, modifiedHoursAgo: 50, modifiedBy: "Rok", parts: [["n-02", 5]] },
+  { id: "j-2781", name: "Ostanki teden 43", status: "cut", sheetCount: 1, createdHoursAgo: 60, modifiedHoursAgo: 50, modifiedBy: "Rok", parts: [["n-02", 5], ["k-03", 2], ["o-02", 1]] },
   { id: "j-2779", name: "26-0398 Nosilci", status: "cut", sheetCount: 4, createdHoursAgo: 78, modifiedHoursAgo: 75, modifiedBy: "Miha", parts: [["n-01", 16], ["n-02", 15]] },
 ];
 
