@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Gnezdo.Api/Gnezdo.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Gnezdo.Api.Tests/Gnezdo.Api.Tests.csproj" />
+  </Folder>
+</Solution>

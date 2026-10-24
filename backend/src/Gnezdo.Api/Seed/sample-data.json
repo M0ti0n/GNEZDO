@@ -1,0 +1,954 @@
+{
+ "note": "Sample data for development and tests. Times are hours before 'now' when seeding.",
+ "projects": [
+  {
+   "code": "Miha2787",
+   "name": "Test job – 30 industrial parts",
+   "customer": null,
+   "hoursAgo": 1
+  },
+  {
+   "code": "26-0412",
+   "name": "Konzole za transporter",
+   "customer": "Kovinar d.o.o.",
+   "hoursAgo": 5
+  },
+  {
+   "code": "26-0410",
+   "name": "Ohišje krmilne omare",
+   "customer": "Elektro Vrhnika",
+   "hoursAgo": 28
+  },
+  {
+   "code": "26-0409",
+   "name": "Prirobnice DN200",
+   "customer": "Hidro Celje",
+   "hoursAgo": 31
+  },
+  {
+   "code": "26-0398",
+   "name": "Nosilci podesta",
+   "customer": "Gradnje Bovec",
+   "hoursAgo": 81
+  }
+ ],
+ "imports": [
+  {
+   "key": "i-912",
+   "source": "TEST_30_industrial",
+   "project": "Miha2787",
+   "hoursAgo": 0.6,
+   "by": "Miha",
+   "warnings": 0
+  },
+  {
+   "key": "i-911",
+   "source": "26-0412_konzole.dwg",
+   "project": "26-0412",
+   "hoursAgo": 4,
+   "by": "Miha",
+   "warnings": 2
+  },
+  {
+   "key": "i-910",
+   "source": "26-0410 Ohišje",
+   "project": "26-0410",
+   "hoursAgo": 27,
+   "by": "Miha",
+   "warnings": 0
+  },
+  {
+   "key": "i-909",
+   "source": "26-0409_prirobnice",
+   "project": "26-0409",
+   "hoursAgo": 30,
+   "by": "Rok",
+   "warnings": 1
+  },
+  {
+   "key": "i-905",
+   "source": "26-0398 Nosilci",
+   "project": "26-0398",
+   "hoursAgo": 80,
+   "by": "Miha",
+   "warnings": 0
+  }
+ ],
+ "parts": [
+  {
+   "key": "pt-01",
+   "name": "01_LARGE_WINDOW_PANEL_1400X1600",
+   "description": "Large window panel 1400x1600",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 1,
+   "w": 1400.0,
+   "h": 1600.0,
+   "areaMm2": 1072608,
+   "path": "M0 1600 L1400 1600 L1400 0 L0 0Z M100 1480 L620 1480 L620 920 L100 920Z M780 1480 L1300 1480 L1300 920 L780 920Z M100 680 L620 680 L620 120 L100 120Z M780 680 L1300 680 L1300 120 L780 120Z M68 1550 L50 1532 L32 1550 L50 1568Z M1368 1550 L1350 1532 L1332 1550 L1350 1568Z M68 50 L50 32 L32 50 L50 68Z M1368 50 L1350 32 L1332 50 L1350 68Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-02",
+   "name": "02_STEPPED_PANEL_900X1600",
+   "description": "Stepped panel 900x1600",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 1,
+   "w": 900.0,
+   "h": 1600.0,
+   "areaMm2": 686832,
+   "path": "M0 1600 L900 1600 L900 1250 L760 1250 L760 350 L900 350 L900 0 L0 0Z M180 1420 L720 1420 L720 1000 L610 1000 L610 600 L720 600 L720 180 L180 180Z M84 1530 L70 1516 L56 1530 L70 1544Z M844 1530 L830 1516 L816 1530 L830 1544Z M84 70 L70 56 L56 70 L70 84Z M844 70 L830 56 L816 70 L830 84Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-03",
+   "name": "03_SLOTTED_PLATE_1200X800",
+   "description": "Slotted plate 1200x800",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 2,
+   "w": 1200.0,
+   "h": 800.0,
+   "areaMm2": 749152,
+   "path": "M0 800 L1200 800 L1200 0 L0 0Z M180 690 L270 690 L270 110 L180 110Z M420 690 L510 690 L510 110 L420 110Z M660 690 L750 690 L750 110 L660 110Z M900 690 L990 690 L990 110 L900 110Z M76 740 L60 724 L44 740 L60 756Z M1156 740 L1140 724 L1124 740 L1140 756Z M76 60 L60 44 L44 60 L60 76Z M1156 60 L1140 44 L1124 60 L1140 76Z",
+   "engraved": true,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-04",
+   "name": "04_SQUARE_BOLT_FLANGE_1000X1000",
+   "description": "Square bolt flange 1000x1000",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 1,
+   "w": 1000.0,
+   "h": 1000.0,
+   "areaMm2": 873186,
+   "path": "M0 1000 L1000 1000 L1000 0 L0 0Z M690 500 L675.5 427.3 L634.4 365.6 L572.7 324.5 L500 310 L427.3 324.5 L365.6 365.6 L324.5 427.3 L310 500 L324.5 572.7 L365.6 634.4 L427.3 675.5 L500 690 L572.7 675.5 L634.4 634.4 L675.5 572.7Z M878 500 L864 475.8 L836 475.8 L822 500 L836 524.2 L864 524.2Z M775.5 252.5 L761.5 228.3 L733.5 228.3 L719.5 252.5 L733.5 276.8 L761.5 276.8Z M528 150 L514 125.8 L486 125.8 L472 150 L486 174.2 L514 174.2Z M280.5 252.5 L266.5 228.3 L238.5 228.3 L224.5 252.5 L238.5 276.8 L266.5 276.8Z M178 500 L164 475.8 L136 475.8 L122 500 L136 524.2 L164 524.2Z M280.5 747.5 L266.5 723.2 L238.5 723.2 L224.5 747.5 L238.5 771.7 L266.5 771.7Z M528 850 L514 825.8 L486 825.8 L472 850 L486 874.2 L514 874.2Z M775.5 747.5 L761.5 723.2 L733.5 723.2 L719.5 747.5 L733.5 771.7 L761.5 771.7Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-05",
+   "name": "05_NOTCHED_FRAME_1000X1000",
+   "description": "Notched frame 1000x1000",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 2,
+   "w": 1000.0,
+   "h": 1000.0,
+   "areaMm2": 654000,
+   "path": "M0 1000 L1000 1000 L1000 820 L820 820 L820 180 L1000 180 L1000 0 L0 0 L0 180 L180 180 L180 820 L0 820Z M330 670 L670 670 L670 330 L330 330Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-06",
+   "name": "06_ANGLED_PLATE_1100X1000",
+   "description": "Angled plate 1100x1000",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 1,
+   "w": 1100.0,
+   "h": 1000.0,
+   "areaMm2": 780589,
+   "path": "M0 1000 L1100 1000 L1100 500 L850 250 L850 0 L250 0 L250 250 L0 500Z M370 700 L730 700 L730 340 L370 340Z M118 900 L105.6 882.9 L85.4 889.4 L85.4 910.6 L105.6 917.1Z M1018 900 L1005.6 882.9 L985.4 889.4 L985.4 910.6 L1005.6 917.1Z M568 100 L555.6 82.9 L535.4 89.4 L535.4 110.6 L555.6 117.1Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-07",
+   "name": "07_BRACKET_PROFILE_900X1000",
+   "description": "Bracket profile 900x1000",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 1,
+   "w": 900.0,
+   "h": 1000.0,
+   "areaMm2": 578968,
+   "path": "M0 1000 L900 1000 L900 750 L650 750 L650 300 L400 300 L400 0 L0 0Z M80 920 L300 920 L300 740 L80 740Z M470 580 L570 580 L570 400 L470 400Z M814 900 L804.3 886.7 L788.7 891.8 L788.7 908.2 L804.3 913.3Z M114 100 L104.3 86.7 L88.7 91.8 L88.7 108.2 L104.3 113.3Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-08",
+   "name": "08_CHAMFERED_WINDOW_PANEL_1200X800",
+   "description": "Chamfered window panel 1200x800",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 1,
+   "w": 1200.0,
+   "h": 800.0,
+   "areaMm2": 649459,
+   "path": "M150 800 L1050 800 L1200 650 L1200 150 L1050 0 L150 0 L0 150 L0 650Z M220 620 L520 620 L520 180 L220 180Z M680 620 L980 620 L980 180 L680 180Z M618 720 L605.6 702.9 L585.4 709.4 L585.4 730.6 L605.6 737.1Z M618 80 L605.6 62.9 L585.4 69.4 L585.4 90.6 L605.6 97.1Z",
+   "engraved": true,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-09",
+   "name": "09_SQUARE_FLANGE_800X800",
+   "description": "Square flange 800x800",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 2,
+   "w": 800.0,
+   "h": 800.0,
+   "areaMm2": 555295,
+   "path": "M0 800 L800 800 L800 0 L0 0Z M260 540 L540 540 L540 260 L260 260Z M124 700 L115 681.2 L94.7 676.6 L78.4 689.6 L78.4 710.4 L94.7 723.4 L115 718.8Z M724 700 L715 681.2 L694.7 676.6 L678.4 689.6 L678.4 710.4 L694.7 723.4 L715 718.8Z M124 100 L115 81.2 L94.7 76.6 L78.4 89.6 L78.4 110.4 L94.7 123.4 L115 118.8Z M724 100 L715 81.2 L694.7 76.6 L678.4 89.6 L678.4 110.4 L694.7 123.4 L715 118.8Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-10",
+   "name": "10_COMB_PLATE_1000X700",
+   "description": "Comb plate 1000x700",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 2,
+   "w": 1000.0,
+   "h": 700.0,
+   "areaMm2": 438068,
+   "path": "M0 700 L1000 700 L1000 450 L820 450 L820 0 L680 0 L680 450 L540 450 L540 0 L400 0 L400 450 L260 450 L260 0 L120 0 L120 450 L0 450Z M74 600 L64.3 586.7 L48.7 591.8 L48.7 608.2 L64.3 613.3Z M954 600 L944.3 586.7 L928.7 591.8 L928.7 608.2 L944.3 613.3Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-11",
+   "name": "11_WINDOW_PLATE_600X400",
+   "description": "Window plate 600x400",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 4,
+   "w": 600.0,
+   "h": 400.0,
+   "areaMm2": 140249,
+   "path": "M0 400 L600 400 L600 0 L0 0Z M80 330 L270 330 L270 70 L80 70Z M330 330 L520 330 L520 70 L330 70Z M50 360 L43.1 350.5 L31.9 354.1 L31.9 365.9 L43.1 369.5Z M570 360 L563.1 350.5 L551.9 354.1 L551.9 365.9 L563.1 369.5Z M50 40 L43.1 30.5 L31.9 34.1 L31.9 45.9 L43.1 49.5Z M570 40 L563.1 30.5 L551.9 34.1 L551.9 45.9 L563.1 49.5Z",
+   "engraved": true,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-12",
+   "name": "12_TRAPEZOID_PLATE_650X450",
+   "description": "Trapezoid plate 650x450",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 6,
+   "w": 650.0,
+   "h": 450.0,
+   "areaMm2": 218465,
+   "path": "M0 450 L650 450 L520 0 L130 0Z M100 370 L250 370 L250 315 L100 315Z M350 190 L470 190 L470 135 L350 135Z M337 410 L328.7 398.6 L315.3 402.9 L315.3 417.1 L328.7 421.4Z M337 50 L328.7 38.6 L315.3 42.9 L315.3 57.1 L328.7 61.4Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.2
+  },
+  {
+   "key": "pt-13",
+   "name": "13_L_ANGLE_PLATE_500X500",
+   "description": "L angle plate 500x500",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 10,
+   "w": 500.0,
+   "h": 500.0,
+   "areaMm2": 88878,
+   "path": "M0 500 L500 500 L500 400 L100 400 L100 0 L0 0Z M62 450 L56 439.6 L44 439.6 L38 450 L44 460.4 L56 460.4Z M462 450 L456 439.6 L444 439.6 L438 450 L444 460.4 L456 460.4Z M62 50 L56 39.6 L44 39.6 L38 50 L44 60.4 L56 60.4Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-14",
+   "name": "14_SMALL_ROUND_BORE_FLANGE_300X300",
+   "description": "Small round bore flange 300x300",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 6,
+   "w": 300.0,
+   "h": 300.0,
+   "areaMm2": 79163,
+   "path": "M0 300 L300 300 L300 0 L0 0Z M205 150 L200.8 129 L188.9 111.1 L171 99.2 L150 95 L129 99.2 L111.1 111.1 L99.2 129 L95 150 L99.2 171 L111.1 188.9 L129 200.8 L150 205 L171 200.8 L188.9 188.9 L200.8 171Z M57 255 L52.5 245.6 L42.3 243.3 L34.2 249.8 L34.2 260.2 L42.3 266.7 L52.5 264.4Z M267 255 L262.5 245.6 L252.3 243.3 L244.2 249.8 L244.2 260.2 L252.3 266.7 L262.5 264.4Z M57 45 L52.5 35.6 L42.3 33.3 L34.2 39.8 L34.2 50.2 L42.3 56.7 L52.5 54.4Z M267 45 L262.5 35.6 L252.3 33.3 L244.2 39.8 L244.2 50.2 L252.3 56.7 L262.5 54.4Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-15",
+   "name": "15_SHIM_400X180",
+   "description": "Shim 400x180",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 10,
+   "w": 400.0,
+   "h": 180.0,
+   "areaMm2": 65391,
+   "path": "M0 180 L400 180 L400 0 L0 0Z M70 115 L110 115 L110 65 L70 65Z M180 115 L220 115 L220 65 L180 65Z M290 115 L330 115 L330 65 L290 65Z M33 155 L27.5 147.4 L18.5 150.3 L18.5 159.7 L27.5 162.6Z M383 155 L377.5 147.4 L368.5 150.3 L368.5 159.7 L377.5 162.6Z M33 25 L27.5 17.4 L18.5 20.3 L18.5 29.7 L27.5 32.6Z M383 25 L377.5 17.4 L368.5 20.3 L368.5 29.7 L377.5 32.6Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-16",
+   "name": "16_STEPPED_STRIP_500X300",
+   "description": "Stepped strip 500x300",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 3,
+   "w": 500.0,
+   "h": 300.0,
+   "areaMm2": 105400,
+   "path": "M0 300 L500 300 L500 220 L350 220 L350 80 L500 80 L500 0 L0 0Z M60 230 L180 230 L180 70 L60 70Z M250 190 L305 190 L305 110 L250 110Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-17",
+   "name": "17_TRIANGLE_GUSSET_350X300",
+   "description": "Triangle gusset 350x300",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 40,
+   "w": 350.0,
+   "h": 300.0,
+   "areaMm2": 51721,
+   "path": "M0 300 L350 300 L0 0Z M75 245 L70 236.3 L60 236.3 L55 245 L60 253.7 L70 253.7Z M260 245 L255 236.3 L245 236.3 L240 245 L245 253.7 L255 253.7Z M75 70 L70 61.3 L60 61.3 L55 70 L60 78.7 L70 78.7Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-18",
+   "name": "18_OCTAGONAL_FLANGE_300X200",
+   "description": "Octagonal flange 300x200",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 25,
+   "w": 300.0,
+   "h": 200.0,
+   "areaMm2": 53804,
+   "path": "M40 200 L260 200 L300 160 L300 40 L260 0 L40 0 L0 40 L0 160Z M178 100 L173.6 84.9 L161.6 74.5 L146 72.3 L131.7 78.8 L123.1 92.1 L123.1 107.9 L131.7 121.2 L146 127.7 L161.6 125.5 L173.6 115.1Z M43 165 L39 158.1 L31 158.1 L27 165 L31 171.9 L39 171.9Z M273 165 L269 158.1 L261 158.1 L257 165 L261 171.9 L269 171.9Z M43 35 L39 28.1 L31 28.1 L27 35 L31 41.9 L39 41.9Z M273 35 L269 28.1 L261 28.1 L257 35 L261 41.9 L269 41.9Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-19",
+   "name": "19_MICRO_PLATE_100X50",
+   "description": "Micro plate 100x50",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 80,
+   "w": 100.0,
+   "h": 50.0,
+   "areaMm2": 4712,
+   "path": "M0 50 L100 50 L100 0 L0 0Z M32 25 L30.7 20.9 L27.2 18.3 L22.8 18.3 L19.3 20.9 L18 25 L19.3 29.1 L22.8 31.7 L27.2 31.7 L30.7 29.1Z M82 25 L80.7 20.9 L77.2 18.3 L72.8 18.3 L69.3 20.9 L68 25 L69.3 29.1 L72.8 31.7 L77.2 31.7 L80.7 29.1Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-20",
+   "name": "20_NOTCHED_STRIP_250X100",
+   "description": "Notched strip 250x100",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 40,
+   "w": 250.0,
+   "h": 100.0,
+   "areaMm2": 19813,
+   "path": "M0 100 L250 100 L250 50 L200 50 L200 0 L50 0 L50 50 L0 50Z M31 75 L28 69.8 L22 69.8 L19 75 L22 80.2 L28 80.2Z M231 75 L228 69.8 L222 69.8 L219 75 L222 80.2 L228 80.2Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-21",
+   "name": "21_ROUND_RONDEL_BOLT_FLANGE_500X400",
+   "description": "Round rondel bolt flange 500x400",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 5,
+   "w": 298.8,
+   "h": 299.4,
+   "areaMm2": 58319,
+   "path": "M298.8 149.7 L294.1 112.4 L280.3 77.4 L258.2 47 L229.2 23.1 L195.2 7 L158.2 0 L120.7 2.4 L85 14 L53.2 34.1 L27.5 61.5 L9.4 94.5 L0 130.9 L0 168.5 L9.4 204.9 L27.5 237.9 L53.2 265.3 L85 285.4 L120.7 297 L158.2 299.4 L195.2 292.4 L229.2 276.4 L258.2 252.4 L280.3 222 L294.1 187Z M203.8 149.7 L199.6 128.7 L187.7 110.8 L169.9 98.9 L148.8 94.7 L127.8 98.9 L109.9 110.8 L98 128.7 L93.8 149.7 L98 170.8 L109.9 188.6 L127.8 200.5 L148.8 204.7 L169.9 200.5 L187.7 188.6 L199.6 170.8Z M265.8 149.7 L261.3 140.3 L251.1 138 L243 144.5 L243 154.9 L251.1 161.4 L261.3 159.1Z M213.3 58.8 L208.8 49.4 L198.6 47.1 L190.5 53.6 L190.5 64 L198.6 70.5 L208.8 68.2Z M108.3 58.8 L103.8 49.4 L93.6 47.1 L85.5 53.6 L85.5 64 L93.6 70.5 L103.8 68.2Z M55.8 149.7 L51.3 140.3 L41.1 138 L33 144.5 L33 154.9 L41.1 161.4 L51.3 159.1Z M108.3 240.6 L103.8 231.3 L93.6 228.9 L85.5 235.4 L85.5 245.8 L93.6 252.3 L103.8 250Z M213.3 240.6 L208.8 231.3 L198.6 228.9 L190.5 235.4 L190.5 245.8 L198.6 252.3 L208.8 250Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-22",
+   "name": "22_RIBBED_MOUNTING_PLATE_450X300",
+   "description": "Ribbed mounting plate 450x300",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 5,
+   "w": 450.0,
+   "h": 300.0,
+   "areaMm2": 110861,
+   "path": "M0 300 L450 300 L450 0 L0 0Z M65 255 L87 255 L87 45 L65 45Z M145 255 L167 255 L167 45 L145 45Z M225 255 L247 255 L247 45 L225 45Z M305 255 L327 255 L327 45 L305 45Z M385 255 L407 255 L407 45 L385 45Z M35 275 L30 266.3 L20 266.3 L15 275 L20 283.7 L30 283.7Z M435 275 L430 266.3 L420 266.3 L415 275 L420 283.7 L430 283.7Z M35 25 L30 16.3 L20 16.3 L15 25 L20 33.7 L30 33.7Z M435 25 L430 16.3 L420 16.3 L415 25 L420 33.7 L430 33.7Z",
+   "engraved": true,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-23",
+   "name": "23_STEPPED_DUAL_BORE_FLANGE_500X400",
+   "description": "Stepped dual bore flange 500x400",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 3,
+   "w": 500.0,
+   "h": 400.0,
+   "areaMm2": 159067,
+   "path": "M0 400 L400 400 L400 280 L500 280 L500 120 L320 120 L320 0 L0 0Z M135 300 L128.3 279.4 L110.8 266.7 L89.2 266.7 L71.7 279.4 L65 300 L71.7 320.6 L89.2 333.3 L110.8 333.3 L128.3 320.6Z M422 195 L414.5 174.4 L395.6 163.5 L374 167.3 L359.9 184.1 L359.9 205.9 L374 222.7 L395.6 226.5 L414.5 215.6Z M44 365 L37.8 356.4 L27.7 359.7 L27.7 370.3 L37.8 373.6Z M374 365 L367.8 356.4 L357.7 359.7 L357.7 370.3 L367.8 373.6Z M464 245 L457.8 236.4 L447.7 239.7 L447.7 250.3 L457.8 253.6Z M364 155 L357.8 146.4 L347.7 149.7 L347.7 160.3 L357.8 163.6Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-24",
+   "name": "24_SQUARE_DUCT_FLANGE_350X350",
+   "description": "Square duct flange 350x350",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 20,
+   "w": 350.0,
+   "h": 350.0,
+   "areaMm2": 87955,
+   "path": "M0 350 L350 350 L350 0 L0 0Z M85 265 L265 265 L265 85 L85 85Z M49 315 L43.7 304.1 L31.9 301.4 L22.4 308.9 L22.4 321.1 L31.9 328.6 L43.7 325.9Z M329 315 L323.7 304.1 L311.9 301.4 L302.4 308.9 L302.4 321.1 L311.9 328.6 L323.7 325.9Z M49 35 L43.7 24.1 L31.9 21.4 L22.4 28.9 L22.4 41.1 L31.9 48.6 L43.7 45.9Z M329 35 L323.7 24.1 L311.9 21.4 L302.4 28.9 L302.4 41.1 L311.9 48.6 L323.7 45.9Z",
+   "engraved": true,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-25",
+   "name": "25_ANGLED_RIB_BRACKET_300X250",
+   "description": "Angled rib bracket 300x250",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 30,
+   "w": 300.0,
+   "h": 250.0,
+   "areaMm2": 32532,
+   "path": "M0 250 L300 250 L300 185 L170 185 L170 0 L105 0 L105 130 L0 130Z M28 215 L76 215 L76 170 L28 170Z M120 95 L155 95 L155 30 L120 30Z M258 218 L254 211.1 L246 211.1 L242 218 L246 224.9 L254 224.9Z M143 30 L139 23.1 L131 23.1 L127 30 L131 36.9 L139 36.9Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-26",
+   "name": "26_TRAPEZOID_DOUBLE_RIB_BRACKET_300X220",
+   "description": "Trapezoid double rib bracket 300x220",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 25,
+   "w": 300.0,
+   "h": 220.0,
+   "areaMm2": 45782,
+   "path": "M0 220 L300 220 L250 0 L50 0Z M65 185 L115 185 L95 50 L80 50Z M185 185 L235 185 L220 50 L205 50Z M159 195 L155.6 188 L148 186.2 L141.9 191.1 L141.9 198.9 L148 203.8 L155.6 202Z M159 25 L155.6 18 L148 16.2 L141.9 21.1 L141.9 28.9 L148 33.8 L155.6 32Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-27",
+   "name": "27_RIBBED_RAIL_400X80",
+   "description": "Ribbed rail 400x80",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 30,
+   "w": 400.0,
+   "h": 80.0,
+   "areaMm2": 23596,
+   "path": "M0 80 L400 80 L400 0 L360 0 L360 45 L300 45 L300 0 L240 0 L240 45 L180 45 L180 0 L120 0 L120 45 L60 45 L60 0 L0 0Z M33 60 L27.5 52.4 L18.5 55.3 L18.5 64.7 L27.5 67.6Z M383 60 L377.5 52.4 L368.5 55.3 L368.5 64.7 L377.5 67.6Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-28",
+   "name": "28_OCTAGONAL_FLANGE_200X200",
+   "description": "Octagonal flange 200x200",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 30,
+   "w": 200.0,
+   "h": 200.0,
+   "areaMm2": 30727,
+   "path": "M50 200 L150 200 L200 150 L200 50 L150 0 L50 0 L0 50 L0 150Z M135 100 L132 85.8 L123.4 74 L110.8 66.7 L96.3 65.2 L82.5 69.7 L71.7 79.4 L65.8 92.7 L65.8 107.3 L71.7 120.6 L82.5 130.3 L96.3 134.8 L110.8 133.3 L123.4 126 L132 114.2Z M49 158 L46.4 152.5 L40.4 151.2 L35.7 155 L35.7 161 L40.4 164.8 L46.4 163.5Z M165 158 L162.4 152.5 L156.4 151.2 L151.7 155 L151.7 161 L156.4 164.8 L162.4 163.5Z M49 42 L46.4 36.5 L40.4 35.2 L35.7 39 L35.7 45 L40.4 48.8 L46.4 47.5Z M165 42 L162.4 36.5 L156.4 35.2 L151.7 39 L151.7 45 L156.4 48.8 L162.4 47.5Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-29",
+   "name": "29_SQUARE_WASHER_PLATE_100X100",
+   "description": "Square washer plate 100x100",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 45,
+   "w": 100.0,
+   "h": 100.0,
+   "areaMm2": 6936,
+   "path": "M0 100 L100 100 L100 0 L0 0Z M80 50 L78.5 40.7 L74.3 32.4 L67.6 25.7 L59.3 21.5 L50 20 L40.7 21.5 L32.4 25.7 L25.7 32.4 L21.5 40.7 L20 50 L21.5 59.3 L25.7 67.6 L32.4 74.3 L40.7 78.5 L50 80 L59.3 78.5 L67.6 74.3 L74.3 67.6 L78.5 59.3Z M23 82 L21.5 78.5 L18 77 L14.5 78.5 L13 82 L14.5 85.5 L18 87 L21.5 85.5Z M87 82 L85.5 78.5 L82 77 L78.5 78.5 L77 82 L78.5 85.5 L82 87 L85.5 85.5Z M23 18 L21.5 14.5 L18 13 L14.5 14.5 L13 18 L14.5 21.5 L18 23 L21.5 21.5Z M87 18 L85.5 14.5 L82 13 L78.5 14.5 L77 18 L78.5 21.5 L82 23 L85.5 21.5Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "pt-30",
+   "name": "30_MICRO_FLANGE_50X50",
+   "description": "Micro flange 50x50",
+   "project": "Miha2787",
+   "material": "HARDOX",
+   "thicknessMm": 1,
+   "qty": 100,
+   "w": 50.0,
+   "h": 50.0,
+   "areaMm2": 2130,
+   "path": "M0 50 L50 50 L50 0 L0 0Z M35 25 L33.9 20.4 L30.7 16.8 L26.2 15.1 L21.5 15.6 L17.5 18.4 L15.3 22.6 L15.3 27.4 L17.5 31.6 L21.5 34.4 L26.2 34.9 L30.7 33.2 L33.9 29.6Z M9.5 43 L8.6 41 L6.4 40.6 L4.7 41.9 L4.7 44.1 L6.4 45.4 L8.6 45Z M45.5 43 L44.6 41 L42.4 40.6 L40.7 41.9 L40.7 44.1 L42.4 45.4 L44.6 45Z M9.5 7 L8.6 5 L6.4 4.6 L4.7 5.9 L4.7 8.1 L6.4 9.4 L8.6 9Z M45.5 7 L44.6 5 L42.4 4.6 L40.7 5.9 L40.7 8.1 L42.4 9.4 L44.6 9Z",
+   "engraved": false,
+   "importKey": "i-912",
+   "createdHoursAgo": 0.6,
+   "modifiedHoursAgo": 0.6
+  },
+  {
+   "key": "k-01",
+   "name": "KONZOLA_L_160X120",
+   "description": "Konzola l 160x120",
+   "project": "26-0412",
+   "material": "S235",
+   "thicknessMm": 3,
+   "qty": 24,
+   "w": 160,
+   "h": 120,
+   "areaMm2": 7278,
+   "path": "M0 120 L160 120 L160 90 L30 90 L30 0 L0 0Z M21 15 L20.7 13.1 L19.9 11.5 L18.5 10.1 L16.9 9.3 L15 9 L13.1 9.3 L11.5 10.1 L10.1 11.5 L9.3 13.1 L9 15 L9.3 16.9 L10.1 18.5 L11.5 19.9 L13.1 20.7 L15 21 L16.9 20.7 L18.5 19.9 L19.9 18.5 L20.7 16.9Z M146 105 L145.7 103.1 L144.9 101.5 L143.5 100.1 L141.9 99.3 L140 99 L138.1 99.3 L136.5 100.1 L135.1 101.5 L134.3 103.1 L134 105 L134.3 106.9 L135.1 108.5 L136.5 109.9 L138.1 110.7 L140 111 L141.9 110.7 L143.5 109.9 L144.9 108.5 L145.7 106.9Z",
+   "engraved": false,
+   "importKey": "i-911",
+   "createdHoursAgo": 4,
+   "modifiedHoursAgo": 1
+  },
+  {
+   "key": "k-02",
+   "name": "KONZOLA_PLOSCA_200X150",
+   "description": "Konzola plosca 200x150",
+   "project": "26-0412",
+   "material": "S235",
+   "thicknessMm": 3,
+   "qty": 12,
+   "w": 200,
+   "h": 150,
+   "areaMm2": 26394,
+   "path": "M0 150 L200 150 L200 0 L0 0Z M27 130 L26.7 127.8 L25.7 125.9 L24.1 124.3 L22.2 123.3 L20 123 L17.8 123.3 L15.9 124.3 L14.3 125.9 L13.3 127.8 L13 130 L13.3 132.2 L14.3 134.1 L15.9 135.7 L17.8 136.7 L20 137 L22.2 136.7 L24.1 135.7 L25.7 134.1 L26.7 132.2Z M187 130 L186.7 127.8 L185.7 125.9 L184.1 124.3 L182.2 123.3 L180 123 L177.8 123.3 L175.9 124.3 L174.3 125.9 L173.3 127.8 L173 130 L173.3 132.2 L174.3 134.1 L175.9 135.7 L177.8 136.7 L180 137 L182.2 136.7 L184.1 135.7 L185.7 134.1 L186.7 132.2Z M27 20 L26.7 17.8 L25.7 15.9 L24.1 14.3 L22.2 13.3 L20 13 L17.8 13.3 L15.9 14.3 L14.3 15.9 L13.3 17.8 L13 20 L13.3 22.2 L14.3 24.1 L15.9 25.7 L17.8 26.7 L20 27 L22.2 26.7 L24.1 25.7 L25.7 24.1 L26.7 22.2Z M187 20 L186.7 17.8 L185.7 15.9 L184.1 14.3 L182.2 13.3 L180 13 L177.8 13.3 L175.9 14.3 L174.3 15.9 L173.3 17.8 L173 20 L173.3 22.2 L174.3 24.1 L175.9 25.7 L177.8 26.7 L180 27 L182.2 26.7 L184.1 25.7 L185.7 24.1 L186.7 22.2Z M70 100 L130 100 L130 50 L70 50Z",
+   "engraved": true,
+   "importKey": "i-911",
+   "createdHoursAgo": 4,
+   "modifiedHoursAgo": 4
+  },
+  {
+   "key": "k-03",
+   "name": "REBRO_120X80",
+   "description": "Rebro 120x80",
+   "project": "26-0412",
+   "material": "S235",
+   "thicknessMm": 3,
+   "qty": 48,
+   "w": 120,
+   "h": 80,
+   "areaMm2": 4800,
+   "path": "M0 80 L120 80 L0 0Z",
+   "engraved": false,
+   "importKey": "i-911",
+   "createdHoursAgo": 4,
+   "modifiedHoursAgo": 4
+  },
+  {
+   "key": "o-01",
+   "name": "OHISJE_STRANICA_600X400",
+   "description": "Ohisje stranica 600x400",
+   "project": "26-0410",
+   "material": "INOX 1.4301",
+   "thicknessMm": 2,
+   "qty": 2,
+   "w": 600,
+   "h": 400,
+   "areaMm2": 202019,
+   "path": "M0 400 L600 400 L600 0 L0 0Z M40 360 L260 360 L260 200 L40 200Z M530 100 L528.5 90.7 L524.3 82.4 L517.6 75.7 L509.3 71.5 L500 70 L490.7 71.5 L482.4 75.7 L475.7 82.4 L471.5 90.7 L470 100 L471.5 109.3 L475.7 117.6 L482.4 124.3 L490.7 128.5 L500 130 L509.3 128.5 L517.6 124.3 L524.3 117.6 L528.5 109.3Z",
+   "engraved": true,
+   "importKey": "i-910",
+   "createdHoursAgo": 27,
+   "modifiedHoursAgo": 27
+  },
+  {
+   "key": "o-02",
+   "name": "OHISJE_POKROV_620X420",
+   "description": "Ohisje pokrov 620x420",
+   "project": "26-0410",
+   "material": "INOX 1.4301",
+   "thicknessMm": 2,
+   "qty": 1,
+   "w": 620,
+   "h": 420,
+   "areaMm2": 259291,
+   "path": "M20 420 L600 420 L620 400 L620 20 L600 0 L20 0 L0 20 L0 400Z M65 360 L64.8 358.5 L64 357.1 L62.9 356 L61.5 355.2 L60 355 L58.5 355.2 L57.1 356 L56 357.1 L55.2 358.5 L55 360 L55.2 361.5 L56 362.9 L57.1 364 L58.5 364.8 L60 365 L61.5 364.8 L62.9 364 L64 362.9 L64.8 361.5Z M565 360 L564.8 358.5 L564 357.1 L562.9 356 L561.5 355.2 L560 355 L558.5 355.2 L557.1 356 L556 357.1 L555.2 358.5 L555 360 L555.2 361.5 L556 362.9 L557.1 364 L558.5 364.8 L560 365 L561.5 364.8 L562.9 364 L564 362.9 L564.8 361.5Z M65 60 L64.8 58.5 L64 57.1 L62.9 56 L61.5 55.2 L60 55 L58.5 55.2 L57.1 56 L56 57.1 L55.2 58.5 L55 60 L55.2 61.5 L56 62.9 L57.1 64 L58.5 64.8 L60 65 L61.5 64.8 L62.9 64 L64 62.9 L64.8 61.5Z M565 60 L564.8 58.5 L564 57.1 L562.9 56 L561.5 55.2 L560 55 L558.5 55.2 L557.1 56 L556 57.1 L555.2 58.5 L555 60 L555.2 61.5 L556 62.9 L557.1 64 L558.5 64.8 L560 65 L561.5 64.8 L562.9 64 L564 62.9 L564.8 61.5Z",
+   "engraved": false,
+   "importKey": "i-910",
+   "createdHoursAgo": 27,
+   "modifiedHoursAgo": 5
+  },
+  {
+   "key": "p-01",
+   "name": "PRIROBNICA_DN200_340",
+   "description": "Prirobnica dn200 340",
+   "project": "26-0409",
+   "material": "S355",
+   "thicknessMm": 10,
+   "qty": 4,
+   "w": 340.0,
+   "h": 340.0,
+   "areaMm2": 49746,
+   "path": "M340 170 L337.9 143.4 L331.7 117.5 L321.5 92.8 L307.5 70.1 L290.2 49.8 L269.9 32.5 L247.2 18.5 L222.5 8.3 L196.6 2.1 L170 0 L143.4 2.1 L117.5 8.3 L92.8 18.5 L70.1 32.5 L49.8 49.8 L32.5 70.1 L18.5 92.8 L8.3 117.5 L2.1 143.4 L0 170 L2.1 196.6 L8.3 222.5 L18.5 247.2 L32.5 269.9 L49.8 290.2 L70.1 307.5 L92.8 321.5 L117.5 331.7 L143.4 337.9 L170 340 L196.6 337.9 L222.5 331.7 L247.2 321.5 L269.9 307.5 L290.2 290.2 L307.5 269.9 L321.5 247.2 L331.7 222.5 L337.9 196.6Z M280 170 L277.9 148.5 L271.6 127.9 L261.5 108.9 L247.8 92.2 L231.1 78.5 L212.1 68.4 L191.5 62.1 L170 60 L148.5 62.1 L127.9 68.4 L108.9 78.5 L92.2 92.2 L78.5 108.9 L68.4 127.9 L62.1 148.5 L60 170 L62.1 191.5 L68.4 212.1 L78.5 231.1 L92.2 247.8 L108.9 261.5 L127.9 271.6 L148.5 277.9 L170 280 L191.5 277.9 L212.1 271.6 L231.1 261.5 L247.8 247.8 L261.5 231.1 L271.6 212.1 L277.9 191.5Z M321 170 L319.5 164.5 L315.5 160.5 L310 159 L304.5 160.5 L300.5 164.5 L299 170 L300.5 175.5 L304.5 179.5 L310 181 L315.5 179.5 L319.5 175.5Z M280 71 L278.5 65.5 L274.5 61.5 L269 60 L263.5 61.5 L259.5 65.5 L258 71 L259.5 76.5 L263.5 80.5 L269 82 L274.5 80.5 L278.5 76.5Z M181 30 L179.5 24.5 L175.5 20.5 L170 19 L164.5 20.5 L160.5 24.5 L159 30 L160.5 35.5 L164.5 39.5 L170 41 L175.5 39.5 L179.5 35.5Z M82 71 L80.5 65.5 L76.5 61.5 L71 60 L65.5 61.5 L61.5 65.5 L60 71 L61.5 76.5 L65.5 80.5 L71 82 L76.5 80.5 L80.5 76.5Z M41 170 L39.5 164.5 L35.5 160.5 L30 159 L24.5 160.5 L20.5 164.5 L19 170 L20.5 175.5 L24.5 179.5 L30 181 L35.5 179.5 L39.5 175.5Z M82 269 L80.5 263.5 L76.5 259.5 L71 258 L65.5 259.5 L61.5 263.5 L60 269 L61.5 274.5 L65.5 278.5 L71 280 L76.5 278.5 L80.5 274.5Z M181 310 L179.5 304.5 L175.5 300.5 L170 299 L164.5 300.5 L160.5 304.5 L159 310 L160.5 315.5 L164.5 319.5 L170 321 L175.5 319.5 L179.5 315.5Z M280 269 L278.5 263.5 L274.5 259.5 L269 258 L263.5 259.5 L259.5 263.5 L258 269 L259.5 274.5 L263.5 278.5 L269 280 L274.5 278.5 L278.5 274.5Z",
+   "engraved": true,
+   "importKey": "i-909",
+   "createdHoursAgo": 30,
+   "modifiedHoursAgo": 30
+  },
+  {
+   "key": "p-02",
+   "name": "SLEPA_PRIROBNICA_DN200",
+   "description": "Slepa prirobnica dn200",
+   "project": "26-0409",
+   "material": "S355",
+   "thicknessMm": 15,
+   "qty": 2,
+   "w": 340.0,
+   "h": 340.0,
+   "areaMm2": 87515,
+   "path": "M340 170 L337.9 143.4 L331.7 117.5 L321.5 92.8 L307.5 70.1 L290.2 49.8 L269.9 32.5 L247.2 18.5 L222.5 8.3 L196.6 2.1 L170 0 L143.4 2.1 L117.5 8.3 L92.8 18.5 L70.1 32.5 L49.8 49.8 L32.5 70.1 L18.5 92.8 L8.3 117.5 L2.1 143.4 L0 170 L2.1 196.6 L8.3 222.5 L18.5 247.2 L32.5 269.9 L49.8 290.2 L70.1 307.5 L92.8 321.5 L117.5 331.7 L143.4 337.9 L170 340 L196.6 337.9 L222.5 331.7 L247.2 321.5 L269.9 307.5 L290.2 290.2 L307.5 269.9 L321.5 247.2 L331.7 222.5 L337.9 196.6Z M321 170 L319.5 164.5 L315.5 160.5 L310 159 L304.5 160.5 L300.5 164.5 L299 170 L300.5 175.5 L304.5 179.5 L310 181 L315.5 179.5 L319.5 175.5Z M280 71 L278.5 65.5 L274.5 61.5 L269 60 L263.5 61.5 L259.5 65.5 L258 71 L259.5 76.5 L263.5 80.5 L269 82 L274.5 80.5 L278.5 76.5Z M181 30 L179.5 24.5 L175.5 20.5 L170 19 L164.5 20.5 L160.5 24.5 L159 30 L160.5 35.5 L164.5 39.5 L170 41 L175.5 39.5 L179.5 35.5Z M82 71 L80.5 65.5 L76.5 61.5 L71 60 L65.5 61.5 L61.5 65.5 L60 71 L61.5 76.5 L65.5 80.5 L71 82 L76.5 80.5 L80.5 76.5Z M41 170 L39.5 164.5 L35.5 160.5 L30 159 L24.5 160.5 L20.5 164.5 L19 170 L20.5 175.5 L24.5 179.5 L30 181 L35.5 179.5 L39.5 175.5Z M82 269 L80.5 263.5 L76.5 259.5 L71 258 L65.5 259.5 L61.5 263.5 L60 269 L61.5 274.5 L65.5 278.5 L71 280 L76.5 278.5 L80.5 274.5Z M181 310 L179.5 304.5 L175.5 300.5 L170 299 L164.5 300.5 L160.5 304.5 L159 310 L160.5 315.5 L164.5 319.5 L170 321 L175.5 319.5 L179.5 315.5Z M280 269 L278.5 263.5 L274.5 259.5 L269 258 L263.5 259.5 L259.5 263.5 L258 269 L259.5 274.5 L263.5 278.5 L269 280 L274.5 278.5 L278.5 274.5Z",
+   "engraved": false,
+   "importKey": "i-909",
+   "createdHoursAgo": 30,
+   "modifiedHoursAgo": 30
+  },
+  {
+   "key": "n-01",
+   "name": "NOSILEC_PODESTA_800X120",
+   "description": "Nosilec podesta 800x120",
+   "project": "26-0398",
+   "material": "S235",
+   "thicknessMm": 8,
+   "qty": 16,
+   "w": 800,
+   "h": 120,
+   "areaMm2": 62499,
+   "path": "M0 120 L800 120 L800 0 L700 0 L650 60 L150 60 L100 0 L0 0Z M59 80 L58.6 77.2 L57.3 74.7 L55.3 72.7 L52.8 71.4 L50 71 L47.2 71.4 L44.7 72.7 L42.7 74.7 L41.4 77.2 L41 80 L41.4 82.8 L42.7 85.3 L44.7 87.3 L47.2 88.6 L50 89 L52.8 88.6 L55.3 87.3 L57.3 85.3 L58.6 82.8Z M759 80 L758.6 77.2 L757.3 74.7 L755.3 72.7 L752.8 71.4 L750 71 L747.2 71.4 L744.7 72.7 L742.7 74.7 L741.4 77.2 L741 80 L741.4 82.8 L742.7 85.3 L744.7 87.3 L747.2 88.6 L750 89 L752.8 88.6 L755.3 87.3 L757.3 85.3 L758.6 82.8Z",
+   "engraved": false,
+   "importKey": "i-905",
+   "createdHoursAgo": 80,
+   "modifiedHoursAgo": 30
+  },
+  {
+   "key": "n-02",
+   "name": "VEZNA_PLOCEVINA_250X250",
+   "description": "Vezna plocevina 250x250",
+   "project": "26-0398",
+   "material": "S235",
+   "thicknessMm": 8,
+   "qty": 20,
+   "w": 250,
+   "h": 250,
+   "areaMm2": 61499,
+   "path": "M0 250 L250 250 L250 0 L0 0Z M49 210 L48.6 207.2 L47.3 204.7 L45.3 202.7 L42.8 201.4 L40 201 L37.2 201.4 L34.7 202.7 L32.7 204.7 L31.4 207.2 L31 210 L31.4 212.8 L32.7 215.3 L34.7 217.3 L37.2 218.6 L40 219 L42.8 218.6 L45.3 217.3 L47.3 215.3 L48.6 212.8Z M219 210 L218.6 207.2 L217.3 204.7 L215.3 202.7 L212.8 201.4 L210 201 L207.2 201.4 L204.7 202.7 L202.7 204.7 L201.4 207.2 L201 210 L201.4 212.8 L202.7 215.3 L204.7 217.3 L207.2 218.6 L210 219 L212.8 218.6 L215.3 217.3 L217.3 215.3 L218.6 212.8Z M49 40 L48.6 37.2 L47.3 34.7 L45.3 32.7 L42.8 31.4 L40 31 L37.2 31.4 L34.7 32.7 L32.7 34.7 L31.4 37.2 L31 40 L31.4 42.8 L32.7 45.3 L34.7 47.3 L37.2 48.6 L40 49 L42.8 48.6 L45.3 47.3 L47.3 45.3 L48.6 42.8Z M219 40 L218.6 37.2 L217.3 34.7 L215.3 32.7 L212.8 31.4 L210 31 L207.2 31.4 L204.7 32.7 L202.7 34.7 L201.4 37.2 L201 40 L201.4 42.8 L202.7 45.3 L204.7 47.3 L207.2 48.6 L210 49 L212.8 48.6 L215.3 47.3 L217.3 45.3 L218.6 42.8Z",
+   "engraved": false,
+   "importKey": "i-905",
+   "createdHoursAgo": 80,
+   "modifiedHoursAgo": 80
+  }
+ ],
+ "jobs": [
+  {
+   "name": "Miha2787",
+   "status": "nested",
+   "sheets": 8,
+   "hoursAgo": 0.4,
+   "by": "Miha",
+   "parts": [
+    [
+     "pt-01",
+     1
+    ],
+    [
+     "pt-02",
+     1
+    ],
+    [
+     "pt-03",
+     2
+    ],
+    [
+     "pt-04",
+     1
+    ],
+    [
+     "pt-05",
+     2
+    ],
+    [
+     "pt-06",
+     1
+    ],
+    [
+     "pt-07",
+     1
+    ],
+    [
+     "pt-08",
+     1
+    ],
+    [
+     "pt-09",
+     2
+    ],
+    [
+     "pt-10",
+     2
+    ],
+    [
+     "pt-11",
+     4
+    ],
+    [
+     "pt-12",
+     6
+    ],
+    [
+     "pt-13",
+     10
+    ],
+    [
+     "pt-14",
+     6
+    ],
+    [
+     "pt-15",
+     10
+    ],
+    [
+     "pt-16",
+     3
+    ],
+    [
+     "pt-17",
+     40
+    ],
+    [
+     "pt-18",
+     25
+    ],
+    [
+     "pt-19",
+     80
+    ],
+    [
+     "pt-20",
+     40
+    ],
+    [
+     "pt-21",
+     5
+    ],
+    [
+     "pt-22",
+     5
+    ],
+    [
+     "pt-23",
+     3
+    ],
+    [
+     "pt-24",
+     20
+    ],
+    [
+     "pt-25",
+     30
+    ],
+    [
+     "pt-26",
+     25
+    ],
+    [
+     "pt-27",
+     30
+    ],
+    [
+     "pt-28",
+     30
+    ],
+    [
+     "pt-29",
+     45
+    ],
+    [
+     "pt-30",
+     100
+    ]
+   ]
+  },
+  {
+   "name": "26-0412 Konzole",
+   "status": "released",
+   "sheets": 3,
+   "hoursAgo": 3,
+   "by": "Miha",
+   "parts": [
+    [
+     "k-01",
+     24
+    ],
+    [
+     "k-02",
+     12
+    ],
+    [
+     "k-03",
+     48
+    ]
+   ]
+  },
+  {
+   "name": "26-0409 Prirobnice",
+   "status": "cut",
+   "sheets": 2,
+   "hoursAgo": 20,
+   "by": "Rok",
+   "parts": [
+    [
+     "p-01",
+     4
+    ]
+   ]
+  },
+  {
+   "name": "26-0410 Ohišje",
+   "status": "draft",
+   "sheets": 0,
+   "hoursAgo": 26,
+   "by": "Miha",
+   "parts": [
+    [
+     "o-01",
+     2
+    ],
+    [
+     "o-02",
+     1
+    ]
+   ]
+  },
+  {
+   "name": "Ostanki teden 43",
+   "status": "cut",
+   "sheets": 1,
+   "hoursAgo": 50,
+   "by": "Rok",
+   "parts": [
+    [
+     "n-02",
+     5
+    ]
+   ]
+  },
+  {
+   "name": "26-0398 Nosilci",
+   "status": "cut",
+   "sheets": 4,
+   "hoursAgo": 75,
+   "by": "Miha",
+   "parts": [
+    [
+     "n-01",
+     16
+    ],
+    [
+     "n-02",
+     15
+    ]
+   ]
+  }
+ ]
+}

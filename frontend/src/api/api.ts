@@ -1,0 +1,147 @@
+import type {
+  ImportSummary, JobFilter, JobPart, JobSummary, PartFilter, PartSummary, ProjectSummary,
+} from "./types";
+import { otherParts, testJobParts } from "./sampleParts";
+
+// Until the backend exists, the app runs on sample data.
+// Set VITE_USE_API=true (e.g. in .env.local) to call the real server instead.
+const useApi = import.meta.env.VITE_USE_API === "true";
+
+async function get<T>(url: string): Promise<T> {
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`);
+  return (await res.json()) as T;
+}
+
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+
+const sampleJobs: JobSummary[] = [
+  { id: "j-2787", name: "Miha2787", material: "HARDOX", thicknessMm: 1, partCount: 531, sheetCount: 8, status: "nested", modifiedAt: hoursAgo(0.4), modifiedBy: "Miha" },
+  { id: "j-2786", name: "26-0412 Konzole", material: "S235", thicknessMm: 3, partCount: 148, sheetCount: 3, status: "released", modifiedAt: hoursAgo(3), modifiedBy: "Miha" },
+  { id: "j-2785", name: "26-0409 Prirobnice", material: "S355", thicknessMm: 10, partCount: 64, sheetCount: 2, status: "cut", modifiedAt: hoursAgo(20), modifiedBy: "Rok" },
+  { id: "j-2784", name: "26-0410 Ohišje", material: "INOX 1.4301", thicknessMm: 2, partCount: 37, sheetCount: 0, status: "draft", modifiedAt: hoursAgo(26), modifiedBy: "Miha" },
+  { id: "j-2781", name: "Ostanki teden 43", material: "S235", thicknessMm: 5, partCount: 22, sheetCount: 1, status: "cut", modifiedAt: hoursAgo(50), modifiedBy: "Rok" },
+  { id: "j-2779", name: "26-0398 Nosilci", material: "S235", thicknessMm: 8, partCount: 210, sheetCount: 4, status: "cut", modifiedAt: hoursAgo(75), modifiedBy: "Miha" },
+];
+
+const sampleImports: ImportSummary[] = [
+  { id: "i-912", source: "TEST_30_industrial", project: "Miha2787", partCount: 30, materials: ["HARDOX 1 mm"], importedAt: hoursAgo(0.6), importedBy: "Miha", warnings: 0 },
+  { id: "i-911", source: "26-0412_konzole.dwg", project: "26-0412", partCount: 12, materials: ["S235 3 mm"], importedAt: hoursAgo(4), importedBy: "Miha", warnings: 2 },
+  { id: "i-910", source: "26-0410 Ohišje", project: "26-0410", partCount: 9, materials: ["INOX 1.4301 2 mm"], importedAt: hoursAgo(27), importedBy: "Miha", warnings: 0 },
+  { id: "i-909", source: "26-0409_prirobnice", project: "26-0409", partCount: 6, materials: ["S355 10 mm", "S355 15 mm"], importedAt: hoursAgo(30), importedBy: "Rok", warnings: 1 },
+  { id: "i-905", source: "26-0398 Nosilci", project: "26-0398", partCount: 18, materials: ["S235 8 mm"], importedAt: hoursAgo(80), importedBy: "Miha", warnings: 0 },
+];
+
+const sampleProjects: ProjectSummary[] = [
+  { id: "p-2787", code: "Miha2787", name: "Test job – 30 industrial parts", partCount: 30, jobCount: 1, cutPercent: 0, lastActivityAt: hoursAgo(0.4) },
+  { id: "p-0412", code: "26-0412", name: "Konzole za transporter", customer: "Kovinar d.o.o.", partCount: 12, jobCount: 1, cutPercent: 40, lastActivityAt: hoursAgo(3) },
+  { id: "p-0410", code: "26-0410", name: "Ohišje krmilne omare", customer: "Elektro Vrhnika", partCount: 9, jobCount: 1, cutPercent: 0, lastActivityAt: hoursAgo(26) },
+  { id: "p-0409", code: "26-0409", name: "Prirobnice DN200", customer: "Hidro Celje", partCount: 6, jobCount: 1, cutPercent: 100, lastActivityAt: hoursAgo(20) },
+  { id: "p-0398", code: "26-0398", name: "Nosilci podesta", customer: "Gradnje Bovec", partCount: 18, jobCount: 2, cutPercent: 100, lastActivityAt: hoursAgo(75) },
+];
+
+const importTime = Object.fromEntries(sampleImports.map((i) => [i.id, i.importedAt]));
+
+// "17_TRIANGLE_GUSSET_350X300" -> "Triangle gusset 350x300"
+const describe = (name: string) => {
+  const s = name.replace(/^\d+_/, "").replace(/_/g, " ").toLowerCase();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+const ENGRAVED = new Set(["pt-03", "pt-08", "pt-11", "pt-22", "pt-24", "k-02", "o-01", "p-01"]);
+const MODIFIED_LATER: Record<string, number> = { "pt-12": 0.2, "k-01": 1, "o-02": 5, "n-01": 30 };
+
+const sampleParts: PartSummary[] = [
+  ...testJobParts.map((p) => ({
+    ...p, project: "Miha2787", material: "HARDOX", thicknessMm: 1, importId: "i-912",
+  })),
+  ...otherParts,
+].map((p) => {
+  const created = importTime[p.importId];
+  const later = MODIFIED_LATER[p.id];
+  return {
+    ...p,
+    description: describe(p.name),
+    engraved: ENGRAVED.has(p.id),
+    importedAt: created,
+    createdAt: created,
+    modifiedAt: later !== undefined ? hoursAgo(later) : created,
+  };
+});
+
+const dayStart = (ymd: string) => new Date(`${ymd}T00:00:00`).getTime();
+const inDate = (iso: string, f?: { mode: string; date: string }) => {
+  if (!f?.date) return true;
+  const t = new Date(iso).getTime();
+  const start = dayStart(f.date);
+  const end = start + 86_400_000;
+  return f.mode === "on" ? t >= start && t < end : f.mode === "upTo" ? t < end : t >= start;
+};
+const inRange = (v: number, min?: number, max?: number) =>
+  (min === undefined || v >= min) && (max === undefined || v <= max);
+
+/** Query string for the server: dates as created=on:2026-10-24, empty fields left out. */
+const partQuery = (f: PartFilter) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) {
+    if (v === undefined || v === "" || v === false) continue;
+    q.set(k, typeof v === "object" ? `${v.mode}:${v.date}` : String(v));
+  }
+  return q.toString();
+};
+
+export interface PartFacets {
+  materials: string[];
+  thicknesses: { material: string; thicknessMm: number }[];
+}
+
+export const materialKey = (m: string, t: number) => `${m} ${t} mm`;
+
+const matches = (hay: string, needle?: string) =>
+  !needle || hay.toLowerCase().includes(needle.trim().toLowerCase());
+
+const delay = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), 150));
+
+export const api = {
+  searchParts: (f: PartFilter) =>
+    useApi
+      ? get<PartSummary[]>(`/api/parts?${partQuery(f)}`)
+      : delay(sampleParts.filter((p) =>
+          matches(p.name, f.name) &&
+          (!f.material || p.material === f.material) &&
+          (f.thicknessMm === undefined || p.thicknessMm === f.thicknessMm) &&
+          matches(p.project, f.project) &&
+          matches(p.description, f.description) &&
+          inDate(p.createdAt, f.created) &&
+          inDate(p.modifiedAt, f.modified) &&
+          inRange(p.w, f.xMin, f.xMax) &&
+          inRange(p.h, f.yMin, f.yMax) &&
+          (!f.engraved || p.engraved))),
+  /** Distinct materials and thicknesses for the filter lists. */
+  partFacets: (): Promise<PartFacets> =>
+    useApi ? get<PartFacets>("/api/parts/facets") : delay({
+      materials: [...new Set(sampleParts.map((p) => p.material))].sort(),
+      thicknesses: [...new Set(sampleParts.map((p) => `${p.material}|${p.thicknessMm}`))]
+        .map((s) => { const [m, t] = s.split("|"); return { material: m, thicknessMm: Number(t) }; })
+        .sort((a, b) => a.thicknessMm - b.thicknessMm),
+    }),
+  searchJobs: (f: JobFilter) =>
+    useApi
+      ? get<JobSummary[]>(`/api/jobs?${new URLSearchParams(f as Record<string, string>)}`)
+      : delay(sampleJobs.filter((j) =>
+          matches(j.name, f.text) &&
+          (!f.status || j.status === f.status) &&
+          (!f.material || materialKey(j.material, j.thicknessMm) === f.material) &&
+          (!f.days || Date.now() - new Date(j.modifiedAt).getTime() < f.days * 86_400_000))),
+  /** Parts already in a job (sample: Miha2787 holds the 30-part test job). */
+  jobParts: (jobId: string) =>
+    useApi
+      ? get<JobPart[]>(`/api/jobs/${jobId}/parts`)
+      : delay<JobPart[]>(jobId === "j-2787" ? sampleParts.filter((p) => p.importId === "i-912").map((p) => ({ part: p, qty: p.qty })) : []),
+  imports: () => (useApi ? get<ImportSummary[]>("/api/imports") : delay(sampleImports)),
+  recentJobs: (take = 8) =>
+    useApi ? get<JobSummary[]>(`/api/jobs/recent?take=${take}`) : delay(sampleJobs.slice(0, take)),
+  recentProjects: (take = 8) =>
+    useApi ? get<ProjectSummary[]>(`/api/projects/recent?take=${take}`) : delay(sampleProjects.slice(0, take)),
+  recentImports: (take = 8) =>
+    useApi ? get<ImportSummary[]>(`/api/imports/recent?take=${take}`) : delay(sampleImports.slice(0, take)),
+};

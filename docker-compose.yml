@@ -1,0 +1,42 @@
+# GNEZDO on one server.
+#
+#   cp .env.example .env      # then edit .env
+#   docker compose up -d --build                         # uses your existing SQL Server
+#   docker compose --profile sqlserver up -d --build     # also starts a SQL Server container
+#
+# Open http://<server>:8080 in a browser.
+
+services:
+  api:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Gnezdo: ${GNEZDO_DB}
+      Gnezdo__TimeZone: Europe/Ljubljana
+      Gnezdo__SeedSampleData: ${GNEZDO_SAMPLE_DATA:-false}
+    depends_on:
+      db:
+        condition: service_started
+        required: false
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${GNEZDO_PORT:-8080}:80"
+    depends_on:
+      - api
+
+  # Optional SQL Server for trying GNEZDO without touching the production server.
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    profiles: ["sqlserver"]
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SQL_SA_PASSWORD}
+    volumes:
+      - gnezdo-sql:/var/opt/mssql
+
+volumes:
+  gnezdo-sql:
