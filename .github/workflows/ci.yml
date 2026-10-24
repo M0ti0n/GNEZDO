@@ -49,6 +49,7 @@ jobs:
         run: |
           set -o pipefail
           dotnet test backend/Gnezdo.slnx -c Release --no-build --logger "console;verbosity=normal" 2>&1 | tee test.log
+          echo "::notice title=Tests::$(grep -E 'Passed!|Failed!|Total tests|Passed:|Failed:' test.log | tr -s ' ' | sed ':a;N;$!ba;s/\n/%0A/g')"
       - name: Report failures as annotations
         if: failure()
         run: |
