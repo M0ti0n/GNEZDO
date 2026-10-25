@@ -317,6 +317,14 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
 
   const onTool = (id: string) => {
     if (id === "properties") { setTool(null); setMessage(null); onProperties(); return; }
+    // Check lines = the Geometry check panel: shows or hides it, with the result in the hint
+    if (id === "checkLines") {
+      setTool(null);
+      const open = !checkOpen;
+      setCheckOpen(open);
+      setMessage(open ? { text: problems ? `${problems} ${problems === 1 ? "problem" : "problems"} to fix: see Geometry check` : "All contours are closed: ready to process", bad: !!problems } : null);
+      return;
+    }
     if (id === "process") {
       setTool(null);
       if (problems) setMessage({ text: "Fix the red problems before processing", bad: true });
@@ -389,7 +397,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
 
   return (
     <div className="import">
-      <ImportToolStrip active={tool} onTool={onTool}
+      <ImportToolStrip active={tool} onTool={onTool} lit={{ checkLines: checkOpen }}
         blocked={problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
