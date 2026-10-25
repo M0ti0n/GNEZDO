@@ -18,6 +18,8 @@ export interface JobSummary {
   modifiedBy: string;
   createdAt: string;       // ISO 8601
   projects: string[];      // project codes of the parts in the job
+  materials: string[];     // every material in the job, A–Z
+  thicknesses: number[];   // every thickness in the job, thin to thick
 }
 
 export interface ImportSummary {

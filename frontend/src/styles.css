@@ -510,6 +510,13 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
   .pane { max-height: 70vh; }
 }
 
+/* several materials / thicknesses in one job: small bubbles, same colours as the preview buttons */
+.bubbles { display: inline-flex; flex-wrap: nowrap; gap: 4px; vertical-align: middle; }
+td.num .bubbles { justify-content: flex-end; }
+.bubble { display: inline-block; padding: 1px 7px; border-radius: 999px; border: 1.5px solid; font-size: 12.5px; font-weight: 600; line-height: 1.5; }
+.bubble-mat { border-color: #e79ab9; background: #fdeef4; color: #8a2453; }
+.bubble-thk { border-color: #bda4e6; background: #f4eefc; color: #57297a; }
+
 /* Sorting */
 .sort-bar { display: flex; justify-content: flex-end; padding: 6px 16px; border-bottom: 1px solid var(--line); }
 .sort-control { display: flex; align-items: center; gap: 6px; }

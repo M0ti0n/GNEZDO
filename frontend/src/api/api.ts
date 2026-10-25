@@ -101,6 +101,8 @@ const sampleJobs: (JobSummary & { lines: JobPart[] })[] = sampleJobRows.map((j) 
     partCount: lines.reduce((n, l) => n + l.qty, 0),
     createdAt: hoursAgo(j.createdHoursAgo), modifiedAt: hoursAgo(j.modifiedHoursAgo),
     projects: [...new Set(lines.map((l) => l.part.project))].sort(),
+    materials: [...new Set(lines.map((l) => l.part.material))].sort(),
+    thicknesses: [...new Set(lines.map((l) => l.part.thicknessMm))].sort((a, b) => a - b),
     lines,
   };
 });

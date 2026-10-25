@@ -83,6 +83,19 @@ public sealed class JobSearchTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task Results_list_every_material_and_thickness_of_a_job()
+    {
+        var all = await Search("");
+        var ostanki = all.Single(j => j.Name == "Ostanki teden 43");
+        Assert.Equal(new[] { "INOX 1.4301", "S235" }, ostanki.Materials);
+        Assert.Equal(new[] { 2m, 3m, 8m }, ostanki.Thicknesses);
+        Assert.Equal(new[] { 10m, 15m }, all.Single(j => j.Name == "26-0409 Prirobnice").Thicknesses);
+        var miha = all.Single(j => j.Name == "Miha2787");
+        Assert.Equal(new[] { "HARDOX" }, miha.Materials);
+        Assert.Equal(new[] { 1m }, miha.Thicknesses);
+    }
+
+    [Fact]
     public async Task Bad_input_is_rejected()
     {
         Assert.Equal(HttpStatusCode.BadRequest, (await api.Client.GetAsync("/api/jobs?created=today")).StatusCode);

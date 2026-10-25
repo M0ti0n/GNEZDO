@@ -41,8 +41,18 @@ interface Col {
 
 const COLUMNS: Col[] = [
   { id: "status", label: "Status", cell: (j) => <span className={`status status-${j.status}`}>{STATUS[j.status]}</span> },
-  { id: "material", label: "Material", sort: "material", cell: (j) => j.material || "–" },
-  { id: "thickness", label: "Thickness", sort: "thickness", num: true, cell: (j) => (j.material ? mm(j.thicknessMm) : "–") },
+  {
+    id: "material", label: "Material", sort: "material",
+    cell: (j) => j.materials.length > 1
+      ? <span className="bubbles">{j.materials.map((m) => <span key={m} className="bubble bubble-mat">{m}</span>)}</span>
+      : j.materials[0] ?? "–",
+  },
+  {
+    id: "thickness", label: "Thickness", sort: "thickness", num: true,
+    cell: (j) => j.thicknesses.length > 1
+      ? <span className="bubbles">{j.thicknesses.map((t) => <span key={t} className="bubble bubble-thk">{mm(t)}</span>)}</span>
+      : j.thicknesses.length ? mm(j.thicknesses[0]) : "–",
+  },
   { id: "parts", label: "Parts", num: true, cell: (j) => j.partCount },
   { id: "sheets", label: "Sheets", num: true, cell: (j) => j.sheetCount || "–" },
   { id: "projects", label: "Projects", sort: "project", cell: (j) => <span title={j.projects.join(", ")}>{j.projects.join(", ") || "–"}</span> },
