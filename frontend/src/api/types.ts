@@ -76,6 +76,8 @@ export interface PartVersion {
   thicknessMm: number;
   rotations: number[];
   mirror: boolean;
+  /** Nested only into gaps among other parts; never fills a sheet on its own. */
+  filler: boolean;
   w: number;
   h: number;
   areaMm2: number;

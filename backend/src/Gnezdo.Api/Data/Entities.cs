@@ -57,6 +57,11 @@ public class Part
     /// <summary>Rotation steps the nesting may use, e.g. "90,45"; empty = no rotation.</summary>
     public string Rotations { get; set; } = "";
     public bool Mirror { get; set; }
+    /// <summary>
+    /// Filler: a part used very often and usually cut in bulk. Nesting puts it only into gaps
+    /// left among the other parts, and never adds or fills a sheet just for fillers.
+    /// </summary>
+    public bool Filler { get; set; }
     /// <summary>File the part was imported from.</summary>
     public string SourceFile { get; set; } = "";
     /// <summary>Version number: 1 when first saved, +1 on every replace or restore.</summary>
@@ -87,6 +92,7 @@ public class PartRevision
     public decimal ThicknessMm { get; set; }
     public string Rotations { get; set; } = "";
     public bool Mirror { get; set; }
+    public bool Filler { get; set; }
     public double WidthMm { get; set; }
     public double HeightMm { get; set; }
     public double AreaMm2 { get; set; }

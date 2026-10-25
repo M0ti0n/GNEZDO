@@ -44,7 +44,7 @@ export function App() {
   };
   /** Values saved in the Process pop-up become the Properties for the next parts. */
   const carryOver = (v: BatchProperties) =>
-    setImportProps({ project: v.project, description: v.description, material: v.material, thicknessMm: v.thicknessMm, rotations: [...v.rotations], mirror: v.mirror });
+    setImportProps({ project: v.project, description: v.description, material: v.material, thicknessMm: v.thicknessMm, rotations: [...v.rotations], mirror: v.mirror, filler: v.filler });
   const patchItem = (id: string, patch: Partial<ImportItem>) =>
     setImports((list) => list.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   const [toast, setToast] = useState<string | null>(null);
@@ -117,7 +117,7 @@ export function App() {
   const toSave = (i: ImportItem, v: ProcessValues, replace: boolean): SavePart => ({
     name: v.name.trim(), project: v.project.trim(), description: v.description.trim(),
     material: v.material.trim(), thicknessMm: Number(v.thicknessMm),
-    rotations: [...v.rotations], mirror: v.mirror,
+    rotations: [...v.rotations], mirror: v.mirror, filler: v.filler,
     ...partGeometry(i.drawing!),
     sourceFile: i.fileName, replace,
   });
@@ -257,20 +257,20 @@ export function App() {
                 drawing={shownItem.drawing}
                 processed={shownItem.processed}
                 properties={importProps}
-                nestRules={{ rotations: importProps.rotations, mirror: importProps.mirror }}
+                nestRules={{ rotations: importProps.rotations, mirror: importProps.mirror, filler: importProps.filler }}
                 onProcess={() => setProcessing(shownItem.id)}
                 onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
-                onNestRules={(r) => setImportProps((p) => ({ ...p, rotations: r.rotations, mirror: r.mirror }))}
+                onNestRules={(r) => setImportProps((p) => ({ ...p, rotations: r.rotations, mirror: r.mirror, filler: r.filler }))}
                 mirrorBlocked={mirrorBlocked(shownItem, rules)}
                 onChange={(drawing, processed) => patchItem(shownItem.id, {
                   drawing, processed,
-                  applied: processed ? { rotations: [...importProps.rotations], mirror: mirrorFor({ ...shownItem, drawing }, importProps, rules) } : undefined,
+                  applied: processed ? { rotations: [...importProps.rotations], mirror: mirrorFor({ ...shownItem, drawing }, importProps, rules), filler: importProps.filler } : undefined,
                 })} />
             )}
             {active.kind === "rules" && <RulesPage rules={rules} onChange={(r) => {
               setRules(r);
               // a list that has not been touched yet follows the new defaults
-              if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut }));
+              if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller }));
             }} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && <PlaceholderPage tab={active} />}
           </main>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
 import { ROTATIONS, type Rotation } from "../import/rules";
+import { FILLER_TIP } from "../import/filler";
 import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
 import {
@@ -8,6 +9,8 @@ import {
   boxOf, checkGeometry, pathOf, pointsAlong, roleOf, union,
   type Box, type CheckId, type Drawing, type Entity, type Pt, type Role,
 } from "../import/geometry";
+
+type NestRules = { rotations: Rotation[]; mirror: boolean; filler: boolean };
 
 /** Screen = (x * s + tx, -y * s + ty): s pixels per mm, y flipped (CAD y points up). */
 interface View { s: number; tx: number; ty: number }
@@ -38,16 +41,16 @@ interface Props {
   drawing: Drawing;
   processed: boolean;
   properties?: BatchProperties;
-  /** Rotations and mirror this part gets (or got, when processed). */
-  nestRules?: { rotations: Rotation[]; mirror: boolean };
+  /** Rotations, mirror and filler this part gets (or got, when processed). */
+  nestRules?: NestRules;
   /** Any change to the lines clears "processed": the part has to be processed again. */
   onChange: (drawing: Drawing, processed: boolean) => void;
   /** Process tool on a part without problems: opens the save pop-up. */
   onProcess: () => void;
   /** Properties tool: opens the part's properties. */
   onProperties: () => void;
-  /** Rotations and mirror changed here: they are the list's Properties. */
-  onNestRules?: (r: { rotations: Rotation[]; mirror: boolean }) => void;
+  /** Nesting rules changed here: they are the list's Properties. */
+  onNestRules?: (r: NestRules) => void;
   /** Mirror is not allowed for this part (open cut lines and the rule says so). */
   mirrorBlocked?: boolean;
 }
@@ -474,14 +477,14 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
           </dl>
           {nestRules && onNestRules && (
             <>
-              <h3 className="gc-sec">Rotations and mirror</h3>
-              <div className="proc-chips gc-chips" role="group" aria-label="Rotations and mirror">
+              <h3 className="gc-sec">Nesting rules</h3>
+              <div className="proc-chips gc-chips" role="group" aria-label="Nesting rules">
                 {ROTATIONS.map((r) => (
                   <label key={r} className="chk chk-box">
                     <input type="checkbox" checked={nestRules.rotations.includes(r)}
                       onChange={(e) => onNestRules({
+                        ...nestRules,
                         rotations: e.target.checked ? ROTATIONS.filter((x) => x === r || nestRules.rotations.includes(x)) : nestRules.rotations.filter((x) => x !== r),
-                        mirror: nestRules.mirror,
                       })} />
                     {r}°
                   </label>
@@ -489,8 +492,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
                 <label className={`chk chk-box${mirrorBlocked ? " is-blocked" : ""}`}
                   title={mirrorBlocked ? "Parts with open cut lines are not mirrored (Rules → Import rules)" : undefined}>
                   <input type="checkbox" checked={nestRules.mirror && !mirrorBlocked} disabled={mirrorBlocked}
-                    onChange={(e) => onNestRules({ rotations: nestRules.rotations, mirror: e.target.checked })} />
+                    onChange={(e) => onNestRules({ ...nestRules, mirror: e.target.checked })} />
                   Mirror
+                </label>
+                <label className="chk chk-box chk-filler" title={FILLER_TIP}>
+                  <input type="checkbox" checked={nestRules.filler} onChange={(e) => onNestRules({ ...nestRules, filler: e.target.checked })} />
+                  Filler
                 </label>
               </div>
               <p className="gc-note">{mirrorBlocked ? "No mirror: this part has open cut lines. " : ""}Same as Properties: applies to every part in the list.</p>

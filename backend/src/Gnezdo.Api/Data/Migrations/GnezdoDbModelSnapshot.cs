@@ -163,6 +163,9 @@ namespace Gnezdo.Api.Data.Migrations
                     b.Property<bool>("Engraved")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("Filler")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Geometry")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -253,6 +256,9 @@ namespace Gnezdo.Api.Data.Migrations
                         .HasColumnType("nvarchar(400)");
 
                     b.Property<bool>("Engraved")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("Filler")
                         .HasColumnType("bit");
 
                     b.Property<string>("Geometry")

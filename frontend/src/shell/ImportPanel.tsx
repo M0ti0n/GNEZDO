@@ -5,6 +5,7 @@ import { PanelHead } from "../components/FilterFields";
 import { IMPORT_TOOLS } from "../import/ImportTools";
 import { isDrawingFile, statusOf, type BatchProperties, type ImportItem, type Verdict } from "../import/batch";
 import { ROTATIONS, type ImportRules, type Rotation } from "../import/rules";
+import { FILLER_TIP } from "../import/filler";
 
 type Mode = "bulk" | "single";
 
@@ -43,12 +44,13 @@ const TITLE: Record<Verdict, string> = {
   processed: "Processed",
 };
 
-/** One line for the collapsed Properties: "N26-0246 · S355 6 mm · 90°, 45° · mirror". */
+/** One line for the collapsed Properties: "N26-0246 · S355 6 mm · 90°, 45° · mirror · filler". */
 const summary = (p: BatchProperties) => [
   p.project.trim(),
   [p.material.trim(), p.thicknessMm && `${p.thicknessMm} mm`].filter(Boolean).join(" "),
   p.rotations.length ? p.rotations.map((r) => `${r}°`).join(", ") : "no rotation",
   p.mirror ? "mirror" : "",
+  p.filler ? "filler" : "",
 ].filter(Boolean).join(" · ");
 
 const toggle = (list: Rotation[], r: Rotation, on: boolean) =>
@@ -173,7 +175,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                 <p className="imp-props-warn">Choose the thickness for {p.properties.material.trim()}.</p>
               )}
 
-              <div className="imp-rules" role="group" aria-label="Rotations and mirror">
+              <div className="imp-rules" role="group" aria-label="Nesting rules">
                 <div className="imp-rules-row" role="group" aria-label="Rotations">
                   <span className="imp-rules-label">Rotations</span>
                   {ROTATIONS.map((r) => (
@@ -190,7 +192,11 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                     <input type="checkbox" checked={p.properties.mirror} onChange={(e) => setProp({ mirror: e.target.checked })} />
                     Mirror
                   </label>
-                  {p.properties.mirror && p.rules.mirrorWithoutOpenCut && <span className="imp-rules-note">not for parts with open cut</span>}
+                  <label className="chk chk-filler" title={FILLER_TIP}>
+                    <input type="checkbox" checked={p.properties.filler} onChange={(e) => setProp({ filler: e.target.checked })} />
+                    Filler
+                  </label>
+                  {p.properties.mirror && p.rules.mirrorWithoutOpenCut && <span className="imp-rules-note">no mirror with open cut</span>}
                 </div>
               </div>
               <p className="imp-props-foot">Used for every part in the list. Kept for the next import; defaults in Rules → Import rules.</p>

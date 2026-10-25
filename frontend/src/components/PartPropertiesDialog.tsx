@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type PartDetail } from "../api/api";
 import type { PartSummary } from "../api/types";
 import { ROTATIONS, type Rotation } from "../import/rules";
+import { FILLER_TIP } from "../import/filler";
 import { Combobox } from "./Combobox";
 import { fullDate, when } from "./format";
 import { PartThumb } from "./PartThumb";
@@ -19,7 +20,7 @@ interface Props {
 
 interface Form {
   name: string; project: string; description: string; material: string; thicknessMm: string;
-  rotations: Rotation[]; mirror: boolean;
+  rotations: Rotation[]; mirror: boolean; filler: boolean;
 }
 
 // Properties of a saved part (Parts search -> click a part): change them, see versions, or delete.
@@ -38,7 +39,7 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
       setDetail(d);
       setF({
         name: d.part.name, project: d.part.project, description: d.part.description, material: d.part.material,
-        thicknessMm: String(d.part.thicknessMm), rotations: ROTATIONS.filter((r) => d.rotations.includes(r)), mirror: d.mirror,
+        thicknessMm: String(d.part.thicknessMm), rotations: ROTATIONS.filter((r) => d.rotations.includes(r)), mirror: d.mirror, filler: d.filler,
       });
     }, (e: Error) => setError(e.message));
   }, [part.id]);
@@ -52,7 +53,7 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
   const p = detail?.part ?? part;
   const changed = !!(f && detail) && (
     f.name.trim() !== detail.part.name || f.project.trim() !== detail.part.project || f.description.trim() !== detail.part.description ||
-    f.material.trim() !== detail.part.material || Number(f.thicknessMm) !== detail.part.thicknessMm || f.mirror !== detail.mirror ||
+    f.material.trim() !== detail.part.material || Number(f.thicknessMm) !== detail.part.thicknessMm || f.mirror !== detail.mirror || f.filler !== detail.filler ||
     f.rotations.join() !== ROTATIONS.filter((r) => detail.rotations.includes(r)).join());
   const projectMissing = !!f && lists.projectsLoaded && !lists.projectKnown(f.project);
   const missing = f ? [!f.name.trim() && "name", !f.material.trim() && "material", !(Number(f.thicknessMm) > 0) && "thickness",
@@ -65,7 +66,7 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
     try {
       const d = await api.updatePart(part.id, {
         name: f.name, project: f.project, description: f.description, material: f.material,
-        thicknessMm: Number(f.thicknessMm), rotations: f.rotations, mirror: f.mirror,
+        thicknessMm: Number(f.thicknessMm), rotations: f.rotations, mirror: f.mirror, filler: f.filler,
       });
       onSaved(d.part);
       onClose();
@@ -140,7 +141,7 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
                 </div>
               </div>
               <div className="proc-group">
-                <span className="proc-label">Rotations and mirror</span>
+                <span className="proc-label">Nesting rules</span>
                 <div className="proc-chips" role="group" aria-label="Rotations">
                   {ROTATIONS.map((r) => (
                     <label key={r} className="chk chk-box">
@@ -152,6 +153,10 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
                   <label className="chk chk-box">
                     <input type="checkbox" checked={f.mirror} onChange={(e) => set({ mirror: e.target.checked })} />
                     Mirror
+                  </label>
+                  <label className="chk chk-box chk-filler" title={FILLER_TIP}>
+                    <input type="checkbox" checked={f.filler} onChange={(e) => set({ filler: e.target.checked })} />
+                    Filler
                   </label>
                 </div>
               </div>

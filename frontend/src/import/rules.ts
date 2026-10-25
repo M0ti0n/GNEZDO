@@ -11,6 +11,8 @@ export interface ImportRules {
   mirrorWithoutOpenCut: boolean;
   /** Rotation steps ticked by default for new imports. */
   defaultRotations: Rotation[];
+  /** New import lists start with Filler ticked. */
+  defaultFiller: boolean;
   /** One layer: every line starts as cutting; tracing and open cut are marked by hand. */
   allLayersAsOne: boolean;
   /** Layer names (parts of names) that mean tracing / open cut, when layers are used. */
@@ -25,6 +27,7 @@ export interface ImportRules {
 export const DEFAULT_RULES: ImportRules = {
   mirrorWithoutOpenCut: true,
   defaultRotations: [90],
+  defaultFiller: false,
   allLayersAsOne: false,
   traceLayers: "MARK, ENGRAV, GRAV, TRACE, SIGN",
   openCutLayers: "OPEN, SLIT",

@@ -61,6 +61,16 @@ export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (
 
         <section className="rule">
           <label className="rule-check">
+            <input type="checkbox" checked={rules.defaultFiller} onChange={(e) => set({ defaultFiller: e.target.checked })} />
+            <span><b>Filler ticked by default</b>
+              <small>Fillers are parts cut often and in bulk, not for one project and quantity. Nesting puts them only into gaps
+                left among the other parts, so material is not wasted, but never adds a sheet for them or fills the empty end of the last sheet.
+                Can be changed per import and per part.</small></span>
+          </label>
+        </section>
+
+        <section className="rule">
+          <label className="rule-check">
             <input type="checkbox" checked={rules.allLayersAsOne} onChange={(e) => set({ allLayersAsOne: e.target.checked })} />
             <span><b>Treat all layers as one layer</b>
               <small>Layer names are ignored. If a part is drawn on different layers, mark the tracing and open cut lines by hand.</small></span>

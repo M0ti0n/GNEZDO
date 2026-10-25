@@ -12,10 +12,10 @@ public sealed class SaveCollection : ICollectionFixture<ApiFixture> { }
 public sealed class PartSaveTests(ApiFixture api)
 {
     private static SavePartRequest Part(string name, string? project, string material = "S355", decimal t = 6,
-        bool replace = false, string description = "") =>
+        bool replace = false, string description = "", bool filler = false) =>
         new(name, project, description, material, t, [90, 45], Mirror: true,
             WidthMm: 120, HeightMm: 80, AreaMm2: 9000, OutlinePath: "M0 0L120 0L120 80L0 80Z", Engraved: false,
-            Geometry: """[{"id":"e1","kind":"circle","c":{"x":0,"y":0},"r":5}]""", SourceFile: $"{name}.dxf", Replace: replace);
+            Geometry: """[{"id":"e1","kind":"circle","c":{"x":0,"y":0},"r":5}]""", SourceFile: $"{name}.dxf", Filler: filler, Replace: replace);
 
     /// <summary>Projects are saved on purpose before parts use them.</summary>
     private async Task EnsureProject(string code)
@@ -148,6 +148,25 @@ public sealed class PartSaveTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task Filler_is_saved_and_left_out_means_not_a_filler()
+    {
+        await EnsureProject("N26-0810");
+        var id = Assert.Single(await Save(Part("SAVE_K_washer", "N26-0810", filler: true))).Id!;
+        Assert.True((await api.Client.GetFromJsonAsync<PartDetailDto>($"/api/parts/{id}"))!.Filler);
+
+        // an older client that does not send "filler" at all
+        var res = await api.Client.PostAsJsonAsync("/api/parts", new
+        {
+            parts = new[] { new { name = "SAVE_K_plate", project = "N26-0810", material = "S355", thicknessMm = 6, rotations = new[] { 90 },
+                mirror = false, widthMm = 10, heightMm = 10, areaMm2 = 100, outlinePath = "M0 0L10 0L10 10L0 10Z", engraved = false,
+                geometry = "[]", sourceFile = "", replace = false } },
+        });
+        res.EnsureSuccessStatusCode();
+        var other = Assert.Single((await res.Content.ReadFromJsonAsync<List<SavedPartDto>>())!).Id!;
+        Assert.False((await api.Client.GetFromJsonAsync<PartDetailDto>($"/api/parts/{other}"))!.Filler);
+    }
+
+    [Fact]
     public async Task Changing_properties_keeps_the_old_version()
     {
         await EnsureProject("N26-0800");
@@ -155,15 +174,18 @@ public sealed class PartSaveTests(ApiFixture api)
         var id = Assert.Single(await Save(Part("SAVE_I_flange", "N26-0800", material: "S235", t: 4, description: "old"))).Id!;
 
         var res = await api.Client.PutAsJsonAsync($"/api/parts/{id}",
-            new PartUpdateRequest("SAVE_I_flange_B", "N26-0801", "new", "S355", 6, [90, 30], false));
+            new PartUpdateRequest("SAVE_I_flange_B", "N26-0801", "new", "S355", 6, [90, 30], false, Filler: true));
         res.EnsureSuccessStatusCode();
         var d = (await res.Content.ReadFromJsonAsync<PartDetailDto>())!;
         Assert.Equal(("SAVE_I_flange_B", "N26-0801", "new", "S355", 6m, 2), (d.Part.Name, d.Part.Project, d.Part.Description, d.Part.Material, d.Part.ThicknessMm, d.Part.Revision));
         Assert.Equal([90, 30], d.Rotations);
         Assert.False(d.Mirror);
+        Assert.True(d.Filler);
 
         var h = await History(id);
         Assert.Equal(("old", "S235", "N26-0800"), (h[1].Description, h[1].Material, h[1].Project));
+        Assert.True(h[0].Filler);
+        Assert.False(h[1].Filler);
     }
 
     [Fact]
@@ -171,9 +193,9 @@ public sealed class PartSaveTests(ApiFixture api)
     {
         var a = Assert.Single(await Save(Part("SAVE_J_a", "N26-0900"))).Id!;
         await Save(Part("SAVE_J_b", "N26-0900"));
-        var taken = await api.Client.PutAsJsonAsync($"/api/parts/{a}", new PartUpdateRequest("SAVE_J_b", "N26-0900", "", "S355", 6, [90], false));
+        var taken = await api.Client.PutAsJsonAsync($"/api/parts/{a}", new PartUpdateRequest("SAVE_J_b", "N26-0900", "", "S355", 6, [90], false, false));
         Assert.Equal(HttpStatusCode.Conflict, taken.StatusCode);
-        var unsaved = await api.Client.PutAsJsonAsync($"/api/parts/{a}", new PartUpdateRequest("SAVE_J_a", "N26-UNKNOWN", "", "S355", 6, [90], false));
+        var unsaved = await api.Client.PutAsJsonAsync($"/api/parts/{a}", new PartUpdateRequest("SAVE_J_a", "N26-UNKNOWN", "", "S355", 6, [90], false, false));
         Assert.Equal(HttpStatusCode.BadRequest, unsaved.StatusCode);
     }
 

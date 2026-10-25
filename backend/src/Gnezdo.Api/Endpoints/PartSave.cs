@@ -14,6 +14,8 @@ public record SavePartRequest(
     IReadOnlyList<int>? Rotations, bool Mirror,
     double WidthMm, double HeightMm, double AreaMm2, string OutlinePath, bool Engraved,
     string Geometry, string? SourceFile,
+    // Filler: nested only into gaps among other parts (optional, false when left out).
+    bool Filler,
     // Replace: true replaces a part with the same project and name; false leaves it and reports "exists".
     bool Replace);
 
@@ -26,7 +28,7 @@ public record SavedPartDto(string Name, string Project, string? Id, string Statu
 public record PartVersionDto(
     int Revision, bool Current, string Name, string Project, string Description, string Material, decimal ThicknessMm,
     IReadOnlyList<int> Rotations, bool Mirror, double W, double H, double AreaMm2, string Path, bool Engraved,
-    string SourceFile, DateTimeOffset SavedAt, DateTimeOffset? ReplacedAt);
+    string SourceFile, DateTimeOffset SavedAt, DateTimeOffset? ReplacedAt, bool Filler);
 
 public record RestoreRequest(int Revision);
 
@@ -128,6 +130,7 @@ public static class PartSave
             part.Geometry = r.Geometry;
             part.Rotations = string.Join(",", (r.Rotations ?? []).Distinct().OrderDescending());
             part.Mirror = r.Mirror;
+            part.Filler = r.Filler;
             part.SourceFile = r.SourceFile?.Trim() ?? "";
             part.ModifiedAt = now;
             results.Add((r, part, existing is null ? "created" : "replaced"));
@@ -150,7 +153,7 @@ public static class PartSave
             PartId = part.Id, Revision = part.Revision,
             Name = part.Name, Description = part.Description, ProjectCode = part.Project?.Code ?? "",
             MaterialName = part.Material.Name, ThicknessMm = part.ThicknessMm,
-            Rotations = part.Rotations, Mirror = part.Mirror,
+            Rotations = part.Rotations, Mirror = part.Mirror, Filler = part.Filler,
             WidthMm = part.WidthMm, HeightMm = part.HeightMm, AreaMm2 = part.AreaMm2,
             OutlinePath = part.OutlinePath, Engraved = part.Engraved, Geometry = part.Geometry, SourceFile = part.SourceFile,
             SavedAt = part.ModifiedAt, ReplacedAt = now,
@@ -173,12 +176,12 @@ public static class PartSave
         {
             new(part.Revision, true, part.Name, part.Project?.Code ?? "", part.Description, part.Material.Name, part.ThicknessMm,
                 RotationList(part.Rotations), part.Mirror, part.WidthMm, part.HeightMm, part.AreaMm2, part.OutlinePath, part.Engraved,
-                part.SourceFile, part.ModifiedAt, null),
+                part.SourceFile, part.ModifiedAt, null, part.Filler),
         };
         list.AddRange(old.Select(r => new PartVersionDto(
             r.Revision, false, r.Name, r.ProjectCode, r.Description, r.MaterialName, r.ThicknessMm,
             RotationList(r.Rotations), r.Mirror, r.WidthMm, r.HeightMm, r.AreaMm2, r.OutlinePath, r.Engraved,
-            r.SourceFile, r.SavedAt, r.ReplacedAt)));
+            r.SourceFile, r.SavedAt, r.ReplacedAt, r.Filler)));
         return Results.Ok(list);
     }
 
@@ -203,6 +206,7 @@ public static class PartSave
         part.ThicknessMm = old.ThicknessMm;
         part.Rotations = old.Rotations;
         part.Mirror = old.Mirror;
+        part.Filler = old.Filler;
         part.WidthMm = old.WidthMm;
         part.HeightMm = old.HeightMm;
         part.AreaMm2 = old.AreaMm2;
