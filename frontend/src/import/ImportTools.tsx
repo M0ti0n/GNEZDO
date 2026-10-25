@@ -178,12 +178,15 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
   },
 ];
 
-export function ImportToolStrip({ active, onTool }: { active: string | null; onTool: (id: string) => void }) {
+/** blocked: tools that cannot be used now, with the reason shown on hover (greyed out). */
+export function ImportToolStrip({ active, onTool, blocked = {} }: { active: string | null; onTool: (id: string) => void; blocked?: Record<string, string> }) {
   return (
     <div className="itools" role="toolbar" aria-label="Import tools">
       {IMPORT_TOOLS.map((t) => (
         <button key={t.id} className={`itool${t.wide ? " is-wide" : ""}${active === t.id ? " is-on" : ""}`}
-          aria-pressed={active === t.id} title={t.label} onClick={() => onTool(t.id)}>
+          aria-pressed={active === t.id} aria-disabled={blocked[t.id] ? true : undefined}
+          // greyed out but still hoverable, so the tooltip can say why it is blocked
+          title={blocked[t.id] ? `${t.label}: ${blocked[t.id]}` : t.label} onClick={() => !blocked[t.id] && onTool(t.id)}>
           <span className="itool-box">{t.icon}</span>
           <span className="itool-label">{t.label}</span>
         </button>

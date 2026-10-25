@@ -85,7 +85,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
   const canProcess = toProcess > 0 && !p.busy;
   const processHint = !ready.length ? ""
     : toProcess === 0 && unchecked ? "Press Check lines first"
-    : toProcess === 0 ? (toCheck ? "Open the red parts and process them one by one" : "")
+    : toProcess === 0 ? (toCheck ? "Double-click the red parts to open them and process them one by one" : "")
     : !propsSet ? "Set material and thickness, then Process all"
     : projectMissing ? "Save the project first, then Process all"
     : toCheck ? `Process all saves the ${toProcess} green; the red stay in the list` : "";
@@ -238,15 +238,18 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
         {statuses.map(({ item, st }) => {
           const notes = [
             st.verdict === "attention" && st.problems.join(" · "),
-            st.verdict === "duplicate" && "already in the database: open and process to replace",
+            st.verdict === "duplicate" && "already in the database: double-click, then process to replace",
             st.splines > 0 && `${st.splines} ${st.splines === 1 ? "spline" : "splines"}`,
             item.declaredUnits && `file says ${item.declaredUnits}, read as mm`,
             item.error,
           ].filter(Boolean) as string[];
           return (
             <li key={item.id} className={`imp-row v-${st.verdict}${p.openId === item.id ? " is-open" : ""}`}>
-              <button className="imp-main" onClick={() => p.onOpen(item.id)} disabled={item.state !== "ready"}
-                title={TITLE[st.verdict]}>
+              <button className="imp-main" disabled={item.state !== "ready"}
+                // double click opens the part (a stray click does not open tabs); Enter does the same from the keyboard
+                onDoubleClick={() => p.onOpen(item.id)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); p.onOpen(item.id); } }}
+                title={item.state === "ready" ? `${TITLE[st.verdict]} · double-click to open` : TITLE[st.verdict]}>
                 <span className="imp-status" aria-label={TITLE[st.verdict]}>{ICON[st.verdict]}</span>
                 <span className="imp-name">{item.name}</span>
                 {notes.length > 0 && <span className="imp-notes">{notes.join(" · ")}</span>}

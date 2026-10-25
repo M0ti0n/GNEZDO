@@ -8,6 +8,7 @@ import {
   type BatchProperties, type ImportItem,
 } from "./import/batch";
 import { ProcessDialog, type ProcessValues } from "./import/ProcessDialog";
+import { CloseUnsavedDialog } from "./import/CloseUnsavedDialog";
 import { partGeometry } from "./import/toPart";
 import type { SavePart } from "./api/api";
 import { applyRules, loadRules, saveRules, type ImportRules } from "./import/rules";
@@ -214,6 +215,30 @@ export function App() {
   }, []);
   const processingItem = processing ? imports.find((i) => i.id === processing) : undefined;
 
+  // Closing the tab of an edited, unsaved part asks first. Without saving, the part goes back
+  // to how it was imported and its Undo history ends; an unchanged part just closes.
+  const [closing, setClosing] = useState<string | null>(null);   // import item id
+  const closingItem = closing ? imports.find((i) => i.id === closing) : undefined;
+  const requestClose = (tabId: string) => {
+    const t = state.tabs.find((x) => x.id === tabId);
+    const itemId = t?.kind === "drawing" ? t.drawingId : undefined;
+    if (itemId && history.changed(itemId)) {
+      dispatch({ type: "activate", id: tabId });
+      setClosing(itemId);
+      return;
+    }
+    if (itemId) history.forget(itemId);
+    dispatch({ type: "close", id: tabId });
+  };
+  const closeWithoutSaving = (itemId: string) => {
+    const original = history.original(itemId);
+    if (original) patchItem(itemId, { drawing: original, processed: false, applied: undefined });
+    history.forget(itemId);
+    setHistoryTick((n) => n + 1);
+    setClosing(null);
+    dispatch({ type: "close", id: `drawing:${itemId}` });
+  };
+
   const openJob = (j: JobSummary) => open(jobTab(j.id, j.name));
 
   const addParts = (jobId: string, title: string, parts: PartSummary[]) => {
@@ -257,7 +282,7 @@ export function App() {
         activeId={state.activeId}
         userName={USER_NAME}
         onActivate={(id) => dispatch({ type: "activate", id })}
-        onClose={(id) => dispatch({ type: "close", id })}
+        onClose={requestClose}
         onMenu={(id) => showView(id)}
         undo={undoState}
       />
@@ -332,6 +357,12 @@ export function App() {
             setToast(`${r?.status === "replaced" ? "Replaced" : "Saved"} ${v.name.trim()} in the database`);
           }}
         />
+      )}
+      {closingItem && (
+        <CloseUnsavedDialog name={closingItem.name} canProcess={statusOf(closingItem).openContours === 0}
+          onCancel={() => setClosing(null)}
+          onDiscard={() => closeWithoutSaving(closingItem.id)}
+          onProcess={() => { setClosing(null); setProcessing(closingItem.id); }} />
       )}
       {toast && <div className="toast" role="status">{toast}</div>}
       <div id="drag-ghost" className="drag-ghost" aria-hidden="true" />
