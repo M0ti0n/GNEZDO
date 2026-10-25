@@ -10,7 +10,7 @@ import {
 /** Screen = (x * s + tx, -y * s + ty): s pixels per mm, y flipped (CAD y points up). */
 interface View { s: number; tx: number; ty: number }
 
-const PANEL_W = 330;   // geometry check panel, kept clear when fitting
+const PANEL_W = 350;   // geometry check panel, kept clear when fitting
 const MARGIN = 48;
 
 /** Tools that mark lines by clicking them, and the role they give. */
@@ -253,6 +253,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
   const issues = useMemo(() => diagnoseEnds(drawing.entities,
     report.checks.filter((c) => c.id === "insideOpen" || c.id === "outsideOpen").flatMap((c) => c.points)), [drawing, report]);
   const [hoverIssue, setHoverIssue] = useState<number | null>(null);
+  const [checkOpen, setCheckOpen] = useState(true);
   const fixIssue = (i: EndIssue) => {
     const r = i.fix?.(drawing.entities);
     if (!r) return;
@@ -332,9 +333,20 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
           </svg>
         )}
 
-        <aside className="gcheck" aria-label="Geometry check">
-          <h2>Geometry check</h2>
-          <ul>
+        <aside className={`gcheck${checkOpen ? "" : " is-closed"}`} aria-label="Geometry check">
+          <header className="gc-head">
+            <span className="gc-head-icon" aria-hidden="true">{IMPORT_TOOLS.find((t) => t.id === "checkLines")?.icon}</span>
+            <h2>Geometry check</h2>
+            <span className={`gc-pill ${problems ? "is-bad" : "is-ok"}`}>
+              {problems ? `${problems} to fix` : processed ? "Processed" : "Ready"}
+            </span>
+            <button type="button" className="gc-toggle" onClick={() => setCheckOpen((o) => !o)}
+              aria-expanded={checkOpen} title={checkOpen ? "Collapse" : "Expand"}>
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+          </header>
+          {checkOpen && <div className="gc-body">
+          <ul className="gc-checks">
             {report.checks.map((c) => (
               <li key={c.id}>
                 <button className={`gc-row ${!c.count ? "is-ok" : c.id === "splines" ? "is-warn" : "is-bad"}${selected === c.id ? " is-on" : ""}`}
@@ -349,6 +361,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
           </ul>
           {issues.length > 0 && (
             <div className="gc-ends">
+              <h3 className="gc-sec">Loose ends</h3>
               <ul>
                 {issues.map((iss, i) => (
                   <li key={i} className={`gc-end is-${iss.kind}${hoverIssue === i ? " is-hover" : ""}`}
@@ -368,15 +381,17 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
             </div>
           )}
           <p className={`gc-sum ${problems ? "is-bad" : "is-ok"}`}>
-            {problems ? `${problems} ${problems === 1 ? "problem" : "problems"} to fix before processing`
-              : processed ? "Processed" : "Ready to process"}
+            {problems ? `Fix ${problems === 1 ? "this" : "these"} before processing.`
+              : processed ? "Processed." : "All contours are closed: ready to process."}
           </p>
+          <h3 className="gc-sec">Lines</h3>
           <ul className="legend" aria-label="Line colours">
             <li><i className="sw sw-cut" />Cutting</li>
             <li><i className="sw sw-trace" />Tracing</li>
             <li><i className="sw sw-open" />Open cut</li>
             <li><i className="sw sw-bad" />Open contour</li>
           </ul>
+          <h3 className="gc-sec">Part</h3>
           <dl className="gc-facts">
             <dt>Material</dt><dd>{properties?.material ? `${properties.material}${properties.thicknessMm ? ` ${properties.thicknessMm} mm` : ""}` : "–"}</dd>
             <dt>Size</dt><dd>{fmt(bw)} × {fmt(bh)} mm</dd>
@@ -389,6 +404,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
               <dt>Mirror</dt><dd>{nestRules.mirror ? "yes" : "no"}</dd>
             </>}
           </dl>
+          </div>}
         </aside>
 
         <div className="canvas-ui">
