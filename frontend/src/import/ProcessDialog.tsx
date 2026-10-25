@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type PartFacets } from "../api/api";
+import { api } from "../api/api";
+import { Combobox, type ComboOption } from "../components/Combobox";
+import { usePickLists } from "../components/pickLists";
 import { checkGeometry, pathOf, roleOf, type Drawing } from "./geometry";
 import { ROTATIONS, type Rotation } from "./rules";
 import { IMPORT_TOOLS } from "./ImportTools";
@@ -34,12 +36,11 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
   const [v, setV] = useState<ProcessValues>({ ...initial, mirror: initial.mirror && !mirrorBlocked });
   const [editing, setEditing] = useState({ name: false, project: false, description: false });
   const [exists, setExists] = useState<Exists>({ state: "checking" });
-  const [facets, setFacets] = useState<PartFacets>({ materials: [], thicknesses: [] });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<ProcessValues>) => setV((x) => ({ ...x, ...patch }));
 
-  useEffect(() => { api.partFacets().then(setFacets).catch(() => undefined); }, []);
+  const lists = usePickLists(v.material);
 
   // Is this part (project + name) already in the database? Checked again as they are edited.
   useEffect(() => {
@@ -68,10 +69,6 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
     const b = r.contours.find((c) => c.outer)?.box ?? r.box;
     return `${Math.round(b.maxX - b.minX)} × ${Math.round(b.maxY - b.minY)} mm`;
   }, [drawing]);
-
-  const thicknesses = [...new Set(facets.thicknesses
-    .filter((t) => !v.material || t.material.toLowerCase() === v.material.toLowerCase())
-    .map((t) => t.thicknessMm))].sort((a, b) => a - b);
 
   const missing = [!v.name.trim() && "name", !v.material.trim() && "material", !(Number(v.thicknessMm) > 0) && "thickness"].filter(Boolean);
   const canSave = missing.length === 0 && !saving && exists.state !== "checking";
@@ -117,7 +114,7 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
             <LockedField label="Part name" hint="From the file name, without extension" value={v.name}
               editing={editing.name} onEdit={() => setEditing((x) => ({ ...x, name: true }))}
               onChange={(name) => set({ name })} />
-            <LockedField label="Project" hint="e.g. N26-0246" value={v.project}
+            <LockedField label="Project" hint="e.g. N26-0246" value={v.project} options={lists.projects}
               editing={editing.project} onEdit={() => setEditing((x) => ({ ...x, project: true }))}
               onChange={(project) => set({ project })} />
             <LockedField label="Description" hint="Optional" value={v.description}
@@ -127,15 +124,10 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
             <div className="proc-group">
               <span className="proc-label">Material and thickness</span>
               <div className="filter-pair">
-                <input className="field" list="proc-materials" value={v.material} placeholder="Material" aria-label="Material"
-                  onChange={(e) => set({ material: e.target.value })} />
-                <datalist id="proc-materials">{facets.materials.map((m) => <option key={m} value={m} />)}</datalist>
-                <span className="proc-thk">
-                  <input className="field" list="proc-thicknesses" type="number" min="0" step="0.1" value={v.thicknessMm}
-                    placeholder="Thickness" aria-label="Thickness in mm" onChange={(e) => set({ thicknessMm: e.target.value })} />
-                  <span className="proc-unit">mm</span>
-                </span>
-                <datalist id="proc-thicknesses">{thicknesses.map((t) => <option key={t} value={t} />)}</datalist>
+                <Combobox value={v.material} onChange={(material) => set({ material })} options={lists.materials}
+                  placeholder="Material" ariaLabel="Material" newHint="a new material" />
+                <Combobox value={v.thicknessMm} onChange={(t) => set({ thicknessMm: t.replace(",", ".").replace(/[^\d.]/g, "") })}
+                  options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
               </div>
             </div>
 
@@ -176,18 +168,23 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
   );
 }
 
-function LockedField({ label, hint, value, editing, onEdit, onChange }: {
+function LockedField({ label, hint, value, editing, onEdit, onChange, options }: {
   label: string; hint: string; value: string; editing: boolean; onEdit: () => void; onChange: (v: string) => void;
+  /** With options the field becomes a drop-down list while editing. */
+  options?: ComboOption[];
 }) {
   const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
+  const wrap = useRef<HTMLSpanElement>(null);
+  useEffect(() => { if (editing) (ref.current ?? wrap.current?.querySelector("input"))?.focus(); }, [editing]);
   return (
     <label className={`proc-group proc-locked${editing ? " is-editing" : ""}`}>
       <span className="proc-label">{label}</span>
-      <span className="proc-input-wrap">
-        <input ref={ref} className="field" value={value} placeholder={hint} readOnly={!editing}
+      <span className={`proc-input-wrap${editing && options ? " has-combo" : ""}`} ref={wrap}>
+        {editing && options ? (
+          <Combobox value={value} onChange={onChange} options={options} placeholder={hint} ariaLabel={label} newHint={`a new ${label.toLowerCase()}`} />
+        ) : <input ref={ref} className="field" value={value} placeholder={hint} readOnly={!editing}
           onChange={(e) => onChange(e.target.value)} onDoubleClick={onEdit}
-          title={editing ? undefined : `${hint}. Click the pencil to change.`} />
+          title={editing ? undefined : `${hint}. Click the pencil to change.`} />}
         <button type="button" className="proc-edit" onClick={onEdit} aria-label={`Edit ${label.toLowerCase()}`} aria-pressed={editing}
           title={`Edit ${label.toLowerCase()}`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

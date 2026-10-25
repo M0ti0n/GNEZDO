@@ -28,6 +28,9 @@ public record ImportSummaryDto(
     string Id, string Source, string Project, int PartCount, IReadOnlyList<string> Materials,
     DateTimeOffset ImportedAt, string ImportedBy, int Warnings);
 
+/// <summary>A project in a pick list.</summary>
+public record ProjectOptionDto(string Code, string Name, string? Customer);
+
 public record ProjectSummaryDto(
     string Id, string Code, string Name, string? Customer, int PartCount, int JobCount,
     int CutPercent, DateTimeOffset LastActivityAt);

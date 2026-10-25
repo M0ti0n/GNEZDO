@@ -228,7 +228,18 @@ function mockSave(parts: SavePart[]): SavedPart[] {
   });
 }
 
+/** A project in a pick list. */
+export interface ProjectOption { code: string; name: string; customer?: string | null }
+
 export const api = {
+  /** Every project code, newest first (sample mode: sample projects plus saved ones). */
+  projectOptions: (): Promise<ProjectOption[]> =>
+    useApi ? get<ProjectOption[]>("/api/projects") : delay([
+      ...[...new Set(sampleParts.map((p) => p.project))]
+        .filter((c) => c && !sampleProjects.some((s) => s.code === c))
+        .map((code) => ({ code, name: "" })),
+      ...sampleProjects.map((s) => ({ code: s.code, name: s.name, customer: s.customer })),
+    ]),
   /** Which of these parts are already in the database. */
   existingParts: (keys: PartKey[]) =>
     useApi
