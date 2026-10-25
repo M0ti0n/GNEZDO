@@ -77,7 +77,7 @@ public static class PartEdit
         part.Mirror = r.Mirror;
         part.Filler = r.Filler;
         part.ModifiedAt = now;
-        await db.SaveChangesAsync(ct);
+        if (await PartSave.SaveOrClashAsync(db, ct) is { } clash) return clash;
         return await GetAsync(id, db, ct);
     }
 

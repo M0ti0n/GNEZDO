@@ -366,8 +366,16 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const fixIssue = (i: EndIssue) => {
     const r = i.fix?.(drawing.entities);
     if (!r) return;
-    if (r.ok) { commit({ ...drawing, entities: r.entities }, "Fix loose end"); setSelected(null); }
+    const label = i.kind === "overshoot" ? "Trim past corner" : i.kind === "gap" ? "Close gap" : i.kind === "stray" ? "Erase stray line" : "Fix loose end";
+    if (r.ok) { commit({ ...drawing, entities: r.entities }, label); setSelected(null); }
     setMessage({ text: r.message, bad: !r.ok });
+  };
+  // Double / tiny lines and lines outside the outline: removed in one step (Undo brings them back)
+  const removeCheck = (id: CheckId, ids: string[]) => {
+    const drop = new Set(ids);
+    commit({ ...drawing, entities: drawing.entities.filter((e) => !drop.has(e.id)) }, id === "doubles" ? "Remove double lines" : "Remove lines outside");
+    setSelected(null);
+    setMessage({ text: `${ids.length} ${ids.length === 1 ? "line" : "lines"} removed` });
   };
   const SMALL_MM = 1;
   const small = issues.filter((i) => i.fix && i.size <= SMALL_MM);
@@ -435,7 +443,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   onMouseEnter={() => setHoverIssue(i)} onMouseLeave={() => setHoverIssue(null)}>
                   <title>{`${iss.label}${iss.size ? ` · ${fmtMm(iss.size)}` : ""}${iss.fix ? " · click to fix" : ""}`}</title>
                   <circle cx={s.x} cy={s.y} r={hoverIssue === i ? 11 : 8} />
-                  <text x={s.x} y={s.y + 4} textAnchor="middle">{iss.kind === "overshoot" ? "✂" : iss.kind === "gap" ? "↔" : "?"}</text>
+                  <text x={s.x} y={s.y + 4} textAnchor="middle">{ISSUE_ICON[iss.kind]}</text>
                 </g>
               );
             })}
@@ -490,6 +498,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   <span className="gc-label">{c.label}</span>
                   {c.count > 0 && <span className="gc-count">{c.count}</span>}
                 </button>
+                {c.count > 0 && (c.id === "doubles" || c.id === "separate") && (
+                  <button type="button" className="gc-fix gc-remove" onClick={() => removeCheck(c.id, c.entityIds)}
+                    title={c.id === "doubles" ? "Remove the double and tiny lines (one of each double stays)" : "Remove everything outside the part outline"}>
+                    Remove
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -500,11 +514,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 {issues.map((iss, i) => (
                   <li key={i} className={`gc-end is-${iss.kind}${hoverIssue === i ? " is-hover" : ""}`}
                     onMouseEnter={() => setHoverIssue(i)} onMouseLeave={() => setHoverIssue(null)}>
-                    <span className="gc-end-icon" aria-hidden="true">{iss.kind === "overshoot" ? "✂" : iss.kind === "gap" ? "↔" : "?"}</span>
+                    <span className="gc-end-icon" aria-hidden="true">{ISSUE_ICON[iss.kind]}</span>
                     <span className="gc-end-label">{iss.label}{iss.size > 0 && <small> {fmtMm(iss.size)}</small>}</span>
                     {iss.fix
                       ? <button type="button" className="gc-fix" onClick={() => fixIssue(iss)}
-                          title={iss.kind === "overshoot" ? "Trim the piece past the corner" : "Close the gap"}>{iss.kind === "overshoot" ? "Trim" : "Close"}</button>
+                          title={iss.kind === "overshoot" ? "Trim the piece past the corner" : iss.kind === "stray" ? "Erase the line sticking out" : "Close the gap"}>
+                          {iss.kind === "overshoot" ? "Trim" : iss.kind === "stray" ? "Erase" : "Close"}</button>
                       : <small className="gc-end-note">check by hand</small>}
                   </li>
                 ))}
@@ -676,3 +691,5 @@ function MeasureLayer({ measures, toScreen, first, snap }: {
     </g>
   );
 }
+
+const ISSUE_ICON: Record<EndIssue["kind"], string> = { overshoot: "✂", gap: "↔", stray: "✕", loose: "?" };

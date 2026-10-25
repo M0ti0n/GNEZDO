@@ -91,12 +91,20 @@ export interface ItemStatus {
   splines: number;
 }
 
+/** The check runs once per version of a drawing: the list asks for it on every redraw. */
+const checks = new WeakMap<object, ReturnType<typeof checkGeometry>>();
+function checkedOnce(entities: Drawing["entities"]) {
+  let r = checks.get(entities);
+  if (!r) checks.set(entities, (r = checkGeometry(entities)));
+  return r;
+}
+
 export function statusOf(item: ImportItem): ItemStatus {
   if (item.state !== "ready" || !item.drawing) {
     const verdict: Verdict = item.state === "dwg" ? "dwg" : item.state === "reading" ? "reading" : "failed";
     return { verdict, openContours: 0, problems: [], splines: 0 };
   }
-  const report = checkGeometry(item.drawing.entities);
+  const report = checkedOnce(item.drawing.entities);
   const blocking = report.checks.filter((c) => c.id !== "splines" && c.count > 0);
   const open = blocking.reduce((n, c) => n + c.count, 0);
   const splines = report.checks.find((c) => c.id === "splines")?.count ?? 0;

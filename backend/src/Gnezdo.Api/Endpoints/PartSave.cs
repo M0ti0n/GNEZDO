@@ -137,7 +137,7 @@ public static class PartSave
         }
 
         if (!results.Any(x => x.Status != "exists")) db.ImportBatches.Remove(batch);
-        await db.SaveChangesAsync(ct);
+        if (await SaveOrClashAsync(db, ct) is { } clash) return clash;
 
         return Results.Ok(results.Select(x => new SavedPartDto(
             x.Req.Name.Trim(), x.Req.Project?.Trim() ?? "", x.Part?.Id.ToString(), x.Status)).ToList());
@@ -197,9 +197,22 @@ public static class PartSave
         if (old is null)
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["revision"] = [$"Part {id} has no older version {req.Revision}."] });
 
+        // the old name and project come back too, unless another part has taken them meanwhile
+        Project? project = null;
+        if (!string.IsNullOrEmpty(old.ProjectCode))
+        {
+            project = await db.Projects.FirstOrDefaultAsync(p => p.Code == old.ProjectCode, ct);
+            if (project is null) return Results.Conflict(new { message = $"Project {old.ProjectCode} of that version is no longer in the database." });
+        }
+        int? projectId = project?.Id;
+        if (await db.Parts.Live().AnyAsync(p => p.Id != id && p.Name == old.Name && p.ProjectId == projectId, ct))
+            return Results.Conflict(new { message = $"Another part is already called {old.Name} in {(project?.Code ?? "no project")}." });
+
         var now = clock.GetUtcNow();
         await KeepVersionAsync(db, part, now, ct);
 
+        part.Name = old.Name;
+        part.Project = project;
         part.Description = old.Description;
         part.Material = await db.Materials.FirstOrDefaultAsync(m => m.Name == old.MaterialName, ct)
             ?? db.Materials.Add(new Material { Name = old.MaterialName }).Entity;
@@ -215,10 +228,23 @@ public static class PartSave
         part.Geometry = old.Geometry;
         part.SourceFile = old.SourceFile;
         part.ModifiedAt = now;
-        await db.SaveChangesAsync(ct);
+        if (await SaveOrClashAsync(db, ct) is { } clash) return clash;
 
         var dto = await db.Parts.AsNoTracking().Where(p => p.Id == id).Select(PartEndpoints.ToDto).FirstAsync(ct);
         return Results.Ok(dto);
+    }
+
+    /// <summary>
+    /// Saves; when someone else saved the same part (project + name) or the same version at the
+    /// same moment, the database refuses it and the caller gets 409 instead of an error page.
+    /// </summary>
+    internal static async Task<IResult?> SaveOrClashAsync(GnezdoDb db, CancellationToken ct)
+    {
+        try { await db.SaveChangesAsync(ct); return null; }
+        catch (DbUpdateException)
+        {
+            return Results.Conflict(new { message = "Someone else saved this part at the same moment. Check again and save once more." });
+        }
     }
 
     private static bool Same(string? a, string? b) =>

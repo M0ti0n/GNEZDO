@@ -3,6 +3,7 @@ import { Combobox } from "../components/Combobox";
 import { usePickLists } from "../components/pickLists";
 import { PanelHead } from "../components/FilterFields";
 import { IMPORT_TOOLS } from "../import/ImportTools";
+import { HIDDEN } from "../import/dxf";
 import { isDrawingFile, statusOf, type BatchProperties, type ImportItem, type Verdict } from "../import/batch";
 import { ROTATIONS, type ImportRules, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
@@ -79,7 +80,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
   const unchecked = count("unchecked");
   const attention = count("attention");
   const toProcess = count("ok");
-  const propsSet = p.properties.material.trim() !== "" && p.properties.thicknessMm !== "";
+  const propsSet = p.properties.material.trim() !== "" && Number(p.properties.thicknessMm) > 0;
   const duplicates = count("duplicate");
   const toCheck = attention + duplicates;
   const canProcess = toProcess > 0 && !p.busy;
@@ -241,6 +242,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
             st.verdict === "duplicate" && "already in the database: double-click, then process to replace",
             st.splines > 0 && `${st.splines} ${st.splines === 1 ? "spline" : "splines"}`,
             item.declaredUnits && `file says ${item.declaredUnits}, read as mm`,
+            item.ignored?.[HIDDEN] && `${item.ignored[HIDDEN]} on hidden layers left out`,
             item.error,
           ].filter(Boolean) as string[];
           return (

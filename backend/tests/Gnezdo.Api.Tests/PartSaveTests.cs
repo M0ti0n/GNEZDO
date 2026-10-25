@@ -148,6 +148,37 @@ public sealed class PartSaveTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task Restore_brings_back_the_old_name_and_project_unless_taken()
+    {
+        await EnsureProject("N26-0820");
+        await EnsureProject("N26-0821");
+        var id = Assert.Single(await Save(Part("SAVE_L_old", "N26-0820"))).Id!;
+        (await api.Client.PutAsJsonAsync($"/api/parts/{id}",
+            new PartUpdateRequest("SAVE_L_new", "N26-0821", "", "S355", 6, [90], false, false))).EnsureSuccessStatusCode();
+
+        var back = await api.Client.PostAsJsonAsync($"/api/parts/{id}/restore", new RestoreRequest(1));
+        back.EnsureSuccessStatusCode();
+        var dto = (await back.Content.ReadFromJsonAsync<PartDto>())!;
+        Assert.Equal(("SAVE_L_old", "N26-0820"), (dto.Name, dto.Project));
+
+        // version 2 (SAVE_L_new) cannot come back while another part has that name in that project
+        Assert.Single(await Save(Part("SAVE_L_new", "N26-0821")));
+        var taken = await api.Client.PostAsJsonAsync($"/api/parts/{id}/restore", new RestoreRequest(2));
+        Assert.Equal(HttpStatusCode.Conflict, taken.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_deleted_part_does_not_block_a_new_one_with_its_name()
+    {
+        await EnsureProject("N26-0830");
+        var id = Assert.Single(await Save(Part("SAVE_M_plate", "N26-0830"))).Id!;
+        (await api.Client.DeleteAsync($"/api/parts/{id}")).EnsureSuccessStatusCode();
+        var again = Assert.Single(await Save(Part("SAVE_M_plate", "N26-0830")));
+        Assert.Equal("created", again.Status);
+        Assert.NotEqual(id, again.Id);
+    }
+
+    [Fact]
     public async Task Filler_is_saved_and_left_out_means_not_a_filler()
     {
         await EnsureProject("N26-0810");

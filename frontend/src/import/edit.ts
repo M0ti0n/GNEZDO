@@ -1,4 +1,4 @@
-import { arcSweep, pointsAlong, type Entity, type Pt } from "./geometry";
+import { arcSweep, findDoubles, lengthOf, pointsAlong, type Entity, type Pt } from "./geometry";
 
 // Trim and Extend like AutoCAD / GstarCAD in quick mode: every other line is a cutting edge
 // (Trim) or a boundary (Extend), nothing has to be picked first.
@@ -189,13 +189,15 @@ export function extendAt(all: Entity[], id: string, p: Pt): EditResult {
 
 /* ---- Telling loose ends apart, and fixing them ------------------------------------------ */
 
-export type EndKind = "overshoot" | "gap" | "loose";
+export type EndKind = "overshoot" | "gap" | "stray" | "loose";
 
 export interface EndIssue {
   kind: EndKind;
   at: Pt;            // where to show it
   size: number;      // mm: how far the line runs past, or how wide the gap is
-  label: string;     // "Line past a corner", "Gap in contour", "Loose end"
+  label: string;     // "Line past a corner", "Gap in contour", "Stray line", "Loose end"
+  /** The line the issue is about, when it is one line (stray lines). */
+  id?: string;
   /** Applies the fix; missing for loose ends that need a person to look. */
   fix?: (all: Entity[]) => EditResult;
 }
@@ -247,11 +249,13 @@ function moveEnd(e: Entity, end: 0 | 1, p: Pt): Entity | null {
  * Sorts the loose ends of open cutting contours:
  *   overshoot - the line runs past a line it crosses (fix: trim the piece beyond it)
  *   gap       - another loose end is near (fix: extend two straight lines to their corner, or join the ends)
- *   loose     - neither; needs a look
+ *   stray     - a line sticking out of the part: one end touches other lines, the other is free (fix: erase it)
+ *   loose     - none of these; needs a look
  * The point where an overshooting line is touched is part of the overshoot and not listed again.
  */
 export function diagnoseEnds(all: Entity[], looseEnds: Pt[]): EndIssue[] {
-  const cut = all.filter((e) => (e.role ?? "cut") === "cut");
+  const doubles = new Set(findDoubles(all));
+  const cut = all.filter((e) => (e.role ?? "cut") === "cut" && !doubles.has(e.id));
   const issues: EndIssue[] = [];
   const touched: Pt[] = [];   // where overshooting lines are crossed
   const rest: { p: Pt; owner: { e: Entity; end: 0 | 1 } | null }[] = [];
@@ -284,8 +288,21 @@ export function diagnoseEnds(all: Entity[], looseEnds: Pt[]): EndIssue[] {
       if (d < bestD) { bestD = d; best = j; }
     });
     if (best < 0 || !r.owner || !open[best].owner) {
-      issues.push({ kind: "loose", at: r.p, size: 0, label: "Loose end" });
       used.add(i);
+      // a line that touches the part at one end and is free at the other sticks out: erase it
+      const own = r.owner;
+      const ends = own && endsOfEntity(own.e);
+      const touches = (q: Pt) => cut.some((x) => x.id !== own!.e.id && piecesOf(x).some((pc) => nearPiece(pc, q)));
+      if (own && ends && (touches(ends[own.end === 0 ? 1 : 0]) || touches(r.p))) {
+        if (issues.some((x) => x.kind === "stray" && x.id === own.e.id)) return;   // its other end is listed already
+        const id = own.e.id;
+        issues.push({
+          kind: "stray", id, at: r.p, size: lengthOf(own.e), label: "Stray line",
+          fix: (now) => (now.some((x) => x.id === id) ? eraseAt(now, id) : { ok: false, message: "Already changed" }),
+        });
+        return;
+      }
+      issues.push({ kind: "loose", at: r.p, size: 0, label: "Loose end" });
       return;
     }
     used.add(i); used.add(best);
@@ -296,6 +313,21 @@ export function diagnoseEnds(all: Entity[], looseEnds: Pt[]): EndIssue[] {
     });
   });
   return issues;
+}
+
+/** Gaps up to this size are closed by moving a line end; larger ones get a new line. */
+const MOVE_END_MM = 1;
+
+/** Is q on this piece (within the join tolerance)? */
+function nearPiece(pc: Piece, q: Pt): boolean {
+  const T = 0.011;
+  if (pc.kind === "seg") {
+    const dx = pc.b.x - pc.a.x, dy = pc.b.y - pc.a.y;
+    const t = Math.max(0, Math.min(1, ((q.x - pc.a.x) * dx + (q.y - pc.a.y) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(q.x - pc.a.x - t * dx, q.y - pc.a.y - t * dy) <= T;
+  }
+  if (Math.abs(dist(q, pc.c) - pc.r) > T) return false;
+  return pc.kind === "circle" || within(pc, q);
 }
 
 /** Closes a gap: two straight lines meet at their corner if it is close; otherwise one end moves onto the other. */
@@ -315,8 +347,9 @@ function closeGap(all: Entity[], idA: string, endA: 0 | 1, pa: Pt, idB: string, 
       }
     }
   }
-  // collinear lines, arcs, splines: move a line end onto the other end, else bridge with a short line
-  const moved = moveEnd(A, endA, pb) ?? moveEnd(B, endB, pa);
+  // a small gap: move a line end onto the other end (the line hardly turns); a larger gap, or
+  // arcs and splines: bridge it with a new line, so no existing line changes direction
+  const moved = gap <= MOVE_END_MM ? moveEnd(A, endA, pb) ?? moveEnd(B, endB, pa) : null;
   if (moved) return { ok: true, entities: all.map((e) => (e.id === moved.id ? moved : e)), removed: [],
     added: [lineOf(A, pa, pb)], message: `Gap closed (${gap.toFixed(2)} mm)` };
   const bridge = lineOf(A, pa, pb);
@@ -363,9 +396,12 @@ export function alignAt(all: Entity[], id: string, to: "h" | "v"): EditResult {
   if (turn < 1e-7 || 180 - turn < 1e-7) return { ok: false, message: `This line is already ${to === "h" ? "horizontal" : "vertical"}` };
   turn = Math.round(turn * 1e9) / 1e9;
   // centre of the part's extents
-  const pts = all.flatMap((x) => pointsAlong(x));
-  const minX = Math.min(...pts.map((p) => p.x)), maxX = Math.max(...pts.map((p) => p.x));
-  const minY = Math.min(...pts.map((p) => p.y)), maxY = Math.max(...pts.map((p) => p.y));
+  // (a loop, not Math.min(...points): large drawings have too many points for that)
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const x of all) for (const p of pointsAlong(x)) {
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+  }
   const c = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
   // every point turns with the same sin/cos, so lines that met still meet
   const rotated = all.map((x) => rotateEntity(x, c, turn));
