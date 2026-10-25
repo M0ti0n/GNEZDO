@@ -987,3 +987,8 @@ th.num .th-sort { flex-direction: row-reverse; }
 .ctx-menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 5px; font-size: 14px; }
 .ctx-menu button:hover:not(:disabled), .ctx-menu button:focus-visible { background: var(--green-tint); outline: none; }
 .ctx-menu button:disabled { color: var(--ink-3); }
+
+/* Trim / Extend preview */
+.pv-remove { fill: none; stroke: #e3262b; stroke-width: 4; stroke-dasharray: 7 5; opacity: .85; pointer-events: none; }
+.pv-add { fill: none; stroke: #1fa83a; stroke-width: 3; stroke-dasharray: 7 5; pointer-events: none; }
+.canvas-ui .btn-fit:disabled { opacity: .45; }

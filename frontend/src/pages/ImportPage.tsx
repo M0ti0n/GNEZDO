@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
+import { extendAt, trimAt, type EditResult } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
 import {
   boxOf, checkGeometry, pathOf, pointsAlong, roleOf, union,
@@ -16,6 +17,12 @@ const MARGIN = 48;
 const MARKING: Record<string, { role: Role; hint: string }> = {
   trace: { role: "trace", hint: "Click a line, or drag a window, to mark tracing. Again to unmark. Right drag moves the drawing." },
   openCut: { role: "openCut", hint: "Click a line, or drag a window, to mark open cut. Again to unmark. Right drag moves the drawing." },
+};
+
+/** Tools that change lines by clicking them (AutoCAD quick mode); Shift swaps trim and extend. */
+const EDITING: Record<string, { hint: string }> = {
+  trim: { hint: "Click the piece of a line to cut off (all lines are cutting edges). Shift+click extends. Ctrl+Z undoes." },
+  extend: { hint: "Click a line near the end to lengthen it to the next line. Shift+click trims. Ctrl+Z undoes." },
 };
 
 interface Props {
@@ -39,6 +46,47 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
   const [selected, setSelected] = useState<CheckId | null>(null);
 
   const host = useRef<HTMLDivElement>(null);
+
+  // Every change to the lines can be undone (Ctrl+Z or the Undo button).
+  const undoStack = useRef<Drawing[]>([]);
+  const [undoCount, setUndoCount] = useState(0);
+  const commit = (next: Drawing) => {
+    undoStack.current.push(drawing);
+    if (undoStack.current.length > 100) undoStack.current.shift();
+    setUndoCount(undoStack.current.length);
+    onChange(next, false);
+  };
+  const undo = () => {
+    const prev = undoStack.current.pop();
+    setUndoCount(undoStack.current.length);
+    if (!prev) return;
+    onChange(prev, false);
+    setPreview(null);
+    setMessage({ text: "Undone" });
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !(e.target instanceof HTMLInputElement) && !document.querySelector(".dlg")) {
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // Trim / Extend: what a click would do, shown while hovering.
+  const [preview, setPreview] = useState<(EditResult & { ok: true }) | null>(null);
+  const editAt = (id: string, p: Pt, shift: boolean): EditResult => {
+    const extend = (tool === "extend") !== shift;
+    return extend ? extendAt(drawing.entities, id, p) : trimAt(drawing.entities, id, p);
+  };
+  const lineUnder = (clientX: number, clientY: number) =>
+    (document.elementsFromPoint(clientX, clientY).find((el) => el instanceof SVGElement && el.dataset.id) as SVGElement | undefined)?.dataset.id;
+  const toModel = (clientX: number, clientY: number, v: View): Pt => {
+    const r = host.current!.getBoundingClientRect();
+    return { x: (clientX - r.left - v.tx) / v.s, y: -(clientY - r.top - v.ty) / v.s };
+  };
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [view, setView] = useState<View | null>(null);
 
@@ -84,6 +132,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
   // With Trace / Open cut the left button clicks a line or drags a selection box:
   //   left to right = window (lines fully inside), right to left = crossing (lines touched).
   const drag = useRef<{ x: number; y: number } | null>(null);
+  const press = useRef<{ x: number; y: number } | null>(null);
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const local = (e: React.PointerEvent) => {
     const r = host.current!.getBoundingClientRect();
@@ -99,17 +148,37 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
       return;
     }
     drag.current = { x: e.clientX, y: e.clientY };
+    press.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (box) { const p = local(e); setBox((b) => b && { ...b, x1: p.x, y1: p.y }); return; }
     const d = drag.current;
-    if (!d) return;
+    if (!d) {
+      // hover with Trim / Extend: preview the result
+      if (tool && EDITING[tool] && view) {
+        const id = lineUnder(e.clientX, e.clientY);
+        const r = id ? editAt(id, toModel(e.clientX, e.clientY, view), e.shiftKey) : null;
+        setPreview(r && r.ok ? r : null);
+        if (r && !r.ok) setMessage({ text: r.message, bad: true }); else if (message?.bad) setMessage(null);
+      }
+      return;
+    }
     const dx = e.clientX - d.x, dy = e.clientY - d.y;
     drag.current = { x: e.clientX, y: e.clientY };
     setView((v) => v && { ...v, tx: v.tx + dx, ty: v.ty + dy });
   };
   const onPointerUp = (e: React.PointerEvent) => {
     drag.current = null;
+    const pr = press.current;
+    press.current = null;
+    if (pr && tool && EDITING[tool] && view && Math.hypot(e.clientX - pr.x, e.clientY - pr.y) <= 4) {
+      const id = lineUnder(e.clientX, e.clientY);
+      if (!id) return;
+      const r = editAt(id, toModel(e.clientX, e.clientY, view), e.shiftKey);
+      if (r.ok) { commit({ ...drawing, entities: r.entities }); setSelected(null); setPreview(null); }
+      setMessage({ text: r.message, bad: !r.ok });
+      return;
+    }
     const b = box;
     setBox(null);
     const mark = tool ? MARKING[tool] : undefined;
@@ -134,7 +203,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
     if (!ids.size) { setMessage({ text: crossing ? "No line touches the box" : "No line is fully inside the box" }); return; }
     const all = drawing.entities.filter((e) => ids.has(e.id)).every((e) => roleOf(e) === role);
     const next = all ? "cut" : role;
-    onChange({ ...drawing, entities: drawing.entities.map((e) => (ids.has(e.id) ? { ...e, role: next } : e)) }, false);
+    commit({ ...drawing, entities: drawing.entities.map((e) => (ids.has(e.id) ? { ...e, role: next } : e)) });
     setSelected(null);
     setMessage({ text: `${ids.size} ${ids.size === 1 ? "line" : "lines"} → ${ROLE_LABEL[next].toLowerCase()}` });
   };
@@ -144,7 +213,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
     const line = drawing.entities.find((e) => e.id === id);
     if (!line) return;
     const next = roleOf(line) === role ? "cut" : role;
-    onChange({ ...drawing, entities: drawing.entities.map((e) => (e.id === id ? { ...e, role: next } : e)) }, false);
+    commit({ ...drawing, entities: drawing.entities.map((e) => (e.id === id ? { ...e, role: next } : e)) });
     setSelected(null);
     setMessage({ text: next === "cut" ? "1 line unmarked (cutting)" : `1 line → ${ROLE_LABEL[next].toLowerCase()}` });
   };
@@ -158,6 +227,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
       return;
     }
     setMessage(null);
+    setPreview(null);
     setTool((t) => (t === id ? null : id));
   };
 
@@ -179,7 +249,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
   // Open contours block processing; splines only warn (they will be converted).
   const problems = report.checks.filter((c) => c.count > 0 && c.id !== "splines").length;
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? "not built yet" : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? "not built yet" : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -190,7 +260,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
       <ImportToolStrip active={tool} onTool={onTool} />
       <div
         ref={host}
-        className={`canvas${tool && MARKING[tool] ? " is-marking" : ""}`}
+        className={`canvas${tool && (MARKING[tool] || EDITING[tool]) ? " is-marking" : ""}`}
+        onPointerLeave={() => setPreview(null)}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         onContextMenu={(e) => e.preventDefault()}
@@ -204,7 +275,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
                   className={`ent role-${roleOf(e)}${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
               ))}
               {/* wide invisible strokes so thin lines are easy to click */}
-              {tool && MARKING[tool] && drawing.entities.map((e) => (
+              {preview?.removed.map((e) => <path key={`rm-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="pv-remove" />)}
+              {preview?.added.map((e) => <path key={`ad-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="pv-add" />)}
+              {tool && (MARKING[tool] || EDITING[tool]) && drawing.entities.map((e) => (
                 <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
             </g>
@@ -265,6 +338,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
               {!message && toolLabel && <b>{toolLabel} · </b>}{hint}
             </span>
           )}
+          <button className="btn btn-fit" onClick={undo} disabled={undoCount === 0} title="Undo the last change (Ctrl+Z)">Undo</button>
           <button className="btn btn-fit" onClick={() => { setSelected(null); fitAll(); }} title="Show the whole part (double-click)">Fit</button>
         </div>
       </div>
