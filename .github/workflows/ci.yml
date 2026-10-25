@@ -45,6 +45,11 @@ jobs:
         run: |
           set -o pipefail
           dotnet build backend/Gnezdo.slnx -c Release 2>&1 | tee build.log
+      - name: Package versions
+        run: |
+          # show which NuGet versions the build really used (top level), so pinning stays visible
+          v=$(dotnet list backend/Gnezdo.slnx package 2>/dev/null | grep -E "^\s+>" | tr -s ' ' | sort -u | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::notice title=Packages::$v"
       - name: Test
         run: |
           set -o pipefail

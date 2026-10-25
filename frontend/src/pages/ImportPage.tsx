@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
-import { extendAt, trimAt, type EditResult } from "../import/edit";
+import { diagnoseEnds, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
 import {
   boxOf, checkGeometry, pathOf, pointsAlong, roleOf, union,
@@ -248,6 +248,36 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
   const toScreen = (p: Pt, v: View) => ({ x: p.x * v.s + v.tx, y: -p.y * v.s + v.ty });
   // Open contours block processing; splines only warn (they will be converted).
   const problems = report.checks.filter((c) => c.count > 0 && c.id !== "splines").length;
+
+  // Loose ends of open contours, sorted into "line past a corner", "gap" and "loose end", with fixes.
+  const issues = useMemo(() => diagnoseEnds(drawing.entities,
+    report.checks.filter((c) => c.id === "insideOpen" || c.id === "outsideOpen").flatMap((c) => c.points)), [drawing, report]);
+  const [hoverIssue, setHoverIssue] = useState<number | null>(null);
+  const fixIssue = (i: EndIssue) => {
+    const r = i.fix?.(drawing.entities);
+    if (!r) return;
+    if (r.ok) { commit({ ...drawing, entities: r.entities }); setSelected(null); }
+    setMessage({ text: r.message, bad: !r.ok });
+  };
+  const SMALL_MM = 1;
+  const small = issues.filter((i) => i.fix && i.size <= SMALL_MM);
+  // fixes one at a time, re-checking in between, so each fix sees the result of the one before
+  const fixSmall = () => {
+    let ents = drawing.entities;
+    let n = 0;
+    for (let round = 0; round < 50; round++) {
+      const r = checkGeometry(ents);
+      const next = diagnoseEnds(ents, r.checks.filter((c) => c.id === "insideOpen" || c.id === "outsideOpen").flatMap((c) => c.points))
+        .find((i) => i.fix && i.size <= SMALL_MM);
+      if (!next) break;
+      const res = next.fix!(ents);
+      if (!res.ok) break;
+      ents = res.entities;
+      n++;
+    }
+    if (n) { commit({ ...drawing, entities: ents }); setSelected(null); }
+    setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
+  };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
   const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? "not built yet" : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
@@ -281,10 +311,19 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
                 <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
             </g>
-            {report.checks.flatMap((c) => c.points.map((p, i) => {
-              const s = toScreen(p, view);
-              return <circle key={`${c.id}-${i}`} cx={s.x} cy={s.y} r={c.id === selected ? 9 : 6} className="open-end" />;
-            }))}
+            {issues.map((iss, i) => {
+              const s = toScreen(iss.at, view);
+              return (
+                <g key={`iss-${i}`} className={`end-mark is-${iss.kind}${hoverIssue === i ? " is-hover" : ""}`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => fixIssue(iss)}
+                  onMouseEnter={() => setHoverIssue(i)} onMouseLeave={() => setHoverIssue(null)}>
+                  <title>{`${iss.label}${iss.size ? ` · ${fmtMm(iss.size)}` : ""}${iss.fix ? " · click to fix" : ""}`}</title>
+                  <circle cx={s.x} cy={s.y} r={hoverIssue === i ? 11 : 8} />
+                  <text x={s.x} y={s.y + 4} textAnchor="middle">{iss.kind === "overshoot" ? "✂" : iss.kind === "gap" ? "↔" : "?"}</text>
+                </g>
+              );
+            })}
             {box && (
               <rect className={`sel-box${box.x1 < box.x0 ? " is-crossing" : ""}`}
                 x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)}
@@ -308,6 +347,26 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
               </li>
             ))}
           </ul>
+          {issues.length > 0 && (
+            <div className="gc-ends">
+              <ul>
+                {issues.map((iss, i) => (
+                  <li key={i} className={`gc-end is-${iss.kind}${hoverIssue === i ? " is-hover" : ""}`}
+                    onMouseEnter={() => setHoverIssue(i)} onMouseLeave={() => setHoverIssue(null)}>
+                    <span className="gc-end-icon" aria-hidden="true">{iss.kind === "overshoot" ? "✂" : iss.kind === "gap" ? "↔" : "?"}</span>
+                    <span className="gc-end-label">{iss.label}{iss.size > 0 && <small> {fmtMm(iss.size)}</small>}</span>
+                    {iss.fix
+                      ? <button type="button" className="gc-fix" onClick={() => fixIssue(iss)}
+                          title={iss.kind === "overshoot" ? "Trim the piece past the corner" : "Close the gap"}>{iss.kind === "overshoot" ? "Trim" : "Close"}</button>
+                      : <small className="gc-end-note">check by hand</small>}
+                  </li>
+                ))}
+              </ul>
+              {small.length > 0 && (
+                <button type="button" className="btn gc-fix-all" onClick={fixSmall}>Fix all under {SMALL_MM} mm ({small.length})</button>
+              )}
+            </div>
+          )}
           <p className={`gc-sum ${problems ? "is-bad" : "is-ok"}`}>
             {problems ? `${problems} ${problems === 1 ? "problem" : "problems"} to fix before processing`
               : processed ? "Processed" : "Ready to process"}
@@ -363,5 +422,7 @@ function touchesRect(pts: Pt[], r: Rect): boolean {
 }
 
 const ROLE_LABEL: Record<Role, string> = { cut: "Cutting", trace: "Tracing", openCut: "Open cut" };
+
+const fmtMm = (n: number) => `${n < 10 ? n.toFixed(2) : n.toFixed(1)} mm`;
 
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString("en-GB");
