@@ -70,7 +70,9 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
     return `${Math.round(b.maxX - b.minX)} × ${Math.round(b.maxY - b.minY)} mm`;
   }, [drawing]);
 
-  const missing = [!v.name.trim() && "name", !v.material.trim() && "material", !(Number(v.thicknessMm) > 0) && "thickness"].filter(Boolean);
+  const projectMissing = lists.projectsLoaded && !lists.projectKnown(v.project);
+  const missing = [!v.name.trim() && "name", !v.material.trim() && "material", !(Number(v.thicknessMm) > 0) && "thickness",
+    projectMissing && "a saved project (save it from the project list)"].filter(Boolean);
   const canSave = missing.length === 0 && !saving && exists.state !== "checking";
 
   const save = async () => {
@@ -115,6 +117,7 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
               editing={editing.name} onEdit={() => setEditing((x) => ({ ...x, name: true }))}
               onChange={(name) => set({ name })} />
             <LockedField label="Project" hint="e.g. N26-0246" value={v.project} options={lists.projects}
+              onCreate={async (code) => { await lists.createProject(code); set({ project: code }); }}
               editing={editing.project} onEdit={() => setEditing((x) => ({ ...x, project: true }))}
               onChange={(project) => set({ project })} />
             <LockedField label="Description" hint="Optional" value={v.description}
@@ -170,10 +173,11 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
   );
 }
 
-function LockedField({ label, hint, value, editing, onEdit, onChange, options }: {
+function LockedField({ label, hint, value, editing, onEdit, onChange, options, onCreate }: {
   label: string; hint: string; value: string; editing: boolean; onEdit: () => void; onChange: (v: string) => void;
   /** With options the field becomes a drop-down list while editing. */
   options?: ComboOption[];
+  onCreate?: (value: string) => Promise<void>;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const wrap = useRef<HTMLSpanElement>(null);
@@ -183,7 +187,8 @@ function LockedField({ label, hint, value, editing, onEdit, onChange, options }:
       <span className="proc-label">{label}</span>
       <span className={`proc-input-wrap${editing && options ? " has-combo" : ""}`} ref={wrap}>
         {editing && options ? (
-          <Combobox value={value} onChange={onChange} options={options} placeholder={hint} ariaLabel={label} newHint={`a new ${label.toLowerCase()}`} />
+          <Combobox value={value} onChange={onChange} options={options} placeholder={hint} ariaLabel={label} newHint={`a new ${label.toLowerCase()}`}
+            onCreate={onCreate} createLabel={`Save new ${label.toLowerCase()}`} />
         ) : <input ref={ref} className="field" value={value} placeholder={hint} readOnly={!editing}
           onChange={(e) => onChange(e.target.value)} onDoubleClick={onEdit}
           title={editing ? undefined : `${hint}. Click the pencil to change.`} />}

@@ -48,6 +48,7 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
             // Indexes for the part search filters.
             e.HasIndex(x => x.Name);
             e.HasIndex(x => new { x.ProjectId, x.Name }); // "already in the database" check
+            e.HasIndex(x => x.DeletedAt);
             e.HasIndex(x => new { x.MaterialId, x.ThicknessMm });
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => x.ModifiedAt);

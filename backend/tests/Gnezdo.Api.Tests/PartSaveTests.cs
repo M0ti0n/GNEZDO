@@ -17,8 +17,16 @@ public sealed class PartSaveTests(ApiFixture api)
             WidthMm: 120, HeightMm: 80, AreaMm2: 9000, OutlinePath: "M0 0L120 0L120 80L0 80Z", Engraved: false,
             Geometry: """[{"id":"e1","kind":"circle","c":{"x":0,"y":0},"r":5}]""", SourceFile: $"{name}.dxf", Replace: replace);
 
+    /// <summary>Projects are saved on purpose before parts use them.</summary>
+    private async Task EnsureProject(string code)
+    {
+        var res = await api.Client.PostAsJsonAsync("/api/projects", new ProjectCreateRequest(code, null, null));
+        Assert.True(res.StatusCode is HttpStatusCode.Created or HttpStatusCode.Conflict, res.StatusCode.ToString());
+    }
+
     private async Task<List<SavedPartDto>> Save(params SavePartRequest[] parts)
     {
+        foreach (var code in parts.Select(p => p.Project).OfType<string>().Distinct()) await EnsureProject(code);
         var res = await api.Client.PostAsJsonAsync("/api/parts", new SavePartsRequest(parts, "test", "Fab"));
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<List<SavedPartDto>>())!;
@@ -115,6 +123,74 @@ public sealed class PartSaveTests(ApiFixture api)
         var res = await api.Client.PostAsJsonAsync($"/api/parts/{id}/restore", new RestoreRequest(7));
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await api.Client.GetAsync("/api/parts/999999/history")).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_part_with_an_unsaved_project_is_not_saved()
+    {
+        var res = await api.Client.PostAsJsonAsync("/api/parts",
+            new SavePartsRequest([Part("SAVE_H_plate", "N26-NOT-SAVED")], "test", "Fab"));
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Contains("Save the project first", await res.Content.ReadAsStringAsync());
+        var codes = (await api.Client.GetFromJsonAsync<List<ProjectOptionDto>>("/api/projects"))!.Select(p => p.Code);
+        Assert.DoesNotContain("N26-NOT-SAVED", codes);
+    }
+
+    [Fact]
+    public async Task A_project_is_saved_once()
+    {
+        var first = await api.Client.PostAsJsonAsync("/api/projects", new ProjectCreateRequest("N26-1234", "Platform", "Kovinar"));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        var again = await api.Client.PostAsJsonAsync("/api/projects", new ProjectCreateRequest("n26-1234", null, null));
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        var p = Assert.Single((await api.Client.GetFromJsonAsync<List<ProjectOptionDto>>("/api/projects"))!, x => x.Code == "N26-1234");
+        Assert.Equal(("Platform", "Kovinar"), (p.Name, p.Customer));
+    }
+
+    [Fact]
+    public async Task Changing_properties_keeps_the_old_version()
+    {
+        await EnsureProject("N26-0800");
+        await EnsureProject("N26-0801");
+        var id = Assert.Single(await Save(Part("SAVE_I_flange", "N26-0800", material: "S235", t: 4, description: "old"))).Id!;
+
+        var res = await api.Client.PutAsJsonAsync($"/api/parts/{id}",
+            new PartUpdateRequest("SAVE_I_flange_B", "N26-0801", "new", "S355", 6, [90, 30], false));
+        res.EnsureSuccessStatusCode();
+        var d = (await res.Content.ReadFromJsonAsync<PartDetailDto>())!;
+        Assert.Equal(("SAVE_I_flange_B", "N26-0801", "new", "S355", 6m, 2), (d.Part.Name, d.Part.Project, d.Part.Description, d.Part.Material, d.Part.ThicknessMm, d.Part.Revision));
+        Assert.Equal([90, 30], d.Rotations);
+        Assert.False(d.Mirror);
+
+        var h = await History(id);
+        Assert.Equal(("old", "S235", "N26-0800"), (h[1].Description, h[1].Material, h[1].Project));
+    }
+
+    [Fact]
+    public async Task Changing_to_a_name_that_is_taken_or_an_unsaved_project_is_refused()
+    {
+        var a = Assert.Single(await Save(Part("SAVE_J_a", "N26-0900"))).Id!;
+        await Save(Part("SAVE_J_b", "N26-0900"));
+        var taken = await api.Client.PutAsJsonAsync($"/api/parts/{a}", new PartUpdateRequest("SAVE_J_b", "N26-0900", "", "S355", 6, [90], false));
+        Assert.Equal(HttpStatusCode.Conflict, taken.StatusCode);
+        var unsaved = await api.Client.PutAsJsonAsync($"/api/parts/{a}", new PartUpdateRequest("SAVE_J_a", "N26-UNKNOWN", "", "S355", 6, [90], false));
+        Assert.Equal(HttpStatusCode.BadRequest, unsaved.StatusCode);
+    }
+
+    [Fact]
+    public async Task Deleted_part_is_hidden_but_a_new_one_can_take_its_name()
+    {
+        var id = Assert.Single(await Save(Part("SAVE_K_cover", "N26-1000"))).Id!;
+        Assert.Equal(HttpStatusCode.NoContent, (await api.Client.DeleteAsync($"/api/parts/{id}")).StatusCode);
+
+        Assert.Empty(await Search("?name=SAVE_K_cover"));
+        Assert.Empty(await Existing(new PartKey("SAVE_K_cover", "N26-1000")));
+        Assert.Equal(HttpStatusCode.NotFound, (await api.Client.GetAsync($"/api/parts/{id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await api.Client.DeleteAsync($"/api/parts/{id}")).StatusCode);
+
+        var again = Assert.Single(await Save(Part("SAVE_K_cover", "N26-1000")));
+        Assert.Equal("created", again.Status);
+        Assert.NotEqual(id, again.Id);
     }
 
     [Fact]

@@ -7,6 +7,7 @@ import { IconHome, IconImport, IconLibrary, IconSearch } from "../components/Ico
 import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { JobsPanel } from "./JobsPanel";
 import { PartHistoryDialog } from "../components/PartHistoryDialog";
+import { PartPropertiesDialog } from "../components/PartPropertiesDialog";
 import { ImportPanel, type ImportPanelProps } from "./ImportPanel";
 
 export type DrawerMode = "parts" | "jobs" | "import";
@@ -118,6 +119,7 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
   const [facets, setFacets] = useState<PartFacets>({ materials: [], thicknesses: [] });
   const [parts, setParts] = useState<PartSummary[] | null>(null);
   const [history, setHistory] = useState<PartSummary | null>(null);   // part whose versions are shown
+  const [editing, setEditing] = useState<PartSummary | null>(null);   // part whose properties are shown
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [run, setRun] = useState(0);          // bumps on every Search press
   const [view, setView] = useState<PartView>(loadView);
@@ -260,9 +262,10 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
             draggable: true,
             onDragStart: (e: React.DragEvent) => onDragStart(e, p),
             onDragEnd: (e: React.DragEvent) => { if (e.dataTransfer.dropEffect !== "none") setSelected(new Set()); },
-            onClick: () => toggle(p.id),
+            // click opens the part's properties; Ctrl / Cmd + click selects it for "Add to job"
+            onClick: (e: React.MouseEvent) => (e.ctrlKey || e.metaKey || e.shiftKey ? toggle(p.id) : setEditing(p)),
             "aria-pressed": on,
-            title: `${p.name}\n${p.project}, ${materialKey(p.material, p.thicknessMm)}\nDrag into a job`,
+            title: `${p.name}\n${p.project}, ${materialKey(p.material, p.thicknessMm)}\nClick: properties · Ctrl+click: select · drag into a job`,
           };
           return (
             <li key={p.id}>
@@ -291,6 +294,15 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
         })}
       </ul>
 
+      {editing && (
+        <PartPropertiesDialog part={editing} onClose={() => setEditing(null)}
+          onSaved={(now) => setParts((list) => list?.map((x) => (x.id === now.id ? now : x)) ?? list)}
+          onDeleted={(id) => {
+            setParts((list) => list?.filter((x) => x.id !== id) ?? list);
+            setSelected((s) => { const n = new Set(s); n.delete(id); return n; });
+          }}
+          onVersions={(p) => { setEditing(null); setHistory(p); }} />
+      )}
       {history && (
         <PartHistoryDialog part={history} onClose={() => setHistory(null)}
           onRestored={(now) => { setParts((list) => list?.map((x) => (x.id === now.id ? now : x)) ?? list); setHistory(now); }} />
@@ -302,7 +314,7 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
             Add {chosen.length || ""} to {targetJob.title}
           </button>
         ) : (
-          <p className="hint">Open a job, then drag parts into it.</p>
+          <p className="hint">Click a part for its properties. Open a job, then drag parts into it (Ctrl+click to select several).</p>
         )}
       </div>
     </>
