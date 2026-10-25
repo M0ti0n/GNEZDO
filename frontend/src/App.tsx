@@ -20,6 +20,8 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
+import { HistoryStore, undoKey, type UndoState } from "./state/history";
+import type { Drawing } from "./import/geometry";
 import { VIEW_TITLE, drawingTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
 
 const USER_NAME = "Fab"; // until sign-in exists
@@ -103,7 +105,8 @@ export function App() {
     if (failed) setToast(`${failed} ${failed === 1 ? "file" : "files"} could not be read`);
   };
 
-  const closeTabs = (ids: string[]) => ids.forEach((id) => dispatch({ type: "close", id: `drawing:${id}` }));
+  /** Parts leave the import list: their tabs close and their Undo history ends. */
+  const closeTabs = (ids: string[]) => ids.forEach((id) => { history.forget(id); dispatch({ type: "close", id: `drawing:${id}` }); });
 
   const [saving, setSaving] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);   // part shown in the Process pop-up
@@ -173,6 +176,42 @@ export function App() {
     onPropsOpen: setPropsOpen,
   };
   const shownItem = active.kind === "drawing" ? imports.find((i) => i.id === active.drawingId) : undefined;
+
+  // Undo / Redo (green bar, Ctrl+Z / Ctrl+Y): one history per import drawing, kept while the part is in the list.
+  const history = useRef(new HistoryStore<Drawing>()).current;
+  const [, setHistoryTick] = useState(0);
+  const [undone, setUndone] = useState<{ text: string } | null>(null);
+  const editDrawing = (id: string, before: Drawing, next: Drawing, label: string) => {
+    history.record(id, before, label);
+    setHistoryTick((n) => n + 1);
+    patchItem(id, { drawing: next, processed: false, applied: undefined });
+  };
+  const step = (kind: "undo" | "redo") => {
+    if (!shownItem?.drawing || processing) return;
+    const s = kind === "undo" ? history.undo(shownItem.id, shownItem.drawing) : history.redo(shownItem.id, shownItem.drawing);
+    if (!s) return;
+    setHistoryTick((n) => n + 1);
+    patchItem(shownItem.id, { drawing: s.state, processed: false, applied: undefined });
+    setUndone({ text: `${kind === "undo" ? "Undone" : "Redone"}: ${s.label}` });
+  };
+  const undoState: UndoState = {
+    undoLabel: shownItem?.drawing && !processing ? history.undoLabel(shownItem.id) : null,
+    redoLabel: shownItem?.drawing && !processing ? history.redoLabel(shownItem.id) : null,
+    onUndo: () => step("undo"),
+    onRedo: () => step("redo"),
+  };
+  const stepRef = useRef(step);
+  stepRef.current = step;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const k = undoKey(e);
+      if (!k || document.querySelector(".dlg")) return;
+      e.preventDefault();
+      stepRef.current(k);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const processingItem = processing ? imports.find((i) => i.id === processing) : undefined;
 
   const openJob = (j: JobSummary) => open(jobTab(j.id, j.name));
@@ -220,6 +259,7 @@ export function App() {
         onActivate={(id) => dispatch({ type: "activate", id })}
         onClose={(id) => dispatch({ type: "close", id })}
         onMenu={(id) => showView(id)}
+        undo={undoState}
       />
       <div className={`body${drawer ? " has-drawer" : ""}`}>
         <Drawer
@@ -262,10 +302,8 @@ export function App() {
                 onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
                 onNestRules={(r) => setImportProps((p) => ({ ...p, rotations: r.rotations, mirror: r.mirror, filler: r.filler }))}
                 mirrorBlocked={mirrorBlocked(shownItem, rules)}
-                onChange={(drawing, processed) => patchItem(shownItem.id, {
-                  drawing, processed,
-                  applied: processed ? { rotations: [...importProps.rotations], mirror: mirrorFor({ ...shownItem, drawing }, importProps, rules), filler: importProps.filler } : undefined,
-                })} />
+                onEdit={(drawing, label) => editDrawing(shownItem.id, shownItem.drawing!, drawing, label)}
+                undone={undone} />
             )}
             {active.kind === "rules" && <RulesPage rules={rules} onChange={(r) => {
               setRules(r);
