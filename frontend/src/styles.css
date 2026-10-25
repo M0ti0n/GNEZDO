@@ -793,59 +793,88 @@ th.num .th-sort { flex-direction: row-reverse; }
 .field.is-required { outline: 2px solid var(--yellow); outline-offset: -1px; background: var(--yellow-tint); }
 .imp-btn-count { min-width: 22px; padding: 1px 7px; border-radius: 10px; background: var(--green); color: #fff; font-size: 12.5px; }
 
+.imp-btn { white-space: nowrap; }
+
 /* ------------------------------------------------------------------
-   Process pop-up: part image (green = new, red = already in the database)
+   Process pop-up, styled like the panels: header, two columns, footer
 ------------------------------------------------------------------- */
 .dlg-backdrop {
   position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px;
-  background: rgba(20, 35, 35, .45); overflow-y: auto;
+  background: rgba(20, 40, 35, .42); overflow-y: auto;
 }
-.dlg { background: var(--plate); border-radius: 6px; box-shadow: 0 24px 60px rgba(0, 0, 0, .3); }
-.proc { width: min(470px, 100%); display: grid; gap: 12px; padding: 22px 34px 26px; border: 3px solid #111; }
-.proc-image { margin: 0 auto 6px; width: 300px; display: grid; gap: 6px; justify-items: center; }
-.proc-image .proc-svg {
-  width: 300px; height: 280px; background: #fff; border: 3px solid #111;
-  outline: 8px solid #c8ccc9; outline-offset: 0; box-sizing: border-box;
+.dlg {
+  background: var(--plate); border-radius: 10px; overflow: hidden;
+  box-shadow: 0 24px 60px rgba(10, 40, 25, .28), 0 0 0 1px rgba(20, 50, 30, .08);
 }
-.proc-image.is-new .proc-svg { outline-color: #b5e61d; }
-.proc-image.is-exists .proc-svg { outline-color: #e3262b; }
-.proc-image figcaption { margin-top: 8px; font-size: 13.5px; font-weight: 600; text-align: center; color: var(--ink-3); }
-.proc-image.is-new figcaption { color: var(--green-ink); }
-.proc-image.is-exists figcaption { color: #c8171d; }
-.proc-svg .ent { stroke-width: 1.4; }
+.proc { width: min(820px, 100%); display: flex; flex-direction: column; }
+.dlg-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px 14px 20px; border-bottom: 1px solid var(--line); }
+.dlg-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; background: var(--green-tint); }
+.dlg-icon svg { width: 30px; height: 30px; }
+.dlg-title { flex: 1; min-width: 0; }
+.dlg-title h2 { font-size: 21px; }
+.dlg-title p { margin: 1px 0 0; font-size: 13.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dlg-close { width: 32px; height: 32px; font-size: 22px; color: var(--ink-3); border-radius: 6px; }
+.dlg-close:hover { background: var(--sheet); color: var(--ink); }
 
-.proc-field {
-  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px;
-  border: 3px solid #111; padding: 4px 6px 4px 12px; position: relative;
+.proc-body { display: grid; grid-template-columns: 320px 1fr; gap: 22px; padding: 20px; }
+.proc-image { margin: 0; display: grid; gap: 10px; align-content: start; }
+.proc-frame {
+  border-radius: 8px; padding: 4px; background: var(--line);
+  transition: background .15s;
 }
-.proc-label { position: absolute; top: -9px; left: 9px; padding: 0 4px; background: var(--plate); font-size: 11.5px; font-weight: 600; color: var(--ink-3); letter-spacing: .03em; text-transform: uppercase; }
-.proc-input { border: 0; outline: 0; background: transparent; font: inherit; font-size: 15px; padding: 7px 0; min-width: 0; color: var(--ink); }
-.proc-input[readonly] { color: var(--ink-2); cursor: default; }
-.proc-input::placeholder { color: var(--ink-3); }
-.proc-field.is-editing { border-color: var(--green-ink); }
-.proc-field.is-editing .proc-input { color: var(--ink); }
+.proc-image.is-new .proc-frame { background: var(--green); }
+.proc-image.is-exists .proc-frame { background: #e3262b; }
+.proc-svg {
+  display: block; width: 100%; height: 300px; border-radius: 5px;
+  background-color: var(--sheet);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1.2px); background-size: 14px 14px;
+}
+.proc-svg .ent { stroke-width: 1.5; }
+.proc-image figcaption { display: grid; gap: 2px; }
+.proc-status {
+  justify-self: start; display: inline-flex; align-items: center; gap: 7px;
+  padding: 3px 11px 3px 9px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
+  background: var(--sheet); color: var(--ink-2);
+}
+.proc-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.is-new .proc-status { background: var(--green-tint); color: var(--green-ink); }
+.is-exists .proc-status { background: #fde8e7; color: #c8171d; }
+.proc-image figcaption small { font-size: 12.5px; color: var(--ink-3); padding-left: 2px; }
+
+.proc-form { display: grid; gap: 12px; align-content: start; }
+.proc-group { display: grid; gap: 5px; }
+.proc-label { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
+.proc-input-wrap { position: relative; display: block; }
+.proc-input-wrap .field { width: 100%; padding-right: 44px; }
+.proc-locked .field[readonly] { background: var(--sheet); color: var(--ink-2); border-color: transparent; cursor: default; }
+.proc-locked .field[readonly]:focus { outline: none; }
 .proc-edit {
-  display: grid; place-items: center; width: 34px; height: 34px;
-  border: 3px solid #f6a8c8; background: #fff; color: #d0507f;
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; width: 30px; height: 28px; border-radius: 5px;
+  color: #c2457a; background: #fdeaf2; border: 1px solid #f6bfd6;
 }
-.proc-edit:hover, .proc-edit[aria-pressed="true"] { background: #fde6f0; }
-.proc-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 4px; }
-.proc-select { position: relative; }
-.proc-select .field { height: 50px; width: 100%; border: 3px solid #111; border-radius: 0; font-size: 18px; padding: 0 12px; }
-.proc-unit { position: absolute; right: 34px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
-.proc-rules { display: grid; gap: 10px; padding: 4px 6px; }
-.proc-rot { display: flex; gap: 20px; }
-.chk-big { gap: 7px; font-size: 19px; }
-.chk-big input { width: 24px; height: 24px; accent-color: #111; }
-.chk-big small { font-size: 12.5px; color: var(--ink-3); margin-left: 4px; }
-.proc-error { margin: 0; padding: 8px 10px; background: #fde8e7; color: #b3161b; font-size: 13.5px; }
-.proc-missing { margin: 0; font-size: 13px; color: var(--ink-3); }
-.proc-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; margin-top: 6px; padding: 0 10px; }
-.proc-btn { height: 52px; border: 3px solid #111; font-size: 20px; letter-spacing: .04em; }
-.proc-cancel { background: #ed1c24; color: #2a0000; }
-.proc-cancel:hover:not(:disabled) { background: #d01019; }
-.proc-save { background: #b5e61d; color: #1b2a00; }
-.proc-save:hover:not(:disabled) { background: #a3d40f; }
-.proc-btn:disabled { opacity: .5; cursor: default; }
-.proc-btn { text-align: center; }
-.imp-btn { white-space: nowrap; }
+.proc-edit:hover { background: #fbd7e7; }
+.proc-edit[aria-pressed="true"] { color: var(--green-ink); background: var(--green-tint); border-color: #bfe0ad; }
+.proc-thk { position: relative; display: block; }
+.proc-thk .field { width: 100%; padding-right: 40px; }
+.proc-unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-3); font-size: 14px; pointer-events: none; }
+.proc-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.proc-chips .chk-box { padding: 6px 12px; font-size: 14px; }
+.chk-box.is-blocked { opacity: .5; cursor: not-allowed; }
+.proc-note { font-size: 12.5px; color: var(--ink-3); }
+.proc-error { margin: 0 20px 12px; padding: 8px 12px; border-radius: 6px; background: #fde8e7; color: #b3161b; font-size: 13.5px; }
+
+.dlg-foot { display: flex; align-items: center; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--line); background: #f7faf9; }
+.proc-missing { flex: 1; font-size: 13px; color: var(--ink-3); }
+.dlg-foot .btn { height: 38px; padding: 0 20px; font-weight: 600; }
+.btn-plain { background: var(--plate); border: 1px solid var(--line); color: var(--ink); }
+.btn-plain:hover:not(:disabled) { background: var(--sheet); }
+.btn-save { background: var(--green); color: #fff; }
+.btn-save:hover:not(:disabled) { background: var(--green-ink); }
+.btn-replace { background: #d7262b; color: #fff; }
+.btn-replace:hover:not(:disabled) { background: #b81d22; }
+
+@media (max-width: 720px) {
+  .proc-body { grid-template-columns: 1fr; }
+  .proc-svg { height: 220px; }
+}
