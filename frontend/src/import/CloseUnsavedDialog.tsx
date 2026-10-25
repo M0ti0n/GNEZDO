@@ -35,8 +35,8 @@ export function CloseUnsavedDialog({ name, onProcess, canProcess, onDiscard, onC
         </header>
         <p id="cu-text" className="close-dlg-text">
           This part has changes that are not saved in the database. If you close it without saving, the changes
-          are lost: the part goes back to how it was imported and Undo starts again.
-          {!canProcess && <><br /><b className="close-dlg-warn">It still has geometry problems, so it cannot be processed yet.</b></>}
+          are lost: the part goes back to how it was imported.
+          {!canProcess && <><br /><b className="close-dlg-warn">Part still has geometry problems, so it cannot be processed yet.</b></>}
         </p>
         <footer className="dlg-foot">
           <button type="button" className="btn btn-replace" onClick={onDiscard}>Close without saving</button>
