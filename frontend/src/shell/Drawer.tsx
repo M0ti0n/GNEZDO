@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, materialKey, type PartFacets } from "../api/api";
-import type { DateMode, JobFilter, PartFilter, PartSummary } from "../api/types";
+import { DEFAULT_SORT, type DateMode, type JobFilter, type PartFilter, type PartSummary, type SortOrder } from "../api/types";
+import { SortControl, loadSort, saveSort } from "../components/SortControl";
 import { DateLine, PanelHead, SizeLine } from "../components/FilterFields";
 import { IconLibrary, IconSearch } from "../components/Icons";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
@@ -105,15 +106,17 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [run, setRun] = useState(0);          // bumps on every Search press
   const [view, setView] = useState<PartView>(loadView);
+  const [sort, setSort] = useState<SortOrder>(() => loadSort("parts", DEFAULT_SORT));
+  const pickSort = (s: SortOrder) => { setSort(s); saveSort("parts", s); };
   const pickView = (v: PartView) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
 
   useEffect(() => { api.partFacets().then(setFacets); }, []);
   useEffect(() => {
     let alive = true;
     setParts(null);
-    api.searchParts(applied).then((p) => alive && setParts(p));
+    api.searchParts(applied, sort).then((p) => alive && setParts(p));
     return () => { alive = false; };
-  }, [applied, run]);
+  }, [applied, run, sort]);
 
   const search = () => { setApplied(toFilter(d)); setRun((n) => n + 1); setSelected(new Set()); };
   const reset = () => { setD(EMPTY_DRAFT); setApplied(toFilter(EMPTY_DRAFT)); setRun((n) => n + 1); setSelected(new Set()); };
@@ -228,6 +231,10 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
           <button className="link" onClick={() => setSelected(new Set(shown.map((p) => p.id)))} disabled={!shown.length}>Select all</button>
           {selected.size > 0 && <button className="link" onClick={() => setSelected(new Set())}>Clear</button>}
         </span>
+      </div>
+
+      <div className="sort-bar">
+        <SortControl value={sort} onChange={pickSort} />
       </div>
 
       <ul className={view === "grid" ? "part-grid" : "part-list"}>

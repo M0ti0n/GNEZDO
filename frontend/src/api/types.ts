@@ -98,6 +98,12 @@ export interface JobFilter {
   status?: JobStatus;
 }
 
+/** Sort order for part and job lists. Dates default to newest first, others to A–Z / thin–thick. */
+export type SortKey = "name" | "created" | "modified" | "material" | "thickness" | "project";
+export interface SortOrder { key: SortKey; dir: "asc" | "desc" }
+export const DEFAULT_SORT: SortOrder = { key: "modified", dir: "desc" };
+export const defaultDir = (key: SortKey): SortOrder["dir"] => (key === "created" || key === "modified" ? "desc" : "asc");
+
 /** A part placed in a job, with the quantity to cut in this job. */
 export interface JobPart {
   part: PartSummary;

@@ -55,5 +55,8 @@ the Docker builds on every push.
 | `GET /api/projects/recent` | projects by last activity |
 | `GET /api/health` | `{ "status": "ok" }` |
 
+Sorting (parts and jobs): `sort=name|created|modified|material|thickness|project`, `dir=asc|desc`
+(default: modified, newest first). Jobs sort by the smallest material/thickness/project among their parts.
+
 Date filters: `on:` that calendar day, `upTo:` up to and including that day, `from:` from that
 day on; days are shop days (Europe/Ljubljana).

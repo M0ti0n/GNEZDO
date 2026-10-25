@@ -20,6 +20,10 @@ public sealed class PartQuery
     public double? YMin { get; set; }
     public double? YMax { get; set; }
     public bool? Engraved { get; set; }
+    /// <summary>name, created, modified (default), material, thickness, project.</summary>
+    public string? Sort { get; set; }
+    /// <summary>asc or desc; dates default to desc, others to asc.</summary>
+    public string? Dir { get; set; }
     public int? Take { get; set; }
 }
 
@@ -46,6 +50,8 @@ public static class PartEndpoints
             if (DateFilter.TryParse(q.Modified, out var f)) modified = f;
             else errors["modified"] = ["Use on:yyyy-mm-dd, upTo:yyyy-mm-dd or from:yyyy-mm-dd."];
         }
+        if (!Sort.TryParse(q.Sort, q.Dir, out var sort, out var sortError))
+            errors[sortError!.StartsWith("dir") ? "dir" : "sort"] = [sortError];
         if (errors.Count > 0) return Results.ValidationProblem(errors);
 
         IQueryable<Part> parts = db.Parts.AsNoTracking();
@@ -82,8 +88,7 @@ public static class PartEndpoints
         var max = options.Value.MaxSearchResults;
         var take = Math.Clamp(q.Take ?? max, 1, max);
 
-        var rows = await parts
-            .OrderByDescending(p => p.ModifiedAt).ThenBy(p => p.Name)
+        var rows = await sort.Apply(parts)
             .Take(take)
             .Select(ToDto)
             .ToListAsync(ct);
