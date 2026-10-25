@@ -1047,3 +1047,4 @@ th.num .th-sort { flex-direction: row-reverse; }
 .snap-mark { fill: rgba(31, 168, 58, .15); stroke: #1fa83a; stroke-width: 2; }
 .line-cross { stroke: var(--ink-2); stroke-width: 1; }
 .line-len { font-size: 12px; font-weight: 600; fill: var(--blue-ink); paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.end-mark.is-passive { pointer-events: none; }   /* a tool is on: clicks go to the lines */

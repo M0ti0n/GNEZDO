@@ -79,13 +79,25 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     icon: <Ico><path d="M9 9L39 39" stroke={K} strokeWidth="3.4" /></Ico>,
   },
   {
-    id: "align", label: "Align",
+    id: "alignH", label: "Align H",
     icon: (
       <Ico>
         <path d="M18 6L40 37" stroke={K} strokeWidth="3.2" />
         <path d="M7 38H40" stroke={R} strokeWidth="2.6" strokeDasharray="4 3" />
         <path d="M22 12Q8 20 10 33" stroke={G} strokeWidth="2.4" />
         <Arrow x={10.3} y={34.5} angle={95} color={G} />
+      </Ico>
+    ),
+  },
+  {
+    // Fab's sketch: the line leaning right, the dashed vertical it turns to, the CCW arrow
+    id: "alignV", label: "Align V",
+    icon: (
+      <Ico>
+        <path d="M10 40L37 13" stroke={K} strokeWidth="3.2" />
+        <path d="M9 39V7" stroke={R} strokeWidth="2.6" strokeDasharray="4 3" />
+        <path d="M33 16Q24 7 14 7" stroke={G} strokeWidth="2.4" />
+        <Arrow x={12.5} y={7} angle={180} color={G} />
       </Ico>
     ),
   },
