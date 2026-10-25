@@ -147,6 +147,18 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     ),
   },
   {
+    // Fab's sketch: a leaning line meeting a horizontal one, a red arc with arrows between them
+    id: "angle", label: "Angle",
+    icon: (
+      <Ico>
+        <path d="M8 8L18 37H43" stroke={K} strokeWidth="3.4" />
+        <path d="M12.5 13.5Q30 9 39.5 33" stroke={R} strokeWidth="2.2" />
+        <Arrow x={11} y={14.5} angle={200} color={R} />
+        <Arrow x={40} y={34.5} angle={75} color={R} />
+      </Ico>
+    ),
+  },
+  {
     id: "trace", label: "Trace",
     icon: <Ico><Nozzle beam={G} /><path d="M7 33L42 41" stroke={G} strokeWidth="4" /></Ico>,
   },

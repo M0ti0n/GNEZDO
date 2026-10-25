@@ -1066,3 +1066,12 @@ th.num .th-sort { flex-direction: row-reverse; }
 .close-dlg-icon { background: #fdecea; color: #c62828; }
 .close-dlg-text { margin: 0; padding: 18px 24px 22px; color: var(--ink-2, #3a4a40); line-height: 1.5; }
 .close-dlg-warn { display: inline-block; margin-top: 8px; color: #c62828; font-weight: 600; }
+
+/* Measuring tools (Diameter, Radius, Angle, Dimension): shown only while the tool is on */
+.meas { --meas: #c2410c; }
+.meas-line { stroke: var(--meas); stroke-width: 1.5; fill: none; }
+.meas-head { fill: var(--meas); }
+.meas-ext { stroke: var(--meas); stroke-width: 1; stroke-dasharray: 4 3; opacity: .8; fill: none; }
+.meas-text { font-size: 13px; font-weight: 700; fill: var(--meas); paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
+.meas-first { fill: rgba(194, 65, 12, .2); stroke: #c2410c; stroke-width: 2; }
+.meas-pick { fill: none; stroke: #c2410c; stroke-width: 3.2; opacity: .75; }

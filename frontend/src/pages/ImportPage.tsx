@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
 import { ROTATIONS, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
+import { angleOf, diameterOf, dimensionOf, pickEntity, radiusOf, type Measure, type Pick } from "../import/measure";
 import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
 import {
@@ -35,6 +36,14 @@ const EDITING: Record<string, { hint: string }> = {
   erase: { hint: "Click a line, arc or circle to erase it. Ctrl+Z undoes." },
   alignH: { hint: "Click a straight line: the whole part turns counter-clockwise until that line is horizontal." },
   alignV: { hint: "Click a straight line: the whole part turns counter-clockwise until that line is vertical." },
+};
+
+/** Measuring tools: they only read the drawing; what they show goes away when the tool is switched off. */
+const MEASURING: Record<string, { hint: string }> = {
+  diameter: { hint: "Click an arc or a circle to show its diameter." },
+  radius: { hint: "Click an arc or a circle to show its radius." },
+  angle: { hint: "Click the first line, then the second. Click near the ends that form the angle you want." },
+  dimension: { hint: "Click two things: end points (green square), lines, or arcs and circles (their centre). Esc starts again." },
 };
 
 interface Props {
@@ -90,12 +99,47 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     for (const q of ends) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d <= bestD) { best = q; bestD = d; } }
     return best ? { p: { ...best }, snapped: true } : { p, snapped: false };
   };
+  // Measuring: the first pick of Angle / Dimension, and what has been measured while the tool is on.
+  const [firstPick, setFirstPick] = useState<Pick | null>(null);
+  const [measures, setMeasures] = useState<Measure[]>([]);
+  useEffect(() => { setMeasures([]); setFirstPick(null); }, [drawing]);
+  /** What a click picks: with Dimension an end point snaps first; otherwise the line, arc or circle under the pointer. */
+  const pickAt = (clientX: number, clientY: number, v: View, points: boolean): Pick | null => {
+    if (points) { const s = snapAt(clientX, clientY, v); if (s.snapped) return { kind: "point", p: s.p }; }
+    const id = lineUnder(clientX, clientY);
+    const e = id ? drawing.entities.find((x) => x.id === id) : undefined;
+    return e ? pickEntity(e, toModel(clientX, clientY, v)) : null;
+  };
+  const measureClick = (clientX: number, clientY: number, v: View) => {
+    const pk = pickAt(clientX, clientY, v, tool === "dimension");
+    const done = (res: ReturnType<typeof radiusOf>) => {
+      setFirstPick(null);
+      if (!res.ok) { setMessage({ text: res.message, bad: true }); return; }
+      setMeasures((list) => [...list, res.m]);
+      setMessage({ text: measureText(res.m) });
+    };
+    if (tool === "radius") return done(radiusOf(pk));
+    if (tool === "diameter") return done(diameterOf(pk));
+    if (!pk) { setMessage({ text: tool === "angle" ? "Click a straight line" : "Click an end point, a line, an arc or a circle", bad: true }); return; }
+    if (tool === "angle" && pk.kind !== "line") { setMessage({ text: "Angle needs straight lines", bad: true }); return; }
+    if (!firstPick) {
+      setFirstPick(pk);
+      setMessage({ text: tool === "angle" ? "Now click the second line" : "Now click the second end point, line, arc or circle" });
+      return;
+    }
+    done(tool === "angle" ? angleOf(firstPick, pk) : dimensionOf(firstPick, pk));
+  };
+
   const finishLine = () => {
     if (lineStart) setMessage({ text: "Line finished" });
     setLineStart(null);
   };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && tool === "line") finishLine(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (tool === "line") finishLine();
+      if (firstPick) { setFirstPick(null); setMessage({ text: "Started again: click the first one" }); }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
@@ -181,7 +225,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (box) { const p = local(e); setBox((b) => b && { ...b, x1: p.x, y1: p.y }); return; }
     const d = drag.current;
     if (!d) {
-      if (tool === "line" && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
+      if ((tool === "line" || tool === "dimension") && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
       // hover with Trim / Extend: preview the result
       if (tool && EDITING[tool] && view) {
         const id = lineUnder(e.clientX, e.clientY);
@@ -211,6 +255,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       setSelected(null);
       setLineStart(at.p);                                    // go on from the end, like AutoCAD
       setMessage({ text: `Line ${fmtMm(Math.hypot(at.p.x - lineStart.x, at.p.y - lineStart.y))} added. Next point, or Esc to finish` });
+      return;
+    }
+    if (pr && pr.button === 0 && tool && MEASURING[tool] && view && isClick) {
+      measureClick(e.clientX, e.clientY, view);
       return;
     }
     if (pr && pr.button === 0 && tool && EDITING[tool] && view && isClick) {
@@ -279,6 +327,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setPreview(null);
     setLineStart(null);
     setCursor(null);
+    setFirstPick(null);
+    setMeasures([]);
     setTool((t) => (t === id ? null : id));
   };
 
@@ -331,7 +381,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? (tool === "line" ? LINE_HINT : "not built yet") : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -343,7 +393,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         blocked={problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
-        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || tool === "line") ? " is-marking" : ""}`}
+        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "line") ? " is-marking" : ""}`}
         onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -360,7 +410,11 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {/* wide invisible strokes so thin lines are easy to click */}
               {preview?.removed.map((e) => <path key={`rm-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="pv-remove" />)}
               {preview?.added.map((e) => <path key={`ad-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="pv-add" />)}
-              {tool && (MARKING[tool] || EDITING[tool]) && drawing.entities.map((e) => (
+              {firstPick && firstPick.kind !== "point" && (() => {
+                const e = drawing.entities.find((x) => x.id === firstPick.id);
+                return e ? <path d={pathOf(e)} vectorEffect="non-scaling-stroke" className="meas-pick" /> : null;
+              })()}
+              {tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool]) && drawing.entities.map((e) => (
                 <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
             </g>
@@ -392,6 +446,11 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 </g>
               );
             })()}
+            {tool && MEASURING[tool] && (
+              <MeasureLayer measures={measures} toScreen={(p) => toScreen(p, view)}
+                first={firstPick?.kind === "point" ? toScreen(firstPick.p, view) : firstPick?.kind === "round" ? toScreen(firstPick.c, view) : null}
+                snap={tool === "dimension" && cursor?.snapped ? toScreen(cursor.p, view) : null} />
+            )}
             {box && (
               <rect className={`sel-box${box.x1 < box.x0 ? " is-crossing" : ""}`}
                 x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)}
@@ -528,3 +587,84 @@ const ROLE_LABEL: Record<Role, string> = { cut: "Cutting", trace: "Tracing", ope
 const fmtMm = (n: number) => `${n < 10 ? n.toFixed(2) : n.toFixed(1)} mm`;
 
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString("en-GB");
+
+/** Measured value as text: up to 2 decimals. */
+const num = (v: number) => (Math.round(v * 100) / 100).toLocaleString("en-GB", { maximumFractionDigits: 2 });
+const measureLabel = (m: Measure) =>
+  m.kind === "distance" ? `${num(m.value)} mm` : m.kind === "radius" ? `R ${num(m.r)}` : m.kind === "diameter" ? `Ø ${num(m.d)}` : `${num(m.deg)}°`;
+const measureText = (m: Measure) =>
+  m.kind === "distance" ? `Dimension ${num(m.value)} mm (${m.note})` : m.kind === "radius" ? `Radius ${num(m.r)} mm`
+    : m.kind === "diameter" ? `Diameter ${num(m.d)} mm` : `Angle ${num(m.deg)}°`;
+
+/** Dimensions drawn over the part, in screen pixels (y down). */
+function MeasureLayer({ measures, toScreen, first, snap }: {
+  measures: Measure[]; toScreen: (p: Pt) => { x: number; y: number };
+  first: { x: number; y: number } | null; snap: { x: number; y: number } | null;
+}) {
+  // text along a line, never upside down, a little above it; moved along the line when another label is there
+  const used: { x: number; y: number }[] = [];
+  const along = (a: { x: number; y: number }, b: { x: number; y: number }, text: string, key: string) => {
+    let deg = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+    if (deg > 90) deg -= 180; if (deg < -90) deg += 180;
+    const at = (t: number) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    const free = [0.5, 0.3, 0.7, 0.2, 0.8].map(at).find((q) => used.every((u) => Math.hypot(u.x - q.x, u.y - q.y) > 46)) ?? at(0.5);
+    used.push(free);
+    const mx = free.x, my = free.y;
+    return <text key={key} className="meas-text" transform={`translate(${mx} ${my}) rotate(${deg}) translate(0 -7)`} textAnchor="middle">{text}</text>;
+  };
+  const dashed = (ext: [Pt, Pt][], key: string) => ext.map(([p, q], i) => {
+    const a = toScreen(p), b = toScreen(q);
+    return <line key={`${key}-x${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="meas-ext" />;
+  });
+  return (
+    <g className="meas" pointerEvents="none">
+      <defs>
+        <marker id="meas-arrow" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+          <path d="M0 1.5 10 5 0 8.5z" className="meas-head" />
+        </marker>
+      </defs>
+      {measures.map((m, i) => {
+        const k = `m${i}`;
+        if (m.kind === "distance" || m.kind === "diameter") {
+          const a = toScreen(m.kind === "distance" ? m.from : m.a), b = toScreen(m.kind === "distance" ? m.to : m.b);
+          return (
+            <g key={k}>
+              {m.kind === "distance" && dashed(m.ext, k)}
+              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="meas-line" markerStart="url(#meas-arrow)" markerEnd="url(#meas-arrow)" />
+              {along(a, b, measureLabel(m), `${k}t`)}
+            </g>
+          );
+        }
+        if (m.kind === "radius") {
+          const c = toScreen(m.c), b = toScreen(m.to);
+          return (
+            <g key={k}>
+              <path d={`M${c.x - 5} ${c.y}H${c.x + 5}M${c.x} ${c.y - 5}V${c.y + 5}`} className="meas-ext" />
+              <line x1={c.x} y1={c.y} x2={b.x} y2={b.y} className="meas-line" markerEnd="url(#meas-arrow)" />
+              {along(c, b, measureLabel(m), `${k}t`)}
+            </g>
+          );
+        }
+        // angle: arc at the crossing between the two arms (screen y is down, so flip y)
+        const at = toScreen(m.at), R = 42;
+        const p1 = { x: at.x + m.u1.x * R, y: at.y - m.u1.y * R }, p2 = { x: at.x + m.u2.x * R, y: at.y - m.u2.y * R };
+        const sweep = m.u1.x * m.u2.y - m.u1.y * m.u2.x > 0 ? 0 : 1;   // counter-clockwise in the drawing = 0 on screen
+        const bis = { x: m.u1.x + m.u2.x, y: m.u1.y + m.u2.y };
+        const bl = Math.hypot(bis.x, bis.y) || 1;
+        const tx = at.x + (bis.x / bl) * (R + 16), ty = at.y - (bis.y / bl) * (R + 16) + 4;
+        return (
+          <g key={k}>
+            {dashed(m.ext, k)}
+            <line x1={at.x} y1={at.y} x2={at.x + m.u1.x * (R + 8)} y2={at.y - m.u1.y * (R + 8)} className="meas-ext" />
+            <line x1={at.x} y1={at.y} x2={at.x + m.u2.x * (R + 8)} y2={at.y - m.u2.y * (R + 8)} className="meas-ext" />
+            <path d={`M${p1.x} ${p1.y}A${R} ${R} 0 0 ${sweep} ${p2.x} ${p2.y}`} className="meas-line" fill="none"
+              markerStart="url(#meas-arrow)" markerEnd="url(#meas-arrow)" />
+            <text x={tx} y={ty} className="meas-text" textAnchor="middle">{measureLabel(m)}</text>
+          </g>
+        );
+      })}
+      {first && <circle cx={first.x} cy={first.y} r={4.5} className="meas-first" />}
+      {snap && <rect x={snap.x - 7} y={snap.y - 7} width={14} height={14} className="snap-mark" />}
+    </g>
+  );
+}
