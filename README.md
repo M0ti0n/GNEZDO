@@ -10,6 +10,15 @@ Users work in the browser; parts, jobs and nests live in SQL Server.
 
 Planned: DXF/DWG import worker (Python, ezdxf), nesting with PackingSolver (C++), postprocessor.
 
+## Download a test build (Windows)
+
+**[⬇ Download gnezdo-windows.zip](https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-windows.zip)**
+(rebuilt on every change to `main`)
+
+Unzip it, double-click `start.bat`, and open http://localhost:8090. Nothing to install. It runs as a
+**demo** (sample data, nothing saved) until a SQL Server connection is put in `config.json` — see
+[packaging/INSTALL.txt](packaging/INSTALL.txt).
+
 ## Run on the server (Docker)
 
 ```bash

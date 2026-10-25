@@ -10,6 +10,8 @@ import { otherParts, testJobParts } from "./sampleParts";
 // Until the backend exists, the app runs on sample data.
 // Set VITE_USE_API=true (e.g. in .env.local) to call the real server instead.
 const useApi = import.meta.env.VITE_USE_API === "true";
+/** Sample data only: nothing is saved (shown as DEMO in the green bar). */
+export const demoMode = !useApi;
 
 async function get<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: { Accept: "application/json" } });

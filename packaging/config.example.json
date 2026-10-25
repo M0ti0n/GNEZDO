@@ -1,0 +1,19 @@
+{
+  "//": "GNEZDO settings. start.bat copies this file to config.json the first time; change config.json.",
+
+  "ConnectionStrings": {
+    "//": "Empty = DEMO: sample data, nothing is saved. To use a database, put a SQL Server connection here, for example:",
+    "// windows login": "Server=SERVERNAME\\SQLEXPRESS;Database=gnezdo;Trusted_Connection=True;TrustServerCertificate=True",
+    "// sql login": "Server=SERVERNAME;Database=gnezdo;User Id=gnezdo;Password=...;TrustServerCertificate=True",
+    "Gnezdo": ""
+  },
+
+  "//port": "Address and port GNEZDO listens on. Other PCs open http://<this-pc-name>:8090",
+  "Urls": "http://0.0.0.0:8090",
+
+  "Gnezdo": {
+    "TimeZone": "Europe/Ljubljana",
+    "//": "true = fill an empty database with sample parts and jobs, for trying it out",
+    "SeedSampleData": false
+  }
+}

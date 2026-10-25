@@ -1,0 +1,47 @@
+GNEZDO - TEST BUILD FOR WINDOWS
+===============================
+
+Nothing has to be installed: GNEZDO.exe contains everything it needs.
+
+
+1. COPY GNEZDO TO THE PC
+------------------------
+1. Download gnezdo-windows.zip (link in the README on GitHub, "Download").
+2. Right-click -> Extract All... -> Extract.
+   You get a folder "gnezdo", e.g. C:\Users\<name>\Desktop\gnezdo
+
+
+2. START GNEZDO
+---------------
+1. Open the "gnezdo" folder and double-click start.bat.
+2. The first time Windows may say "Windows protected your PC" (the program is
+   not signed): click "More info" -> "Run anyway".
+   If the firewall asks, allow it on private networks (needed for other PCs).
+3. A black window opens and the browser opens http://localhost:8090
+   Leave the black window open; closing it stops GNEZDO.
+   Other PCs on the network use  http://<name-of-this-pc>:8090
+
+
+3. DEMO OR DATABASE
+-------------------
+Out of the box GNEZDO runs as a DEMO: sample parts and jobs, everything you
+import and save stays in that browser tab only, and nothing is written anywhere.
+Good for trying the import tools.
+
+To save parts for real, GNEZDO needs a Microsoft SQL Server (Express is enough).
+It uses its OWN database called "gnezdo" and creates it itself. Never point it
+at the SAOP or Libellula database.
+1. Stop GNEZDO (close the black window).
+2. Open config.json in Notepad and fill in "Gnezdo" under ConnectionStrings,
+   for example (Windows login):
+     "Gnezdo": "Server=SERVERNAME\\SQLEXPRESS;Database=gnezdo;Trusted_Connection=True;TrustServerCertificate=True"
+   Write every backslash twice (\\). The SQL login needs rights to create a
+   database the first time.
+3. Start it again with start.bat. The black window says "with the database".
+To go back to the demo, empty the "Gnezdo" value again ("").
+
+
+4. A NEWER VERSION
+------------------
+Extract the new zip over the old folder. Your config.json is kept (the zip only
+has config.example.json). The database updates itself on the first start.

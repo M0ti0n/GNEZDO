@@ -1091,3 +1091,7 @@ th.num .th-sort { flex-direction: row-reverse; }
   box-shadow: 0 2px 10px rgba(20, 50, 30, .16); font-size: 13.5px; font-weight: 600; color: var(--ink); pointer-events: auto; }
 .sweep-bar .btn { padding: 6px 12px; white-space: nowrap; }
 .sweep-bar { flex: none; white-space: nowrap; }
+
+/* Demo build: sample data only */
+.demo-badge { align-self: center; flex-shrink: 0; padding: 3px 10px; border-radius: 999px; background: #ffd34d; color: #5a4300;
+  font-family: var(--font-cond); font-weight: 700; font-size: 13px; letter-spacing: .08em; cursor: help; }
