@@ -28,6 +28,7 @@ const MARKING: Record<string, { role: Role; hint: string }> = {
 /** Tools that change lines by clicking them (AutoCAD quick mode); Shift swaps trim and extend. */
 /** Pixels within which a point snaps to the end of a line. */
 const SNAP_PX = 12;
+const SWEEP_HINT = "Highlighted: lines on top of other lines (within 0.1 mm), lines outside the part outline and loose points. Click a line to keep it; Delete removes the rest.";
 const LINE_HINT = "Click the start point, then the end point; the line goes on from there. Ends of lines snap (green square). Esc or right click finishes.";
 
 const EDITING: Record<string, { hint: string }> = {
@@ -148,7 +149,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const [preview, setPreview] = useState<(EditResult & { ok: true }) | null>(null);
   const editAt = (id: string, p: Pt, shift: boolean): EditResult => {
     if (tool === "erase") return eraseAt(drawing.entities, id);
-    if (tool === "alignH" || tool === "alignV") return alignAt(drawing.entities, id, tool === "alignH" ? "h" : "v");
+    if (tool === "alignH" || tool === "alignV") return alignAt(drawing.entities, id, tool === "alignH" ? "h" : "v", drawing.points);
     const extend = (tool === "extend") !== shift;   // Shift swaps trim and extend
     return extend ? extendAt(drawing.entities, id, p) : trimAt(drawing.entities, id, p);
   };
@@ -181,7 +182,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     });
   }, [size.w, size.h]);
 
-  const fitAll = useCallback(() => fit(report.box), [fit, report.box]);
+  // loose points count for "show everything", so stray points far away are not missed
+  const fitAll = useCallback(() => fit((drawing.points ?? []).reduce((b, { p }) => union(b, { minX: p.x, minY: p.y, maxX: p.x, maxY: p.y }), report.box)),
+    [fit, report.box, drawing.points]);
   useEffect(() => { if (!view) fitAll(); }, [view, fitAll]);
 
   // Wheel zooms around the cursor (non-passive so the page does not scroll).
@@ -257,6 +260,16 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       setMessage({ text: `Line ${fmtMm(Math.hypot(at.p.x - lineStart.x, at.p.y - lineStart.y))} added. Next point, or Esc to finish` });
       return;
     }
+    if (pr && pr.button === 0 && tool === "sweep" && isClick) {
+      const id = lineUnder(e.clientX, e.clientY);
+      if (id && sweptIds.has(id)) {
+        const next = new Set(keep);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        setKeep(next);
+        setMessage({ text: next.has(id) ? "Kept: this line stays" : "This line will be swept" });
+      }
+      return;
+    }
     if (pr && pr.button === 0 && tool && MEASURING[tool] && view && isClick) {
       measureClick(e.clientX, e.clientY, view);
       return;
@@ -266,7 +279,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       if (!id) return;
       const r = editAt(id, toModel(e.clientX, e.clientY, view), e.shiftKey);
       if (r.ok) {
-        commit({ ...drawing, entities: r.entities }, IMPORT_TOOLS.find((t) => t.id === tool)?.label ?? "Edit");
+        commit({ ...drawing, entities: r.entities, points: r.points ?? drawing.points }, IMPORT_TOOLS.find((t) => t.id === tool)?.label ?? "Edit");
         setSelected(null);
         setPreview(null);
         if (tool === "alignH" || tool === "alignV") setView(null);   // the part turned: fit it again
@@ -315,7 +328,31 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: next === "cut" ? "1 line unmarked (cutting)" : `1 line → ${ROLE_LABEL[next].toLowerCase()}` });
   };
 
+  // Sweep: lines on top of other lines (0.1 mm), lines outside the part outline and loose points,
+  // highlighted together; click a line to keep it, Delete removes the rest in one step.
+  const swept = useMemo(() => {
+    const ids = (c: CheckId) => report.checks.find((x) => x.id === c)?.entityIds ?? [];
+    return { doubles: ids("doubles"), outside: ids("separate"), points: (drawing.points ?? []).map((x) => x.id) };
+  }, [report, drawing.points]);
+  const sweptIds = useMemo(() => new Set([...swept.doubles, ...swept.outside]), [swept]);
+  const [keep, setKeep] = useState<Set<string>>(new Set());
+  const sweepCount = sweptIds.size - [...keep].filter((id) => sweptIds.has(id)).length + swept.points.length;
+  const sweepNow = () => {
+    const drop = new Set([...sweptIds].filter((id) => !keep.has(id)));
+    const n = drop.size + swept.points.length;
+    commit({ ...drawing, entities: drawing.entities.filter((e) => !drop.has(e.id)), points: [] }, "Sweep");
+    setTool(null);
+    setKeep(new Set());
+    setSelected(null);
+    setMessage({ text: `Swept: ${n} ${n === 1 ? "item" : "items"} removed` });
+  };
+
   const onTool = (id: string) => {
+    if (id === "sweep" && tool !== "sweep" && sweptIds.size + swept.points.length === 0) {
+      setTool(null);
+      setMessage({ text: "Nothing to sweep: no lines on top of other lines, no lines outside the part, no loose points" });
+      return;
+    }
     if (id === "properties") { setTool(null); setMessage(null); onProperties(); return; }
     // Check lines = the Geometry check panel: shows or hides it, with the result in the hint
     if (id === "checkLines") {
@@ -337,6 +374,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setCursor(null);
     setFirstPick(null);
     setMeasures([]);
+    setKeep(new Set());
     setTool((t) => (t === id ? null : id));
   };
 
@@ -397,7 +435,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : "not built yet") : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : tool === "sweep" ? SWEEP_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -409,7 +447,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         blocked={problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
-        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "line") ? " is-marking" : ""}`}
+        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "line" || tool === "sweep") ? " is-marking" : ""}`}
         onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -430,7 +468,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 const e = drawing.entities.find((x) => x.id === firstPick.id);
                 return e ? <path d={pathOf(e)} vectorEffect="non-scaling-stroke" className="meas-pick" /> : null;
               })()}
-              {tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool]) && drawing.entities.map((e) => (
+              {tool === "sweep" && drawing.entities.filter((e) => sweptIds.has(e.id)).map((e) => (
+                <path key={`sw-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={keep.has(e.id) ? "sweep-keep" : "sweep-hl"} />
+              ))}
+              {tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep") && drawing.entities.map((e) => (
                 <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
             </g>
@@ -444,6 +485,15 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   <title>{`${iss.label}${iss.size ? ` · ${fmtMm(iss.size)}` : ""}${iss.fix ? " · click to fix" : ""}`}</title>
                   <circle cx={s.x} cy={s.y} r={hoverIssue === i ? 11 : 8} />
                   <text x={s.x} y={s.y + 4} textAnchor="middle">{ISSUE_ICON[iss.kind]}</text>
+                </g>
+              );
+            })}
+            {(drawing.points ?? []).map(({ id, p }) => {
+              const q = toScreen(p, view), k = tool === "sweep" ? 6 : 4;
+              return (
+                <g key={id} className={`pt-mark${tool === "sweep" ? " is-swept" : ""}`} pointerEvents="none">
+                  {tool === "sweep" && <circle cx={q.x} cy={q.y} r={9} />}
+                  <path d={`M${q.x - k} ${q.y - k}L${q.x + k} ${q.y + k}M${q.x - k} ${q.y + k}L${q.x + k} ${q.y - k}`} />
                 </g>
               );
             })}
@@ -580,6 +630,18 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
           {hint && (
             <span className={`tool-hint${message?.bad ? " is-bad" : ""}`}>
               {!message && toolLabel && <b>{toolLabel} · </b>}{hint}
+            </span>
+          )}
+          {tool === "sweep" && (
+            <span className="sweep-bar">
+              <span>
+                {[swept.doubles.length && `${swept.doubles.length} on top of other lines`,
+                  swept.outside.length && `${swept.outside.length} outside the part`,
+                  swept.points.length && `${swept.points.length} loose ${swept.points.length === 1 ? "point" : "points"}`,
+                  keep.size && `${keep.size} kept`].filter(Boolean).join(" · ")}
+              </span>
+              <button type="button" className="btn btn-plain" onClick={() => onTool("sweep")}>Cancel</button>
+              <button type="button" className="btn btn-replace" onClick={sweepNow} disabled={sweepCount === 0}>Delete {sweepCount}</button>
             </span>
           )}
           <button className="btn btn-fit" onClick={() => { setSelected(null); fitAll(); }} title="Show the whole part (double-click)">Fit</button>

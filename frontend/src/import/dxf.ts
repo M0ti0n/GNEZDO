@@ -102,6 +102,7 @@ export function readDxf(text: string, fileName: string): DxfResult {
   }
 
   const out: Entity[] = [];
+  const points: NonNullable<Drawing["points"]> = [];
   const ignored: Record<string, number> = {};
   let n = 0;
   const id = () => `e${++n}`;
@@ -240,6 +241,10 @@ export function readDxf(text: string, fileName: string): DxfResult {
           convert(block.recs, compose(t, local), depth + 1, layer, color);
           break;
         }
+        case "POINT":
+          // not cut; kept so they show on the drawing and Sweep can remove them
+          points.push({ id: `pt${points.length + 1}`, p: apply(t, { x: num(r, 10), y: num(r, 20) }), layer });
+          break;
         case "VERTEX": case "SEQEND": case "ATTRIB": case "ATTDEF":
           break;
         default:
@@ -251,7 +256,7 @@ export function readDxf(text: string, fileName: string): DxfResult {
   convert(sections.get("ENTITIES") ?? [], IDENTITY, 0);
   if (out.length === 0) throw new DxfError(ignored[HIDDEN] ? "Everything is on layers that are off or frozen" : "No lines, arcs or circles found");
 
-  return { drawing: { id: fileName, fileName: fileName.replace(/\.dxf$/i, ""), entities: out }, ignored, declaredUnits };
+  return { drawing: { id: fileName, fileName: fileName.replace(/\.dxf$/i, ""), entities: out, points }, ignored, declaredUnits };
 }
 
 interface Colour { aci: number; rgb?: number }

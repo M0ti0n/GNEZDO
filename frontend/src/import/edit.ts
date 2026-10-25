@@ -8,7 +8,7 @@ import { arcSweep, findDoubles, lengthOf, pointsAlong, type Entity, type Pt } fr
 // Lines, arcs and circles (trim only) are supported; splines are not edited.
 
 export type EditResult =
-  | { ok: true; entities: Entity[]; removed: Entity[]; added: Entity[]; message: string }
+  | { ok: true; entities: Entity[]; removed: Entity[]; added: Entity[]; message: string; points?: { id: string; p: Pt; layer?: string }[] }
   | { ok: false; message: string };
 
 type Carrier = { kind: "line"; a: Pt; b: Pt } | { kind: "circle"; c: Pt; r: number };
@@ -386,7 +386,7 @@ export function rotateEntity(e: Entity, c: Pt, d: number): Entity {
  * clicked straight line is horizontal (H) or vertical (V). Always CCW, by the smallest
  * such angle (0 to 180 degrees).
  */
-export function alignAt(all: Entity[], id: string, to: "h" | "v"): EditResult {
+export function alignAt(all: Entity[], id: string, to: "h" | "v", points?: { id: string; p: Pt; layer?: string }[]): EditResult {
   const e = all.find((x) => x.id === id);
   if (!e) return { ok: false, message: "Click a line" };
   if (e.kind !== "line") return { ok: false, message: "Click a straight line to align the part to" };
@@ -406,7 +406,7 @@ export function alignAt(all: Entity[], id: string, to: "h" | "v"): EditResult {
   // every point turns with the same sin/cos, so lines that met still meet
   const rotated = all.map((x) => rotateEntity(x, c, turn));
   const shown = Math.abs(turn - Math.round(turn)) < 1e-6 ? String(Math.round(turn)) : turn.toFixed(2);
-  return { ok: true, entities: rotated, removed: [], added: [e],
+  return { ok: true, entities: rotated, removed: [], added: [e], points: points?.map((x) => ({ ...x, p: rotPt(x.p, c, turn) })),
     message: `Part turned ${shown}° counter-clockwise: the line is now ${to === "h" ? "horizontal" : "vertical"}` };
 }
 
