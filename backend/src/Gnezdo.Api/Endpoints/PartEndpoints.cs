@@ -37,6 +37,10 @@ public static class PartEndpoints
         app.MapPost("/api/parts", PartSave.SaveAsync);
         app.MapGet("/api/parts/{id:int}/history", PartSave.HistoryAsync);
         app.MapPost("/api/parts/{id:int}/restore", PartSave.RestoreAsync);
+        app.MapGet("/api/parts/{id:int}", PartEdit.GetAsync);
+        app.MapPut("/api/parts/{id:int}", PartEdit.UpdateAsync);
+        app.MapDelete("/api/parts/{id:int}", PartEdit.DeleteAsync);
+        app.MapPost("/api/projects", PartEdit.CreateProjectAsync);
     }
 
     private static async Task<IResult> SearchAsync(
@@ -58,7 +62,7 @@ public static class PartEndpoints
             errors[sortError!.StartsWith("dir") ? "dir" : "sort"] = [sortError];
         if (errors.Count > 0) return Results.ValidationProblem(errors);
 
-        IQueryable<Part> parts = db.Parts.AsNoTracking();
+        IQueryable<Part> parts = db.Parts.AsNoTracking().Live();
 
         var name = Clean(q.Name);
         if (name is not null) parts = parts.Where(p => p.Name.Contains(name));
@@ -101,7 +105,7 @@ public static class PartEndpoints
 
     private static async Task<PartFacetsDto> FacetsAsync(GnezdoDb db, CancellationToken ct)
     {
-        var pairs = await db.Parts.AsNoTracking()
+        var pairs = await db.Parts.AsNoTracking().Live()
             .Select(p => new { Material = p.Material.Name, p.ThicknessMm })
             .Distinct()
             .ToListAsync(ct);

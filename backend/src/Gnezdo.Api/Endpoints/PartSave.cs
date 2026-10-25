@@ -32,13 +32,13 @@ public record RestoreRequest(int Revision);
 
 public static class PartSave
 {
-    private static readonly int[] AllowedRotations = [90, 45, 30, 5];
+    internal static readonly int[] AllowedRotations = [90, 45, 30, 5];
 
     /// <summary>POST /api/parts/existing: which of these parts are already in the database.</summary>
     public static async Task<IResult> ExistingAsync(IReadOnlyList<PartKey> keys, GnezdoDb db, CancellationToken ct)
     {
         var names = keys.Select(k => k.Name.Trim()).Distinct().ToList();
-        var candidates = await db.Parts.AsNoTracking()
+        var candidates = await db.Parts.AsNoTracking().Live()
             .Where(p => names.Contains(p.Name))
             .Select(p => new { p.Id, p.Name, Project = p.Project != null ? p.Project.Code : "", p.ModifiedAt })
             .ToListAsync(ct);
@@ -79,15 +79,17 @@ public static class PartSave
             m = await db.Materials.FirstOrDefaultAsync(x => x.Name == name, ct) ?? db.Materials.Add(new Material { Name = name }).Entity;
             return materials[name] = m;
         }
-        async Task<Project?> ProjectAsync(string? code)
+        // Projects must exist: they are saved on purpose ("Save new project"), never created by saving a part.
+        foreach (var code in req.Parts.Select(p => p.Project?.Trim()).Where(c => !string.IsNullOrEmpty(c)).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (string.IsNullOrWhiteSpace(code)) return null;
-            code = code.Trim();
-            if (projects.TryGetValue(code, out var p)) return p;
-            p = await db.Projects.FirstOrDefaultAsync(x => x.Code == code, ct)
-                ?? db.Projects.Add(new Project { Code = code, CreatedAt = now }).Entity;
-            return projects[code] = p;
+            var found = await db.Projects.FirstOrDefaultAsync(x => x.Code == code, ct);
+            if (found is null) errors["project"] = [$"Project {code} is not in the database. Save the project first."];
+            else projects[code!] = found;
         }
+        if (errors.Count > 0) return Results.ValidationProblem(errors);
+
+        Task<Project?> ProjectAsync(string? code) =>
+            Task.FromResult(string.IsNullOrWhiteSpace(code) ? null : projects[code.Trim()]);
 
         var firstProject = await ProjectAsync(req.Parts.Select(p => p.Project).FirstOrDefault(p => !string.IsNullOrWhiteSpace(p)));
         var batch = db.ImportBatches.Add(new ImportBatch
@@ -104,9 +106,9 @@ public static class PartSave
             var name = r.Name.Trim();
             var project = await ProjectAsync(r.Project);
             var existing = project is null
-                ? await db.Parts.FirstOrDefaultAsync(p => p.Name == name && p.ProjectId == null, ct)
+                ? await db.Parts.Live().FirstOrDefaultAsync(p => p.Name == name && p.ProjectId == null, ct)
                 : project.Id == 0 ? null
-                : await db.Parts.FirstOrDefaultAsync(p => p.Name == name && p.ProjectId == project.Id, ct);
+                : await db.Parts.Live().FirstOrDefaultAsync(p => p.Name == name && p.ProjectId == project.Id, ct);
             existing ??= db.Parts.Local.FirstOrDefault(p => p.Name == name && p.Project == project && p.Id == 0);
 
             if (existing is not null && !r.Replace) { results.Add((r, existing, "exists")); continue; }
@@ -139,7 +141,7 @@ public static class PartSave
     }
 
     /// <summary>Copies the part as it is now into its history and moves it to the next revision.</summary>
-    private static async Task KeepVersionAsync(GnezdoDb db, Part part, DateTimeOffset now, CancellationToken ct)
+    internal static async Task KeepVersionAsync(GnezdoDb db, Part part, DateTimeOffset now, CancellationToken ct)
     {
         await db.Entry(part).Reference(p => p.Material).LoadAsync(ct);
         await db.Entry(part).Reference(p => p.Project).LoadAsync(ct);
@@ -156,13 +158,13 @@ public static class PartSave
         part.Revision++;
     }
 
-    private static IReadOnlyList<int> RotationList(string s) =>
+    internal static IReadOnlyList<int> RotationList(string s) =>
         s.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToList();
 
     /// <summary>GET /api/parts/{id}/history: the current version first, then older ones, newest first.</summary>
     public static async Task<IResult> HistoryAsync(int id, GnezdoDb db, CancellationToken ct)
     {
-        var part = await db.Parts.AsNoTracking().Include(p => p.Material).Include(p => p.Project)
+        var part = await db.Parts.AsNoTracking().Live().Include(p => p.Material).Include(p => p.Project)
             .FirstOrDefaultAsync(p => p.Id == id, ct);
         if (part is null) return Results.NotFound();
         var old = await db.PartRevisions.AsNoTracking().Where(r => r.PartId == id).OrderByDescending(r => r.Revision).ToListAsync(ct);
@@ -186,7 +188,7 @@ public static class PartSave
     /// </summary>
     public static async Task<IResult> RestoreAsync(int id, RestoreRequest req, GnezdoDb db, TimeProvider clock, CancellationToken ct)
     {
-        var part = await db.Parts.FirstOrDefaultAsync(p => p.Id == id, ct);
+        var part = await db.Parts.Live().FirstOrDefaultAsync(p => p.Id == id, ct);
         if (part is null) return Results.NotFound();
         var old = await db.PartRevisions.AsNoTracking().FirstOrDefaultAsync(r => r.PartId == id && r.Revision == req.Revision, ct);
         if (old is null)

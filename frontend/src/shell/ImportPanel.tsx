@@ -61,6 +61,9 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const lists = usePickLists(p.properties.material);
+  // a project typed but not saved: parts can only be saved under saved projects
+  const projectMissing = lists.projectsLoaded && !lists.projectKnown(p.properties.project);
+  const [projectError, setProjectError] = useState<string | null>(null);
 
   const take = (list: FileList | null) => {
     const files = [...(list ?? [])].filter(isDrawingFile);
@@ -82,13 +85,14 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
     : toProcess === 0 && unchecked ? "Press Check lines first"
     : toProcess === 0 ? (toCheck ? "Open the red parts and process them one by one" : "")
     : !propsSet ? "Set material and thickness, then Process all"
+    : projectMissing ? "Save the project first, then Process all"
     : toCheck ? `Process all saves the ${toProcess} green; the red stay in the list` : "";
   const [needProps, setNeedProps] = useState(false);
   const processAll = () => {
-    if (!propsSet) {
+    if (!propsSet || projectMissing) {
       setNeedProps(true);
       p.onPropsOpen(true);
-      const field = p.properties.material.trim() ? "Thickness in mm" : "Material";
+      const field = projectMissing ? "Project" : p.properties.material.trim() ? "Thickness in mm" : "Material";
       setTimeout(() => document.querySelector<HTMLInputElement>(`.imp-props input[aria-label="${field}"]`)?.focus(), 0);
       return;
     }
@@ -141,8 +145,18 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
 
           {p.propsOpen && (
             <div className="imp-props-body">
-              <Combobox value={p.properties.project} onChange={(project) => setProp({ project })}
-                options={lists.projects} placeholder="Project" ariaLabel="Project" newHint="a new project" />
+              <Combobox className={needProps && projectMissing ? "is-required" : undefined}
+                value={p.properties.project} onChange={(project) => setProp({ project })}
+                options={lists.projects} placeholder="Project" ariaLabel="Project" newHint="a new project"
+                onCreate={async (code) => { await lists.createProject(code); setProp({ project: code }); }} createLabel="Save new project" />
+              {projectMissing && (
+                <p className="imp-props-warn">
+                  Project {p.properties.project.trim()} is not saved yet.{" "}
+                  <button type="button" className="link" onClick={() => lists.createProject(p.properties.project.trim()).then(
+                    () => { setNeedProps(false); setProjectError(null); }, (e: Error) => setProjectError(e.message))}>Save project</button>
+                  {projectError && <span className="t-bad"> {projectError}</span>}
+                </p>
+              )}
               <input className="field" value={p.properties.description} placeholder="Description (optional)" aria-label="Description"
                 onChange={(e) => setProp({ description: e.target.value })} />
               <div className="filter-pair">

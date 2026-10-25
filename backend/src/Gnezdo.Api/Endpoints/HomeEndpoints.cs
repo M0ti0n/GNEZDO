@@ -55,7 +55,7 @@ public static class HomeEndpoints
             .ToListAsync(ct);
 
         var ids = batches.Select(b => b.Id).ToList();
-        var materials = await db.Parts.AsNoTracking()
+        var materials = await db.Parts.AsNoTracking().Live()
             .Where(p => ids.Contains(p.ImportBatchId))
             .Select(p => new { p.ImportBatchId, Material = p.Material.Name, p.ThicknessMm })
             .Distinct()
@@ -218,7 +218,7 @@ public static class HomeEndpoints
     {
         var n = Take(take, 8, 50);
 
-        var partStats = await db.Parts.AsNoTracking()
+        var partStats = await db.Parts.AsNoTracking().Live()
             .Where(p => p.ProjectId != null)
             .GroupBy(p => p.ProjectId!.Value)
             .Select(g => new { ProjectId = g.Key, Count = g.Count(), Last = g.Max(p => p.ModifiedAt) })

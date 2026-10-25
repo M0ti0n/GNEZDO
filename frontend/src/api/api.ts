@@ -17,16 +17,20 @@ async function get<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function post<T>(url: string, body: unknown): Promise<T> {
+async function post<T>(url: string, body: unknown, method = "POST"): Promise<T> {
   const res = await fetch(url, {
-    method: "POST",
+    method,
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (res.status === 204) return undefined as T;
   if (!res.ok) {
     // validation problems come back as { errors: { field: [messages] } }
     let detail = "";
-    try { detail = Object.values((await res.json()).errors ?? {}).flat().join(" "); } catch { /* not JSON */ }
+    try {
+      const j = await res.json();
+      detail = j.message ?? Object.values(j.errors ?? {}).flat().join(" ");
+    } catch { /* not JSON */ }
     throw new Error(detail || `${res.status} ${res.statusText} (${url})`);
   }
   return (await res.json()) as T;
@@ -239,8 +243,14 @@ function mockRestore(id: string, revision: number): PartSummary {
   return sampleParts[i];
 }
 
+/** Sample mode: projects saved with "Save new project". */
+const knownProject = (code: string) =>
+  !code.trim() || sampleProjects.some((s) => s.code.toLowerCase() === code.trim().toLowerCase());
+
 /** Sample mode: saved parts go into the sample library, so Parts search finds them. */
 function mockSave(parts: SavePart[]): SavedPart[] {
+  const unknown = parts.find((p) => !knownProject(p.project));
+  if (unknown) throw new Error(`Project ${unknown.project.trim()} is not in the database. Save the project first.`);
   return parts.map((p) => {
     const i = sampleParts.findIndex((x) => sameKey(x, p));
     if (i >= 0 && !p.replace) return { name: p.name, project: p.project, id: sampleParts[i].id, status: "exists" };
@@ -263,7 +273,55 @@ function mockSave(parts: SavePart[]): SavedPart[] {
 /** A project in a pick list. */
 export interface ProjectOption { code: string; name: string; customer?: string | null }
 
+/** A saved part with everything its Properties window shows. */
+export interface PartDetail { part: PartSummary; rotations: number[]; mirror: boolean; sourceFile: string }
+export interface PartUpdate {
+  name: string; project: string; description: string; material: string; thicknessMm: number;
+  rotations: number[]; mirror: boolean;
+}
+
+function mockUpdate(id: string, u: PartUpdate): PartDetail {
+  const i = sampleParts.findIndex((p) => p.id === id);
+  if (i < 0) throw new Error("Part not found");
+  if (!knownProject(u.project)) throw new Error(`Project ${u.project.trim()} is not in the database. Save the project first.`);
+  if (sampleParts.some((p) => p.id !== id && p.name.toLowerCase() === u.name.trim().toLowerCase() && p.project.toLowerCase() === u.project.trim().toLowerCase()))
+    throw new Error(`Another part is already called ${u.name.trim()} in ${u.project.trim() || "no project"}.`);
+  const now = new Date().toISOString();
+  const cur = sampleParts[i];
+  mockHistory.set(id, [versionOf(cur, false, now), ...(mockHistory.get(id) ?? [])]);
+  sampleParts[i] = { ...cur, name: u.name.trim(), project: u.project.trim(), description: u.description.trim(),
+    material: u.material.trim(), thicknessMm: u.thicknessMm, modifiedAt: now, revision: cur.revision + 1 };
+  extra.set(id, { rotations: u.rotations, mirror: u.mirror, sourceFile: extra.get(id)?.sourceFile ?? "" });
+  return detailOf(sampleParts[i]);
+}
+
+const detailOf = (p: PartSummary): PartDetail =>
+  ({ part: p, rotations: extra.get(p.id)?.rotations ?? [90], mirror: extra.get(p.id)?.mirror ?? false, sourceFile: extra.get(p.id)?.sourceFile ?? "" });
+
 export const api = {
+  /** One saved part with rotations, mirror and source file. */
+  part: (id: string): Promise<PartDetail> => {
+    if (useApi) return get<PartDetail>(`/api/parts/${id}`);
+    const p = sampleParts.find((x) => x.id === id);
+    return p ? delay(detailOf(p)) : Promise.reject(new Error("Part not found"));
+  },
+  /** Changes a saved part's properties; the version before is kept in its history. */
+  updatePart: (id: string, u: PartUpdate): Promise<PartDetail> =>
+    useApi ? post<PartDetail>(`/api/parts/${id}`, u, "PUT") : delay(0).then(() => mockUpdate(id, u)),
+  /** Removes a part from searches and lists (kept in the database for jobs that use it). */
+  deletePart: (id: string): Promise<void> =>
+    useApi ? post<void>(`/api/parts/${id}`, undefined, "DELETE") : delay(0).then(() => {
+      const i = sampleParts.findIndex((p) => p.id === id);
+      if (i >= 0) sampleParts.splice(i, 1);
+    }),
+  /** Saves a new project; parts can only use saved projects. */
+  createProject: (code: string, name = "", customer = ""): Promise<ProjectOption> =>
+    useApi ? post<ProjectOption>("/api/projects", { code, name, customer }) : delay(0).then(() => {
+      if (knownProject(code) && code.trim()) throw new Error(`Project ${code.trim()} is already in the database.`);
+      const p: ProjectSummary = { id: `p-${code}`, code: code.trim(), name, customer: customer || undefined, partCount: 0, jobCount: 0, cutPercent: 0, lastActivityAt: new Date().toISOString() };
+      sampleProjects.unshift(p);
+      return { code: p.code, name: p.name, customer: p.customer };
+    }),
   /** Current and earlier versions of a part, newest first. */
   partHistory: (id: string): Promise<PartVersion[]> => {
     if (useApi) return get<PartVersion[]>(`/api/parts/${id}/history`);
@@ -276,9 +334,6 @@ export const api = {
   /** Every project code, newest first (sample mode: sample projects plus saved ones). */
   projectOptions: (): Promise<ProjectOption[]> =>
     useApi ? get<ProjectOption[]>("/api/projects") : delay([
-      ...[...new Set(sampleParts.map((p) => p.project))]
-        .filter((c) => c && !sampleProjects.some((s) => s.code === c))
-        .map((code) => ({ code, name: "" })),
       ...sampleProjects.map((s) => ({ code: s.code, name: s.name, customer: s.customer })),
     ]),
   /** Which of these parts are already in the database. */
@@ -291,7 +346,7 @@ export const api = {
   saveParts: (parts: SavePart[], source: string) =>
     useApi
       ? post<SavedPart[]>("/api/parts", { parts, source, importedBy: "" })
-      : delay(mockSave(parts)),
+      : delay(0).then(() => mockSave(parts)),
   searchParts: (f: PartFilter, sort: SortOrder = DEFAULT_SORT) =>
     useApi
       ? get<PartSummary[]>(`/api/parts?${partQuery(f, sort)}`)

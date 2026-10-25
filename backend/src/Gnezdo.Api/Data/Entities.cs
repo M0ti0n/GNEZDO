@@ -61,6 +61,8 @@ public class Part
     public string SourceFile { get; set; } = "";
     /// <summary>Version number: 1 when first saved, +1 on every replace or restore.</summary>
     public int Revision { get; set; } = 1;
+    /// <summary>Set when the part is deleted: it is hidden everywhere but kept, so jobs that use it stay intact.</summary>
+    public DateTimeOffset? DeletedAt { get; set; }
     public List<PartRevision> History { get; set; } = [];
     public int ImportBatchId { get; set; }
     public ImportBatch ImportBatch { get; set; } = null!;

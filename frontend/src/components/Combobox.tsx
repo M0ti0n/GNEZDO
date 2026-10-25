@@ -18,11 +18,16 @@ interface Props {
   readOnly?: boolean;
   /** Text for a typed value that is not in the list (it is still accepted). */
   newHint?: string;
+  /** Offer to save a typed value that is not in the list, e.g. "Save new project". */
+  onCreate?: (value: string) => Promise<void>;
+  createLabel?: string;
 }
 
 // Drop-down list that can also be typed in: typing narrows the choices, the arrow
 // shows them all, a value that is not in the list is accepted as a new one.
-export function Combobox({ value, onChange, options, placeholder, ariaLabel, suffix, numeric, className, readOnly, newHint = "new" }: Props) {
+export function Combobox({ value, onChange, options, placeholder, ariaLabel, suffix, numeric, className, readOnly, newHint = "new", onCreate, createLabel = "Save new" }: Props) {
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState(false);       // filter only after typing, not when just opened
   const [active, setActive] = useState(0);
@@ -36,6 +41,15 @@ export function Combobox({ value, onChange, options, placeholder, ariaLabel, suf
     return options.filter((o) => `${o.value} ${o.label ?? ""} ${o.hint ?? ""}`.toLowerCase().includes(q));
   }, [options, value, typed]);
   const exact = options.some((o) => o.value.toLowerCase() === value.trim().toLowerCase());
+  const canCreate = !!onCreate && value.trim() !== "" && !exact;
+  const create = async () => {
+    if (!onCreate || creating) return;
+    setCreating(true);
+    setCreateError(null);
+    try { await onCreate(value.trim()); setOpen(false); setTyped(false); }
+    catch (e) { setCreateError((e as Error).message); }
+    finally { setCreating(false); }
+  };
 
   // highlighted row: the current value, or nothing yet (the first arrow press goes to the first row)
   useEffect(() => { setActive(typed && shown.length ? 0 : shown.findIndex((o) => o.value === value)); }, [shown, value, open, typed]);
@@ -50,10 +64,10 @@ export function Combobox({ value, onChange, options, placeholder, ariaLabel, suf
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       if (!open) { setOpen(true); return; }
-      setActive((a) => Math.min(Math.max(a + (e.key === "ArrowDown" ? 1 : -1), 0), Math.max(shown.length - 1, 0)));
+      setActive((a) => Math.min(Math.max(a + (e.key === "ArrowDown" ? 1 : -1), 0), Math.max(shown.length - (canCreate ? 0 : 1), 0)));
     } else if (e.key === "Enter" && open) {
       e.preventDefault();
-      if (shown[active]) pick(shown[active]); else setOpen(false);
+      if (shown[active]) pick(shown[active]); else if (canCreate && active === shown.length) create(); else setOpen(false);
     } else if (e.key === "Escape" && open) {
       e.stopPropagation();   // close the list, not the dialog around it
       setOpen(false);
@@ -86,7 +100,15 @@ export function Combobox({ value, onChange, options, placeholder, ariaLabel, suf
               {o.hint && <small>{o.hint}</small>}
             </li>
           ))}
-          {shown.length === 0 && (
+          {canCreate && (
+            <li data-i={shown.length} role="option" aria-selected={false}
+              className={`combo-create${active === shown.length ? " is-active" : ""}`}
+              onMouseEnter={() => setActive(shown.length)} onClick={create}>
+              <span>{creating ? "Saving…" : <>+ {createLabel} “{value.trim()}”</>}</span>
+              {createError && <small className="combo-error">{createError}</small>}
+            </li>
+          )}
+          {shown.length === 0 && !canCreate && (
             <li className="combo-empty">{value.trim() && !exact ? <>“{value.trim()}” is not in the list: it will be {newHint}</> : "Nothing to choose yet"}</li>
           )}
         </ul>
