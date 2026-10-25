@@ -339,7 +339,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
 
   return (
     <div className="import">
-      <ImportToolStrip active={tool} onTool={onTool} />
+      <ImportToolStrip active={tool} onTool={onTool}
+        blocked={problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
         className={`canvas${tool && (MARKING[tool] || EDITING[tool] || tool === "line") ? " is-marking" : ""}`}

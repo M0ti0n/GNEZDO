@@ -359,7 +359,7 @@ export function App() {
         />
       )}
       {closingItem && (
-        <CloseUnsavedDialog name={closingItem.name}
+        <CloseUnsavedDialog name={closingItem.name} canProcess={statusOf(closingItem).openContours === 0}
           onCancel={() => setClosing(null)}
           onDiscard={() => closeWithoutSaving(closingItem.id)}
           onProcess={() => { setClosing(null); setProcessing(closingItem.id); }} />

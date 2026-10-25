@@ -4,13 +4,15 @@ interface Props {
   name: string;
   /** Opens the Process pop-up for the part (the tab stays open). */
   onProcess: () => void;
+  /** The part still has geometry problems, so it cannot be processed yet. */
+  canProcess: boolean;
   /** Closes the tab: the part goes back to how it was imported and its Undo history ends. */
   onDiscard: () => void;
   onCancel: () => void;
 }
 
 // Asked when the tab of an edited part is closed before the part is saved to the database.
-export function CloseUnsavedDialog({ name, onProcess, onDiscard, onCancel }: Props) {
+export function CloseUnsavedDialog({ name, onProcess, canProcess, onDiscard, onCancel }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
     window.addEventListener("keydown", onKey);
@@ -34,12 +36,14 @@ export function CloseUnsavedDialog({ name, onProcess, onDiscard, onCancel }: Pro
         <p id="cu-text" className="close-dlg-text">
           This part has changes that are not saved in the database. If you close it without saving, the changes
           are lost: the part goes back to how it was imported and Undo starts again.
+          {!canProcess && <><br /><b className="close-dlg-warn">It still has geometry problems, so it cannot be processed yet.</b></>}
         </p>
         <footer className="dlg-foot">
           <button type="button" className="btn btn-replace" onClick={onDiscard}>Close without saving</button>
           <span className="proc-missing" />
           <button type="button" className="btn btn-plain" onClick={onCancel} autoFocus>Cancel</button>
-          <button type="button" className="btn btn-save" onClick={onProcess}>Process…</button>
+          <button type="button" className="btn btn-save" onClick={onProcess} disabled={!canProcess}
+            title={canProcess ? undefined : "Fix the geometry problems first (Geometry check)"}>Process</button>
         </footer>
       </div>
     </div>
