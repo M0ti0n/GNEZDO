@@ -63,6 +63,18 @@ Sorting (parts and jobs): `sort=name|created|modified|material|thickness|project
 Date filters: `on:` that calendar day, `upTo:` up to and including that day, `from:` from that
 day on; days are shop days (Europe/Ljubljana).
 
-> **Database schema changed** (parts got `Geometry`, `Rotations`, `Mirror`, `SourceFile`). The database is still created with
-> `EnsureCreated`, which does not alter an existing database: drop the development database once so it is created again.
-> EF migrations come before real data goes in.
+
+## Database updates (migrations)
+
+The database is updated by EF Core migrations in `backend/src/Gnezdo.Api/Data/Migrations`.
+On start GNEZDO applies the migrations that have not run yet, each in a transaction; existing parts,
+jobs and projects are kept.
+
+- **Changing the model** (entities or `GnezdoDb`): add a migration in the same branch. Without the
+  dotnet tools on your PC: write the migration name (e.g. `AddSheetStock`) on the first line of
+  `backend/migration-request.txt` and push; the *EF migration* workflow adds it and pushes it back.
+  CI fails while the model has changes without a migration.
+- **Databases from before migrations** (made with `EnsureCreated`, test data only): GNEZDO stops with a
+  message on start. Drop that database once and start GNEZDO again.
+- **Before updating the server**: back up the database. To see the SQL first:
+  `dotnet ef migrations script --idempotent --project backend/src/Gnezdo.Api`.

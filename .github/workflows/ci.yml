@@ -45,6 +45,14 @@ jobs:
         run: |
           set -o pipefail
           dotnet build backend/Gnezdo.slnx -c Release 2>&1 | tee build.log
+      - name: Migrations up to date
+        run: |
+          # fails when the model changed without a migration (see .github/workflows/ef-migration.yml)
+          dotnet tool install --global dotnet-ef --version 10.0.14 >/dev/null
+          if ! dotnet ef migrations has-pending-model-changes --project backend/src/Gnezdo.Api --no-build -c Release > ef.log 2>&1; then
+            echo "::error title=Migrations::$(tail -5 ef.log | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
       - name: Package versions
         run: |
           # show which NuGet versions the build really used (top level), so pinning stays visible
