@@ -1080,3 +1080,14 @@ th.num .th-sort { flex-direction: row-reverse; }
 .gc-checks li { display: flex; align-items: center; gap: 6px; }
 .gc-checks li > .gc-row { flex: 1; min-width: 0; }
 .gc-remove { flex: none; }
+
+/* Sweep */
+.sweep-hl { fill: none; stroke: #e3262b; stroke-width: 5; stroke-dasharray: 8 5; opacity: .85; pointer-events: none; }
+.sweep-keep { fill: none; stroke: #1fa83a; stroke-width: 4; opacity: .6; pointer-events: none; }
+.pt-mark path { stroke: var(--ink-2); stroke-width: 1.6; }
+.pt-mark.is-swept path { stroke: #e3262b; stroke-width: 2; }
+.pt-mark.is-swept circle { fill: rgba(227, 38, 43, .1); stroke: #e3262b; stroke-width: 1.5; stroke-dasharray: 3 2; }
+.sweep-bar { display: inline-flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: 8px; background: #fff;
+  box-shadow: 0 2px 10px rgba(20, 50, 30, .16); font-size: 13.5px; font-weight: 600; color: var(--ink); pointer-events: auto; }
+.sweep-bar .btn { padding: 6px 12px; white-space: nowrap; }
+.sweep-bar { flex: none; white-space: nowrap; }

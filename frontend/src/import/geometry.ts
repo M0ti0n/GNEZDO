@@ -31,6 +31,8 @@ export interface Drawing {
   id: string;
   fileName: string;        // without extension, e.g. "1625-25-01_P1_3kos"
   entities: Entity[];
+  /** Loose points from the file (DXF POINT): never cut; shown so Sweep can remove them. */
+  points?: { id: string; p: Pt; layer?: string }[];
 }
 
 export interface Box { minX: number; minY: number; maxX: number; maxY: number }
@@ -338,6 +340,8 @@ function marksOutsidePart(entities: Entity[], contours: Contour[]): string[][] {
 
 /** Lines shorter than this are too small to cut and only confuse the contours. */
 export const TINY_MM = JOIN_TOLERANCE_MM;
+/** A line closer than this to another line, along its whole length, lies on top of it. */
+export const OVERLAP_MM = 0.1;
 
 /** Length of an entity along its path. */
 export function lengthOf(e: Entity): number {
@@ -353,10 +357,24 @@ const distPtSeg = (p: Pt, a: Pt, b: Pt) => {
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 };
 
-/** Does `a` lie along `b` for its whole length (the same line drawn twice, or a piece on top of it)? */
+/**
+ * Does `a` lie along `b` for its whole length (the same line drawn twice, or a piece on top of it),
+ * within OVERLAP_MM? For lines, `a` must also overlap `b` along its length, so the short pieces of
+ * a curve drawn as many little lines are not taken for doubles of their neighbours.
+ */
 function coveredBy(a: Entity, b: Entity): boolean {
-  const T = JOIN_TOLERANCE_MM;
-  if (a.kind === "line" && b.kind === "line") return distPtSeg(a.a, b.a, b.b) <= T && distPtSeg(a.b, b.a, b.b) <= T;
+  const T = OVERLAP_MM;
+  if (a.kind === "line" && b.kind === "line") {
+    if (distPtSeg(a.a, b.a, b.b) > T || distPtSeg(a.b, b.a, b.b) > T) return false;
+    const dx = b.b.x - b.a.x, dy = b.b.y - b.a.y, l2 = dx * dx + dy * dy;
+    if (!l2) return false;
+    const t = (p: Pt) => ((p.x - b.a.x) * dx + (p.y - b.a.y) * dy) / l2;
+    const lo = Math.max(0, Math.min(t(a.a), t(a.b))), hi = Math.min(1, Math.max(t(a.a), t(a.b)));
+    const overlap = Math.max(0, hi - lo) * Math.sqrt(l2);
+    // nearly all of it must run along b (for short pieces the 0.1 mm allowance alone is not enough)
+    const la = lengthOf(a);
+    return overlap >= la - T && overlap >= la * 0.9;
+  }
   if ((a.kind === "arc" || a.kind === "circle") && (b.kind === "arc" || b.kind === "circle")) {
     if (Math.hypot(a.c.x - b.c.x, a.c.y - b.c.y) > T || Math.abs(a.r - b.r) > T) return false;
     if (b.kind === "circle") return true;
@@ -373,7 +391,7 @@ function coveredBy(a: Entity, b: Entity): boolean {
 }
 
 /**
- * Ids of lines that are tiny (shorter than 0.01 mm) or lie on top of another line of the same
+ * Ids of lines that are tiny (shorter than 0.01 mm) or lie on top of another line (within 0.1 mm) of the same
  * kind (cutting, tracing or open cut). Of two identical lines only one is listed.
  */
 export function findDoubles(entities: Entity[]): string[] {
@@ -382,7 +400,7 @@ export function findDoubles(entities: Entity[]): string[] {
     if (lengthOf(e) < TINY_MM) { out.add(e.id); return false; }
     return true;
   });
-  const T = JOIN_TOLERANCE_MM;
+  const T = OVERLAP_MM;
   const boxes = live.map(boxOf);
   for (let i = 0; i < live.length; i++) {
     for (let j = 0; j < live.length; j++) {

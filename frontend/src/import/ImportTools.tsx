@@ -167,6 +167,21 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     icon: <Ico><Nozzle beam={R} /><path d="M7 41L42 32" stroke={R} strokeWidth="4" /></Ico>,
   },
   {
+    // Fab's sketch: a rake (broom) sweeping, red line underneath
+    id: "sweep", label: "Sweep",
+    icon: (
+      <Ico>
+        <path d="M37 4L27.5 27" stroke={K} strokeWidth="3.6" />
+        <path d="M15.5 25.5L37.5 33.5" stroke={K} strokeWidth="4.2" />
+        {[0, 1, 2, 3, 4, 5, 6].map((k) => {
+          const x = 15.2 + k * 3.25, y = 29.6 + k * 1.18;
+          return <path key={k} d={`M${x} ${y}L${x - 1.4} ${y + 3.6}`} stroke={K} strokeWidth="1.9" />;
+        })}
+        <path d="M9 42H36" stroke={R} strokeWidth="3.2" strokeLinecap="butt" />
+      </Ico>
+    ),
+  },
+  {
     id: "checkLines", label: "Check lines",
     icon: (
       <Ico>
