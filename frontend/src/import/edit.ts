@@ -1,0 +1,188 @@
+import { arcSweep, pointsAlong, type Entity, type Pt } from "./geometry";
+
+// Trim and Extend like AutoCAD / GstarCAD in quick mode: every other line is a cutting edge
+// (Trim) or a boundary (Extend), nothing has to be picked first.
+//   Trim:   the piece of the clicked object between its nearest crossings is removed;
+//           an object that crosses nothing is deleted.
+//   Extend: the clicked object grows from the end nearest the click to the next object it meets.
+// Lines, arcs and circles (trim only) are supported; splines are not edited.
+
+export type EditResult =
+  | { ok: true; entities: Entity[]; removed: Entity[]; added: Entity[]; message: string }
+  | { ok: false; message: string };
+
+type Carrier = { kind: "line"; a: Pt; b: Pt } | { kind: "circle"; c: Pt; r: number };
+/** Finite pieces of an entity that can stop a trim or an extend. */
+type Piece = { kind: "seg"; a: Pt; b: Pt } | { kind: "arc"; c: Pt; r: number; start: number; end: number } | { kind: "circle"; c: Pt; r: number };
+
+const EPS_MM = 1e-4;
+const rad = (d: number) => (d * Math.PI) / 180;
+const deg = (r: number) => (r * 180) / Math.PI;
+const norm = (d: number) => ((d % 360) + 360) % 360;
+const angleAt = (c: Pt, p: Pt) => norm(deg(Math.atan2(p.y - c.y, p.x - c.x)));
+const onCircle = (c: Pt, r: number, d: number): Pt => ({ x: c.x + r * Math.cos(rad(d)), y: c.y + r * Math.sin(rad(d)) });
+const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
+
+let seq = 0;
+const newId = (base: string) => `${base}.${++seq}`;
+
+function piecesOf(e: Entity): Piece[] {
+  switch (e.kind) {
+    case "line": return [{ kind: "seg", a: e.a, b: e.b }];
+    case "arc": return [{ kind: "arc", c: e.c, r: e.r, start: e.start, end: e.end }];
+    case "circle": return [{ kind: "circle", c: e.c, r: e.r }];
+    case "spline": {
+      const p = pointsAlong(e);
+      return p.slice(1).map((q, i) => ({ kind: "seg", a: p[i], b: q }));
+    }
+  }
+}
+
+/** Points where a line through a-b (endless) meets a circle. */
+function lineCircle(a: Pt, b: Pt, c: Pt, r: number): Pt[] {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const fx = a.x - c.x, fy = a.y - c.y;
+  const A = dx * dx + dy * dy, B = 2 * (fx * dx + fy * dy), C = fx * fx + fy * fy - r * r;
+  const disc = B * B - 4 * A * C;
+  if (A === 0 || disc < -1e-9) return [];
+  const sq = Math.sqrt(Math.max(disc, 0));
+  const ts = disc <= 1e-9 ? [-B / (2 * A)] : [(-B - sq) / (2 * A), (-B + sq) / (2 * A)];
+  return ts.map((t) => ({ x: a.x + t * dx, y: a.y + t * dy }));
+}
+
+function circleCircle(c1: Pt, r1: number, c2: Pt, r2: number): Pt[] {
+  const d = dist(c1, c2);
+  if (d < 1e-9 || d > r1 + r2 + 1e-9 || d < Math.abs(r1 - r2) - 1e-9) return [];
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+  const h = Math.sqrt(Math.max(r1 * r1 - a * a, 0));
+  const mx = c1.x + (a * (c2.x - c1.x)) / d, my = c1.y + (a * (c2.y - c1.y)) / d;
+  const ox = (h * (c2.y - c1.y)) / d, oy = (h * (c2.x - c1.x)) / d;
+  return h < 1e-9 ? [{ x: mx, y: my }] : [{ x: mx + ox, y: my - oy }, { x: mx - ox, y: my + oy }];
+}
+
+const segParam = (a: Pt, b: Pt, p: Pt) => {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+  return l2 === 0 ? 0 : ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2;
+};
+
+/** Is the point (already on the piece's carrier) within the piece? */
+function within(piece: Piece, p: Pt): boolean {
+  switch (piece.kind) {
+    case "seg": { const len = dist(piece.a, piece.b) || 1; const s = segParam(piece.a, piece.b, p); return s >= -EPS_MM / len && s <= 1 + EPS_MM / len; }
+    case "arc": return arcSweep(piece.start, angleAt(piece.c, p)) <= arcSweep(piece.start, piece.end) + deg(EPS_MM / piece.r) || dist(p, onCircle(piece.c, piece.r, piece.start)) < EPS_MM;
+    case "circle": return true;
+  }
+}
+
+/** Where the carrier (endless line or full circle) meets a finite piece. */
+function hits(carrier: Carrier, piece: Piece): Pt[] {
+  let raw: Pt[];
+  if (carrier.kind === "line") {
+    if (piece.kind === "seg") {
+      const { a, b } = carrier, { a: q1, b: q2 } = piece;
+      const d = (b.x - a.x) * (q2.y - q1.y) - (b.y - a.y) * (q2.x - q1.x);
+      if (Math.abs(d) < 1e-12) return [];
+      const s = ((q1.x - a.x) * (b.y - a.y) - (q1.y - a.y) * (b.x - a.x)) / d;
+      raw = [{ x: q1.x + s * (q2.x - q1.x), y: q1.y + s * (q2.y - q1.y) }];
+    } else raw = lineCircle(carrier.a, carrier.b, piece.c, piece.r);
+  } else {
+    raw = piece.kind === "seg" ? lineCircle(piece.a, piece.b, carrier.c, carrier.r) : circleCircle(carrier.c, carrier.r, piece.c, piece.r);
+  }
+  return raw.filter((p) => within(piece, p));
+}
+
+/** Every point where the target's carrier meets another entity. */
+function crossings(target: Entity, carrier: Carrier, all: Entity[]): Pt[] {
+  return all.filter((e) => e.id !== target.id).flatMap((e) => piecesOf(e).flatMap((pc) => hits(carrier, pc)));
+}
+
+const arcOf = (base: Entity, c: Pt, r: number, start: number, end: number): Entity =>
+  ({ id: newId(base.id), kind: "arc", c, r, start: norm(start), end: norm(end), role: base.role, layer: base.layer, color: base.color, rgb: base.rgb });
+const lineOf = (base: Entity, a: Pt, b: Pt): Entity =>
+  ({ id: newId(base.id), kind: "line", a, b, role: base.role, layer: base.layer, color: base.color, rgb: base.rgb });
+
+const replace = (all: Entity[], id: string, by: Entity[]) => all.flatMap((e) => (e.id === id ? by : [e]));
+
+/** Trim the clicked object at its nearest crossings around the click point p. */
+export function trimAt(all: Entity[], id: string, p: Pt): EditResult {
+  const e = all.find((x) => x.id === id);
+  if (!e) return { ok: false, message: "Nothing to trim here" };
+  if (e.kind === "spline") return { ok: false, message: "Splines cannot be trimmed" };
+
+  if (e.kind === "line") {
+    const len = dist(e.a, e.b);
+    const eps = EPS_MM / (len || 1);
+    const ts = crossings(e, { kind: "line", a: e.a, b: e.b }, all).map((q) => segParam(e.a, e.b, q)).filter((t) => t > eps && t < 1 - eps);
+    const tc = Math.min(Math.max(segParam(e.a, e.b, p), 0), 1);
+    const lo = Math.max(-Infinity, ...ts.filter((t) => t < tc)), hi = Math.min(Infinity, ...ts.filter((t) => t > tc));
+    const at = (t: number): Pt => ({ x: e.a.x + t * (e.b.x - e.a.x), y: e.a.y + t * (e.b.y - e.a.y) });
+    const keep: Entity[] = [];
+    if (Number.isFinite(lo)) keep.push(lineOf(e, e.a, at(lo)));
+    if (Number.isFinite(hi)) keep.push(lineOf(e, at(hi), e.b));
+    const removed = lineOf(e, Number.isFinite(lo) ? at(lo) : e.a, Number.isFinite(hi) ? at(hi) : e.b);
+    return { ok: true, entities: replace(all, id, keep), removed: [removed], added: [],
+      message: keep.length ? "Line trimmed" : "Line deleted (it crosses nothing)" };
+  }
+
+  if (e.kind === "arc") {
+    const sweep = arcSweep(e.start, e.end);
+    const eps = deg(EPS_MM / e.r);
+    const us = crossings(e, { kind: "circle", c: e.c, r: e.r }, all)
+      .map((q) => arcSweep(e.start, angleAt(e.c, q)) % 360).filter((u) => u > eps && u < sweep - eps);
+    const uc = Math.min(arcSweep(e.start, angleAt(e.c, p)) % 360, sweep);
+    const lo = Math.max(-Infinity, ...us.filter((u) => u < uc)), hi = Math.min(Infinity, ...us.filter((u) => u > uc));
+    const keep: Entity[] = [];
+    if (Number.isFinite(lo)) keep.push(arcOf(e, e.c, e.r, e.start, e.start + lo));
+    if (Number.isFinite(hi)) keep.push(arcOf(e, e.c, e.r, e.start + hi, e.end));
+    const removed = arcOf(e, e.c, e.r, e.start + (Number.isFinite(lo) ? lo : 0), e.start + (Number.isFinite(hi) ? hi : sweep));
+    return { ok: true, entities: replace(all, id, keep), removed: [removed], added: [],
+      message: keep.length ? "Arc trimmed" : "Arc deleted (it crosses nothing)" };
+  }
+
+  // circle: needs two crossings; the arc between them that holds the click is removed
+  const angles = [...new Set(crossings(e, { kind: "circle", c: e.c, r: e.r }, all).map((q) => Math.round(angleAt(e.c, q) * 1e6) / 1e6))];
+  if (angles.length === 0) return { ok: true, entities: replace(all, id, []), removed: [e], added: [], message: "Circle deleted (it crosses nothing)" };
+  if (angles.length === 1) return { ok: false, message: "A circle needs two crossings to be trimmed" };
+  const ac = angleAt(e.c, p);
+  const after = angles.reduce((best, a) => (arcSweep(ac, a) % 360 < arcSweep(ac, best) % 360 ? a : best));
+  const before = angles.reduce((best, a) => (arcSweep(a, ac) % 360 < arcSweep(best, ac) % 360 ? a : best));
+  return { ok: true, entities: replace(all, id, [arcOf(e, e.c, e.r, after, before)]),
+    removed: [arcOf(e, e.c, e.r, before, after)], added: [], message: "Circle trimmed" };
+}
+
+/** Extend the clicked object from the end nearest p to the next object it meets. */
+export function extendAt(all: Entity[], id: string, p: Pt): EditResult {
+  const e = all.find((x) => x.id === id);
+  if (!e) return { ok: false, message: "Nothing to extend here" };
+  if (e.kind === "circle") return { ok: false, message: "A circle cannot be extended" };
+  if (e.kind === "spline") return { ok: false, message: "Splines cannot be extended" };
+
+  if (e.kind === "line") {
+    const len = dist(e.a, e.b);
+    const eps = EPS_MM / (len || 1);
+    const fromEnd = segParam(e.a, e.b, p) >= 0.5;               // the end nearer the click
+    const ts = crossings(e, { kind: "line", a: e.a, b: e.b }, all).map((q) => segParam(e.a, e.b, q));
+    const at = (t: number): Pt => ({ x: e.a.x + t * (e.b.x - e.a.x), y: e.a.y + t * (e.b.y - e.a.y) });
+    const beyond = fromEnd ? ts.filter((t) => t > 1 + eps) : ts.filter((t) => t < -eps);
+    if (!beyond.length) return { ok: false, message: "No line to extend to in that direction" };
+    const t = fromEnd ? Math.min(...beyond) : Math.max(...beyond);
+    const next = fromEnd ? { ...e, b: at(t) } : { ...e, a: at(t) };
+    const grow = Math.abs(t - (fromEnd ? 1 : 0)) * len;
+    return { ok: true, entities: all.map((x) => (x.id === id ? next : x)), removed: [],
+      added: [lineOf(e, fromEnd ? e.b : e.a, at(t))], message: `Line extended by ${grow.toFixed(grow < 10 ? 2 : 1)} mm` };
+  }
+
+  // arc: grows along its circle, never to a full circle
+  const sweep = arcSweep(e.start, e.end);
+  const eps = deg(EPS_MM / e.r);
+  const fromEnd = arcSweep(e.start, angleAt(e.c, p)) % 360 >= sweep / 2;
+  const angles = crossings(e, { kind: "circle", c: e.c, r: e.r }, all).map((q) => angleAt(e.c, q));
+  const room = 360 - sweep - eps;
+  const ds = angles.map((a) => (fromEnd ? arcSweep(e.end, a) % 360 : arcSweep(a, e.start) % 360)).filter((d) => d > eps && d < room);
+  if (!ds.length) return { ok: false, message: "No line to extend to in that direction" };
+  const d = Math.min(...ds);
+  const next = fromEnd ? { ...e, end: norm(e.end + d) } : { ...e, start: norm(e.start - d) };
+  return { ok: true, entities: all.map((x) => (x.id === id ? next : x)), removed: [],
+    added: [fromEnd ? arcOf(e, e.c, e.r, e.end, e.end + d) : arcOf(e, e.c, e.r, e.start - d, e.start)],
+    message: `Arc extended by ${(rad(d) * e.r).toFixed(1)} mm` };
+}
