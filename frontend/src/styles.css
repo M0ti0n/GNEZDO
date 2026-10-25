@@ -736,3 +736,49 @@ th.num .th-sort { flex-direction: row-reverse; }
 .v-processed .imp-notes::after { content: ""; }
 .imp-remove { align-self: center; width: 26px; height: 26px; margin-right: 4px; font-size: 18px; color: var(--ink-3); opacity: 0; }
 .imp-row:hover .imp-remove, .imp-remove:focus-visible { opacity: 1; }
+
+/* Rules inside the import Properties */
+.imp-rules { display: grid; gap: 6px; padding: 8px 10px; border-radius: 8px; background: var(--sheet); }
+.imp-rules-title { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.imp-rules-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.imp-rules-label { width: 68px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.imp-rules-note { font-size: 12px; color: var(--ink-3); }
+.chk { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.chk input { width: 16px; height: 16px; margin: 0; accent-color: var(--green); }
+
+/* Rules page (GNEZDO menu -> Rules) */
+.settings { display: grid; grid-template-columns: 220px 1fr; min-height: 100%; }
+.settings-nav { display: flex; flex-direction: column; gap: 2px; padding: 22px 12px; background: var(--plate); border-right: 1px solid var(--line); }
+.settings-nav h1 { font-size: 24px; padding: 0 10px 12px; }
+.settings-link { text-align: left; padding: 9px 12px; border-radius: 6px; font-weight: 600; color: var(--ink-2); }
+.settings-link:hover:not(:disabled) { background: var(--sheet); }
+.settings-link.is-on { background: var(--green-tint); color: var(--green-ink); box-shadow: inset 3px 0 0 var(--green); }
+.settings-link:disabled { opacity: .45; }
+.settings-main { max-width: 760px; padding: 26px 34px 40px; display: grid; gap: 14px; align-content: start; }
+.settings-head h2 { font-size: 24px; }
+.settings-head p { margin: 6px 0 0; color: var(--ink-2); }
+.rule { background: var(--plate); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.rule h3 { margin: 0; font-size: 15px; }
+.rule-check { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+.rule-check input { width: 19px; height: 19px; margin: 1px 0 0; accent-color: var(--green); flex: none; }
+.rule-check b { display: block; font-size: 15px; }
+.rule-check small { display: block; margin-top: 3px; font-size: 13.5px; color: var(--ink-2); }
+.rule-help { margin: 4px 0 0; font-size: 13.5px; color: var(--ink-2); }
+.rule-help code { font-size: 12.5px; background: var(--sheet); padding: 1px 4px; border-radius: 3px; }
+.rule-row { display: flex; gap: 10px; margin-top: 12px; }
+.chk-box { padding: 7px 14px; border: 1.5px solid var(--line); border-radius: 8px; font-weight: 600; }
+.chk-box:has(input:checked) { border-color: var(--green); background: var(--green-tint); color: var(--green-ink); }
+.rule-sub { margin: 12px 0 0 31px; display: grid; gap: 8px; }
+.rule-field { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.colour-map { list-style: none; padding: 0; }
+.colour-map li { display: grid; grid-template-columns: 22px 130px 22px auto; align-items: center; gap: 8px; font-size: 14px; }
+.colour-map i { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, .15); }
+.colour-other i { background: repeating-linear-gradient(45deg, #ddd 0 4px, #fff 4px 8px); }
+.colour-map .arrow { color: var(--ink-3); }
+.colour-map b.role-trace { color: var(--ln-trace); }
+.colour-map b.role-openCut { color: var(--ln-open-done); }
+.rule-fixed { background: transparent; border-style: dashed; }
+.rule-fixed ul { margin: 8px 0 0; padding-left: 20px; color: var(--ink-2); font-size: 14px; display: grid; gap: 4px; }
+.settings-foot { font-size: 13px; color: var(--ink-3); }
+/* tracing / open cut lines that leave the part: dashed red over their colour */
+.ent.role-trace.is-flagged, .ent.role-openCut.is-flagged { stroke: var(--ln-bad); stroke-dasharray: 6 4; }

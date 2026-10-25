@@ -3,7 +3,9 @@ import { api } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
 import { sampleDrawings } from "./import/sampleDrawing";
-import { EMPTY_PROPERTIES, newItem, readItem, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
+import { mirrorFor, newItem, propertiesFrom, readItem, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
+import { applyRules, loadRules, saveRules, type ImportRules } from "./import/rules";
+import { RulesPage } from "./pages/RulesPage";
 import { quantityFromName } from "./import/geometry";
 import { HomePage, type HomeAction } from "./pages/HomePage";
 import { JobPage } from "./pages/JobPage";
@@ -22,7 +24,9 @@ export function App() {
   const [jobParts, setJobParts] = useState<Record<string, JobPart[] | undefined>>({});
   // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
   const [imports, setImports] = useState<ImportItem[]>([]);
-  const [importProps, setImportProps] = useState<BatchProperties>(EMPTY_PROPERTIES);
+  const [rules, setRulesState] = useState<ImportRules>(loadRules);
+  const setRules = (r: ImportRules) => { setRulesState(r); saveRules(r); };
+  const [importProps, setImportProps] = useState<BatchProperties>(() => propertiesFrom(loadRules()));
   const patchItem = (id: string, patch: Partial<ImportItem>) =>
     setImports((list) => list.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   const [toast, setToast] = useState<string | null>(null);
@@ -74,7 +78,7 @@ export function App() {
   const addFiles = async (files: File[], openFirst: boolean) => {
     const fresh = files.map((f) => ({ file: f, item: newItem(f) }));
     setImports((list) => [...list, ...fresh.map((x) => x.item)]);
-    const read = await Promise.all(fresh.map((x) => readItem(x.item, x.file)));
+    const read = await Promise.all(fresh.map((x) => readItem(x.item, x.file, rules)));
     setImports((list) => list.map((i) => read.find((r) => r.id === i.id) ?? i));
     if (openFirst && read[0]?.state === "ready") openItem(read[0]);
     const failed = read.filter((r) => r.state === "failed").length;
@@ -86,6 +90,7 @@ export function App() {
   const importPanel = {
     items: imports,
     properties: importProps,
+    rules,
     onProperties: setImportProps,
     onFiles: addFiles,
     onCheckLines: () => {
@@ -96,7 +101,9 @@ export function App() {
     },
     onProcessAll: () => {
       const ids = imports.filter((i) => statusOf(i).verdict === "ok").map((i) => i.id);
-      setImports((list) => list.map((i) => (ids.includes(i.id) ? { ...i, processed: true } : i)));
+      setImports((list) => list.map((i) => (ids.includes(i.id)
+        ? { ...i, processed: true, applied: { rotations: [...importProps.rotations], mirror: mirrorFor(i, importProps, rules) } }
+        : i)));
       setToast(`Processed ${ids.length} ${ids.length === 1 ? "part" : "parts"}`);
     },
     onOpen: (id: string) => { const it = imports.find((i) => i.id === id); if (it) openItem(it); },
@@ -106,7 +113,8 @@ export function App() {
       .filter((d) => !list.some((i) => i.id === d.id))
       .map((d): ImportItem => ({
         id: d.id, fileName: `${d.fileName}.dxf`, name: d.fileName, qty: quantityFromName(d.fileName),
-        state: "ready", drawing: d, checked: false, processed: false,
+        state: "ready", drawing: { ...d, entities: d.entities.some((e) => e.role) ? d.entities : applyRules(d.entities, rules) },
+        checked: false, processed: false,
       }))]),
     openId: activeTab?.kind === "drawing" ? activeTab.drawingId ?? null : null,
   };
@@ -170,8 +178,8 @@ export function App() {
           importPanel={importPanel}
         />
         <div className="workspace">
-          {active.kind !== "jobSearch" && active.kind !== "drawing" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
-          <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" ? " page-flush" : ""}`} aria-label={active.title}>
+          {active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
+          <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" || active.kind === "rules" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && (
               <JobPage
@@ -194,9 +202,20 @@ export function App() {
                 drawing={shownItem.drawing}
                 processed={shownItem.processed}
                 properties={importProps}
-                onChange={(drawing, processed) => patchItem(shownItem.id, { drawing, processed })} />
+                nestRules={shownItem.processed && shownItem.applied
+                  ? shownItem.applied
+                  : { rotations: importProps.rotations, mirror: mirrorFor(shownItem, importProps, rules) }}
+                onChange={(drawing, processed) => patchItem(shownItem.id, {
+                  drawing, processed,
+                  applied: processed ? { rotations: [...importProps.rotations], mirror: mirrorFor({ ...shownItem, drawing }, importProps, rules) } : undefined,
+                })} />
             )}
-            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && <PlaceholderPage tab={active} />}
+            {active.kind === "rules" && <RulesPage rules={rules} onChange={(r) => {
+              setRules(r);
+              // a list that has not been touched yet follows the new defaults
+              if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut }));
+            }} />}
+            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && <PlaceholderPage tab={active} />}
           </main>
         </div>
       </div>

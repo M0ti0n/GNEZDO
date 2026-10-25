@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Tab, TabKind } from "../state/tabs";
 import { GnezdoIcon } from "../components/GnezdoIcon";
+import { IconRules } from "../components/Icons";
 import {
   IconClose, IconLibrary, IconNewJob, IconProject, IconSettings, IconStock, IconTechnology,
 } from "../components/Icons";
 
-export type MenuId = "settings" | "technology" | "stock" | "projects";
+export type MenuId = "settings" | "rules" | "technology" | "stock" | "projects";
 
 const MENU: { id: MenuId; label: string; icon: ReactNode }[] = [
   { id: "settings", label: "Settings", icon: <IconSettings size={18} /> },
+  { id: "rules", label: "Rules", icon: <IconRules size={18} /> },
   { id: "technology", label: "Technology table", icon: <IconTechnology size={18} /> },
   { id: "stock", label: "Stock & remnants", icon: <IconStock size={18} /> },
   { id: "projects", label: "Projects", icon: <IconProject size={18} /> },

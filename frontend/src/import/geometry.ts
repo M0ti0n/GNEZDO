@@ -18,7 +18,11 @@ export type Entity = (
   | { id: string; kind: "circle"; c: Pt; r: number }
   /** Drawn through its fit points; "sampled" = points already on the curve, joined by straight lines. */
   | { id: string; kind: "spline"; fit: Pt[]; sampled?: boolean }
-) & { role?: Role; layer?: string };   // role missing = cut
+) & {
+  role?: Role;     // missing = cut
+  layer?: string;
+  color?: number;  // AutoCAD colour index, resolved (no BYLAYER / BYBLOCK): 1 red, 3 green, 4 cyan, 7 black/white
+};
 
 export const roleOf = (e: Entity): Role => e.role ?? "cut";
 
@@ -39,7 +43,7 @@ export interface Contour {
   outer: boolean;          // the largest contour is the outside of the part
 }
 
-export type CheckId = "insideOpen" | "outsideOpen" | "splines";
+export type CheckId = "insideOpen" | "outsideOpen" | "outsidePart" | "splines";
 
 export interface CheckResult {
   id: CheckId;
@@ -194,6 +198,7 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   const openInside = contours.filter((c) => !c.outer && !c.closed);
   const openOutside = contours.filter((c) => c.outer && !c.closed);
   const splines = entities.filter((e) => e.kind === "spline");
+  const outsidePart = marksOutsidePart(entities, contours);
 
   const checks: CheckResult[] = [
     {
@@ -203,6 +208,10 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
     {
       id: "outsideOpen", label: "Outside contour open", count: openOutside.length,
       entityIds: openOutside.flatMap((c) => c.entityIds), points: openOutside.flatMap((c) => c.openEnds),
+    },
+    {
+      id: "outsidePart", label: "Tracing or open cut outside part", count: outsidePart.length,
+      entityIds: outsidePart.flat(), points: [],
     },
     { id: "splines", label: "Splines", count: splines.length, entityIds: splines.map((e) => e.id), points: [] },
   ];
@@ -225,4 +234,72 @@ export function quantityFromName(fileName: string): number | null {
 /** Ids of every entity joined end to end with the given one (the whole chain or loop). */
 export function chainOf(entities: Entity[], id: string): string[] {
   return buildContours(entities).find((c) => c.entityIds.includes(id))?.entityIds ?? [id];
+}
+
+/* ---- Where tracing and open cut lines may be ----------------------------------------- */
+
+/** Points along an entity, close enough together to follow arcs and splines. */
+export function pointsAlong(e: Entity, arcStepDeg = 7.5): Pt[] {
+  const on = (c: Pt, r: number, d: number): Pt => ({ x: c.x + r * Math.cos(rad(d)), y: c.y + r * Math.sin(rad(d)) });
+  switch (e.kind) {
+    case "line": return Array.from({ length: 9 }, (_, i) => ({ x: e.a.x + ((e.b.x - e.a.x) * i) / 8, y: e.a.y + ((e.b.y - e.a.y) * i) / 8 }));
+    case "circle": return Array.from({ length: 49 }, (_, i) => on(e.c, e.r, i * 7.5));
+    case "arc": {
+      const sweep = arcSweep(e.start, e.end);
+      const n = Math.max(2, Math.ceil(sweep / arcStepDeg));
+      return Array.from({ length: n + 1 }, (_, i) => on(e.c, e.r, e.start + (sweep * i) / n));
+    }
+    case "spline": return e.fit;
+  }
+}
+
+type Seg = [Pt, Pt];
+const segmentsOf = (c: Contour, byId: Map<string, Entity>): Seg[] =>
+  c.entityIds.flatMap((id) => {
+    const p = pointsAlong(byId.get(id)!);
+    return p.slice(1).map((q, i): Seg => [p[i], q]);
+  });
+
+/** Even-odd test; segment order does not matter. */
+const inside = (p: Pt, segs: Seg[]) => {
+  let n = 0;
+  for (const [a, b] of segs)
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < a.x + ((p.y - a.y) * (b.x - a.x)) / (b.y - a.y)) n++;
+  return n % 2 === 1;
+};
+
+const distToSeg = (p: Pt, [a, b]: Seg) => {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+};
+
+/** Points this close to a cutting contour count as on it (a slit may start at the edge). */
+const ON_EDGE_MM = 0.05;
+
+/**
+ * Tracing and open cut lines must lie on the material: inside the outside contour and
+ * not inside a window. A point is on material when an odd number of closed contours
+ * contain it (outside = 1, inside a window = 2, on an island in a window = 3 ...).
+ * Returns the chains that leave the material, as entity ids.
+ */
+function marksOutsidePart(entities: Entity[], contours: Contour[]): string[][] {
+  // Without a closed outside there is no part to be inside of; the open outside is reported already.
+  if (!contours.some((c) => c.outer && c.closed)) return [];
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const closed = contours.filter((c) => c.closed).map((c) => ({ box: c.box, segs: segmentsOf(c, byId) }));
+  if (!closed.length) return [];
+  const onMaterial = (p: Pt) => {
+    let n = 0;
+    for (const c of closed) {
+      if (p.x < c.box.minX - ON_EDGE_MM || p.x > c.box.maxX + ON_EDGE_MM || p.y < c.box.minY - ON_EDGE_MM || p.y > c.box.maxY + ON_EDGE_MM) continue;
+      if (c.segs.some((s) => distToSeg(p, s) <= ON_EDGE_MM)) return true;
+      if (inside(p, c.segs)) n++;
+    }
+    return n % 2 === 1;
+  };
+  const marks = entities.filter((e) => roleOf(e) !== "cut");
+  return buildContours(marks)
+    .filter((chain) => chain.entityIds.some((id) => !pointsAlong(byId.get(id)!).every(onMaterial)))
+    .map((chain) => chain.entityIds);
 }

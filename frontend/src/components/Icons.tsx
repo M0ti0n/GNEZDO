@@ -74,3 +74,7 @@ export const IconProject = (p: P) => (
 export const IconClock = (p: P) => (
   <Svg {...p}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></Svg>
 );
+// Ruler with a tick list: rules
+export const IconRules = (p: P) => (
+  <Svg {...p}><path d="M4 5h16M4 10h10M4 15h7" /><path d="m14 17 2 2 4-5" /></Svg>
+);
