@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { api, type PartFacets } from "../api/api";
+import { useRef, useState } from "react";
+import { Combobox } from "../components/Combobox";
+import { usePickLists } from "../components/pickLists";
 import { PanelHead } from "../components/FilterFields";
 import { IMPORT_TOOLS } from "../import/ImportTools";
 import { isDrawingFile, statusOf, type BatchProperties, type ImportItem, type Verdict } from "../import/batch";
@@ -48,8 +49,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
   const [mode, setMode] = useState<Mode>("bulk");
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const [facets, setFacets] = useState<PartFacets>({ materials: [], thicknesses: [] });
-  useEffect(() => { api.partFacets().then(setFacets); }, []);
+  const lists = usePickLists(p.properties.material);
 
   const take = (list: FileList | null) => {
     const files = [...(list ?? [])].filter(isDrawingFile);
@@ -73,17 +73,17 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
     : !propsSet ? "Set material and thickness, then Process all"
     : toCheck ? `Process all saves the ${toProcess} green; the red stay in the list` : "";
   const [needProps, setNeedProps] = useState(false);
-  const materialRef = useRef<HTMLInputElement>(null);
   const processAll = () => {
-    if (!propsSet) { setNeedProps(true); materialRef.current?.focus(); return; }
+    if (!propsSet) {
+      setNeedProps(true);
+      document.querySelector<HTMLInputElement>(`.imp-props input[aria-label="${p.properties.material.trim() ? "Thickness in mm" : "Material"}"]`)?.focus();
+      return;
+    }
     setNeedProps(false);
     p.onProcessAll();
   };
 
   const setProp = (patch: Partial<BatchProperties>) => p.onProperties({ ...p.properties, ...patch });
-  const thicknesses = [...new Set(facets.thicknesses
-    .filter((t) => !p.properties.material || t.material === p.properties.material)
-    .map((t) => t.thicknessMm))].sort((a, b) => a - b);
 
   return (
     <>
@@ -120,17 +120,15 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
         <section className="imp-props" aria-label="Properties for all parts">
           <h3><span className="imp-props-icon">{icon("properties")}</span>Properties for all parts</h3>
           <div className="filter-pair">
-            <input ref={materialRef} className={`field${needProps && !p.properties.material.trim() ? " is-required" : ""}`}
-              list="imp-materials" value={p.properties.material} placeholder="Material"
-              aria-label="Material" onChange={(e) => setProp({ material: e.target.value })} />
-            <datalist id="imp-materials">{facets.materials.map((m) => <option key={m} value={m} />)}</datalist>
-            <input className={`field${needProps && p.properties.thicknessMm === "" ? " is-required" : ""}`}
-              list="imp-thicknesses" type="number" min="0" step="0.1" value={p.properties.thicknessMm}
-              placeholder="Thickness mm" aria-label="Thickness in mm" onChange={(e) => setProp({ thicknessMm: e.target.value })} />
-            <datalist id="imp-thicknesses">{thicknesses.map((t) => <option key={t} value={t} />)}</datalist>
+            <Combobox className={needProps && !p.properties.material.trim() ? "is-required" : undefined}
+              value={p.properties.material} onChange={(material) => setProp({ material })}
+              options={lists.materials} placeholder="Material" ariaLabel="Material" newHint="a new material" />
+            <Combobox className={needProps && p.properties.thicknessMm === "" ? "is-required" : undefined}
+              value={p.properties.thicknessMm} onChange={(t) => setProp({ thicknessMm: t.replace(",", ".").replace(/[^\d.]/g, "") })}
+              options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
           </div>
-          <input className="field" value={p.properties.project} placeholder="Project" aria-label="Project"
-            onChange={(e) => setProp({ project: e.target.value })} />
+          <Combobox value={p.properties.project} onChange={(project) => setProp({ project })}
+            options={lists.projects} placeholder="Project" ariaLabel="Project" newHint="a new project" />
 
           <div className="imp-rules" role="group" aria-label="Rules">
             <span className="imp-rules-title">Rules</span>

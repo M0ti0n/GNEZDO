@@ -35,6 +35,7 @@ public static class HomeEndpoints
         app.MapGet("/api/jobs", SearchJobsAsync);
         app.MapGet("/api/jobs/{id:int}/parts", JobPartsAsync);
         app.MapGet("/api/projects/recent", RecentProjectsAsync);
+        app.MapGet("/api/projects", ProjectOptionsAsync);
     }
 
     private static int Take(int? requested, int fallback, int max) => Math.Clamp(requested ?? fallback, 1, max);
@@ -200,6 +201,13 @@ public static class HomeEndpoints
     }
 
     // ---- projects ----------------------------------------------------------
+
+    /// <summary>GET /api/projects: every project code for pick lists, newest first.</summary>
+    private static async Task<List<ProjectOptionDto>> ProjectOptionsAsync(GnezdoDb db, CancellationToken ct) =>
+        await db.Projects.AsNoTracking()
+            .OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Code)
+            .Select(p => new ProjectOptionDto(p.Code, p.Name, p.Customer))
+            .ToListAsync(ct);
 
     /// <summary>
     /// Projects ordered by last activity (newest part change or job change).

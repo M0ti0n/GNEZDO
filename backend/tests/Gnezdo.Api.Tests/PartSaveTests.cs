@@ -80,6 +80,16 @@ public sealed class PartSaveTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task Project_list_has_seeded_and_new_projects()
+    {
+        await Save(Part("SAVE_E_gusset", "N26-0999"));
+        var codes = (await api.Client.GetFromJsonAsync<List<ProjectOptionDto>>("/api/projects"))!.Select(p => p.Code).ToList();
+        Assert.Contains("26-0412", codes);
+        Assert.Contains("N26-0999", codes);
+        Assert.Equal(codes.Count, codes.Distinct().Count());
+    }
+
+    [Fact]
     public async Task Missing_material_or_bad_rotation_is_rejected()
     {
         var bad = Part("SAVE_D", "N26-0500", material: "") with { Rotations = [90, 15] };
