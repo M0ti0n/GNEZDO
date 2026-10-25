@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
+import type { BatchProperties } from "../import/batch";
 import {
   boxOf, chainOf, checkGeometry, pathOf, quantityFromName, roleOf, union,
   type Box, type CheckId, type Drawing, type Pt, type Role,
@@ -20,11 +21,12 @@ const MARKING: Record<string, { role: Role; hint: string }> = {
 interface Props {
   drawing: Drawing;
   processed: boolean;
+  properties?: BatchProperties;
   /** Any change to the lines clears "processed": the part has to be processed again. */
   onChange: (drawing: Drawing, processed: boolean) => void;
 }
 
-export function ImportPage({ drawing, processed, onChange }: Props) {
+export function ImportPage({ drawing, processed, properties, onChange }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
   const qty = quantityFromName(drawing.fileName);
   const [tool, setTool] = useState<string | null>(null);
@@ -138,7 +140,8 @@ export function ImportPage({ drawing, processed, onChange }: Props) {
   };
 
   const toScreen = (p: Pt, v: View) => ({ x: p.x * v.s + v.tx, y: -p.y * v.s + v.ty });
-  const problems = report.checks.filter((c) => c.count > 0).length;
+  // Open contours block processing; splines only warn (they will be converted).
+  const problems = report.checks.filter((c) => c.count > 0 && c.id !== "splines").length;
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
   const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? "not built yet" : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
@@ -180,9 +183,9 @@ export function ImportPage({ drawing, processed, onChange }: Props) {
           <ul>
             {report.checks.map((c) => (
               <li key={c.id}>
-                <button className={`gc-row ${c.count ? "is-bad" : "is-ok"}${selected === c.id ? " is-on" : ""}`}
+                <button className={`gc-row ${!c.count ? "is-ok" : c.id === "splines" ? "is-warn" : "is-bad"}${selected === c.id ? " is-on" : ""}`}
                   onClick={() => choose(c.id)} disabled={c.count === 0}
-                  title={c.count ? "Show on the drawing" : "No problems"}>
+                  title={!c.count ? "No problems" : c.id === "splines" ? "Splines will be converted to lines and arcs. Show on the drawing" : "Show on the drawing"}>
                   <span className="gc-mark" aria-hidden="true">{c.count ? "!" : "✓"}</span>
                   <span className="gc-label">{c.label}</span>
                   {c.count > 0 && <span className="gc-count">{c.count}</span>}
@@ -191,7 +194,8 @@ export function ImportPage({ drawing, processed, onChange }: Props) {
             ))}
           </ul>
           <p className={`gc-sum ${problems ? "is-bad" : "is-ok"}`}>
-            {problems ? `${problems} ${problems === 1 ? "problem" : "problems"} to fix before the part can be saved` : "Ready to save"}
+            {problems ? `${problems} ${problems === 1 ? "problem" : "problems"} to fix before processing`
+              : processed ? "Processed" : "Ready to process"}
           </p>
           <ul className="legend" aria-label="Line colours">
             <li><i className="sw sw-cut" />Cutting</li>
@@ -200,6 +204,7 @@ export function ImportPage({ drawing, processed, onChange }: Props) {
             <li><i className="sw sw-bad" />Open contour</li>
           </ul>
           <dl className="gc-facts">
+            <dt>Material</dt><dd>{properties?.material ? `${properties.material}${properties.thicknessMm ? ` ${properties.thicknessMm} mm` : ""}` : "–"}</dd>
             <dt>Size</dt><dd>{fmt(bw)} × {fmt(bh)} mm</dd>
             <dt>Contours</dt><dd>{report.contours.length}</dd>
             <dt>Tracing</dt><dd>{report.traceCount} {report.traceCount === 1 ? "line" : "lines"}</dd>

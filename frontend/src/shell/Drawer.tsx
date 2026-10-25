@@ -3,11 +3,12 @@ import { api, materialKey, type PartFacets } from "../api/api";
 import { DEFAULT_SORT, type DateMode, type JobFilter, type PartFilter, type PartSummary, type SortOrder } from "../api/types";
 import { SortControl, loadSort, saveSort } from "../components/SortControl";
 import { DateLine, PanelHead, SizeLine } from "../components/FilterFields";
-import { IconHome, IconLibrary, IconSearch } from "../components/Icons";
+import { IconHome, IconImport, IconLibrary, IconSearch } from "../components/Icons";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { JobsPanel } from "./JobsPanel";
+import { ImportPanel, type ImportPanelProps } from "./ImportPanel";
 
-export type DrawerMode = "parts" | "jobs";
+export type DrawerMode = "parts" | "jobs" | "import";
 
 /** MIME type used when dragging parts from the drawer into a job. */
 export const PARTS_MIME = "application/x-gnezdo-parts";
@@ -20,11 +21,12 @@ interface Props {
   onJobSearch: (filter: JobFilter) => void;   // results open on the main screen
   homeActive: boolean;
   onHome: () => void;
+  importPanel: ImportPanelProps;
 }
 
-// Left side: a rail with two buttons that opens a docked panel for
-// finding imported parts (to drag into a job) or searching jobs.
-export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeActive, onHome }: Props) {
+// Left side: a rail that opens a docked panel for finding imported parts
+// (to drag into a job), searching jobs, or importing new drawings.
+export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeActive, onHome, importPanel }: Props) {
   const toggle = (m: DrawerMode) => onMode(mode === m ? null : m);
   return (
     <aside className={`drawer${mode ? " is-open" : ""}`}>
@@ -41,12 +43,17 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeA
           onClick={() => toggle("jobs")} title="Job search">
           <IconSearch /><span>Jobs</span>
         </button>
+        <button role="tab" aria-selected={mode === "import"} className={`rail-btn${mode === "import" ? " is-on" : ""}`}
+          onClick={() => toggle("import")} title="Import DXF and DWG files">
+          <IconImport /><span>Import</span>
+          {importPanel.items.length > 0 && <span className="rail-count">{importPanel.items.length}</span>}
+        </button>
       </div>
       {mode && (
         <div className="drawer-panel">
-          {mode === "parts"
-            ? <PartsPanel targetJob={targetJob} onAddToJob={onAddToJob} onClose={() => onMode(null)} />
-            : <JobsPanel onSearch={onJobSearch} onClose={() => onMode(null)} />}
+          {mode === "parts" && <PartsPanel targetJob={targetJob} onAddToJob={onAddToJob} onClose={() => onMode(null)} />}
+          {mode === "jobs" && <JobsPanel onSearch={onJobSearch} onClose={() => onMode(null)} />}
+          {mode === "import" && <ImportPanel {...importPanel} onClose={() => onMode(null)} />}
         </div>
       )}
     </aside>

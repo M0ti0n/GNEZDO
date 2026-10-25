@@ -16,9 +16,9 @@ export type Entity = (
   /** Counter-clockwise from start to end angle, degrees (DXF convention). */
   | { id: string; kind: "arc"; c: Pt; r: number; start: number; end: number }
   | { id: string; kind: "circle"; c: Pt; r: number }
-  /** Drawn through its fit points. */
-  | { id: string; kind: "spline"; fit: Pt[] }
-) & { role?: Role };   // missing = cut
+  /** Drawn through its fit points; "sampled" = points already on the curve, joined by straight lines. */
+  | { id: string; kind: "spline"; fit: Pt[]; sampled?: boolean }
+) & { role?: Role; layer?: string };   // role missing = cut
 
 export const roleOf = (e: Entity): Role => e.role ?? "cut";
 
@@ -117,6 +117,7 @@ export function pathOf(e: Entity): string {
       return `M${f(a.x)} ${f(a.y)}A${f(e.r)} ${f(e.r)} 0 ${sweep > 180 ? 1 : 0} 1 ${f(b.x)} ${f(b.y)}`;
     }
     case "spline": {
+      if (e.sampled) return e.fit.map((p, i) => `${i ? "L" : "M"}${f(p.x)} ${f(p.y)}`).join("");
       // Catmull-Rom through the fit points, as cubic Béziers
       const p = e.fit;
       let d = `M${f(p[0].x)} ${f(p[0].y)}`;
