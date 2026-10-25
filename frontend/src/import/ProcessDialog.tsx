@@ -197,7 +197,7 @@ function LockedField({ label, hint, value, editing, onEdit, onChange, options }:
 }
 
 /** The part with its processed colours: cutting green, tracing purple, open cut dark blue. */
-function Preview({ drawing }: { drawing: Drawing }) {
+export function Preview({ drawing }: { drawing: Drawing }) {
   // Material is filled: closed cutting contours, even-odd so windows and holes stay open.
   const { box, fill } = useMemo(() => {
     const report = checkGeometry(drawing.entities);

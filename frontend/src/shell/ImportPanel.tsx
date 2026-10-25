@@ -188,6 +188,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           const notes = [
             st.verdict === "attention" && st.problems.join(" · "),
             st.verdict === "duplicate" && "already in the database: open and process to replace",
+            item.props && `own properties: ${[item.props.project, item.props.material, item.props.thicknessMm && `${item.props.thicknessMm} mm`].filter(Boolean).join(", ")}`,
             st.splines > 0 && `${st.splines} ${st.splines === 1 ? "spline" : "splines"}`,
             item.declaredUnits && `file says ${item.declaredUnits}, read as mm`,
             item.error,
