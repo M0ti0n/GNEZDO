@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
 import { ROTATIONS, type Rotation } from "../import/rules";
-import { diagnoseEnds, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
+import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
 import {
   endsOf,
@@ -29,6 +29,9 @@ const LINE_HINT = "Click the start point, then the end point; the line goes on f
 const EDITING: Record<string, { hint: string }> = {
   trim: { hint: "Click the piece of a line to cut off (all lines are cutting edges). Shift+click extends. Ctrl+Z undoes." },
   extend: { hint: "Click a line near the end to lengthen it to the next line. Shift+click trims. Ctrl+Z undoes." },
+  erase: { hint: "Click a line, arc or circle to erase it. Ctrl+Z undoes." },
+  alignH: { hint: "Click a straight line: the whole part turns counter-clockwise until that line is horizontal." },
+  alignV: { hint: "Click a straight line: the whole part turns counter-clockwise until that line is vertical." },
 };
 
 interface Props {
@@ -112,7 +115,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
   // Trim / Extend: what a click would do, shown while hovering.
   const [preview, setPreview] = useState<(EditResult & { ok: true }) | null>(null);
   const editAt = (id: string, p: Pt, shift: boolean): EditResult => {
-    const extend = (tool === "extend") !== shift;
+    if (tool === "erase") return eraseAt(drawing.entities, id);
+    if (tool === "alignH" || tool === "alignV") return alignAt(drawing.entities, id, tool === "alignH" ? "h" : "v");
+    const extend = (tool === "extend") !== shift;   // Shift swaps trim and extend
     return extend ? extendAt(drawing.entities, id, p) : trimAt(drawing.entities, id, p);
   };
   const lineUnder = (clientX: number, clientY: number) =>
@@ -224,7 +229,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
       const id = lineUnder(e.clientX, e.clientY);
       if (!id) return;
       const r = editAt(id, toModel(e.clientX, e.clientY, view), e.shiftKey);
-      if (r.ok) { commit({ ...drawing, entities: r.entities }); setSelected(null); setPreview(null); }
+      if (r.ok) {
+        commit({ ...drawing, entities: r.entities });
+        setSelected(null);
+        setPreview(null);
+        if (tool === "alignH" || tool === "alignV") setView(null);   // the part turned: fit it again
+      }
       setMessage({ text: r.message, bad: !r.ok });
       return;
     }
@@ -366,7 +376,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
             {issues.map((iss, i) => {
               const s = toScreen(iss.at, view);
               return (
-                <g key={`iss-${i}`} className={`end-mark is-${iss.kind}${hoverIssue === i ? " is-hover" : ""}`}
+                <g key={`iss-${i}`} className={`end-mark is-${iss.kind}${hoverIssue === i ? " is-hover" : ""}${tool ? " is-passive" : ""}`}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => fixIssue(iss)}
                   onMouseEnter={() => setHoverIssue(i)} onMouseLeave={() => setHoverIssue(null)}>

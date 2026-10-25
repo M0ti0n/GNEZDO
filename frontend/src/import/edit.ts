@@ -277,7 +277,12 @@ export function diagnoseEnds(all: Entity[], looseEnds: Pt[]): EndIssue[] {
   open.forEach((r, i) => {
     if (used.has(i)) return;
     let best = -1, bestD = Infinity;
-    open.forEach((o, j) => { if (j !== i && !used.has(j)) { const d = dist(r.p, o.p); if (d < bestD) { bestD = d; best = j; } } });
+    // a line's own two ends are never a gap with each other
+    open.forEach((o, j) => {
+      if (j === i || used.has(j) || (r.owner && o.owner && r.owner.e.id === o.owner.e.id)) return;
+      const d = dist(r.p, o.p);
+      if (d < bestD) { bestD = d; best = j; }
+    });
     if (best < 0 || !r.owner || !open[best].owner) {
       issues.push({ kind: "loose", at: r.p, size: 0, label: "Loose end" });
       used.add(i);
@@ -316,4 +321,63 @@ function closeGap(all: Entity[], idA: string, endA: 0 | 1, pa: Pt, idB: string, 
     added: [lineOf(A, pa, pb)], message: `Gap closed (${gap.toFixed(2)} mm)` };
   const bridge = lineOf(A, pa, pb);
   return { ok: true, entities: [...all, bridge], removed: [], added: [bridge], message: `Gap bridged with a ${gap.toFixed(2)} mm line` };
+}
+
+/* ---- Erase and Align ----------------------------------------------------------------- */
+
+/** Erase: removes the clicked object. */
+export function eraseAt(all: Entity[], id: string): EditResult {
+  const e = all.find((x) => x.id === id);
+  if (!e) return { ok: false, message: "Nothing to erase here" };
+  return { ok: true, entities: all.filter((x) => x.id !== id), removed: [e], added: [],
+    message: `${e.kind === "line" ? "Line" : e.kind === "arc" ? "Arc" : e.kind === "circle" ? "Circle" : "Spline"} erased` };
+}
+
+const rotPt = (p: Pt, c: Pt, d: number): Pt => {
+  const a = rad(d), cos = Math.cos(a), sin = Math.sin(a);
+  return { x: c.x + (p.x - c.x) * cos - (p.y - c.y) * sin, y: c.y + (p.x - c.x) * sin + (p.y - c.y) * cos };
+};
+
+/** Turns an entity by d degrees counter-clockwise about c. */
+export function rotateEntity(e: Entity, c: Pt, d: number): Entity {
+  switch (e.kind) {
+    case "line": return { ...e, a: rotPt(e.a, c, d), b: rotPt(e.b, c, d) };
+    case "circle": return { ...e, c: rotPt(e.c, c, d) };
+    case "arc": return { ...e, c: rotPt(e.c, c, d), start: norm(e.start + d), end: norm(e.end + d) };
+    case "spline": return { ...e, fit: e.fit.map((p) => rotPt(p, c, d)) };
+  }
+}
+
+/**
+ * Align H / Align V: turns the whole part counter-clockwise about its centre until the
+ * clicked straight line is horizontal (H) or vertical (V). Always CCW, by the smallest
+ * such angle (0 to 180 degrees).
+ */
+export function alignAt(all: Entity[], id: string, to: "h" | "v"): EditResult {
+  const e = all.find((x) => x.id === id);
+  if (!e) return { ok: false, message: "Click a line" };
+  if (e.kind !== "line") return { ok: false, message: "Click a straight line to align the part to" };
+  const dir = norm(deg(Math.atan2(e.b.y - e.a.y, e.b.x - e.a.x))) % 180;   // 0..180, direction of the line
+  const target = to === "h" ? 0 : 90;
+  let turn = (((target - dir) % 180) + 180) % 180;                         // CCW, 0..180
+  if (turn < 1e-7 || 180 - turn < 1e-7) return { ok: false, message: `This line is already ${to === "h" ? "horizontal" : "vertical"}` };
+  turn = Math.round(turn * 1e9) / 1e9;
+  // centre of the part's extents
+  const pts = all.flatMap((x) => pointsAlong(x));
+  const minX = Math.min(...pts.map((p) => p.x)), maxX = Math.max(...pts.map((p) => p.x));
+  const minY = Math.min(...pts.map((p) => p.y)), maxY = Math.max(...pts.map((p) => p.y));
+  const c = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  // every point turns with the same sin/cos, so lines that met still meet
+  const rotated = all.map((x) => rotateEntity(x, c, turn));
+  const shown = Math.abs(turn - Math.round(turn)) < 1e-6 ? String(Math.round(turn)) : turn.toFixed(2);
+  return { ok: true, entities: rotated, removed: [], added: [e],
+    message: `Part turned ${shown}° counter-clockwise: the line is now ${to === "h" ? "horizontal" : "vertical"}` };
+}
+
+/** How far (degrees, CCW) Align would turn the part for this line, for the hover hint. */
+export function alignTurn(e: Entity, to: "h" | "v"): number | null {
+  if (e.kind !== "line") return null;
+  const dir = norm(deg(Math.atan2(e.b.y - e.a.y, e.b.x - e.a.x))) % 180;
+  const turn = ((((to === "h" ? 0 : 90) - dir) % 180) + 180) % 180;
+  return turn < 1e-7 || 180 - turn < 1e-7 ? 0 : turn;
 }
