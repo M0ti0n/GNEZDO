@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type PartFacets } from "../api/api";
 import { checkGeometry, pathOf, roleOf, type Drawing } from "./geometry";
 import { ROTATIONS, type Rotation } from "./rules";
+import { IMPORT_TOOLS } from "./ImportTools";
 
 /** What the dialog saves. */
 export interface ProcessValues {
@@ -79,72 +80,88 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
     <div className="dlg-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !saving) onCancel(); }}>
       <form className="dlg proc" role="dialog" aria-modal="true" aria-labelledby="proc-title"
         onSubmit={(e) => { e.preventDefault(); save(); }}>
-        <h2 id="proc-title" className="sr-only">Process {drawing.fileName}</h2>
-
-        <figure className={`proc-image is-${exists.state}`}>
-          <Preview drawing={drawing} />
-          <figcaption>
-            {exists.state === "checking" && "Checking the database…"}
-            {exists.state === "new" && "New part"}
-            {exists.state === "exists" && <>Already in the database ({v.project || "no project"}, {v.name}). Save replaces it.</>}
-            {exists.state === "unknown" && (v.name.trim() ? "Could not check the database" : "Enter a part name")}
-          </figcaption>
-        </figure>
-
-        <LockedField label="Part name" hint="Taken from the file name without extension" value={v.name}
-          editing={editing.name} onEdit={() => setEditing((x) => ({ ...x, name: true }))}
-          onChange={(name) => set({ name })} />
-        <LockedField label="Project" hint="e.g. N26-0246" value={v.project}
-          editing={editing.project} onEdit={() => setEditing((x) => ({ ...x, project: true }))}
-          onChange={(project) => set({ project })} />
-        <LockedField label="Description" hint="Optional description of the part" value={v.description}
-          editing={editing.description} onEdit={() => setEditing((x) => ({ ...x, description: true }))}
-          onChange={(description) => set({ description })} />
-
-        <div className="proc-pair">
-          <label className="proc-select">
-            <span className="sr-only">Material</span>
-            <input className="field" list="proc-materials" value={v.material} placeholder="Material"
-              onChange={(e) => set({ material: e.target.value })} />
-            <datalist id="proc-materials">{facets.materials.map((m) => <option key={m} value={m} />)}</datalist>
-          </label>
-          <label className="proc-select">
-            <span className="sr-only">Thickness in mm</span>
-            <input className="field" list="proc-thicknesses" type="number" min="0" step="0.1" value={v.thicknessMm}
-              placeholder="Thickness" onChange={(e) => set({ thicknessMm: e.target.value })} />
-            <span className="proc-unit">mm</span>
-            <datalist id="proc-thicknesses">{thicknesses.map((t) => <option key={t} value={t} />)}</datalist>
-          </label>
-        </div>
-
-        <div className="proc-rules">
-          <div className="proc-rot" role="group" aria-label="Rotations">
-            {ROTATIONS.map((r) => (
-              <label key={r} className="chk chk-big">
-                <input type="checkbox" checked={v.rotations.includes(r)}
-                  onChange={(e) => set({
-                    rotations: e.target.checked ? ROTATIONS.filter((x) => x === r || v.rotations.includes(x)) : v.rotations.filter((x) => x !== r),
-                  })} />
-                {r}°
-              </label>
-            ))}
+        <header className="dlg-head">
+          <span className="dlg-icon" aria-hidden="true">{IMPORT_TOOLS.find((t) => t.id === "process")?.icon}</span>
+          <div className="dlg-title">
+            <h2 id="proc-title">Process part</h2>
+            <p>{drawing.fileName}</p>
           </div>
-          <label className="chk chk-big" title={mirrorBlocked ? "Parts with open cut lines are not mirrored (Rules → Import rules)" : undefined}>
-            <input type="checkbox" checked={v.mirror} disabled={mirrorBlocked} onChange={(e) => set({ mirror: e.target.checked })} />
-            MIRROR
-            {mirrorBlocked && <small>not for parts with open cut</small>}
-          </label>
+          <button type="button" className="icon-btn dlg-close" onClick={onCancel} disabled={saving} aria-label="Close" title="Close (Esc)">×</button>
+        </header>
+
+        <div className="proc-body">
+          <figure className={`proc-image is-${exists.state}`}>
+            <div className="proc-frame"><Preview drawing={drawing} /></div>
+            <figcaption>
+              <span className="proc-status">
+                {exists.state === "checking" && "Checking the database…"}
+                {exists.state === "new" && "New part"}
+                {exists.state === "exists" && "Already in the database"}
+                {exists.state === "unknown" && (v.name.trim() ? "Could not check the database" : "Enter a part name")}
+              </span>
+              {exists.state === "exists" && <small>Same project and name. Saving replaces the part in the database.</small>}
+              {exists.state === "new" && <small>No part with this project and name yet.</small>}
+            </figcaption>
+          </figure>
+
+          <div className="proc-form">
+            <LockedField label="Part name" hint="From the file name, without extension" value={v.name}
+              editing={editing.name} onEdit={() => setEditing((x) => ({ ...x, name: true }))}
+              onChange={(name) => set({ name })} />
+            <LockedField label="Project" hint="e.g. N26-0246" value={v.project}
+              editing={editing.project} onEdit={() => setEditing((x) => ({ ...x, project: true }))}
+              onChange={(project) => set({ project })} />
+            <LockedField label="Description" hint="Optional" value={v.description}
+              editing={editing.description} onEdit={() => setEditing((x) => ({ ...x, description: true }))}
+              onChange={(description) => set({ description })} />
+
+            <div className="proc-group">
+              <span className="proc-label">Material and thickness</span>
+              <div className="filter-pair">
+                <input className="field" list="proc-materials" value={v.material} placeholder="Material" aria-label="Material"
+                  onChange={(e) => set({ material: e.target.value })} />
+                <datalist id="proc-materials">{facets.materials.map((m) => <option key={m} value={m} />)}</datalist>
+                <span className="proc-thk">
+                  <input className="field" list="proc-thicknesses" type="number" min="0" step="0.1" value={v.thicknessMm}
+                    placeholder="Thickness" aria-label="Thickness in mm" onChange={(e) => set({ thicknessMm: e.target.value })} />
+                  <span className="proc-unit">mm</span>
+                </span>
+                <datalist id="proc-thicknesses">{thicknesses.map((t) => <option key={t} value={t} />)}</datalist>
+              </div>
+            </div>
+
+            <div className="proc-group">
+              <span className="proc-label">Rotations and mirror</span>
+              <div className="proc-chips" role="group" aria-label="Rotations">
+                {ROTATIONS.map((r) => (
+                  <label key={r} className="chk chk-box">
+                    <input type="checkbox" checked={v.rotations.includes(r)}
+                      onChange={(e) => set({
+                        rotations: e.target.checked ? ROTATIONS.filter((x) => x === r || v.rotations.includes(x)) : v.rotations.filter((x) => x !== r),
+                      })} />
+                    {r}°
+                  </label>
+                ))}
+                <label className={`chk chk-box${mirrorBlocked ? " is-blocked" : ""}`}
+                  title={mirrorBlocked ? "Parts with open cut lines are not mirrored (Rules → Import rules)" : undefined}>
+                  <input type="checkbox" checked={v.mirror} disabled={mirrorBlocked} onChange={(e) => set({ mirror: e.target.checked })} />
+                  Mirror
+                </label>
+              </div>
+              {mirrorBlocked && <small className="proc-note">No mirror: the part has open cut lines.</small>}
+            </div>
+          </div>
         </div>
 
         {error && <p className="proc-error" role="alert">Not saved: {error}</p>}
-        {missing.length > 0 && <p className="proc-missing">Enter {missing.join(", ")} to save.</p>}
 
-        <div className="proc-buttons">
-          <button type="button" className="proc-btn proc-cancel" onClick={onCancel} disabled={saving}>CANCEL</button>
-          <button type="submit" className="proc-btn proc-save" disabled={!canSave}>
-            {saving ? "SAVING…" : exists.state === "exists" ? "REPLACE" : "SAVE"}
+        <footer className="dlg-foot">
+          <span className="proc-missing">{missing.length > 0 && `Enter ${missing.join(", ")} to save.`}</span>
+          <button type="button" className="btn btn-plain" onClick={onCancel} disabled={saving}>Cancel</button>
+          <button type="submit" className={`btn ${exists.state === "exists" ? "btn-replace" : "btn-save"}`} disabled={!canSave}>
+            {saving ? "Saving…" : exists.state === "exists" ? "Replace" : "Save"}
           </button>
-        </div>
+        </footer>
       </form>
     </div>
   );
@@ -156,16 +173,19 @@ function LockedField({ label, hint, value, editing, onEdit, onChange }: {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
   return (
-    <label className={`proc-field${editing ? " is-editing" : ""}`}>
+    <label className={`proc-group proc-locked${editing ? " is-editing" : ""}`}>
       <span className="proc-label">{label}</span>
-      <input ref={ref} className="proc-input" value={value} placeholder={hint} readOnly={!editing}
-        onChange={(e) => onChange(e.target.value)} onDoubleClick={onEdit} title={editing ? undefined : `${hint}. Click the pencil to change.`} />
-      <button type="button" className="proc-edit" onClick={onEdit} aria-label={`Edit ${label.toLowerCase()}`} aria-pressed={editing}
-        title={`Edit ${label.toLowerCase()}`}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M4 20h4L19 9l-4-4L4 16z" /><path d="m13.5 6.5 4 4" />
-        </svg>
-      </button>
+      <span className="proc-input-wrap">
+        <input ref={ref} className="field" value={value} placeholder={hint} readOnly={!editing}
+          onChange={(e) => onChange(e.target.value)} onDoubleClick={onEdit}
+          title={editing ? undefined : `${hint}. Click the pencil to change.`} />
+        <button type="button" className="proc-edit" onClick={onEdit} aria-label={`Edit ${label.toLowerCase()}`} aria-pressed={editing}
+          title={`Edit ${label.toLowerCase()}`}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 20h4L19 9l-4-4L4 16z" /><path d="m13.5 6.5 4 4" />
+          </svg>
+        </button>
+      </span>
     </label>
   );
 }
