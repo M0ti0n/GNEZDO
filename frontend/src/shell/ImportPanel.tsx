@@ -24,6 +24,9 @@ export interface ImportPanelProps {
   onClear: () => void;
   onSamples: () => void;
   openId: string | null;      // part shown in the main area
+  /** Properties section expanded (the Properties tool opens it). */
+  propsOpen: boolean;
+  onPropsOpen: (open: boolean) => void;
 }
 
 const ICON: Record<Verdict, string> = {
@@ -39,6 +42,14 @@ const TITLE: Record<Verdict, string> = {
   ok: "Only closed contours: ready to process",
   processed: "Processed",
 };
+
+/** One line for the collapsed Properties: "N26-0246 · S355 6 mm · 90°, 45° · mirror". */
+const summary = (p: BatchProperties) => [
+  p.project.trim(),
+  [p.material.trim(), p.thicknessMm && `${p.thicknessMm} mm`].filter(Boolean).join(" "),
+  p.rotations.length ? p.rotations.map((r) => `${r}°`).join(", ") : "no rotation",
+  p.mirror ? "mirror" : "",
+].filter(Boolean).join(" · ");
 
 const toggle = (list: Rotation[], r: Rotation, on: boolean) =>
   on ? ROTATIONS.filter((x) => x === r || list.includes(x)) : list.filter((x) => x !== r);
@@ -76,7 +87,9 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
   const processAll = () => {
     if (!propsSet) {
       setNeedProps(true);
-      document.querySelector<HTMLInputElement>(`.imp-props input[aria-label="${p.properties.material.trim() ? "Thickness in mm" : "Material"}"]`)?.focus();
+      p.onPropsOpen(true);
+      const field = p.properties.material.trim() ? "Thickness in mm" : "Material";
+      setTimeout(() => document.querySelector<HTMLInputElement>(`.imp-props input[aria-label="${field}"]`)?.focus(), 0);
       return;
     }
     setNeedProps(false);
@@ -117,40 +130,58 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
         </div>
         {mode === "single" && <p className="imp-note">The part opens on the main screen as soon as it is read.</p>}
 
-        <section className="imp-props" aria-label="Properties for all parts">
-          <h3><span className="imp-props-icon">{icon("properties")}</span>Properties for all parts</h3>
-          <div className="filter-pair">
-            <Combobox className={needProps && !p.properties.material.trim() ? "is-required" : undefined}
-              value={p.properties.material} onChange={(material) => setProp({ material })}
-              options={lists.materials} placeholder="Material" ariaLabel="Material" newHint="a new material" />
-            <Combobox className={needProps && p.properties.thicknessMm === "" ? "is-required" : undefined}
-              value={p.properties.thicknessMm} onChange={(t) => setProp({ thicknessMm: t.replace(",", ".").replace(/[^\d.]/g, "") })}
-              options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
-          </div>
-          <Combobox value={p.properties.project} onChange={(project) => setProp({ project })}
-            options={lists.projects} placeholder="Project" ariaLabel="Project" newHint="a new project" />
+        <section className={`imp-props${p.propsOpen ? " is-open" : ""}`} aria-label="Properties">
+          <button type="button" className="imp-props-head" aria-expanded={p.propsOpen} onClick={() => p.onPropsOpen(!p.propsOpen)}
+            title={p.propsOpen ? "Collapse to make room for the list" : "Show the properties"}>
+            <span className="imp-props-icon">{icon("properties")}</span>
+            <span className="imp-props-title">Properties</span>
+            {!p.propsOpen && <span className="imp-props-sum">{summary(p.properties) || "not set"}</span>}
+            <svg className="imp-props-caret" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
 
-          <div className="imp-rules" role="group" aria-label="Rules">
-            <span className="imp-rules-title">Rules</span>
-            <div className="imp-rules-row" role="group" aria-label="Rotations">
-              <span className="imp-rules-label">Rotations</span>
-              {ROTATIONS.map((r) => (
-                <label key={r} className="chk">
-                  <input type="checkbox" checked={p.properties.rotations.includes(r)}
-                    onChange={(e) => setProp({ rotations: toggle(p.properties.rotations, r, e.target.checked) })} />
-                  {r}°
-                </label>
-              ))}
+          {p.propsOpen && (
+            <div className="imp-props-body">
+              <Combobox value={p.properties.project} onChange={(project) => setProp({ project })}
+                options={lists.projects} placeholder="Project" ariaLabel="Project" newHint="a new project" />
+              <input className="field" value={p.properties.description} placeholder="Description (optional)" aria-label="Description"
+                onChange={(e) => setProp({ description: e.target.value })} />
+              <div className="filter-pair">
+                <Combobox className={needProps && !p.properties.material.trim() ? "is-required" : undefined}
+                  value={p.properties.material}
+                  // a new material empties the thickness, so both are always chosen together
+                  onChange={(material) => setProp({ material, thicknessMm: material === p.properties.material ? p.properties.thicknessMm : "" })}
+                  options={lists.materials} placeholder="Material" ariaLabel="Material" newHint="a new material" />
+                <Combobox className={needProps && p.properties.thicknessMm === "" ? "is-required" : undefined}
+                  value={p.properties.thicknessMm} onChange={(t) => setProp({ thicknessMm: t.replace(",", ".").replace(/[^\d.]/g, "") })}
+                  options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
+              </div>
+              {p.properties.material.trim() !== "" && p.properties.thicknessMm === "" && (
+                <p className="imp-props-warn">Choose the thickness for {p.properties.material.trim()}.</p>
+              )}
+
+              <div className="imp-rules" role="group" aria-label="Rotations and mirror">
+                <div className="imp-rules-row" role="group" aria-label="Rotations">
+                  <span className="imp-rules-label">Rotations</span>
+                  {ROTATIONS.map((r) => (
+                    <label key={r} className="chk">
+                      <input type="checkbox" checked={p.properties.rotations.includes(r)}
+                        onChange={(e) => setProp({ rotations: toggle(p.properties.rotations, r, e.target.checked) })} />
+                      {r}°
+                    </label>
+                  ))}
+                </div>
+                <div className="imp-rules-row">
+                  <span className="imp-rules-label" />
+                  <label className="chk">
+                    <input type="checkbox" checked={p.properties.mirror} onChange={(e) => setProp({ mirror: e.target.checked })} />
+                    Mirror
+                  </label>
+                  {p.properties.mirror && p.rules.mirrorWithoutOpenCut && <span className="imp-rules-note">not for parts with open cut</span>}
+                </div>
+              </div>
+              <p className="imp-props-foot">Used for every part in the list. Kept for the next import; defaults in Rules → Import rules.</p>
             </div>
-            <div className="imp-rules-row">
-              <span className="imp-rules-label" />
-              <label className="chk">
-                <input type="checkbox" checked={p.properties.mirror} onChange={(e) => setProp({ mirror: e.target.checked })} />
-                Mirror
-              </label>
-              {p.properties.mirror && p.rules.mirrorWithoutOpenCut && <span className="imp-rules-note">not for parts with open cut</span>}
-            </div>
-          </div>
+          )}
         </section>
       </div>
 
@@ -188,7 +219,6 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           const notes = [
             st.verdict === "attention" && st.problems.join(" · "),
             st.verdict === "duplicate" && "already in the database: open and process to replace",
-            item.props && `own properties: ${[item.props.project, item.props.material, item.props.thicknessMm && `${item.props.thicknessMm} mm`].filter(Boolean).join(", ")}`,
             st.splines > 0 && `${st.splines} ${st.splines === 1 ? "spline" : "splines"}`,
             item.declaredUnits && `file says ${item.declaredUnits}, read as mm`,
             item.error,
