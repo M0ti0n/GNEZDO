@@ -25,6 +25,7 @@ jobs:
           name=$(head -1 backend/migration-request.txt | tr -cd 'A-Za-z0-9_')
           if [ -z "$name" ]; then echo "::error::backend/migration-request.txt must start with a migration name"; exit 1; fi
           dotnet tool install --global dotnet-ef --version 10.0.14
+          dotnet build backend/Gnezdo.slnx
           dotnet ef migrations add "$name" --project backend/src/Gnezdo.Api --output-dir Data/Migrations
           git rm -q backend/migration-request.txt
           git config user.name "github-actions[bot]"
