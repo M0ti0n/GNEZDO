@@ -16,10 +16,11 @@ const MENU: { id: MenuId; label: string; icon: ReactNode }[] = [
 ];
 
 // Small badge in front of a tab title so job, import and project tabs are
-// told apart at a glance.
+// told apart at a glance; "i" marks an imported drawing.
 const BADGE: Record<TabKind, ReactNode> = {
   job: <IconNewJob size={14} />,
   part: <IconLibrary size={14} />,
+  drawing: <span className="tab-i">i</span>,
 };
 
 interface Props {
