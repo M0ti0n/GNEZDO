@@ -238,7 +238,7 @@ function mockRestore(id: string, revision: number): PartSummary {
   const cur = sampleParts[i];
   mockHistory.set(id, [versionOf(cur, false, now), ...(mockHistory.get(id) ?? [])]);
   sampleParts[i] = {
-    ...cur, description: old.description, material: old.material, thicknessMm: old.thicknessMm,
+    ...cur, name: old.name, project: old.project, description: old.description, material: old.material, thicknessMm: old.thicknessMm,
     w: old.w, h: old.h, areaMm2: old.areaMm2, path: old.path, engraved: old.engraved,
     modifiedAt: now, revision: cur.revision + 1,
   };

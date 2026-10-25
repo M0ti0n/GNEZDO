@@ -47,6 +47,9 @@ const rad = (d: number) => (d * Math.PI) / 180;
 
 export class DxfError extends Error {}
 
+/** Key in `ignored` for objects left out because their layer is off, frozen or Defpoints. */
+export const HIDDEN = "on hidden layers";
+
 export function readDxf(text: string, fileName: string): DxfResult {
   if (text.startsWith("AutoCAD Binary DXF")) throw new DxfError("Binary DXF is not supported; save it as ASCII DXF");
   const lines = text.split(/\r?\n/);
@@ -80,8 +83,14 @@ export function readDxf(text: string, fileName: string): DxfResult {
   // Layer colours, for entities drawn "by layer" (a negative colour means the layer is off).
   // Colour = AutoCAD colour index, plus True Color (RGB) when the drawing has one (group 420).
   const layerColor = new Map<string, Colour>();
+  // Layers that do not plot: turned off (negative colour), frozen (flag 1), or Defpoints.
+  // What is drawn on them is construction or notes, not something to cut, so it is left out.
+  const hidden = new Set<string>(["DEFPOINTS"]);
   for (const r of sections.get("TABLES") ?? [])
-    if (r.type === "LAYER") layerColor.set(str(r, 2), { aci: Math.abs(num(r, 62, 7)), rgb: rgbOf(r) });
+    if (r.type === "LAYER") {
+      layerColor.set(str(r, 2), { aci: Math.abs(num(r, 62, 7)), rgb: rgbOf(r) });
+      if (num(r, 62, 7) < 0 || (num(r, 70) & 1) === 1) hidden.add(str(r, 2).toUpperCase());
+    }
 
   // Blocks: name -> base point and records.
   const blocks = new Map<string, { base: Pt; recs: Rec[] }>();
@@ -150,6 +159,11 @@ export function readDxf(text: string, fileName: string): DxfResult {
         : c62 === 0 ? parentColour
         : { aci: Math.abs(c62) };
       style = { layer, colour: color };
+      if (hidden.has(layer.toUpperCase()) && r.type !== "VERTEX" && r.type !== "SEQEND") {
+        ignored[HIDDEN] = (ignored[HIDDEN] ?? 0) + 1;
+        if (r.type === "POLYLINE") while (i + 1 < recs.length && (recs[i + 1].type === "VERTEX" || recs[i + 1].type === "SEQEND")) i++;
+        continue;
+      }
       const t = num(r, 230, 1) < 0 ? compose(t0, MIRROR_X) : t0;  // extrusion 0,0,-1 = mirrored
       switch (r.type) {
         case "LINE":
@@ -235,7 +249,7 @@ export function readDxf(text: string, fileName: string): DxfResult {
   };
 
   convert(sections.get("ENTITIES") ?? [], IDENTITY, 0);
-  if (out.length === 0) throw new DxfError("No lines, arcs or circles found");
+  if (out.length === 0) throw new DxfError(ignored[HIDDEN] ? "Everything is on layers that are off or frozen" : "No lines, arcs or circles found");
 
   return { drawing: { id: fileName, fileName: fileName.replace(/\.dxf$/i, ""), entities: out }, ignored, declaredUnits };
 }

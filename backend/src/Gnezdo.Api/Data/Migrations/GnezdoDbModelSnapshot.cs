@@ -234,7 +234,9 @@ namespace Gnezdo.Api.Data.Migrations
 
                     b.HasIndex("MaterialId", "ThicknessMm");
 
-                    b.HasIndex("ProjectId", "Name");
+                    b.HasIndex("ProjectId", "Name")
+                        .IsUnique()
+                        .HasFilter("[DeletedAt] IS NULL");
 
                     b.ToTable("Parts");
                 });

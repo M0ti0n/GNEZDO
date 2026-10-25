@@ -9,6 +9,7 @@ import {
 } from "./import/batch";
 import { ProcessDialog, type ProcessValues } from "./import/ProcessDialog";
 import { CloseUnsavedDialog } from "./import/CloseUnsavedDialog";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import { partGeometry } from "./import/toPart";
 import type { SavePart } from "./api/api";
 import { applyRules, loadRules, saveRules, type ImportRules } from "./import/rules";
@@ -136,7 +137,7 @@ export function App() {
       setImports((list) => list.map((i) => (i.state === "ready" ? { ...i, checked: true } : i)));
       const next = imports.map((i) => statusOf({ ...i, checked: i.state === "ready" }));
       const bad = next.filter((s) => s.verdict === "attention").length;
-      setToast(bad ? `${bad} ${bad === 1 ? "part needs" : "parts need"} attention: click the red ones to check them` : "All parts have closed contours");
+      setToast(bad ? `${bad} ${bad === 1 ? "part needs" : "parts need"} attention: double-click the red ones to check them` : "All parts have closed contours");
     },
     busy: saving,
     // Saves the green parts with the Properties; parts already in the database are not
@@ -163,8 +164,9 @@ export function App() {
       }
     },
     onOpen: (id: string) => { const it = imports.find((i) => i.id === id); if (it) openItem(it); },
-    onRemove: (id: string) => { closeTabs([id]); setImports((list) => list.filter((i) => i.id !== id)); },
-    onClear: () => { closeTabs(imports.map((i) => i.id)); setImports([]); },
+    // removing parts with unsaved changes asks first
+    onRemove: (id: string) => askRemove([id]),
+    onClear: () => askRemove(imports.map((i) => i.id)),
     onSamples: () => setImports((list) => [...list, ...sampleDrawings
       .filter((d) => !list.some((i) => i.id === d.id))
       .map((d): ImportItem => ({
@@ -238,6 +240,12 @@ export function App() {
     setClosing(null);
     dispatch({ type: "close", id: `drawing:${itemId}` });
   };
+
+  // Remove from the import list (× or Clear list); parts with unsaved changes are asked about.
+  const [removing, setRemoving] = useState<string[] | null>(null);
+  const removeNow = (ids: string[]) => { closeTabs(ids); setImports((list) => list.filter((i) => !ids.includes(i.id))); };
+  const askRemove = (ids: string[]) => (ids.some((id) => history.changed(id)) ? setRemoving(ids) : removeNow(ids));
+  const removingChanged = removing ? imports.filter((i) => removing.includes(i.id) && history.changed(i.id)) : [];
 
   const openJob = (j: JobSummary) => open(jobTab(j.id, j.name));
 
@@ -363,6 +371,16 @@ export function App() {
           onCancel={() => setClosing(null)}
           onDiscard={() => closeWithoutSaving(closingItem.id)}
           onProcess={() => { setClosing(null); setProcessing(closingItem.id); }} />
+      )}
+      {removing && (
+        <ConfirmDialog title={removing.length === 1 ? "Remove without saving?" : "Clear the list?"}
+          confirmLabel={removing.length === 1 ? "Remove" : "Clear list"}
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => { removeNow(removing); setRemoving(null); }}>
+          {removingChanged.length === 1
+            ? <><b>{removingChanged[0].name}</b> has changes that are not saved in the database. They are lost when it leaves the list.</>
+            : <>{removingChanged.length} parts have changes that are not saved in the database. They are lost when they leave the list.</>}
+        </ConfirmDialog>
       )}
       {toast && <div className="toast" role="status">{toast}</div>}
       <div id="drag-ghost" className="drag-ghost" aria-hidden="true" />

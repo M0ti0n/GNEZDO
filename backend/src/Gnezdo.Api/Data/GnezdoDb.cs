@@ -47,7 +47,8 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
             e.HasOne(x => x.ImportBatch).WithMany(x => x.Parts).HasForeignKey(x => x.ImportBatchId).OnDelete(DeleteBehavior.Restrict);
             // Indexes for the part search filters.
             e.HasIndex(x => x.Name);
-            e.HasIndex(x => new { x.ProjectId, x.Name }); // "already in the database" check
+            // one live part per project and name (deleted parts do not count); also the "already in the database" check
+            e.HasIndex(x => new { x.ProjectId, x.Name }).IsUnique().HasFilter("[DeletedAt] IS NULL");
             e.HasIndex(x => x.DeletedAt);
             e.HasIndex(x => new { x.MaterialId, x.ThicknessMm });
             e.HasIndex(x => x.CreatedAt);

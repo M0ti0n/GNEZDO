@@ -44,7 +44,7 @@ export interface Contour {
   outer: boolean;          // the largest contour is the outside of the part
 }
 
-export type CheckId = "insideOpen" | "outsideOpen" | "outsidePart" | "splines";
+export type CheckId = "doubles" | "separate" | "insideOpen" | "outsideOpen" | "outsidePart" | "splines";
 
 export interface CheckResult {
   id: CheckId;
@@ -191,7 +191,11 @@ export function buildContours(entities: Entity[]): Contour[] {
  * that touches the outside does not count as a branch of it.
  */
 export function checkGeometry(entities: Entity[]): GeometryReport {
-  const contours = buildContours(entities.filter((e) => roleOf(e) === "cut"));
+  // double and tiny lines would make a closed contour look open (three lines at a corner), so
+  // they are reported on their own and left out of the contours until they are removed
+  const doubles = findDoubles(entities);
+  const doubleSet = new Set(doubles);
+  const contours = buildContours(entities.filter((e) => roleOf(e) === "cut" && !doubleSet.has(e.id)));
   const area = (b: Box) => (b.maxX - b.minX) * (b.maxY - b.minY);
   const outer = contours.reduce<Contour | null>((best, c) => (!best || area(c.box) > area(best.box) ? c : best), null);
   if (outer) outer.outer = true;
@@ -201,12 +205,21 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   const all = contours.length ? contours.map((c) => c.box).reduce(union) : null;
   const onEdge = (b: Box) => !!all && (Math.abs(b.minX - all.minX) < 0.01 || Math.abs(b.minY - all.minY) < 0.01 ||
     Math.abs(b.maxX - all.maxX) < 0.01 || Math.abs(b.maxY - all.maxY) < 0.01);
-  const openOutside = contours.filter((c) => !c.closed && (c.outer || onEdge(c.box)));
-  const openInside = contours.filter((c) => !c.closed && !openOutside.includes(c));
+  // With a closed outline, cutting lines that lie wholly outside it are not part of this part
+  // (another part drawn in the same file, or a stray line): they would be taken for holes.
+  const separate = outer && outer.closed ? outsideOutline(entities, outer, contours.filter((c) => c !== outer)) : [];
+  const rest = contours.filter((c) => !separate.includes(c));
+  const openOutside = rest.filter((c) => !c.closed && (c.outer || onEdge(c.box)));
+  const openInside = rest.filter((c) => !c.closed && !openOutside.includes(c));
   const splines = entities.filter((e) => e.kind === "spline");
-  const outsidePart = marksOutsidePart(entities, contours);
+  const outsidePart = marksOutsidePart(entities.filter((e) => !doubleSet.has(e.id)), rest);
 
   const checks: CheckResult[] = [
+    { id: "doubles", label: "Double or tiny lines", count: doubles.length, entityIds: doubles, points: [] },
+    {
+      id: "separate", label: "Lines outside the part outline", count: separate.length,
+      entityIds: separate.flatMap((c) => c.entityIds), points: [],
+    },
     {
       id: "insideOpen", label: "Inside contour open", count: openInside.length,
       entityIds: openInside.flatMap((c) => c.entityIds), points: openInside.flatMap((c) => c.openEnds),
@@ -223,7 +236,7 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   ];
 
   return {
-    contours,
+    contours: rest,
     checks,
     traceCount: entities.filter((e) => roleOf(e) === "trace").length,
     openCutCount: entities.filter((e) => roleOf(e) === "openCut").length,
@@ -283,6 +296,17 @@ const distToSeg = (p: Pt, [a, b]: Seg) => {
 /** Points this close to a cutting contour count as on it (a slit may start at the edge). */
 const ON_EDGE_MM = 0.05;
 
+/** Contours that lie wholly outside the closed outline (no point inside it or on it). */
+function outsideOutline(entities: Entity[], outer: Contour, others: Contour[]): Contour[] {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const segs = segmentsOf(outer, byId);
+  const b = outer.box;
+  const outside = (p: Pt) =>
+    p.x < b.minX - ON_EDGE_MM || p.x > b.maxX + ON_EDGE_MM || p.y < b.minY - ON_EDGE_MM || p.y > b.maxY + ON_EDGE_MM ||
+    (!segs.some((sg) => distToSeg(p, sg) <= ON_EDGE_MM) && !inside(p, segs));
+  return others.filter((c) => c.entityIds.every((id) => pointsAlong(byId.get(id)!).every(outside)));
+}
+
 /**
  * Tracing and open cut lines must lie on the material: inside the outside contour and
  * not inside a window. A point is on material when an odd number of closed contours
@@ -308,4 +332,70 @@ function marksOutsidePart(entities: Entity[], contours: Contour[]): string[][] {
   return buildContours(marks)
     .filter((chain) => chain.entityIds.some((id) => !pointsAlong(byId.get(id)!).every(onMaterial)))
     .map((chain) => chain.entityIds);
+}
+
+/* ---- Double and tiny lines ------------------------------------------------------------ */
+
+/** Lines shorter than this are too small to cut and only confuse the contours. */
+export const TINY_MM = JOIN_TOLERANCE_MM;
+
+/** Length of an entity along its path. */
+export function lengthOf(e: Entity): number {
+  if (e.kind === "line") return Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
+  if (e.kind === "arc") return rad(arcSweep(e.start, e.end)) * e.r;
+  if (e.kind === "circle") return 2 * Math.PI * e.r;
+  return e.fit.slice(1).reduce((s, q, i) => s + Math.hypot(q.x - e.fit[i].x, q.y - e.fit[i].y), 0);
+}
+
+const distPtSeg = (p: Pt, a: Pt, b: Pt) => {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+};
+
+/** Does `a` lie along `b` for its whole length (the same line drawn twice, or a piece on top of it)? */
+function coveredBy(a: Entity, b: Entity): boolean {
+  const T = JOIN_TOLERANCE_MM;
+  if (a.kind === "line" && b.kind === "line") return distPtSeg(a.a, b.a, b.b) <= T && distPtSeg(a.b, b.a, b.b) <= T;
+  if ((a.kind === "arc" || a.kind === "circle") && (b.kind === "arc" || b.kind === "circle")) {
+    if (Math.hypot(a.c.x - b.c.x, a.c.y - b.c.y) > T || Math.abs(a.r - b.r) > T) return false;
+    if (b.kind === "circle") return true;
+    if (a.kind === "circle") return false;
+    const sweep = arcSweep(b.start, b.end), slack = (T / b.r) * (180 / Math.PI);
+    return pointsAlong(a).every((p) => arcSweep(b.start, (Math.atan2(p.y - b.c.y, p.x - b.c.x) * 180) / Math.PI) % 360 <= sweep + slack
+      || Math.hypot(p.x - b.c.x - b.r * Math.cos(rad(b.start)), p.y - b.c.y - b.r * Math.sin(rad(b.start))) <= T);
+  }
+  if (a.kind === "spline" && b.kind === "spline") {
+    const same = (p: Pt[], q: Pt[]) => p.length === q.length && p.every((x, i) => Math.hypot(x.x - q[i].x, x.y - q[i].y) <= T);
+    return same(a.fit, b.fit) || same(a.fit, [...b.fit].reverse());
+  }
+  return false;
+}
+
+/**
+ * Ids of lines that are tiny (shorter than 0.01 mm) or lie on top of another line of the same
+ * kind (cutting, tracing or open cut). Of two identical lines only one is listed.
+ */
+export function findDoubles(entities: Entity[]): string[] {
+  const out = new Set<string>();
+  const live = entities.filter((e) => {
+    if (lengthOf(e) < TINY_MM) { out.add(e.id); return false; }
+    return true;
+  });
+  const T = JOIN_TOLERANCE_MM;
+  const boxes = live.map(boxOf);
+  for (let i = 0; i < live.length; i++) {
+    for (let j = 0; j < live.length; j++) {
+      if (i === j || out.has(live[j].id) || roleOf(live[i]) !== roleOf(live[j])) continue;
+      const a = boxes[i], b = boxes[j];
+      // a can only lie on b when a's box is inside b's box
+      if (a.minX < b.minX - T || a.maxX > b.maxX + T || a.minY < b.minY - T || a.maxY > b.maxY + T) continue;
+      if (!coveredBy(live[i], live[j])) continue;
+      // identical pair: keep the first, list the later one
+      if (coveredBy(live[j], live[i]) && j > i) continue;
+      out.add(live[i].id);
+      break;
+    }
+  }
+  return entities.filter((e) => out.has(e.id)).map((e) => e.id);
 }

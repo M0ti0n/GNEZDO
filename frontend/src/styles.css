@@ -1075,3 +1075,8 @@ th.num .th-sort { flex-direction: row-reverse; }
 .meas-text { font-size: 13px; font-weight: 700; fill: var(--meas); paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
 .meas-first { fill: rgba(194, 65, 12, .2); stroke: #c2410c; stroke-width: 2; }
 .meas-pick { fill: none; stroke: #c2410c; stroke-width: 3.2; opacity: .75; }
+
+/* Geometry check: Remove next to "Double or tiny lines" and "Lines outside the part outline" */
+.gc-checks li { display: flex; align-items: center; gap: 6px; }
+.gc-checks li > .gc-row { flex: 1; min-width: 0; }
+.gc-remove { flex: none; }
