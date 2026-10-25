@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<GnezdoOptions>(builder.Configuration.GetSection("Gnezdo"));
 builder.Services.AddSingleton<ShopTime>();
+builder.Services.AddSingleton(TimeProvider.System);
 // Connection string is read when the first DbContext is created, so tests and Docker can override it.
 builder.Services.AddDbContext<GnezdoDb>((sp, o) => o.UseSqlServer(
     sp.GetRequiredService<IConfiguration>().GetConnectionString("Gnezdo")

@@ -15,6 +15,8 @@ export interface ImportItem {
   declaredUnits?: string;
   checked: boolean;          // Check lines has run on it (or it was opened)
   processed: boolean;
+  /** Process all found a part with the same project and name in the database; process it by hand to replace it. */
+  duplicate?: boolean;
   /** Rotations and mirror the part got when it was processed. */
   applied?: { rotations: Rotation[]; mirror: boolean };
 }
@@ -51,7 +53,7 @@ export const hasOpenCut = (item: ImportItem) =>
  *   ok        - only closed contours (open lines are marked as tracing or open cut): ready to process
  *   attention - open lines that are neither tracing nor open cut
  */
-export type Verdict = "reading" | "failed" | "dwg" | "unchecked" | "attention" | "ok" | "processed";
+export type Verdict = "reading" | "failed" | "dwg" | "unchecked" | "attention" | "duplicate" | "ok" | "processed";
 
 export interface ItemStatus {
   verdict: Verdict;
@@ -69,7 +71,8 @@ export function statusOf(item: ImportItem): ItemStatus {
   const blocking = report.checks.filter((c) => c.id !== "splines" && c.count > 0);
   const open = blocking.reduce((n, c) => n + c.count, 0);
   const splines = report.checks.find((c) => c.id === "splines")?.count ?? 0;
-  const verdict: Verdict = !item.checked ? "unchecked" : open > 0 ? "attention" : item.processed ? "processed" : "ok";
+  const verdict: Verdict = !item.checked ? "unchecked" : open > 0 ? "attention"
+    : item.processed ? "processed" : item.duplicate ? "duplicate" : "ok";
   return { verdict, openContours: open, problems: blocking.map((c) => `${c.label.toLowerCase()}${c.count > 1 ? ` (${c.count})` : ""}`), splines };
 }
 

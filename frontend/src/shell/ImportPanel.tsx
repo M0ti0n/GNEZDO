@@ -15,7 +15,9 @@ export interface ImportPanelProps {
   /** Files dropped or chosen; single import opens the part straight away. */
   onFiles: (files: File[], openFirst: boolean) => void;
   onCheckLines: () => void;
+  /** Saves the green parts; red ones stay in the list. */
   onProcessAll: () => void;
+  busy: boolean;
   onOpen: (id: string) => void;
   onRemove: (id: string) => void;
   onClear: () => void;
@@ -24,7 +26,7 @@ export interface ImportPanelProps {
 }
 
 const ICON: Record<Verdict, string> = {
-  reading: "…", failed: "×", dwg: "–", unchecked: "", attention: "!", ok: "✓", processed: "✓",
+  reading: "…", failed: "×", dwg: "–", unchecked: "", attention: "!", duplicate: "!", ok: "✓", processed: "✓",
 };
 const TITLE: Record<Verdict, string> = {
   reading: "Reading the file",
@@ -32,6 +34,7 @@ const TITLE: Record<Verdict, string> = {
   dwg: "DWG files are read on the server (not built yet)",
   unchecked: "Not checked yet: press Check lines",
   attention: "Needs attention: mark open lines as tracing or open cut",
+  duplicate: "Already in the database (same project and name): open it and press Process to replace it",
   ok: "Only closed contours: ready to process",
   processed: "Processed",
 };
@@ -61,11 +64,21 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
   const attention = count("attention");
   const toProcess = count("ok");
   const propsSet = p.properties.material.trim() !== "" && p.properties.thicknessMm !== "";
-  const canProcess = toProcess > 0 && unchecked === 0 && attention === 0 && propsSet;
-  const processHint = !ready.length ? "" : unchecked ? "Check lines first"
-    : attention ? `${attention} ${attention === 1 ? "part needs" : "parts need"} attention`
-    : !propsSet ? "Set material and thickness first"
-    : toProcess ? "" : "All parts are processed";
+  const duplicates = count("duplicate");
+  const toCheck = attention + duplicates;
+  const canProcess = toProcess > 0 && !p.busy;
+  const processHint = !ready.length ? ""
+    : toProcess === 0 && unchecked ? "Press Check lines first"
+    : toProcess === 0 ? (toCheck ? "Open the red parts and process them one by one" : "")
+    : !propsSet ? "Set material and thickness, then Process all"
+    : toCheck ? `Process all saves the ${toProcess} green; the red stay in the list` : "";
+  const [needProps, setNeedProps] = useState(false);
+  const materialRef = useRef<HTMLInputElement>(null);
+  const processAll = () => {
+    if (!propsSet) { setNeedProps(true); materialRef.current?.focus(); return; }
+    setNeedProps(false);
+    p.onProcessAll();
+  };
 
   const setProp = (patch: Partial<BatchProperties>) => p.onProperties({ ...p.properties, ...patch });
   const thicknesses = [...new Set(facets.thicknesses
@@ -107,10 +120,12 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
         <section className="imp-props" aria-label="Properties for all parts">
           <h3><span className="imp-props-icon">{icon("properties")}</span>Properties for all parts</h3>
           <div className="filter-pair">
-            <input className="field" list="imp-materials" value={p.properties.material} placeholder="Material"
+            <input ref={materialRef} className={`field${needProps && !p.properties.material.trim() ? " is-required" : ""}`}
+              list="imp-materials" value={p.properties.material} placeholder="Material"
               aria-label="Material" onChange={(e) => setProp({ material: e.target.value })} />
             <datalist id="imp-materials">{facets.materials.map((m) => <option key={m} value={m} />)}</datalist>
-            <input className="field" list="imp-thicknesses" type="number" min="0" step="0.1" value={p.properties.thicknessMm}
+            <input className={`field${needProps && p.properties.thicknessMm === "" ? " is-required" : ""}`}
+              list="imp-thicknesses" type="number" min="0" step="0.1" value={p.properties.thicknessMm}
               placeholder="Thickness mm" aria-label="Thickness in mm" onChange={(e) => setProp({ thicknessMm: e.target.value })} />
             <datalist id="imp-thicknesses">{thicknesses.map((t) => <option key={t} value={t} />)}</datalist>
           </div>
@@ -146,9 +161,10 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           title="Check every part: closed contours turn green, parts with open lines turn red">
           <span className="imp-btn-icon">{icon("checkLines")}</span>Check lines
         </button>
-        <button className="btn imp-btn imp-btn-go" onClick={p.onProcessAll} disabled={!canProcess}
-          title={processHint || `Process ${toProcess} ${toProcess === 1 ? "part" : "parts"}`}>
-          <span className="imp-btn-icon">{icon("process")}</span>Process all
+        <button className="btn imp-btn imp-btn-go" onClick={processAll} disabled={!canProcess}
+          title={processHint || `Save the ${toProcess} green ${toProcess === 1 ? "part" : "parts"} to the database`}>
+          <span className="imp-btn-icon">{icon("process")}</span>{p.busy ? "Saving…" : "Process all"}
+          {toProcess > 0 && !p.busy && <span className="imp-btn-count">{toProcess}</span>}
         </button>
       </div>
       {(p.items.length > 0) && (
@@ -156,7 +172,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           <span className="result-count">
             {p.items.length} {p.items.length === 1 ? "file" : "files"}
             {count("ok", "processed") > 0 && <> · <span className="t-ok">{count("ok", "processed")} ready</span></>}
-            {attention > 0 && <> · <span className="t-bad">{attention} to check</span></>}
+            {toCheck > 0 && <> · <span className="t-bad">{toCheck} to check</span></>}
           </span>
           <span className="result-actions"><button className="link" onClick={p.onClear}>Clear list</button></span>
         </div>
@@ -173,6 +189,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
         {statuses.map(({ item, st }) => {
           const notes = [
             st.verdict === "attention" && st.problems.join(" · "),
+            st.verdict === "duplicate" && "already in the database: open and process to replace",
             st.splines > 0 && `${st.splines} ${st.splines === 1 ? "spline" : "splines"}`,
             item.declaredUnits && `file says ${item.declaredUnits}, read as mm`,
             item.error,

@@ -33,6 +33,8 @@ public static class PartEndpoints
     {
         app.MapGet("/api/parts", SearchAsync);
         app.MapGet("/api/parts/facets", FacetsAsync);
+        app.MapPost("/api/parts/existing", PartSave.ExistingAsync);
+        app.MapPost("/api/parts", PartSave.SaveAsync);
     }
 
     private static async Task<IResult> SearchAsync(

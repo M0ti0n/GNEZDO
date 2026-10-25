@@ -3,7 +3,10 @@ import { api } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
 import { sampleDrawings } from "./import/sampleDrawing";
-import { mirrorFor, newItem, propertiesFrom, readItem, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
+import { hasOpenCut, mirrorFor, newItem, propertiesFrom, readItem, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
+import { ProcessDialog, type ProcessValues } from "./import/ProcessDialog";
+import { partGeometry } from "./import/toPart";
+import type { SavePart } from "./api/api";
 import { applyRules, loadRules, saveRules, type ImportRules } from "./import/rules";
 import { RulesPage } from "./pages/RulesPage";
 import { quantityFromName } from "./import/geometry";
@@ -87,6 +90,23 @@ export function App() {
 
   const closeTabs = (ids: string[]) => ids.forEach((id) => dispatch({ type: "close", id: `drawing:${id}` }));
 
+  const [saving, setSaving] = useState(false);
+  const [processing, setProcessing] = useState<string | null>(null);   // part shown in the Process pop-up
+
+  /** Saved parts leave the import list and their tabs close. */
+  const dropSaved = (ids: string[]) => {
+    closeTabs(ids);
+    setImports((list) => list.filter((i) => !ids.includes(i.id)));
+  };
+
+  const toSave = (i: ImportItem, v: ProcessValues, replace: boolean): SavePart => ({
+    name: v.name.trim(), project: v.project.trim(), description: v.description.trim(),
+    material: v.material.trim(), thicknessMm: Number(v.thicknessMm),
+    rotations: [...v.rotations], mirror: v.mirror,
+    ...partGeometry(i.drawing!),
+    sourceFile: i.fileName, replace,
+  });
+
   const importPanel = {
     items: imports,
     properties: importProps,
@@ -99,12 +119,31 @@ export function App() {
       const bad = next.filter((s) => s.verdict === "attention").length;
       setToast(bad ? `${bad} ${bad === 1 ? "part needs" : "parts need"} attention: click the red ones to check them` : "All parts have closed contours");
     },
-    onProcessAll: () => {
-      const ids = imports.filter((i) => statusOf(i).verdict === "ok").map((i) => i.id);
-      setImports((list) => list.map((i) => (ids.includes(i.id)
-        ? { ...i, processed: true, applied: { rotations: [...importProps.rotations], mirror: mirrorFor(i, importProps, rules) } }
-        : i)));
-      setToast(`Processed ${ids.length} ${ids.length === 1 ? "part" : "parts"}`);
+    busy: saving,
+    // Saves the green parts with the Properties; parts already in the database are not
+    // replaced but marked, to be processed one by one.
+    onProcessAll: async () => {
+      const green = imports.filter((i) => statusOf(i).verdict === "ok" && i.drawing);
+      if (!green.length) return;
+      setSaving(true);
+      try {
+        const res = await api.saveParts(green.map((i) => toSave(i, {
+          name: i.name, project: importProps.project, description: "",
+          material: importProps.material, thicknessMm: importProps.thicknessMm,
+          rotations: importProps.rotations, mirror: mirrorFor(i, importProps, rules),
+        }, false)), "Import list");
+        const saved = green.filter((_, k) => res[k]?.status !== "exists").map((i) => i.id);
+        const dup = green.filter((_, k) => res[k]?.status === "exists").map((i) => i.id);
+        dropSaved(saved);
+        setImports((list) => list.map((i) => (dup.includes(i.id) ? { ...i, duplicate: true } : i)));
+        const already = `${dup.length} ${dup.length === 1 ? "part is" : "parts are"} already in the database: open ${dup.length === 1 ? "it" : "them"} to replace`;
+        setToast(saved.length === 0 ? already
+          : `Saved ${saved.length} ${saved.length === 1 ? "part" : "parts"} to the database` + (dup.length ? ` · ${already}` : ""));
+      } catch (e) {
+        setToast(`Not saved: ${(e as Error).message}`);
+      } finally {
+        setSaving(false);
+      }
     },
     onOpen: (id: string) => { const it = imports.find((i) => i.id === id); if (it) openItem(it); },
     onRemove: (id: string) => { closeTabs([id]); setImports((list) => list.filter((i) => i.id !== id)); },
@@ -119,6 +158,7 @@ export function App() {
     openId: activeTab?.kind === "drawing" ? activeTab.drawingId ?? null : null,
   };
   const shownItem = active.kind === "drawing" ? imports.find((i) => i.id === active.drawingId) : undefined;
+  const processingItem = processing ? imports.find((i) => i.id === processing) : undefined;
 
   const openJob = (j: JobSummary) => open(jobTab(j.id, j.name));
 
@@ -205,6 +245,7 @@ export function App() {
                 nestRules={shownItem.processed && shownItem.applied
                   ? shownItem.applied
                   : { rotations: importProps.rotations, mirror: mirrorFor(shownItem, importProps, rules) }}
+                onProcess={() => setProcessing(shownItem.id)}
                 onChange={(drawing, processed) => patchItem(shownItem.id, {
                   drawing, processed,
                   applied: processed ? { rotations: [...importProps.rotations], mirror: mirrorFor({ ...shownItem, drawing }, importProps, rules) } : undefined,
@@ -219,6 +260,25 @@ export function App() {
           </main>
         </div>
       </div>
+      {processingItem?.drawing && (
+        <ProcessDialog
+          drawing={processingItem.drawing}
+          initial={{
+            name: processingItem.name, project: importProps.project, description: "",
+            material: importProps.material, thicknessMm: importProps.thicknessMm,
+            rotations: importProps.rotations, mirror: importProps.mirror,
+          }}
+          mirrorBlocked={rules.mirrorWithoutOpenCut && hasOpenCut(processingItem)}
+          onCancel={() => setProcessing(null)}
+          onSave={async (v, replace) => {
+            const [r] = await api.saveParts([toSave(processingItem, v, replace)], processingItem.fileName);
+            if (r?.status === "exists") throw new Error("a part with this project and name was just saved by someone else; check again");
+            setProcessing(null);
+            dropSaved([processingItem.id]);
+            setToast(`${r?.status === "replaced" ? "Replaced" : "Saved"} ${v.name.trim()} in the database`);
+          }}
+        />
+      )}
       {toast && <div className="toast" role="status">{toast}</div>}
       <div id="drag-ghost" className="drag-ghost" aria-hidden="true" />
     </div>

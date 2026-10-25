@@ -48,6 +48,8 @@ the Docker builds on every push.
 |---|---|
 | `GET /api/parts?name=&material=&thicknessMm=&project=&description=&created=on:2026-10-24&modified=upTo:2026-10-24&xMin=&xMax=&yMin=&yMax=&engraved=true` | parts, newest change first (max 500) |
 | `GET /api/parts/facets` | materials and thicknesses for the filter lists |
+| `POST /api/parts/existing` | which of the given parts (project + name) are already in the database |
+| `POST /api/parts` | save processed parts from the import screen; `replace` decides whether an existing part (same project and name) is overwritten, otherwise it is reported as `exists` |
 | `GET /api/imports/recent`, `GET /api/imports` | import batches |
 | `GET /api/jobs/recent` | latest changed jobs |
 | `GET /api/jobs?name=&material=&thicknessMm=&project=&created=on:2026-10-24&modified=upTo:2026-10-24&part=` | job search: `project` = jobs containing parts of that project, `part` = jobs a part is used in |
@@ -60,3 +62,7 @@ Sorting (parts and jobs): `sort=name|created|modified|material|thickness|project
 
 Date filters: `on:` that calendar day, `upTo:` up to and including that day, `from:` from that
 day on; days are shop days (Europe/Ljubljana).
+
+> **Database schema changed** (parts got `Geometry`, `Rotations`, `Mirror`, `SourceFile`). The database is still created with
+> `EnsureCreated`, which does not alter an existing database: drop the development database once so it is created again.
+> EF migrations come before real data goes in.

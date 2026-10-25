@@ -52,6 +52,13 @@ public class Part
     /// <summary>SVG path of outline and holes (y down, origin top-left), for thumbnails.</summary>
     public string OutlinePath { get; set; } = "";
     public bool Engraved { get; set; }
+    /// <summary>Drawing entities with their roles (cut, trace, openCut), JSON, in mm, y up.</summary>
+    public string Geometry { get; set; } = "";
+    /// <summary>Rotation steps the nesting may use, e.g. "90,45"; empty = no rotation.</summary>
+    public string Rotations { get; set; } = "";
+    public bool Mirror { get; set; }
+    /// <summary>File the part was imported from.</summary>
+    public string SourceFile { get; set; } = "";
     public int ImportBatchId { get; set; }
     public ImportBatch ImportBatch { get; set; } = null!;
     public DateTimeOffset CreatedAt { get; set; }
