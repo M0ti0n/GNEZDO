@@ -4,8 +4,9 @@ import { ROTATIONS, type Rotation } from "../import/rules";
 import { diagnoseEnds, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
 import {
+  endsOf,
   boxOf, checkGeometry, pathOf, pointsAlong, roleOf, union,
-  type Box, type CheckId, type Drawing, type Pt, type Role,
+  type Box, type CheckId, type Drawing, type Entity, type Pt, type Role,
 } from "../import/geometry";
 
 /** Screen = (x * s + tx, -y * s + ty): s pixels per mm, y flipped (CAD y points up). */
@@ -21,6 +22,10 @@ const MARKING: Record<string, { role: Role; hint: string }> = {
 };
 
 /** Tools that change lines by clicking them (AutoCAD quick mode); Shift swaps trim and extend. */
+/** Pixels within which a point snaps to the end of a line. */
+const SNAP_PX = 12;
+const LINE_HINT = "Click the start point, then the end point; the line goes on from there. Ends of lines snap (green square). Esc or right click finishes.";
+
 const EDITING: Record<string, { hint: string }> = {
   trim: { hint: "Click the piece of a line to cut off (all lines are cutting edges). Shift+click extends. Ctrl+Z undoes." },
   extend: { hint: "Click a line near the end to lengthen it to the next line. Shift+click trims. Ctrl+Z undoes." },
@@ -76,6 +81,30 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
         undo();
       }
     };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // Line tool: start point, then each next point; points snap to the ends of lines.
+  const [lineStart, setLineStart] = useState<Pt | null>(null);
+  const [cursor, setCursor] = useState<{ p: Pt; snapped: boolean } | null>(null);
+  const lineSeq = useRef(0);
+  const ends = useMemo(() => drawing.entities.flatMap((e) => {
+    const en = endsOf(e);
+    return en ? [en[0], en[1]] : [];
+  }), [drawing]);
+  const snapAt = (clientX: number, clientY: number, v: View): { p: Pt; snapped: boolean } => {
+    const p = toModel(clientX, clientY, v);
+    let best: Pt | null = null, bestD = SNAP_PX / v.s;
+    for (const q of ends) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d <= bestD) { best = q; bestD = d; } }
+    return best ? { p: { ...best }, snapped: true } : { p, snapped: false };
+  };
+  const finishLine = () => {
+    if (lineStart) setMessage({ text: "Line finished" });
+    setLineStart(null);
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && tool === "line") finishLine(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
@@ -137,7 +166,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
   // With Trace / Open cut the left button clicks a line or drags a selection box:
   //   left to right = window (lines fully inside), right to left = crossing (lines touched).
   const drag = useRef<{ x: number; y: number } | null>(null);
-  const press = useRef<{ x: number; y: number } | null>(null);
+  const press = useRef<{ x: number; y: number; button: number } | null>(null);
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const local = (e: React.PointerEvent) => {
     const r = host.current!.getBoundingClientRect();
@@ -153,12 +182,13 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
       return;
     }
     drag.current = { x: e.clientX, y: e.clientY };
-    press.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+    press.current = { x: e.clientX, y: e.clientY, button: e.button };
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (box) { const p = local(e); setBox((b) => b && { ...b, x1: p.x, y1: p.y }); return; }
     const d = drag.current;
     if (!d) {
+      if (tool === "line" && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
       // hover with Trim / Extend: preview the result
       if (tool && EDITING[tool] && view) {
         const id = lineUnder(e.clientX, e.clientY);
@@ -176,7 +206,21 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
     drag.current = null;
     const pr = press.current;
     press.current = null;
-    if (pr && tool && EDITING[tool] && view && Math.hypot(e.clientX - pr.x, e.clientY - pr.y) <= 4) {
+    const isClick = !!pr && Math.hypot(e.clientX - pr.x, e.clientY - pr.y) <= 4;
+    if (isClick && tool === "line" && view) {
+      if (pr!.button === 2) { finishLine(); return; }        // right click ends the line
+      if (pr!.button !== 0) return;
+      const at = snapAt(e.clientX, e.clientY, view);
+      if (!lineStart) { setLineStart(at.p); setMessage({ text: "Now click the end point" }); return; }
+      if (Math.hypot(at.p.x - lineStart.x, at.p.y - lineStart.y) < 1e-6) return;
+      const line: Entity = { id: `ln${Date.now().toString(36)}${++lineSeq.current}`, kind: "line", a: lineStart, b: at.p, role: "cut" };
+      commit({ ...drawing, entities: [...drawing.entities, line] });
+      setSelected(null);
+      setLineStart(at.p);                                    // go on from the end, like AutoCAD
+      setMessage({ text: `Line ${fmtMm(Math.hypot(at.p.x - lineStart.x, at.p.y - lineStart.y))} added. Next point, or Esc to finish` });
+      return;
+    }
+    if (pr && pr.button === 0 && tool && EDITING[tool] && view && isClick) {
       const id = lineUnder(e.clientX, e.clientY);
       if (!id) return;
       const r = editAt(id, toModel(e.clientX, e.clientY, view), e.shiftKey);
@@ -233,6 +277,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
     }
     setMessage(null);
     setPreview(null);
+    setLineStart(null);
+    setCursor(null);
     setTool((t) => (t === id ? null : id));
   };
 
@@ -285,7 +331,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? "not built yet" : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? (tool === "line" ? LINE_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -296,8 +342,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
       <ImportToolStrip active={tool} onTool={onTool} />
       <div
         ref={host}
-        className={`canvas${tool && (MARKING[tool] || EDITING[tool]) ? " is-marking" : ""}`}
-        onPointerLeave={() => setPreview(null)}
+        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || tool === "line") ? " is-marking" : ""}`}
+        onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         onContextMenu={(e) => e.preventDefault()}
@@ -330,6 +376,21 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
                 </g>
               );
             })}
+            {tool === "line" && cursor && (() => {
+              const c = toScreen(cursor.p, view);
+              const s0 = lineStart && toScreen(lineStart, view);
+              const len = lineStart ? Math.hypot(cursor.p.x - lineStart.x, cursor.p.y - lineStart.y) : 0;
+              return (
+                <g className="line-draw" pointerEvents="none">
+                  {s0 && <line x1={s0.x} y1={s0.y} x2={c.x} y2={c.y} className="line-rubber" />}
+                  {s0 && <circle cx={s0.x} cy={s0.y} r={3.5} className="line-start" />}
+                  {cursor.snapped
+                    ? <rect x={c.x - 7} y={c.y - 7} width={14} height={14} className="snap-mark" />
+                    : <path d={`M${c.x - 8} ${c.y}H${c.x + 8}M${c.x} ${c.y - 8}V${c.y + 8}`} className="line-cross" />}
+                  {s0 && len > 0 && <text x={c.x + 12} y={c.y - 10} className="line-len">{fmtMm(len)}</text>}
+                </g>
+              );
+            })()}
             {box && (
               <rect className={`sel-box${box.x1 < box.x0 ? " is-crossing" : ""}`}
                 x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)}

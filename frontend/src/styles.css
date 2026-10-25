@@ -1040,3 +1040,10 @@ th.num .th-sort { flex-direction: row-reverse; }
 .gc-chips { gap: 6px; }
 .gc-chips .chk-box { padding: 4px 9px; font-size: 13px; }
 .gc-note { margin: 6px 0 0; font-size: 12px; color: var(--ink-3); }
+
+/* Line tool */
+.line-rubber { stroke: var(--blue); stroke-width: 1.6; stroke-dasharray: 6 4; }
+.line-start { fill: var(--blue); }
+.snap-mark { fill: rgba(31, 168, 58, .15); stroke: #1fa83a; stroke-width: 2; }
+.line-cross { stroke: var(--ink-2); stroke-width: 1; }
+.line-len { font-size: 12px; font-weight: 600; fill: var(--blue-ink); paint-order: stroke; stroke: #fff; stroke-width: 3px; }
