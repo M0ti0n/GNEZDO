@@ -5,7 +5,8 @@ using Microsoft.Extensions.Options;
 namespace Gnezdo.Api.Data;
 
 /// <summary>
-/// Creates the database on first start and optionally fills it with sample data.
+/// Brings the database up to date on start: applies the migrations that have not run yet
+/// (each in a transaction, existing data is kept), then optionally adds sample data.
 /// Waits for SQL Server to come up (Docker starts it at the same time as the API).
 /// </summary>
 public static class DbInitializer
@@ -21,11 +22,16 @@ public static class DbInitializer
         {
             try
             {
-                // Schema is created from the model for now; EF migrations replace this
-                // once the schema settles.
-                await db.Database.EnsureCreatedAsync(ct);
+                await RefuseOldDatabaseAsync(db, ct);
+                var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
+                if (pending.Count > 0)
+                {
+                    logger.LogInformation("Updating the database: {Migrations}", string.Join(", ", pending));
+                    await db.Database.MigrateAsync(ct);
+                }
                 break;
             }
+            catch (OldDatabaseException) { throw; }
             catch (Exception ex) when (i < attempts && !ct.IsCancellationRequested)
             {
                 logger.LogWarning("Database not reachable yet ({Attempt}/{Attempts}): {Message}", i, attempts, ex.Message);
@@ -33,13 +39,37 @@ public static class DbInitializer
             }
         }
 
-        if (options.SeedSampleData && !await db.Parts.AnyAsync(ct))
+        if (options.SeedSampleData && !await db.Parts.IgnoreQueryFilters().AnyAsync(ct))
         {
             await SampleData.SeedAsync(db, DateTimeOffset.UtcNow, ct);
             logger.LogInformation("Sample data added.");
         }
     }
+
+    /// <summary>
+    /// Databases made before migrations (with EnsureCreated) have tables but no migration
+    /// history. Migrating them would fail half way, so stop with a clear message instead.
+    /// They only ever held test data: drop the database once and start GNEZDO again.
+    /// </summary>
+    private static async Task RefuseOldDatabaseAsync(GnezdoDb db, CancellationToken ct)
+    {
+        if (!await db.Database.CanConnectAsync(ct)) return;   // no database yet: Migrate creates it
+        var conn = db.Database.GetDbConnection();
+        await db.Database.OpenConnectionAsync(ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT CASE WHEN OBJECT_ID(N'dbo.Parts') IS NOT NULL AND OBJECT_ID(N'dbo.__EFMigrationsHistory') IS NULL THEN 1 ELSE 0 END";
+            if (Convert.ToInt32(await cmd.ExecuteScalarAsync(ct)) == 1)
+                throw new OldDatabaseException(
+                    $"Database '{conn.Database}' was created by an early GNEZDO version without migrations. " +
+                    "It only holds test data: drop it once (DROP DATABASE) and start GNEZDO again to create it with migrations.");
+        }
+        finally { await db.Database.CloseConnectionAsync(); }
+    }
 }
+
+public sealed class OldDatabaseException(string message) : Exception(message);
 
 /// <summary>Loads Seed/sample-data.json (embedded) into an empty database.</summary>
 public static class SampleData
