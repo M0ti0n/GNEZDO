@@ -39,7 +39,10 @@ export interface ItemStatus {
 }
 
 export function statusOf(item: ImportItem): ItemStatus {
-  if (item.state !== "ready" || !item.drawing) return { verdict: item.state === "reading" ? "reading" : item.state, openContours: 0, splines: 0 };
+  if (item.state !== "ready" || !item.drawing) {
+    const verdict: Verdict = item.state === "dwg" ? "dwg" : item.state === "reading" ? "reading" : "failed";
+    return { verdict, openContours: 0, splines: 0 };
+  }
   const report = checkGeometry(item.drawing.entities);
   const open = report.checks.filter((c) => c.id !== "splines").reduce((n, c) => n + c.count, 0);
   const splines = report.checks.find((c) => c.id === "splines")?.count ?? 0;
