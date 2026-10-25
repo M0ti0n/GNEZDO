@@ -878,3 +878,4 @@ th.num .th-sort { flex-direction: row-reverse; }
   .proc-body { grid-template-columns: 1fr; }
   .proc-svg { height: 220px; }
 }
+.proc-fill { fill: #d9efcc; stroke: none; }
