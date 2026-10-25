@@ -62,6 +62,13 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel, saving]);
 
+  // X × Y of the part (outside contour), whole millimetres: "899 × 785 mm"
+  const size = useMemo(() => {
+    const r = checkGeometry(drawing.entities);
+    const b = r.contours.find((c) => c.outer)?.box ?? r.box;
+    return `${Math.round(b.maxX - b.minX)} × ${Math.round(b.maxY - b.minY)} mm`;
+  }, [drawing]);
+
   const thicknesses = [...new Set(facets.thicknesses
     .filter((t) => !v.material || t.material.toLowerCase() === v.material.toLowerCase())
     .map((t) => t.thicknessMm))].sort((a, b) => a - b);
@@ -93,6 +100,7 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
         <div className="proc-body">
           <figure className={`proc-image is-${exists.state}`}>
             <div className="proc-frame"><Preview drawing={drawing} /></div>
+            <div className="proc-size" title="Width × height of the part">{size}</div>
             <figcaption>
               <span className="proc-status">
                 {exists.state === "checking" && "Checking the database…"}
