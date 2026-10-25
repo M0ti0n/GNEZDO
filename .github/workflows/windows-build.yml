@@ -1,0 +1,73 @@
+name: Windows test build
+
+# Builds gnezdo-windows.zip: GNEZDO.exe (self-contained, nothing to install) with the web pages,
+# start.bat, config.example.json and INSTALL.txt, and publishes it as the "test-build" release:
+#   https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-windows.zip
+# Runs on every change to main, on a push to a build/... branch (a test build of work not merged
+# yet), or by hand (Actions tab -> Windows test build -> Run workflow).
+on:
+  push:
+    branches: [main, "build/**"]
+    paths: ["frontend/**", "backend/src/**", "packaging/**", ".github/workflows/windows-build.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Web pages (database and demo)
+        working-directory: frontend
+        run: |
+          npm install --no-audit --no-fund
+          npx tsc --noEmit
+          VITE_USE_API=true npx vite build --outDir ../out/web-db --emptyOutDir
+          VITE_USE_API=false npx vite build --outDir ../out/web-demo --emptyOutDir
+
+      - name: GNEZDO.exe (Windows, self-contained)
+        run: |
+          dotnet publish backend/src/Gnezdo.Api -c Release -r win-x64 --self-contained true \
+            -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:DebugType=none -o out/publish
+
+      - name: Assemble the zip
+        run: |
+          set -e
+          d=out/gnezdo
+          mkdir -p $d
+          cp out/publish/Gnezdo.Api.exe $d/GNEZDO.exe
+          # program defaults; without config.json it runs as a demo (no database set here)
+          jq '.ConnectionStrings.Gnezdo = ""' out/publish/appsettings.json > $d/appsettings.json
+          cp -r out/web-db $d/wwwroot
+          cp -r out/web-demo $d/wwwroot-demo
+          cp packaging/start.bat packaging/config.example.json packaging/INSTALL.txt $d/
+          echo "GNEZDO test build $(date -u +%Y-%m-%d) from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}" > $d/VERSION.txt
+          ls -la $d
+          (cd out && zip -qr gnezdo-windows.zip gnezdo)
+          ls -la out/gnezdo-windows.zip
+
+      - name: Publish as the test-build release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete test-build --yes --cleanup-tag || true
+          gh release create test-build out/gnezdo-windows.zip --prerelease --target "$GITHUB_SHA" \
+            --title "Test build for Windows ($(date -u +%Y-%m-%d), ${GITHUB_REF_NAME})" \
+            --notes "Unzip, double-click start.bat, open http://localhost:8090. Runs as a demo until a database is set in config.json - see INSTALL.txt."
+          echo "::notice title=Download::https://github.com/${GITHUB_REPOSITORY}/releases/download/test-build/gnezdo-windows.zip"

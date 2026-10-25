@@ -14,3 +14,5 @@ dist/
 .env
 *.log
 .DS_Store
+# Windows test build (made by .github/workflows/windows-build.yml)
+/out/
