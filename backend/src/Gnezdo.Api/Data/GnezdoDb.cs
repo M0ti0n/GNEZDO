@@ -8,6 +8,7 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
     public DbSet<Part> Parts => Set<Part>();
+    public DbSet<PartRevision> PartRevisions => Set<PartRevision>();
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobPart> JobParts => Set<JobPart>();
 
@@ -50,6 +51,20 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
             e.HasIndex(x => new { x.MaterialId, x.ThicknessMm });
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => x.ModifiedAt);
+        });
+
+        b.Entity<PartRevision>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Description).HasMaxLength(400);
+            e.Property(x => x.ProjectCode).HasMaxLength(60);
+            e.Property(x => x.MaterialName).HasMaxLength(100);
+            e.Property(x => x.ThicknessMm).HasPrecision(6, 2);
+            e.Property(x => x.Rotations).HasMaxLength(40);
+            e.Property(x => x.SourceFile).HasMaxLength(260);
+            // history goes with its part; parts are never deleted for now
+            e.HasOne(x => x.Part).WithMany(x => x.History).HasForeignKey(x => x.PartId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.PartId, x.Revision }).IsUnique();
         });
 
         b.Entity<Job>(e =>

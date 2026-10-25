@@ -194,7 +194,8 @@ public static class HomeEndpoints
                     x.Part.Id.ToString(), x.Part.Name, x.Part.Project != null ? x.Part.Project.Code : "",
                     x.Part.Material.Name, x.Part.ThicknessMm, x.Part.Qty, x.Part.WidthMm, x.Part.HeightMm,
                     x.Part.AreaMm2, x.Part.OutlinePath, x.Part.Description, x.Part.Engraved,
-                    x.Part.ImportBatchId.ToString(), x.Part.ImportBatch.ImportedAt, x.Part.CreatedAt, x.Part.ModifiedAt),
+                    x.Part.ImportBatchId.ToString(), x.Part.ImportBatch.ImportedAt, x.Part.CreatedAt, x.Part.ModifiedAt,
+                    x.Part.Revision),
                 x.Qty))
             .ToListAsync(ct);
         return Results.Ok(parts);

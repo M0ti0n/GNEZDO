@@ -79,6 +79,44 @@ public sealed class PartSaveTests(ApiFixture api)
         Assert.Equal("second", Assert.Single(await Search("?name=SAVE_C_rib")).Description);
     }
 
+    private async Task<List<PartVersionDto>> History(string id) =>
+        (await api.Client.GetFromJsonAsync<List<PartVersionDto>>($"/api/parts/{id}/history"))!;
+
+    [Fact]
+    public async Task Replace_keeps_the_old_version_and_restore_brings_it_back()
+    {
+        var id = Assert.Single(await Save(Part("SAVE_F_plate", "N26-0600", material: "S235", t: 3, description: "v1"))).Id!;
+        Assert.Equal(1, Assert.Single(await Search("?name=SAVE_F_plate")).Revision);
+        Assert.Single(await History(id));                                  // only the current version
+
+        await Save(Part("SAVE_F_plate", "N26-0600", material: "S355", t: 5, description: "v2", replace: true));
+        var h = await History(id);
+        Assert.Equal([2, 1], h.Select(v => v.Revision));
+        Assert.True(h[0].Current);
+        Assert.Equal(("v1", "S235", 3m), (h[1].Description, h[1].Material, h[1].ThicknessMm));
+        Assert.NotNull(h[1].ReplacedAt);
+
+        var res = await api.Client.PostAsJsonAsync($"/api/parts/{id}/restore", new RestoreRequest(1));
+        res.EnsureSuccessStatusCode();
+        var restored = (await res.Content.ReadFromJsonAsync<PartDto>())!;
+        Assert.Equal(("v1", "S235", 3m, 3), (restored.Description, restored.Material, restored.ThicknessMm, restored.Revision));
+
+        // nothing is lost: v2 is in the history now too, and could be restored again
+        h = await History(id);
+        Assert.Equal([3, 2, 1], h.Select(v => v.Revision));
+        Assert.Equal("v2", h[1].Description);
+        Assert.Equal([90, 45], h[1].Rotations);
+    }
+
+    [Fact]
+    public async Task Restore_of_unknown_version_is_rejected()
+    {
+        var id = Assert.Single(await Save(Part("SAVE_G_rib", "N26-0700"))).Id!;
+        var res = await api.Client.PostAsJsonAsync($"/api/parts/{id}/restore", new RestoreRequest(7));
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await api.Client.GetAsync("/api/parts/999999/history")).StatusCode);
+    }
+
     [Fact]
     public async Task Project_list_has_seeded_and_new_projects()
     {

@@ -3,7 +3,7 @@ import {
   type SortOrder,
 } from "./types";
 import type {
-  ImportSummary, JobFilter, JobPart, JobStatus, JobSummary, PartFilter, PartSummary, ProjectSummary,
+  ImportSummary, JobFilter, JobPart, JobStatus, JobSummary, PartFilter, PartSummary, PartVersion, ProjectSummary,
 } from "./types";
 import { otherParts, testJobParts } from "./sampleParts";
 
@@ -92,6 +92,7 @@ const sampleParts: PartSummary[] = [
     importedAt: created,
     createdAt: created,
     modifiedAt: later !== undefined ? hoursAgo(later) : created,
+    revision: 1,
   };
 });
 
@@ -210,19 +211,50 @@ const sameKey = (a: PartKey, b: PartKey) =>
 
 let mockSeq = 0;
 
+/** Sample mode: kept versions of replaced parts, by part id, newest first. */
+const mockHistory = new Map<string, PartVersion[]>();
+const extra = new Map<string, { rotations: number[]; mirror: boolean; sourceFile: string }>();
+
+const versionOf = (p: PartSummary, current: boolean, replacedAt: string | null): PartVersion => ({
+  revision: p.revision, current, name: p.name, project: p.project, description: p.description,
+  material: p.material, thicknessMm: p.thicknessMm,
+  rotations: extra.get(p.id)?.rotations ?? [90], mirror: extra.get(p.id)?.mirror ?? false,
+  w: p.w, h: p.h, areaMm2: p.areaMm2, path: p.path, engraved: p.engraved,
+  sourceFile: extra.get(p.id)?.sourceFile ?? "", savedAt: p.modifiedAt, replacedAt,
+});
+
+function mockRestore(id: string, revision: number): PartSummary {
+  const i = sampleParts.findIndex((p) => p.id === id);
+  const old = mockHistory.get(id)?.find((v) => v.revision === revision);
+  if (i < 0 || !old) throw new Error(`Part ${id} has no older version ${revision}.`);
+  const now = new Date().toISOString();
+  const cur = sampleParts[i];
+  mockHistory.set(id, [versionOf(cur, false, now), ...(mockHistory.get(id) ?? [])]);
+  sampleParts[i] = {
+    ...cur, description: old.description, material: old.material, thicknessMm: old.thicknessMm,
+    w: old.w, h: old.h, areaMm2: old.areaMm2, path: old.path, engraved: old.engraved,
+    modifiedAt: now, revision: cur.revision + 1,
+  };
+  extra.set(id, { rotations: old.rotations, mirror: old.mirror, sourceFile: old.sourceFile });
+  return sampleParts[i];
+}
+
 /** Sample mode: saved parts go into the sample library, so Parts search finds them. */
 function mockSave(parts: SavePart[]): SavedPart[] {
   return parts.map((p) => {
     const i = sampleParts.findIndex((x) => sameKey(x, p));
     if (i >= 0 && !p.replace) return { name: p.name, project: p.project, id: sampleParts[i].id, status: "exists" };
     const now = new Date().toISOString();
+    if (i >= 0) mockHistory.set(sampleParts[i].id, [versionOf(sampleParts[i], false, now), ...(mockHistory.get(sampleParts[i].id) ?? [])]);
     const row: PartSummary = {
       id: i >= 0 ? sampleParts[i].id : `new-${++mockSeq}`,
       name: p.name.trim(), project: p.project.trim(), material: p.material.trim(), thicknessMm: p.thicknessMm,
       qty: 1, w: p.widthMm, h: p.heightMm, areaMm2: p.areaMm2, path: p.outlinePath,
       description: p.description, engraved: p.engraved, importId: "i-new",
       importedAt: now, createdAt: i >= 0 ? sampleParts[i].createdAt : now, modifiedAt: now,
+      revision: i >= 0 ? sampleParts[i].revision + 1 : 1,
     };
+    extra.set(row.id, { rotations: p.rotations, mirror: p.mirror, sourceFile: p.sourceFile });
     if (i >= 0) sampleParts[i] = row; else sampleParts.unshift(row);
     return { name: row.name, project: row.project, id: row.id, status: i >= 0 ? "replaced" : "created" };
   });
@@ -232,6 +264,15 @@ function mockSave(parts: SavePart[]): SavedPart[] {
 export interface ProjectOption { code: string; name: string; customer?: string | null }
 
 export const api = {
+  /** Current and earlier versions of a part, newest first. */
+  partHistory: (id: string): Promise<PartVersion[]> => {
+    if (useApi) return get<PartVersion[]>(`/api/parts/${id}/history`);
+    const cur = sampleParts.find((p) => p.id === id);
+    return cur ? delay([versionOf(cur, true, null), ...(mockHistory.get(id) ?? [])]) : Promise.reject(new Error("Part not found"));
+  },
+  /** Makes an older version current again; the current one goes into the history. */
+  restorePart: (id: string, revision: number): Promise<PartSummary> =>
+    useApi ? post<PartSummary>(`/api/parts/${id}/restore`, { revision }) : delay(mockRestore(id, revision)),
   /** Every project code, newest first (sample mode: sample projects plus saved ones). */
   projectOptions: (): Promise<ProjectOption[]> =>
     useApi ? get<ProjectOption[]>("/api/projects") : delay([

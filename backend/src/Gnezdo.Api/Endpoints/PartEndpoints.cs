@@ -35,6 +35,8 @@ public static class PartEndpoints
         app.MapGet("/api/parts/facets", FacetsAsync);
         app.MapPost("/api/parts/existing", PartSave.ExistingAsync);
         app.MapPost("/api/parts", PartSave.SaveAsync);
+        app.MapGet("/api/parts/{id:int}/history", PartSave.HistoryAsync);
+        app.MapPost("/api/parts/{id:int}/restore", PartSave.RestoreAsync);
     }
 
     private static async Task<IResult> SearchAsync(
@@ -126,7 +128,8 @@ public static class PartEndpoints
         p.ImportBatchId.ToString(),
         p.ImportBatch.ImportedAt,
         p.CreatedAt,
-        p.ModifiedAt);
+        p.ModifiedAt,
+        p.Revision);
 
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }
