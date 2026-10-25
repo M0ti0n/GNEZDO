@@ -137,7 +137,7 @@ public static class PartSave
         }
 
         if (!results.Any(x => x.Status != "exists")) db.ImportBatches.Remove(batch);
-        if (await SaveOrClashAsync(db, ct) is { } clash) return clash;
+        if (await SaveOrClashAsync(db, ct) is { } refused) return refused;
 
         return Results.Ok(results.Select(x => new SavedPartDto(
             x.Req.Name.Trim(), x.Req.Project?.Trim() ?? "", x.Part?.Id.ToString(), x.Status)).ToList());
@@ -228,7 +228,7 @@ public static class PartSave
         part.Geometry = old.Geometry;
         part.SourceFile = old.SourceFile;
         part.ModifiedAt = now;
-        if (await SaveOrClashAsync(db, ct) is { } clash) return clash;
+        if (await SaveOrClashAsync(db, ct) is { } refused) return refused;
 
         var dto = await db.Parts.AsNoTracking().Where(p => p.Id == id).Select(PartEndpoints.ToDto).FirstAsync(ct);
         return Results.Ok(dto);
