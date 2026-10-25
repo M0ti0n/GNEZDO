@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
+import { ROTATIONS, type Rotation } from "../import/rules";
 import { diagnoseEnds, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
 import {
@@ -30,16 +31,20 @@ interface Props {
   processed: boolean;
   properties?: BatchProperties;
   /** Rotations and mirror this part gets (or got, when processed). */
-  nestRules?: { rotations: number[]; mirror: boolean };
+  nestRules?: { rotations: Rotation[]; mirror: boolean };
   /** Any change to the lines clears "processed": the part has to be processed again. */
   onChange: (drawing: Drawing, processed: boolean) => void;
   /** Process tool on a part without problems: opens the save pop-up. */
   onProcess: () => void;
   /** Properties tool: opens the part's properties. */
   onProperties: () => void;
+  /** Rotations and mirror changed here: they are the list's Properties. */
+  onNestRules?: (r: { rotations: Rotation[]; mirror: boolean }) => void;
+  /** Mirror is not allowed for this part (open cut lines and the rule says so). */
+  mirrorBlocked?: boolean;
 }
 
-export function ImportPage({ drawing, processed, properties, nestRules, onChange, onProcess, onProperties }: Props) {
+export function ImportPage({ drawing, processed, properties, nestRules, onChange, onProcess, onProperties, onNestRules, mirrorBlocked = false }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
   const [tool, setTool] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -395,15 +400,31 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
           <dl className="gc-facts">
             <dt>Material</dt><dd>{properties?.material ? `${properties.material}${properties.thicknessMm ? ` ${properties.thicknessMm} mm` : ""}` : "–"}</dd>
             <dt>Size</dt><dd>{fmt(bw)} × {fmt(bh)} mm</dd>
-            <dt>Contours</dt><dd>{report.contours.length}</dd>
-            <dt>Tracing</dt><dd>{report.traceCount} {report.traceCount === 1 ? "line" : "lines"}</dd>
-            <dt>Open cut</dt><dd>{report.openCutCount} {report.openCutCount === 1 ? "line" : "lines"}</dd>
-            <dt>Status</dt><dd className={processed ? "st-done" : undefined}>{processed ? "Processed" : "Not processed"}</dd>
-            {nestRules && <>
-              <dt>Rotations</dt><dd>{nestRules.rotations.length ? nestRules.rotations.map((r) => `${r}°`).join(", ") : "none"}</dd>
-              <dt>Mirror</dt><dd>{nestRules.mirror ? "yes" : "no"}</dd>
-            </>}
           </dl>
+          {nestRules && onNestRules && (
+            <>
+              <h3 className="gc-sec">Rotations and mirror</h3>
+              <div className="proc-chips gc-chips" role="group" aria-label="Rotations and mirror">
+                {ROTATIONS.map((r) => (
+                  <label key={r} className="chk chk-box">
+                    <input type="checkbox" checked={nestRules.rotations.includes(r)}
+                      onChange={(e) => onNestRules({
+                        rotations: e.target.checked ? ROTATIONS.filter((x) => x === r || nestRules.rotations.includes(x)) : nestRules.rotations.filter((x) => x !== r),
+                        mirror: nestRules.mirror,
+                      })} />
+                    {r}°
+                  </label>
+                ))}
+                <label className={`chk chk-box${mirrorBlocked ? " is-blocked" : ""}`}
+                  title={mirrorBlocked ? "Parts with open cut lines are not mirrored (Rules → Import rules)" : undefined}>
+                  <input type="checkbox" checked={nestRules.mirror && !mirrorBlocked} disabled={mirrorBlocked}
+                    onChange={(e) => onNestRules({ rotations: nestRules.rotations, mirror: e.target.checked })} />
+                  Mirror
+                </label>
+              </div>
+              <p className="gc-note">{mirrorBlocked ? "No mirror: this part has open cut lines. " : ""}Same as Properties: applies to every part in the list.</p>
+            </>
+          )}
           </div>}
         </aside>
 

@@ -257,11 +257,11 @@ export function App() {
                 drawing={shownItem.drawing}
                 processed={shownItem.processed}
                 properties={importProps}
-                nestRules={shownItem.processed && shownItem.applied
-                  ? shownItem.applied
-                  : { rotations: importProps.rotations, mirror: mirrorFor(shownItem, importProps, rules) }}
+                nestRules={{ rotations: importProps.rotations, mirror: importProps.mirror }}
                 onProcess={() => setProcessing(shownItem.id)}
                 onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
+                onNestRules={(r) => setImportProps((p) => ({ ...p, rotations: r.rotations, mirror: r.mirror }))}
+                mirrorBlocked={mirrorBlocked(shownItem, rules)}
                 onChange={(drawing, processed) => patchItem(shownItem.id, {
                   drawing, processed,
                   applied: processed ? { rotations: [...importProps.rotations], mirror: mirrorFor({ ...shownItem, drawing }, importProps, rules) } : undefined,
