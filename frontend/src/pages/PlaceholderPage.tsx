@@ -1,4 +1,4 @@
-import type { Tab } from "../state/tabs";
+import type { PageKind } from "../state/tabs";
 
 const TEXT: Record<string, string> = {
   import: "Bulk import of DXF and DWG drawings: order number per part, cut and marking layers, material and thickness.",
@@ -13,7 +13,7 @@ const TEXT: Record<string, string> = {
 };
 
 // Stand-in for pages that are not built yet.
-export function PlaceholderPage({ tab }: { tab: Tab }) {
+export function PlaceholderPage({ tab }: { tab: { kind: PageKind; title: string } }) {
   return (
     <div className="placeholder">
       <h1>{tab.title}</h1>

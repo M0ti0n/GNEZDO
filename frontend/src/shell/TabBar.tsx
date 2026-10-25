@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { Tab, TabKind } from "../state/tabs";
 import { GnezdoIcon } from "../components/GnezdoIcon";
 import {
-  IconClose, IconHome, IconImport, IconNewJob, IconProject, IconSearch, IconSettings, IconStock, IconTechnology,
+  IconClose, IconLibrary, IconNewJob, IconProject, IconSettings, IconStock, IconTechnology,
 } from "../components/Icons";
 
 export type MenuId = "settings" | "technology" | "stock" | "projects";
@@ -17,21 +17,14 @@ const MENU: { id: MenuId; label: string; icon: ReactNode }[] = [
 
 // Small badge in front of a tab title so job, import and project tabs are
 // told apart at a glance.
-const BADGE: Partial<Record<TabKind, ReactNode>> = {
-  home: <IconHome size={14} />,
+const BADGE: Record<TabKind, ReactNode> = {
   job: <IconNewJob size={14} />,
-  import: <IconImport size={14} />,
-  project: <IconProject size={14} />,
-  jobSearch: <IconSearch size={14} />,
-  projects: <IconProject size={14} />,
-  settings: <IconSettings size={14} />,
-  technology: <IconTechnology size={14} />,
-  stock: <IconStock size={14} />,
+  part: <IconLibrary size={14} />,
 };
 
 interface Props {
   tabs: Tab[];
-  activeId: string;
+  activeId: string | null;
   userName: string;
   onActivate: (id: string) => void;
   onClose: (id: string) => void;
@@ -42,22 +35,21 @@ export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu }
   return (
     <header className="tabbar">
       <AppMenu onMenu={onMenu} />
-      <div className="tabs" role="tablist" aria-label="Open pages">
+      <div className="tabs" role="tablist" aria-label="Open jobs and parts">
+        {tabs.length === 0 && <span className="tabs-empty">Opened jobs appear here</span>}
         {tabs.map((t) => {
           const active = t.id === activeId;
           return (
             <div key={t.id} className={`tab tab-${t.kind}${active ? " is-active" : ""}`}>
               <button role="tab" aria-selected={active} className="tab-label" title={t.title}
                 onClick={() => onActivate(t.id)}
-                onAuxClick={(e) => e.button === 1 && t.kind !== "home" && onClose(t.id)}>
+                onAuxClick={(e) => e.button === 1 && onClose(t.id)}>
                 <span className="tab-badge">{BADGE[t.kind]}</span>
                 <span className="tab-title">{t.title}</span>
               </button>
-              {t.kind !== "home" && (
-                <button className="tab-close" aria-label={`Close ${t.title}`} onClick={() => onClose(t.id)}>
-                  <IconClose size={13} />
-                </button>
-              )}
+              <button className="tab-close" aria-label={`Close ${t.title}`} onClick={() => onClose(t.id)}>
+                <IconClose size={13} />
+              </button>
             </div>
           );
         })}

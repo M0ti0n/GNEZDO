@@ -3,7 +3,7 @@ import { api, materialKey, type PartFacets } from "../api/api";
 import { DEFAULT_SORT, type DateMode, type JobFilter, type PartFilter, type PartSummary, type SortOrder } from "../api/types";
 import { SortControl, loadSort, saveSort } from "../components/SortControl";
 import { DateLine, PanelHead, SizeLine } from "../components/FilterFields";
-import { IconLibrary, IconSearch } from "../components/Icons";
+import { IconHome, IconLibrary, IconSearch } from "../components/Icons";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { JobsPanel } from "./JobsPanel";
 
@@ -18,15 +18,21 @@ interface Props {
   targetJob: { id: string; title: string } | null; // job tab that is open now
   onAddToJob: (parts: PartSummary[]) => void;
   onJobSearch: (filter: JobFilter) => void;   // results open on the main screen
+  homeActive: boolean;
+  onHome: () => void;
 }
 
 // Left side: a rail with two buttons that opens a docked panel for
 // finding imported parts (to drag into a job) or searching jobs.
-export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch }: Props) {
+export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeActive, onHome }: Props) {
   const toggle = (m: DrawerMode) => onMode(mode === m ? null : m);
   return (
     <aside className={`drawer${mode ? " is-open" : ""}`}>
       <div className="drawer-rail" role="tablist" aria-label="Side panels">
+        <button className={`rail-btn${homeActive ? " is-on" : ""}`} onClick={onHome} title="Home"
+          aria-current={homeActive ? "page" : undefined}>
+          <IconHome /><span>Home</span>
+        </button>
         <button role="tab" aria-selected={mode === "parts"} className={`rail-btn${mode === "parts" ? " is-on" : ""}`}
           onClick={() => toggle("parts")} title="Imported parts">
           <IconLibrary /><span>Parts</span>

@@ -125,10 +125,12 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters }: {
 
   if (!filter) {
     return (
-      <div className="search-page">
-        <h1>Job search</h1>
-        <p className="state">Set filters in the Job search panel on the left and press Search.</p>
-        <button className="btn btn-primary" onClick={onShowFilters}>Show job filters</button>
+      <div className="search-page job-browser-page">
+        <header className="page-strip"><h1>Job search</h1></header>
+        <div className="search-empty">
+          <p className="state">Set filters in the Job search panel on the left and press Search.</p>
+          <button className="btn btn-primary" onClick={onShowFilters}>Show job filters</button>
+        </div>
       </div>
     );
   }
@@ -137,7 +139,7 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters }: {
 
   return (
     <div className="search-page job-browser-page">
-      <header className="search-head">
+      <header className="search-head page-strip">
         <h1>Job search</h1>
         <span className="job-sum">
           {error ? "" : jobs ? `${jobs.length} ${jobs.length === 1 ? "job" : "jobs"}` : "Searching…"}
