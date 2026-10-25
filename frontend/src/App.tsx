@@ -4,10 +4,9 @@ import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
 import { sampleDrawings } from "./import/sampleDrawing";
 import {
-  effectiveProps, loadProperties, mirrorBlocked, mirrorFor, newItem, readItem, saveProperties, statusOf,
-  type BatchProperties, type ImportItem, type PartProps,
+  loadProperties, mirrorBlocked, mirrorFor, newItem, readItem, saveProperties, statusOf,
+  type BatchProperties, type ImportItem,
 } from "./import/batch";
-import { PropertiesDialog } from "./import/PropertiesDialog";
 import { ProcessDialog, type ProcessValues } from "./import/ProcessDialog";
 import { partGeometry } from "./import/toPart";
 import type { SavePart } from "./api/api";
@@ -37,13 +36,15 @@ export function App() {
   const [importProps, setImportPropsState] = useState<BatchProperties>(() => loadProperties(loadRules()));
   const setImportProps = (u: BatchProperties | ((p: BatchProperties) => BatchProperties)) =>
     setImportPropsState((p) => { const next = typeof u === "function" ? u(p) : u; saveProperties(next); return next; });
-  // Last description typed in Properties / Process, offered for the next part.
-  const [lastDescription, setLastDescription] = useState("");
-  /** Values applied to one part also become the starting point for the next parts. */
-  const carryOver = (p: PartProps) => {
-    setImportProps({ material: p.material, thicknessMm: p.thicknessMm, project: p.project, rotations: [...p.rotations], mirror: p.mirror });
-    setLastDescription(p.description);
+  // Properties section of the Import panel: expanded or collapsed (kept in this browser).
+  const [propsOpen, setPropsOpenState] = useState(() => { try { return localStorage.getItem("gnezdo.propsOpen") !== "0"; } catch { return true; } });
+  const setPropsOpen = (open: boolean) => {
+    setPropsOpenState(open);
+    try { localStorage.setItem("gnezdo.propsOpen", open ? "1" : "0"); } catch { /* session only */ }
   };
+  /** Values saved in the Process pop-up become the Properties for the next parts. */
+  const carryOver = (v: BatchProperties) =>
+    setImportProps({ project: v.project, description: v.description, material: v.material, thicknessMm: v.thicknessMm, rotations: [...v.rotations], mirror: v.mirror });
   const patchItem = (id: string, patch: Partial<ImportItem>) =>
     setImports((list) => list.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   const [toast, setToast] = useState<string | null>(null);
@@ -106,7 +107,6 @@ export function App() {
 
   const [saving, setSaving] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);   // part shown in the Process pop-up
-  const [editingProps, setEditingProps] = useState<string | null>(null); // part shown in the Properties pop-up
 
   /** Saved parts leave the import list and their tabs close. */
   const dropSaved = (ids: string[]) => {
@@ -143,8 +143,7 @@ export function App() {
       setSaving(true);
       try {
         const res = await api.saveParts(green.map((i) => {
-          const p = effectiveProps(i, importProps);   // own properties win over the list's
-          return toSave(i, { ...p, name: i.name, mirror: mirrorFor(i, p, rules) }, false);
+          return toSave(i, { ...importProps, name: i.name, mirror: mirrorFor(i, importProps, rules) }, false);
         }), "Import list");
         const saved = green.filter((_, k) => res[k]?.status !== "exists").map((i) => i.id);
         const dup = green.filter((_, k) => res[k]?.status === "exists").map((i) => i.id);
@@ -170,10 +169,11 @@ export function App() {
         checked: false, processed: false,
       }))]),
     openId: activeTab?.kind === "drawing" ? activeTab.drawingId ?? null : null,
+    propsOpen,
+    onPropsOpen: setPropsOpen,
   };
   const shownItem = active.kind === "drawing" ? imports.find((i) => i.id === active.drawingId) : undefined;
   const processingItem = processing ? imports.find((i) => i.id === processing) : undefined;
-  const propsItem = editingProps ? imports.find((i) => i.id === editingProps) : undefined;
 
   const openJob = (j: JobSummary) => open(jobTab(j.id, j.name));
 
@@ -256,12 +256,12 @@ export function App() {
               <ImportPage key={shownItem.id}
                 drawing={shownItem.drawing}
                 processed={shownItem.processed}
-                properties={effectiveProps(shownItem, importProps)}
+                properties={importProps}
                 nestRules={shownItem.processed && shownItem.applied
                   ? shownItem.applied
-                  : (() => { const p = effectiveProps(shownItem, importProps); return { rotations: p.rotations, mirror: mirrorFor(shownItem, p, rules) }; })()}
+                  : { rotations: importProps.rotations, mirror: mirrorFor(shownItem, importProps, rules) }}
                 onProcess={() => setProcessing(shownItem.id)}
-                onProperties={() => setEditingProps(shownItem.id)}
+                onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
                 onChange={(drawing, processed) => patchItem(shownItem.id, {
                   drawing, processed,
                   applied: processed ? { rotations: [...importProps.rotations], mirror: mirrorFor({ ...shownItem, drawing }, importProps, rules) } : undefined,
@@ -276,27 +276,11 @@ export function App() {
           </main>
         </div>
       </div>
-      {propsItem?.drawing && (
-        <PropertiesDialog
-          drawing={propsItem.drawing}
-          initial={propsItem.props ?? { ...importProps, description: lastDescription }}
-          own={!!propsItem.props}
-          mirrorBlocked={mirrorBlocked(propsItem, rules)}
-          onCancel={() => setEditingProps(null)}
-          onApply={(p) => {
-            patchItem(propsItem.id, { props: p });
-            carryOver(p);
-            setEditingProps(null);
-            setToast(`Properties set for ${propsItem.name}`);
-          }}
-          onReset={() => { patchItem(propsItem.id, { props: undefined }); setEditingProps(null); }}
-        />
-      )}
       {processingItem?.drawing && (
         <ProcessDialog
           drawing={processingItem.drawing}
           initial={{
-            ...(processingItem.props ?? { ...importProps, description: lastDescription }),
+            ...importProps,
             name: processingItem.name,
           }}
           mirrorBlocked={mirrorBlocked(processingItem, rules)}

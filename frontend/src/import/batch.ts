@@ -17,30 +17,24 @@ export interface ImportItem {
   processed: boolean;
   /** Process all found a part with the same project and name in the database; process it by hand to replace it. */
   duplicate?: boolean;
-  /** Set with the Properties tool for this part; otherwise the list's properties apply. */
-  props?: PartProps;
   /** Rotations and mirror the part got when it was processed. */
   applied?: { rotations: Rotation[]; mirror: boolean };
 }
 
-/** Shared by every part in the list until changed per part with the Properties tool. */
+/** Properties (Import panel): used for every part in the list, kept for the next import. */
 export interface BatchProperties {
+  project: string;
+  description: string;
   material: string;
   thicknessMm: string;
-  project: string;
   /** Rules: rotation steps the nesting may use, and whether parts may be mirrored. */
   rotations: Rotation[];
   mirror: boolean;
 }
 
-/** Properties of one part (Properties tool and Process pop-up). */
-export interface PartProps extends BatchProperties {
-  description: string;
-}
-
 /** New properties start from the import rules in Settings. */
 export const propertiesFrom = (rules: ImportRules): BatchProperties => ({
-  material: "", thicknessMm: "", project: "",
+  project: "", description: "", material: "", thicknessMm: "",
   rotations: [...rules.defaultRotations],
   mirror: rules.mirrorWithoutOpenCut,
 });
@@ -65,9 +59,6 @@ export function saveProperties(p: BatchProperties) {
   try { localStorage.setItem(PROPS_KEY, JSON.stringify(p)); } catch { /* kept for this session only */ }
 }
 
-/** What a part is saved with: its own properties, else the list's. */
-export const effectiveProps = (item: ImportItem, list: BatchProperties): PartProps =>
-  item.props ?? { ...list, description: "" };
 
 /**
  * Mirror for one part. With "no open cut allows mirror" on, a part that has open cut

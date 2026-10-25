@@ -124,7 +124,9 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
             <div className="proc-group">
               <span className="proc-label">Material and thickness</span>
               <div className="filter-pair">
-                <Combobox value={v.material} onChange={(material) => set({ material })} options={lists.materials}
+                <Combobox value={v.material}
+                  // a new material empties the thickness, so both are always chosen together
+                  onChange={(material) => set({ material, thicknessMm: material === v.material ? v.thicknessMm : "" })} options={lists.materials}
                   placeholder="Material" ariaLabel="Material" newHint="a new material" />
                 <Combobox value={v.thicknessMm} onChange={(t) => set({ thicknessMm: t.replace(",", ".").replace(/[^\d.]/g, "") })}
                   options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
