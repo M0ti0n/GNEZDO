@@ -118,9 +118,10 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     icon: (
       <Ico>
         <circle cx="24" cy="24" r="14" stroke={K} strokeWidth="2.6" />
-        <path d="M9 39L39 9" stroke={R} strokeWidth="2" />
-        <Arrow x={39.5} y={8.5} angle={-45} color={R} />
-        <Arrow x={8.5} y={39.5} angle={135} color={R} />
+        <path d="M6 42L42 6" stroke={R} strokeWidth="2" />
+        {/* arrows from outside, tips on the circle */}
+        <Arrow x={33.2} y={14.8} angle={135} color={R} />
+        <Arrow x={14.8} y={33.2} angle={-45} color={R} />
       </Ico>
     ),
   },
