@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
 import type { BatchProperties } from "../import/batch";
 import {
-  boxOf, chainOf, checkGeometry, pathOf, roleOf, union,
+  boxOf, checkGeometry, pathOf, pointsAlong, roleOf, union,
   type Box, type CheckId, type Drawing, type Pt, type Role,
 } from "../import/geometry";
 
@@ -14,8 +14,8 @@ const MARGIN = 48;
 
 /** Tools that mark lines by clicking them, and the role they give. */
 const MARKING: Record<string, { role: Role; hint: string }> = {
-  trace: { role: "trace", hint: "Click a line to mark it as tracing (engraving). Click again to make it a cutting line." },
-  openCut: { role: "openCut", hint: "Click a line to mark it as open cut. Click again to make it a cutting line." },
+  trace: { role: "trace", hint: "Click a line, or drag a window, to mark tracing. Again to unmark. Right drag moves the drawing." },
+  openCut: { role: "openCut", hint: "Click a line, or drag a window, to mark open cut. Again to unmark. Right drag moves the drawing." },
 };
 
 interface Props {
@@ -80,18 +80,28 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // Drag with the left or middle button pans.
-  // A press that hardly moves is a click on a line (for the marking tools).
+  // Right and middle buttons always pan; the left button pans too unless a marking tool is on.
+  // With Trace / Open cut the left button clicks a line or drags a selection box:
+  //   left to right = window (lines fully inside), right to left = crossing (lines touched).
   const drag = useRef<{ x: number; y: number } | null>(null);
-  const press = useRef<{ x: number; y: number } | null>(null);
+  const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const local = (e: React.PointerEvent) => {
+    const r = host.current!.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0 && e.button !== 1) return;
+    if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     if ((e.target as Element).closest(".gcheck, .canvas-ui")) return;
-    drag.current = { x: e.clientX, y: e.clientY };
-    press.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    if (e.button === 0 && tool && MARKING[tool]) {
+      const p = local(e);
+      setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+      return;
+    }
+    drag.current = { x: e.clientX, y: e.clientY };
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    if (box) { const p = local(e); setBox((b) => b && { ...b, x1: p.x, y1: p.y }); return; }
     const d = drag.current;
     if (!d) return;
     const dx = e.clientX - d.x, dy = e.clientY - d.y;
@@ -100,23 +110,43 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
   };
   const onPointerUp = (e: React.PointerEvent) => {
     drag.current = null;
-    const p = press.current;
-    press.current = null;
+    const b = box;
+    setBox(null);
     const mark = tool ? MARKING[tool] : undefined;
-    if (!p || !mark || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;
+    if (!b || !mark || !view) return;
+    if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) > 4) { markBox(b, mark.role, view); return; }
+    // a click: the line under the pointer
     const hit = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el instanceof SVGElement && el.dataset.id);
     const id = (hit as SVGElement | undefined)?.dataset.id;
-    if (id) markChain(id, mark.role);
+    if (id) markLine(id, mark.role);
   };
 
-  // Marks the whole chain the clicked line belongs to; clicking a marked chain again makes it cutting.
-  const markChain = (id: string, role: Role) => {
-    const chain = new Set(chainOf(drawing.entities, id));
-    const all = drawing.entities.filter((e) => chain.has(e.id)).every((e) => roleOf(e) === role);
+  // Lines in a selection box get the role; when they all have it already, they go back to cutting.
+  const markBox = (b: { x0: number; y0: number; x1: number; y1: number }, role: Role, v: View) => {
+    const toMm = (x: number, y: number): Pt => ({ x: (x - v.tx) / v.s, y: -(y - v.ty) / v.s });
+    const a = toMm(Math.min(b.x0, b.x1), Math.max(b.y0, b.y1)), c = toMm(Math.max(b.x0, b.x1), Math.min(b.y0, b.y1));
+    const rect = { minX: a.x, minY: a.y, maxX: c.x, maxY: c.y };
+    const crossing = b.x1 < b.x0;
+    const ids = new Set(drawing.entities.filter((e) => {
+      const pts = pointsAlong(e);
+      return crossing ? touchesRect(pts, rect) : pts.every((p) => inRect(p, rect));
+    }).map((e) => e.id));
+    if (!ids.size) { setMessage({ text: crossing ? "No line touches the box" : "No line is fully inside the box" }); return; }
+    const all = drawing.entities.filter((e) => ids.has(e.id)).every((e) => roleOf(e) === role);
     const next = all ? "cut" : role;
-    onChange({ ...drawing, entities: drawing.entities.map((e) => (chain.has(e.id) ? { ...e, role: next } : e)) }, false);
+    onChange({ ...drawing, entities: drawing.entities.map((e) => (ids.has(e.id) ? { ...e, role: next } : e)) }, false);
     setSelected(null);
-    setMessage({ text: `${chain.size} ${chain.size === 1 ? "line" : "lines"} → ${ROLE_LABEL[next].toLowerCase()}` });
+    setMessage({ text: `${ids.size} ${ids.size === 1 ? "line" : "lines"} → ${ROLE_LABEL[next].toLowerCase()}` });
+  };
+
+  // Marks the clicked line; clicking a marked line again makes it a cutting line again.
+  const markLine = (id: string, role: Role) => {
+    const line = drawing.entities.find((e) => e.id === id);
+    if (!line) return;
+    const next = roleOf(line) === role ? "cut" : role;
+    onChange({ ...drawing, entities: drawing.entities.map((e) => (e.id === id ? { ...e, role: next } : e)) }, false);
+    setSelected(null);
+    setMessage({ text: next === "cut" ? "1 line unmarked (cutting)" : `1 line → ${ROLE_LABEL[next].toLowerCase()}` });
   };
 
   const onTool = (id: string) => {
@@ -163,6 +193,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
         className={`canvas${tool && MARKING[tool] ? " is-marking" : ""}`}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+        onContextMenu={(e) => e.preventDefault()}
         onDoubleClick={(e) => { if (!(e.target as Element).closest(".gcheck, .canvas-ui")) { setSelected(null); fitAll(); } }}
       >
         {view && (
@@ -181,6 +212,11 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
               const s = toScreen(p, view);
               return <circle key={`${c.id}-${i}`} cx={s.x} cy={s.y} r={c.id === selected ? 9 : 6} className="open-end" />;
             }))}
+            {box && (
+              <rect className={`sel-box${box.x1 < box.x0 ? " is-crossing" : ""}`}
+                x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)}
+                width={Math.abs(box.x1 - box.x0)} height={Math.abs(box.y1 - box.y0)} />
+            )}
           </svg>
         )}
 
@@ -234,6 +270,22 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
       </div>
     </div>
   );
+}
+
+type Rect = { minX: number; minY: number; maxX: number; maxY: number };
+const inRect = (p: Pt, r: Rect) => p.x >= r.minX && p.x <= r.maxX && p.y >= r.minY && p.y <= r.maxY;
+
+/** Does a polyline touch the rectangle: a point inside, or a segment crossing one of its edges? */
+function touchesRect(pts: Pt[], r: Rect): boolean {
+  if (pts.some((p) => inRect(p, r))) return true;
+  const edges: [Pt, Pt][] = [
+    [{ x: r.minX, y: r.minY }, { x: r.maxX, y: r.minY }], [{ x: r.maxX, y: r.minY }, { x: r.maxX, y: r.maxY }],
+    [{ x: r.maxX, y: r.maxY }, { x: r.minX, y: r.maxY }], [{ x: r.minX, y: r.maxY }, { x: r.minX, y: r.minY }],
+  ];
+  const cross = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const meet = (p1: Pt, p2: Pt, q1: Pt, q2: Pt) =>
+    cross(p1, p2, q1) * cross(p1, p2, q2) <= 0 && cross(q1, q2, p1) * cross(q1, q2, p2) <= 0;
+  return pts.slice(1).some((p, i) => edges.some(([a, b]) => meet(pts[i], p, a, b)));
 }
 
 const ROLE_LABEL: Record<Role, string> = { cut: "Cutting", trace: "Tracing", openCut: "Open cut" };
