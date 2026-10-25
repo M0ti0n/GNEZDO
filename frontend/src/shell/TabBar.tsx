@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Tab, TabKind } from "../state/tabs";
+import type { UndoState } from "../state/history";
 import { GnezdoIcon } from "../components/GnezdoIcon";
 import { IconRules } from "../components/Icons";
 import {
@@ -32,12 +33,15 @@ interface Props {
   onActivate: (id: string) => void;
   onClose: (id: string) => void;
   onMenu: (id: MenuId) => void;
+  /** Undo / Redo of the open tab; greyed out when it has nothing to undo or redo. */
+  undo: UndoState;
 }
 
-export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu }: Props) {
+export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu, undo }: Props) {
   return (
     <header className="tabbar">
       <AppMenu onMenu={onMenu} />
+      <UndoRedo {...undo} />
       <div className="tabs" role="tablist" aria-label="Open jobs and parts">
         {tabs.length === 0 && <span className="tabs-empty">Opened jobs appear here</span>}
         {tabs.map((t) => {
@@ -92,6 +96,29 @@ function AppMenu({ onMenu }: { onMenu: (id: MenuId) => void }) {
           <div className="menu-foot">GNEZDO 0.1, BO-DA d.o.o.</div>
         </div>
       )}
+    </div>
+  );
+}
+
+const UndoArrow = ({ flip }: { flip?: boolean }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+    aria-hidden="true" style={flip ? { transform: "scaleX(-1)" } : undefined}>
+    <path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </svg>
+);
+
+/** Undo and Redo, right after the GNEZDO button, the same on every screen. */
+function UndoRedo({ undoLabel, redoLabel, onUndo, onRedo }: UndoState) {
+  return (
+    <div className="undo-redo" role="group" aria-label="Undo and redo">
+      <button className="undo-btn" onClick={onUndo} disabled={!undoLabel}
+        title={undoLabel ? `Undo ${undoLabel} (Ctrl+Z)` : "Nothing to undo"} aria-label={undoLabel ? `Undo ${undoLabel}` : "Undo"}>
+        <UndoArrow />
+      </button>
+      <button className="undo-btn" onClick={onRedo} disabled={!redoLabel}
+        title={redoLabel ? `Redo ${redoLabel} (Ctrl+Y)` : "Nothing to redo"} aria-label={redoLabel ? `Redo ${redoLabel}` : "Redo"}>
+        <UndoArrow flip />
+      </button>
     </div>
   );
 }

@@ -43,8 +43,10 @@ interface Props {
   properties?: BatchProperties;
   /** Rotations, mirror and filler this part gets (or got, when processed). */
   nestRules?: NestRules;
-  /** Any change to the lines clears "processed": the part has to be processed again. */
-  onChange: (drawing: Drawing, processed: boolean) => void;
+  /** A change to the lines, recorded in the tab's history under this name. Clears "processed". */
+  onEdit: (drawing: Drawing, label: string) => void;
+  /** Set after Undo / Redo: what was undone or redone (a new object each time). */
+  undone?: { text: string } | null;
   /** Process tool on a part without problems: opens the save pop-up. */
   onProcess: () => void;
   /** Properties tool: opens the part's properties. */
@@ -55,7 +57,7 @@ interface Props {
   mirrorBlocked?: boolean;
 }
 
-export function ImportPage({ drawing, processed, properties, nestRules, onChange, onProcess, onProperties, onNestRules, mirrorBlocked = false }: Props) {
+export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
   const [tool, setTool] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -63,33 +65,16 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
 
   const host = useRef<HTMLDivElement>(null);
 
-  // Every change to the lines can be undone (Ctrl+Z or the Undo button).
-  const undoStack = useRef<Drawing[]>([]);
-  const [undoCount, setUndoCount] = useState(0);
-  const commit = (next: Drawing) => {
-    undoStack.current.push(drawing);
-    if (undoStack.current.length > 100) undoStack.current.shift();
-    setUndoCount(undoStack.current.length);
-    onChange(next, false);
-  };
-  const undo = () => {
-    const prev = undoStack.current.pop();
-    setUndoCount(undoStack.current.length);
-    if (!prev) return;
-    onChange(prev, false);
-    setPreview(null);
-    setMessage({ text: "Undone" });
-  };
+  // Every change to the lines is one step in the tab's history (Undo / Redo in the green bar).
+  const commit = (next: Drawing, label: string) => onEdit(next, label);
+
+  // After an undo or redo: drop the hover preview and say what happened.
+  const undoneAtMount = useRef(undone);   // an older undo from before this tab was shown again: not news
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !(e.target instanceof HTMLInputElement) && !document.querySelector(".dlg")) {
-        e.preventDefault();
-        undo();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
+    if (!undone || undone === undoneAtMount.current) return;
+    setPreview(null);
+    setMessage({ text: undone.text });
+  }, [undone]);
 
   // Line tool: start point, then each next point; points snap to the ends of lines.
   const [lineStart, setLineStart] = useState<Pt | null>(null);
@@ -222,7 +207,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
       if (!lineStart) { setLineStart(at.p); setMessage({ text: "Now click the end point" }); return; }
       if (Math.hypot(at.p.x - lineStart.x, at.p.y - lineStart.y) < 1e-6) return;
       const line: Entity = { id: `ln${Date.now().toString(36)}${++lineSeq.current}`, kind: "line", a: lineStart, b: at.p, role: "cut" };
-      commit({ ...drawing, entities: [...drawing.entities, line] });
+      commit({ ...drawing, entities: [...drawing.entities, line] }, "Line");
       setSelected(null);
       setLineStart(at.p);                                    // go on from the end, like AutoCAD
       setMessage({ text: `Line ${fmtMm(Math.hypot(at.p.x - lineStart.x, at.p.y - lineStart.y))} added. Next point, or Esc to finish` });
@@ -233,7 +218,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
       if (!id) return;
       const r = editAt(id, toModel(e.clientX, e.clientY, view), e.shiftKey);
       if (r.ok) {
-        commit({ ...drawing, entities: r.entities });
+        commit({ ...drawing, entities: r.entities }, IMPORT_TOOLS.find((t) => t.id === tool)?.label ?? "Edit");
         setSelected(null);
         setPreview(null);
         if (tool === "alignH" || tool === "alignV") setView(null);   // the part turned: fit it again
@@ -265,7 +250,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
     if (!ids.size) { setMessage({ text: crossing ? "No line touches the box" : "No line is fully inside the box" }); return; }
     const all = drawing.entities.filter((e) => ids.has(e.id)).every((e) => roleOf(e) === role);
     const next = all ? "cut" : role;
-    commit({ ...drawing, entities: drawing.entities.map((e) => (ids.has(e.id) ? { ...e, role: next } : e)) });
+    commit({ ...drawing, entities: drawing.entities.map((e) => (ids.has(e.id) ? { ...e, role: next } : e)) },
+      `${next === "cut" ? "Unmark" : "Mark"} ${role === "trace" ? "tracing" : "open cut"}`);
     setSelected(null);
     setMessage({ text: `${ids.size} ${ids.size === 1 ? "line" : "lines"} → ${ROLE_LABEL[next].toLowerCase()}` });
   };
@@ -275,7 +261,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
     const line = drawing.entities.find((e) => e.id === id);
     if (!line) return;
     const next = roleOf(line) === role ? "cut" : role;
-    commit({ ...drawing, entities: drawing.entities.map((e) => (e.id === id ? { ...e, role: next } : e)) });
+    commit({ ...drawing, entities: drawing.entities.map((e) => (e.id === id ? { ...e, role: next } : e)) },
+      `${next === "cut" ? "Unmark" : "Mark"} ${role === "trace" ? "tracing" : "open cut"}`);
     setSelected(null);
     setMessage({ text: next === "cut" ? "1 line unmarked (cutting)" : `1 line → ${ROLE_LABEL[next].toLowerCase()}` });
   };
@@ -321,7 +308,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
   const fixIssue = (i: EndIssue) => {
     const r = i.fix?.(drawing.entities);
     if (!r) return;
-    if (r.ok) { commit({ ...drawing, entities: r.entities }); setSelected(null); }
+    if (r.ok) { commit({ ...drawing, entities: r.entities }, "Fix loose end"); setSelected(null); }
     setMessage({ text: r.message, bad: !r.ok });
   };
   const SMALL_MM = 1;
@@ -340,7 +327,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
       ents = res.entities;
       n++;
     }
-    if (n) { commit({ ...drawing, entities: ents }); setSelected(null); }
+    if (n) { commit({ ...drawing, entities: ents }, "Fix all under 1 mm"); setSelected(null); }
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
@@ -512,7 +499,6 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
               {!message && toolLabel && <b>{toolLabel} · </b>}{hint}
             </span>
           )}
-          <button className="btn btn-fit" onClick={undo} disabled={undoCount === 0} title="Undo the last change (Ctrl+Z)">Undo</button>
           <button className="btn btn-fit" onClick={() => { setSelected(null); fitAll(); }} title="Show the whole part (double-click)">Fit</button>
         </div>
       </div>
