@@ -22,6 +22,7 @@ export type Entity = (
   role?: Role;     // missing = cut
   layer?: string;
   color?: number;  // AutoCAD colour index, resolved (no BYLAYER / BYBLOCK): 1 red, 3 green, 4 cyan, 7 black/white
+  rgb?: number;    // True Color 0xRRGGBB, when the drawing uses one (wins over the index)
 };
 
 export const roleOf = (e: Entity): Role => e.role ?? "cut";

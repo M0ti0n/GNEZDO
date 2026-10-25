@@ -87,17 +87,33 @@ export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (
               <small>Line colours from the drawing decide what the laser does.</small></span>
           </label>
           {rules.coloursAsCuts && (
-            <ul className="colour-map rule-sub">
-              {COLOUR_ROLES.map((c) => (
-                <li key={c.aci}>
-                  <i style={{ background: c.css }} />
-                  <span>{c.name}</span>
-                  <span className="arrow">→</span>
-                  <b className={`role-${c.role}`}>{ROLE_NAME[c.role]}</b>
+            <div className="rule-sub">
+              <ul className="colour-map">
+                <li>
+                  <span className="shades"><i style={{ background: "#1b1b1b" }} /><i style={{ background: "#fff" }} /><i style={{ background: "#8c8c8c" }} /></span>
+                  <span>Black, white and greys</span><span className="arrow">→</span><b>Cutting</b>
                 </li>
-              ))}
-              <li className="colour-other"><i /><span>Other colours</span><span className="arrow">→</span><b>Cutting</b></li>
-            </ul>
+                {COLOUR_ROLES.map((c) => (
+                  <li key={c.name}>
+                    <span className="shades">
+                      {(rules.exactColours ? c.shades.slice(0, 1) : c.shades).map((css) => <i key={css} style={{ background: css }} />)}
+                    </span>
+                    <span>{rules.exactColours ? `${c.name.split(" ")[0].replace(/s$/, "")} (colour ${c.aci}) only` : `${c.name}, any shade`}</span>
+                    <span className="arrow">→</span>
+                    <b className={`role-${c.role}`}>{ROLE_NAME[c.role]}</b>
+                  </li>
+                ))}
+                <li className="colour-other">
+                  <span className="shades"><i /></span>
+                  <span>Other colours (blue, yellow …)</span><span className="arrow">→</span><b>Cutting</b>
+                </li>
+              </ul>
+              <label className="rule-check rule-check-small">
+                <input type="checkbox" checked={rules.exactColours} onChange={(e) => set({ exactColours: e.target.checked })} />
+                <span><b>Exact colours only</b>
+                  <small>Only the basic colours red (1), green (3) and cyan (4) count. Off: dark, light and True Color (RGB) shades count too, e.g. a darker green that plots better on paper.</small></span>
+              </label>
+            </div>
           )}
         </section>
 
