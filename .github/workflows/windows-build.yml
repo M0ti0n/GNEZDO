@@ -62,6 +62,11 @@ jobs:
           (cd out && zip -qr gnezdo-windows.zip gnezdo)
           ls -la out/gnezdo-windows.zip
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gnezdo-windows
+          path: out/gnezdo-windows.zip
+
       - name: Publish as the test-build release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -71,3 +76,32 @@ jobs:
             --title "Test build for Windows ($(date -u +%Y-%m-%d), ${GITHUB_REF_NAME})" \
             --notes "Unzip, double-click start.bat, open http://localhost:8090. Runs as a demo until a database is set in config.json - see INSTALL.txt."
           echo "::notice title=Download::https://github.com/${GITHUB_REPOSITORY}/releases/download/test-build/gnezdo-windows.zip"
+
+  # Starts GNEZDO.exe on Windows from the zip, as a user would, and checks it answers.
+  smoke-test:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gnezdo-windows
+      - name: Unzip and start (demo)
+        shell: pwsh
+        run: |
+          Expand-Archive gnezdo-windows.zip -DestinationPath .
+          Copy-Item gnezdo/config.example.json gnezdo/config.json
+          $p = Start-Process -FilePath gnezdo/GNEZDO.exe -WorkingDirectory gnezdo -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          $ok = $false
+          for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
+            Start-Sleep 2
+            try { $h = Invoke-RestMethod http://localhost:8090/api/health; $ok = $true } catch { }
+          }
+          Get-Content out.txt, err.txt
+          if (-not $ok) { throw "GNEZDO did not answer on http://localhost:8090" }
+          if (-not $h.demo) { throw "expected demo mode" }
+          $page = Invoke-WebRequest http://localhost:8090/
+          if ($page.Content -notmatch "<div id=`"root`"") { throw "index.html not served" }
+          $deep = Invoke-WebRequest http://localhost:8090/some/page
+          if ($deep.StatusCode -ne 200) { throw "fallback to index.html failed" }
+          Stop-Process $p.Id
+          Write-Output "::notice title=Smoke test::GNEZDO.exe started on Windows, demo mode, pages served"
