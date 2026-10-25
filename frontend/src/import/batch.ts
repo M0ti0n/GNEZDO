@@ -18,7 +18,7 @@ export interface ImportItem {
   /** Process all found a part with the same project and name in the database; process it by hand to replace it. */
   duplicate?: boolean;
   /** Rotations and mirror the part got when it was processed. */
-  applied?: { rotations: Rotation[]; mirror: boolean };
+  applied?: { rotations: Rotation[]; mirror: boolean; filler: boolean };
 }
 
 /** Properties (Import panel): used for every part in the list, kept for the next import. */
@@ -30,6 +30,8 @@ export interface BatchProperties {
   /** Rules: rotation steps the nesting may use, and whether parts may be mirrored. */
   rotations: Rotation[];
   mirror: boolean;
+  /** Filler: nested only into gaps among the other parts (see filler.ts). */
+  filler: boolean;
 }
 
 /** New properties start from the import rules in Settings. */
@@ -37,6 +39,7 @@ export const propertiesFrom = (rules: ImportRules): BatchProperties => ({
   project: "", description: "", material: "", thicknessMm: "",
   rotations: [...rules.defaultRotations],
   mirror: rules.mirrorWithoutOpenCut,
+  filler: rules.defaultFiller,
 });
 
 const PROPS_KEY = "gnezdo.importProperties";

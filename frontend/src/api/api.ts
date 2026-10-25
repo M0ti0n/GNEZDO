@@ -197,6 +197,8 @@ export interface SavePart extends PartKey {
   thicknessMm: number;
   rotations: number[];
   mirror: boolean;
+  /** Filler: nested only into gaps left among the other parts. */
+  filler: boolean;
   widthMm: number;
   heightMm: number;
   areaMm2: number;
@@ -217,12 +219,13 @@ let mockSeq = 0;
 
 /** Sample mode: kept versions of replaced parts, by part id, newest first. */
 const mockHistory = new Map<string, PartVersion[]>();
-const extra = new Map<string, { rotations: number[]; mirror: boolean; sourceFile: string }>();
+const extra = new Map<string, { rotations: number[]; mirror: boolean; filler: boolean; sourceFile: string }>();
 
 const versionOf = (p: PartSummary, current: boolean, replacedAt: string | null): PartVersion => ({
   revision: p.revision, current, name: p.name, project: p.project, description: p.description,
   material: p.material, thicknessMm: p.thicknessMm,
   rotations: extra.get(p.id)?.rotations ?? [90], mirror: extra.get(p.id)?.mirror ?? false,
+  filler: extra.get(p.id)?.filler ?? false,
   w: p.w, h: p.h, areaMm2: p.areaMm2, path: p.path, engraved: p.engraved,
   sourceFile: extra.get(p.id)?.sourceFile ?? "", savedAt: p.modifiedAt, replacedAt,
 });
@@ -239,7 +242,7 @@ function mockRestore(id: string, revision: number): PartSummary {
     w: old.w, h: old.h, areaMm2: old.areaMm2, path: old.path, engraved: old.engraved,
     modifiedAt: now, revision: cur.revision + 1,
   };
-  extra.set(id, { rotations: old.rotations, mirror: old.mirror, sourceFile: old.sourceFile });
+  extra.set(id, { rotations: old.rotations, mirror: old.mirror, filler: old.filler, sourceFile: old.sourceFile });
   return sampleParts[i];
 }
 
@@ -264,7 +267,7 @@ function mockSave(parts: SavePart[]): SavedPart[] {
       importedAt: now, createdAt: i >= 0 ? sampleParts[i].createdAt : now, modifiedAt: now,
       revision: i >= 0 ? sampleParts[i].revision + 1 : 1,
     };
-    extra.set(row.id, { rotations: p.rotations, mirror: p.mirror, sourceFile: p.sourceFile });
+    extra.set(row.id, { rotations: p.rotations, mirror: p.mirror, filler: p.filler, sourceFile: p.sourceFile });
     if (i >= 0) sampleParts[i] = row; else sampleParts.unshift(row);
     return { name: row.name, project: row.project, id: row.id, status: i >= 0 ? "replaced" : "created" };
   });
@@ -274,10 +277,10 @@ function mockSave(parts: SavePart[]): SavedPart[] {
 export interface ProjectOption { code: string; name: string; customer?: string | null }
 
 /** A saved part with everything its Properties window shows. */
-export interface PartDetail { part: PartSummary; rotations: number[]; mirror: boolean; sourceFile: string }
+export interface PartDetail { part: PartSummary; rotations: number[]; mirror: boolean; filler: boolean; sourceFile: string }
 export interface PartUpdate {
   name: string; project: string; description: string; material: string; thicknessMm: number;
-  rotations: number[]; mirror: boolean;
+  rotations: number[]; mirror: boolean; filler: boolean;
 }
 
 function mockUpdate(id: string, u: PartUpdate): PartDetail {
@@ -291,15 +294,16 @@ function mockUpdate(id: string, u: PartUpdate): PartDetail {
   mockHistory.set(id, [versionOf(cur, false, now), ...(mockHistory.get(id) ?? [])]);
   sampleParts[i] = { ...cur, name: u.name.trim(), project: u.project.trim(), description: u.description.trim(),
     material: u.material.trim(), thicknessMm: u.thicknessMm, modifiedAt: now, revision: cur.revision + 1 };
-  extra.set(id, { rotations: u.rotations, mirror: u.mirror, sourceFile: extra.get(id)?.sourceFile ?? "" });
+  extra.set(id, { rotations: u.rotations, mirror: u.mirror, filler: u.filler, sourceFile: extra.get(id)?.sourceFile ?? "" });
   return detailOf(sampleParts[i]);
 }
 
 const detailOf = (p: PartSummary): PartDetail =>
-  ({ part: p, rotations: extra.get(p.id)?.rotations ?? [90], mirror: extra.get(p.id)?.mirror ?? false, sourceFile: extra.get(p.id)?.sourceFile ?? "" });
+  ({ part: p, rotations: extra.get(p.id)?.rotations ?? [90], mirror: extra.get(p.id)?.mirror ?? false,
+    filler: extra.get(p.id)?.filler ?? false, sourceFile: extra.get(p.id)?.sourceFile ?? "" });
 
 export const api = {
-  /** One saved part with rotations, mirror and source file. */
+  /** One saved part with rotations, mirror, filler and source file. */
   part: (id: string): Promise<PartDetail> => {
     if (useApi) return get<PartDetail>(`/api/parts/${id}`);
     const p = sampleParts.find((x) => x.id === id);

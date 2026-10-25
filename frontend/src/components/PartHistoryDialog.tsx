@@ -73,7 +73,7 @@ export function PartHistoryDialog({ part, onClose, onRestored }: Props) {
                   <div className="hist-meta">
                     <span>{v.material} {v.thicknessMm} mm</span>
                     <span>{Math.round(v.w)} × {Math.round(v.h)} mm</span>
-                    <span>{v.rotations.length ? v.rotations.map((r) => `${r}°`).join(", ") : "no rotation"}{v.mirror ? " · mirror" : ""}</span>
+                    <span>{v.rotations.length ? v.rotations.map((r) => `${r}°`).join(", ") : "no rotation"}{v.mirror ? " · mirror" : ""}{v.filler ? " · filler" : ""}</span>
                     {v.engraved && <span>tracing</span>}
                   </div>
                   {(v.description || v.sourceFile) && (

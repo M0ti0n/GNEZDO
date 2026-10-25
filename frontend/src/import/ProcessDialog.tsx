@@ -4,6 +4,7 @@ import { Combobox, type ComboOption } from "../components/Combobox";
 import { usePickLists } from "../components/pickLists";
 import { checkGeometry, pathOf, roleOf, type Drawing } from "./geometry";
 import { ROTATIONS, type Rotation } from "./rules";
+import { FILLER_TIP } from "./filler";
 import { IMPORT_TOOLS } from "./ImportTools";
 import { loopPoints } from "./toPart";
 
@@ -16,6 +17,7 @@ export interface ProcessValues {
   thicknessMm: string;
   rotations: Rotation[];
   mirror: boolean;
+  filler: boolean;
 }
 
 interface Props {
@@ -137,7 +139,7 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
             </div>
 
             <div className="proc-group">
-              <span className="proc-label">Rotations and mirror</span>
+              <span className="proc-label">Nesting rules</span>
               <div className="proc-chips" role="group" aria-label="Rotations">
                 {ROTATIONS.map((r) => (
                   <label key={r} className="chk chk-box">
@@ -152,6 +154,10 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
                   title={mirrorBlocked ? "Parts with open cut lines are not mirrored (Rules → Import rules)" : undefined}>
                   <input type="checkbox" checked={v.mirror} disabled={mirrorBlocked} onChange={(e) => set({ mirror: e.target.checked })} />
                   Mirror
+                </label>
+                <label className="chk chk-box chk-filler" title={FILLER_TIP}>
+                  <input type="checkbox" checked={v.filler} onChange={(e) => set({ filler: e.target.checked })} />
+                  Filler
                 </label>
               </div>
               {mirrorBlocked && <small className="proc-note">No mirror: the part has open cut lines.</small>}
