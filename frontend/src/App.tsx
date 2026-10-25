@@ -3,7 +3,8 @@ import { api } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
 import { sampleDrawings } from "./import/sampleDrawing";
-import type { Drawing } from "./import/geometry";
+import { EMPTY_PROPERTIES, newItem, readItem, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
+import { quantityFromName } from "./import/geometry";
 import { HomePage, type HomeAction } from "./pages/HomePage";
 import { JobPage } from "./pages/JobPage";
 import { JobSearchPage } from "./pages/JobSearchPage";
@@ -19,9 +20,11 @@ export function App() {
   const [state, dispatch] = useReducer(shellReducer, initialShell);
   const [drawer, setDrawer] = useState<DrawerMode | null>(null);
   const [jobParts, setJobParts] = useState<Record<string, JobPart[] | undefined>>({});
-  // Imported drawings open in tabs; kept here so marks survive switching tabs.
-  const [drawings, setDrawings] = useState<Record<string, { drawing: Drawing; processed: boolean }>>(
-    () => Object.fromEntries(sampleDrawings.map((d) => [d.id, { drawing: d, processed: false }])));
+  // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
+  const [imports, setImports] = useState<ImportItem[]>([]);
+  const [importProps, setImportProps] = useState<BatchProperties>(EMPTY_PROPERTIES);
+  const patchItem = (id: string, patch: Partial<ImportItem>) =>
+    setImports((list) => list.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   const [toast, setToast] = useState<string | null>(null);
   const newJobCount = useRef(0);
   // Last job search: results show in the Job search view on the main screen.
@@ -60,11 +63,54 @@ export function App() {
     dispatch({ type: "open", tab: jobTab(`new-${n}`, n === 1 ? "New job" : `New job ${n}`) });
   }, []);
 
-  // Until the import worker reads DXF/DWG files, Import opens the sample drawings.
-  const openImport = () => {
-    sampleDrawings.forEach((d) => open(drawingTab(d.id, d.fileName)));
-    open(drawingTab(sampleDrawings[0].id, sampleDrawings[0].fileName));
+  const openImport = () => setDrawer("import");
+
+  const openItem = (item: ImportItem) => {
+    if (item.state !== "ready") return;
+    patchItem(item.id, { checked: true });   // looking at a part counts as checking it
+    open(drawingTab(item.id, item.name));
   };
+
+  const addFiles = async (files: File[], openFirst: boolean) => {
+    const fresh = files.map((f) => ({ file: f, item: newItem(f) }));
+    setImports((list) => [...list, ...fresh.map((x) => x.item)]);
+    const read = await Promise.all(fresh.map((x) => readItem(x.item, x.file)));
+    setImports((list) => list.map((i) => read.find((r) => r.id === i.id) ?? i));
+    if (openFirst && read[0]?.state === "ready") openItem(read[0]);
+    const failed = read.filter((r) => r.state === "failed").length;
+    if (failed) setToast(`${failed} ${failed === 1 ? "file" : "files"} could not be read`);
+  };
+
+  const closeTabs = (ids: string[]) => ids.forEach((id) => dispatch({ type: "close", id: `drawing:${id}` }));
+
+  const importPanel = {
+    items: imports,
+    properties: importProps,
+    onProperties: setImportProps,
+    onFiles: addFiles,
+    onCheckLines: () => {
+      setImports((list) => list.map((i) => (i.state === "ready" ? { ...i, checked: true } : i)));
+      const next = imports.map((i) => statusOf({ ...i, checked: i.state === "ready" }));
+      const bad = next.filter((s) => s.verdict === "attention").length;
+      setToast(bad ? `${bad} ${bad === 1 ? "part needs" : "parts need"} attention: click the red ones to check them` : "All parts have closed contours");
+    },
+    onProcessAll: () => {
+      const ids = imports.filter((i) => statusOf(i).verdict === "ok").map((i) => i.id);
+      setImports((list) => list.map((i) => (ids.includes(i.id) ? { ...i, processed: true } : i)));
+      setToast(`Processed ${ids.length} ${ids.length === 1 ? "part" : "parts"}`);
+    },
+    onOpen: (id: string) => { const it = imports.find((i) => i.id === id); if (it) openItem(it); },
+    onRemove: (id: string) => { closeTabs([id]); setImports((list) => list.filter((i) => i.id !== id)); },
+    onClear: () => { closeTabs(imports.map((i) => i.id)); setImports([]); },
+    onSamples: () => setImports((list) => [...list, ...sampleDrawings
+      .filter((d) => !list.some((i) => i.id === d.id))
+      .map((d): ImportItem => ({
+        id: d.id, fileName: `${d.fileName}.dxf`, name: d.fileName, qty: quantityFromName(d.fileName),
+        state: "ready", drawing: d, checked: false, processed: false,
+      }))]),
+    openId: activeTab?.kind === "drawing" ? activeTab.drawingId ?? null : null,
+  };
+  const shownItem = active.kind === "drawing" ? imports.find((i) => i.id === active.drawingId) : undefined;
 
   const openJob = (j: JobSummary) => open(jobTab(j.id, j.name));
 
@@ -121,6 +167,7 @@ export function App() {
           onJobSearch={runJobSearch}
           homeActive={!activeTab && state.view === "home"}
           onHome={() => showView("home")}
+          importPanel={importPanel}
         />
         <div className="workspace">
           {active.kind !== "jobSearch" && active.kind !== "drawing" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
@@ -142,11 +189,12 @@ export function App() {
               <JobSearchPage filter={jobSearch.filter} run={jobSearch.run} onOpenJob={openJob}
                 onShowFilters={() => setDrawer("jobs")} />
             )}
-            {active.kind === "drawing" && active.drawingId && drawings[active.drawingId] && (
-              <ImportPage key={active.drawingId}
-                drawing={drawings[active.drawingId].drawing}
-                processed={drawings[active.drawingId].processed}
-                onChange={(drawing, processed) => setDrawings((m) => ({ ...m, [drawing.id]: { drawing, processed } }))} />
+            {shownItem?.drawing && (
+              <ImportPage key={shownItem.id}
+                drawing={shownItem.drawing}
+                processed={shownItem.processed}
+                properties={importProps}
+                onChange={(drawing, processed) => patchItem(shownItem.id, { drawing, processed })} />
             )}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && <PlaceholderPage tab={active} />}
           </main>
