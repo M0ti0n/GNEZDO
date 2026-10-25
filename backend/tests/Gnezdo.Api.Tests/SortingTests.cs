@@ -80,14 +80,17 @@ public sealed class SortingTests(ApiFixture api)
     [Fact]
     public async Task Jobs_by_material_thickness_project()
     {
-        // every sample job is one material, so the displayed material is the sort key
+        // Jobs sort by the smallest material / thickness among their parts; ties by name.
+        // Ostanki teden 43 mixes INOX 2 mm, S235 3 mm and S235 8 mm; Prirobnice has 10 and 15 mm.
         var byMat = await Jobs("?sort=material");
-        Sorted(byMat, j => Fold(j.Material), desc: false);
-        Assert.Equal("Miha2787", byMat[0].Name);
+        Assert.Equal(
+            new[] { "Miha2787", "26-0410 Ohišje", "Ostanki teden 43", "26-0398 Nosilci", "26-0412 Konzole", "26-0409 Prirobnice" },
+            byMat.Select(j => j.Name));
 
         var byThk = await Jobs("?sort=thickness&dir=desc");
-        Sorted(byThk, j => j.ThicknessMm, desc: true);
-        Assert.Equal("26-0409 Prirobnice", byThk[0].Name);
+        Assert.Equal(
+            new[] { "26-0409 Prirobnice", "26-0398 Nosilci", "26-0412 Konzole", "26-0410 Ohišje", "Ostanki teden 43", "Miha2787" },
+            byThk.Select(j => j.Name));
 
         var byProject = await Jobs("?sort=project");
         Sorted(byProject, j => Fold(j.Projects.Min()!), desc: false);

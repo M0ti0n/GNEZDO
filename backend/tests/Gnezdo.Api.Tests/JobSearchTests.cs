@@ -31,7 +31,8 @@ public sealed class JobSearchTests(ApiFixture api)
     public async Task Material_and_thickness_match_parts_in_the_job()
     {
         Assert.Equal(new[] { "26-0409 Prirobnice" }, Names(await Search("?material=S355")));
-        Assert.Equal(new[] { "26-0412 Konzole" }, Names(await Search("?material=S235&thicknessMm=3")));
+        Assert.Equal(new[] { "26-0412 Konzole", "Ostanki teden 43" }, Names(await Search("?material=S235&thicknessMm=3")));
+        Assert.Equal(new[] { "26-0409 Prirobnice" }, Names(await Search("?thicknessMm=15")));
         Assert.Equal(new[] { "26-0398 Nosilci", "Ostanki teden 43" }, Names(await Search("?material=S235&thicknessMm=8")));
         Assert.Empty(await Search("?material=HARDOX&thicknessMm=8"));
     }
