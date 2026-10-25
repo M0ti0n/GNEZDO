@@ -879,3 +879,5 @@ th.num .th-sort { flex-direction: row-reverse; }
   .proc-svg { height: 220px; }
 }
 .proc-fill { fill: #d9efcc; stroke: none; }
+.is-exists .proc-fill { fill: #f8d3d1; }
+.proc-size { justify-self: center; margin-top: -2px; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
