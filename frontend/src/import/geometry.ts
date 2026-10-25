@@ -46,7 +46,7 @@ export interface Contour {
   outer: boolean;          // the largest contour is the outside of the part
 }
 
-export type CheckId = "doubles" | "separate" | "insideOpen" | "outsideOpen" | "outsidePart" | "splines";
+export type CheckId = "doubles" | "separate" | "crossing" | "insideOpen" | "outsideOpen" | "outsidePart" | "splines";
 
 export interface CheckResult {
   id: CheckId;
@@ -214,6 +214,7 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   const openOutside = rest.filter((c) => !c.closed && (c.outer || onEdge(c.box)));
   const openInside = rest.filter((c) => !c.closed && !openOutside.includes(c));
   const splines = entities.filter((e) => e.kind === "spline");
+  const crossing = crossingContours(entities, rest.filter((c) => c.closed));
   const outsidePart = marksOutsidePart(entities.filter((e) => !doubleSet.has(e.id)), rest);
 
   const checks: CheckResult[] = [
@@ -221,6 +222,10 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
     {
       id: "separate", label: "Lines outside the part outline", count: separate.length,
       entityIds: separate.flatMap((c) => c.entityIds), points: [],
+    },
+    {
+      id: "crossing", label: "Contours cross each other", count: crossing.groups.length,
+      entityIds: crossing.groups.flat(), points: crossing.points,
     },
     {
       id: "insideOpen", label: "Inside contour open", count: openInside.length,
@@ -416,4 +421,80 @@ export function findDoubles(entities: Entity[]): string[] {
     }
   }
   return entities.filter((e) => out.has(e.id)).map((e) => e.id);
+}
+
+/* ---- Contours that cross ----------------------------------------------------------------- */
+
+/** Arcs and circles are followed closely (at most 0.01 mm off), so near misses are not taken for crossings. */
+function finePoints(e: Entity): Pt[] {
+  if (e.kind === "line") return [e.a, e.b];   // a line is one segment: crossings in its middle are found exactly
+  if (e.kind !== "arc" && e.kind !== "circle") return pointsAlong(e);
+  const step = Math.min(7.5, Math.max(0.25, (2 * Math.acos(Math.max(-1, 1 - 0.01 / e.r)) * 180) / Math.PI));
+  const start = e.kind === "arc" ? e.start : 0, sweep = e.kind === "arc" ? arcSweep(e.start, e.end) : 360;
+  const n = Math.max(2, Math.ceil(sweep / step));
+  return Array.from({ length: n + 1 }, (_, i) => onCircle(e.c, e.r, start + (sweep * i) / n));
+}
+
+const cross2 = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+/** Do segments p1-p2 and q1-q2 cross or touch? With `strict`, meeting only at end points does not count. */
+function segsMeet(p1: Pt, p2: Pt, q1: Pt, q2: Pt, strict: boolean): Pt | null {
+  const d1 = cross2(q1, q2, p1), d2 = cross2(q1, q2, p2), d3 = cross2(p1, p2, q1), d4 = cross2(p1, p2, q2);
+  const E = 1e-9;
+  if (((d1 > E && d2 < -E) || (d1 < -E && d2 > E)) && ((d3 > E && d4 < -E) || (d3 < -E && d4 > E))) {
+    const t = d1 / (d1 - d2);
+    return { x: p1.x + t * (p2.x - p1.x), y: p1.y + t * (p2.y - p1.y) };
+  }
+  if (strict) return null;
+  // touching: an end point lying on the other segment
+  for (const [p, a, b] of [[p1, q1, q2], [p2, q1, q2], [q1, p1, p2], [q2, p1, p2]] as const)
+    if (distToSeg(p, [a, b]) <= 1e-6) return p;
+  return null;
+}
+
+/**
+ * Closed cutting contours that cross or touch each other (a hole over the edge of another hole or
+ * of the outline), or a contour that crosses itself (figure eight). Each group = the entity ids of
+ * the contours involved; points = where they meet.
+ */
+function crossingContours(entities: Entity[], closed: Contour[]): { groups: string[][]; points: Pt[] } {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  // segments per contour, each remembering its entity and place, to skip neighbours on the same contour
+  const segs = closed.map((c) => c.entityIds.flatMap((id) => {
+    const p = finePoints(byId.get(id)!);
+    return p.slice(1).map((q, i) => ({ a: p[i], b: q }));
+  }));
+  const hit = new Set<number>();
+  const points: Pt[] = [];
+  const overlaps = (a: Box, b: Box) => a.minX <= b.maxX + 1e-6 && b.minX <= a.maxX + 1e-6 && a.minY <= b.maxY + 1e-6 && b.minY <= a.maxY + 1e-6;
+  const segBox = (s: { a: Pt; b: Pt }): Box => ({ minX: Math.min(s.a.x, s.b.x), minY: Math.min(s.a.y, s.b.y), maxX: Math.max(s.a.x, s.b.x), maxY: Math.max(s.a.y, s.b.y) });
+  for (let i = 0; i < closed.length; i++) {
+    for (let j = i + 1; j < closed.length; j++) {
+      if (!overlaps(closed[i].box, closed[j].box)) continue;
+      let at: Pt | null = null;
+      for (const s of segs[i]) {
+        const sb = segBox(s);
+        if (!overlaps(sb, closed[j].box)) continue;
+        for (const t of segs[j]) if (overlaps(sb, segBox(t)) && (at = segsMeet(s.a, s.b, t.a, t.b, false))) break;
+        if (at) break;
+      }
+      if (at) { hit.add(i); hit.add(j); points.push(at); }
+    }
+    // a contour crossing itself (figure eight): two of its segments cross properly; neighbours
+    // only meet at their shared end, which does not count
+    const own = segs[i], boxes = own.map(segBox);
+    outer: for (let x = 0; x < own.length; x++) for (let y = x + 1; y < own.length; y++) {
+      if (!overlaps(boxes[x], boxes[y])) continue;
+      const at = segsMeet(own[x].a, own[x].b, own[y].a, own[y].b, true);
+      if (at) { hit.add(i); points.push(at); break outer; }
+    }
+  }
+  // contours that cross are reported together, one group per connected set
+  const groups: string[][] = [];
+  const done = new Set<number>();
+  for (const i of hit) {
+    if (done.has(i)) continue;
+    done.add(i);
+    groups.push(closed[i].entityIds);
+  }
+  return { groups, points };
 }
