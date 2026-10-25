@@ -17,6 +17,8 @@ export interface ImportItem {
   processed: boolean;
   /** Process all found a part with the same project and name in the database; process it by hand to replace it. */
   duplicate?: boolean;
+  /** Set with the Properties tool for this part; otherwise the list's properties apply. */
+  props?: PartProps;
   /** Rotations and mirror the part got when it was processed. */
   applied?: { rotations: Rotation[]; mirror: boolean };
 }
@@ -31,6 +33,11 @@ export interface BatchProperties {
   mirror: boolean;
 }
 
+/** Properties of one part (Properties tool and Process pop-up). */
+export interface PartProps extends BatchProperties {
+  description: string;
+}
+
 /** New properties start from the import rules in Settings. */
 export const propertiesFrom = (rules: ImportRules): BatchProperties => ({
   material: "", thicknessMm: "", project: "",
@@ -38,12 +45,40 @@ export const propertiesFrom = (rules: ImportRules): BatchProperties => ({
   mirror: rules.mirrorWithoutOpenCut,
 });
 
+const PROPS_KEY = "gnezdo.importProperties";
+
+/**
+ * The list's properties carry over: they are kept in this browser, so the next import
+ * (and the next visit) starts with the last values instead of the Settings defaults.
+ */
+export function loadProperties(rules: ImportRules): BatchProperties {
+  const base = propertiesFrom(rules);
+  try {
+    const raw = localStorage.getItem(PROPS_KEY);
+    return raw ? { ...base, ...JSON.parse(raw) } : base;
+  } catch {
+    return base;
+  }
+}
+
+export function saveProperties(p: BatchProperties) {
+  try { localStorage.setItem(PROPS_KEY, JSON.stringify(p)); } catch { /* kept for this session only */ }
+}
+
+/** What a part is saved with: its own properties, else the list's. */
+export const effectiveProps = (item: ImportItem, list: BatchProperties): PartProps =>
+  item.props ?? { ...list, description: "" };
+
 /**
  * Mirror for one part. With "no open cut allows mirror" on, a part that has open cut
  * lines is never mirrored; otherwise the Mirror tick decides alone.
  */
 export const mirrorFor = (item: ImportItem, props: BatchProperties, rules: ImportRules) =>
-  props.mirror && !(rules.mirrorWithoutOpenCut && hasOpenCut(item));
+  mirrorBlocked(item, rules) ? false : props.mirror;
+
+/** Mirror is not allowed: the part has open cut lines and the rule says so. */
+export const mirrorBlocked = (item: ImportItem, rules: ImportRules) =>
+  rules.mirrorWithoutOpenCut && hasOpenCut(item);
 
 export const hasOpenCut = (item: ImportItem) =>
   !!item.drawing?.entities.some((e) => e.role === "openCut");

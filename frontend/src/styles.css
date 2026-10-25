@@ -910,3 +910,9 @@ th.num .th-sort { flex-direction: row-reverse; }
 .combo-list li.combo-empty { cursor: default; color: var(--ink-3); font-size: 13px; }
 .proc-input-wrap .combo .combo-input { padding-right: 34px; }
 .proc-input-wrap.has-combo .combo { margin-right: 38px; }
+
+/* Properties pop-up (same layout as Process) */
+.dlg-icon-wide { width: 54px; }
+.dlg-icon-wide svg { width: 50px; height: 32px; }
+.proc-image.is-props .proc-frame { background: var(--line); }
+.proc-status.is-own { background: var(--blue-tint); color: var(--blue-ink); }
