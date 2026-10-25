@@ -1,2 +1,0 @@
-InitialCreate
-# first migration: the whole schema as it is now
