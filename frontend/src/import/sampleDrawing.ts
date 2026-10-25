@@ -1,13 +1,17 @@
-import type { Drawing, Entity } from "./geometry";
+import type { Drawing, Entity, Role } from "./geometry";
 
-// Hand-made sample drawing until DXF reading (the import worker) exists.
+// Hand-made sample drawings until DXF reading (the import worker) exists.
 // A 400 x 250 mm plate with three deliberate faults so every check shows something:
 //   - the outside contour has a 0.4 mm gap at the bottom-left corner,
 //   - the slot is not closed (its left arc stops short),
 //   - the cut-out on the right is drawn with a spline.
 let n = 0;
 const id = () => `e${++n}`;
-const line = (x1: number, y1: number, x2: number, y2: number): Entity => ({ id: id(), kind: "line", a: { x: x1, y: y1 }, b: { x: x2, y: y2 } });
+const line = (x1: number, y1: number, x2: number, y2: number, role?: Role): Entity =>
+  ({ id: id(), kind: "line", a: { x: x1, y: y1 }, b: { x: x2, y: y2 }, role });
+/** Tracing (engraving) polyline through the given points. */
+const trace = (...p: number[]): Entity[] =>
+  Array.from({ length: p.length / 2 - 1 }, (_, i) => line(p[2 * i], p[2 * i + 1], p[2 * i + 2], p[2 * i + 3], "trace"));
 const arc = (cx: number, cy: number, r: number, start: number, end: number): Entity => ({ id: id(), kind: "arc", c: { x: cx, y: cy }, r, start, end });
 const circle = (cx: number, cy: number, r: number): Entity => ({ id: id(), kind: "circle", c: { x: cx, y: cy }, r });
 
@@ -38,5 +42,27 @@ export const sampleDrawing: Drawing = {
     { id: id(), kind: "spline", fit: [
       { x: 340, y: 160 }, { x: 325, y: 200 }, { x: 295, y: 188 }, { x: 262, y: 212 }, { x: 238, y: 192 }, { x: 230, y: 160 },
     ] },
+    // marking "P1" (tracing)
+    ...trace(170, 30, 170, 60, 184, 60, 188, 55, 188, 49, 184, 45, 170, 45),
+    ...trace(196, 55, 203, 60, 203, 30),
+    // relief slit from the right edge (open cut)
+    line(400, 125, 372, 125, "openCut"),
   ],
 };
+
+// A clean part (all checks pass) so Process can be tried: 300 x 180 mm plate
+// with two holes, a tracing mark and two open cut slits.
+export const cleanDrawing: Drawing = {
+  id: "sample-1625-25-01_P2",
+  fileName: "1625-25-01_P2_5kos",
+  entities: [
+    line(0, 0, 300, 0), line(300, 0, 300, 180), line(300, 180, 0, 180), line(0, 180, 0, 0),
+    circle(60, 90, 22), circle(240, 90, 22),
+    line(150, 0, 150, 40, "openCut"), line(150, 180, 150, 140, "openCut"),
+    ...trace(120, 80, 120, 100, 132, 100, 135, 96, 135, 92, 132, 88, 120, 88),
+    ...trace(141, 97, 145, 100, 152, 100, 155, 97, 155, 94, 141, 80, 155, 80),
+    ...trace(162, 90, 178, 90), ...trace(170, 82, 170, 98),
+  ],
+};
+
+export const sampleDrawings = [sampleDrawing, cleanDrawing];

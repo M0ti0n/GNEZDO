@@ -3,13 +3,24 @@
 
 export interface Pt { x: number; y: number }
 
-export type Entity =
+/**
+ * What the laser does with a line:
+ *   cut     - normal cutting contour, must be closed
+ *   trace   - tracing / engraving (marking), may be open
+ *   openCut - cut on purpose without closing (slits, reliefs)
+ */
+export type Role = "cut" | "trace" | "openCut";
+
+export type Entity = (
   | { id: string; kind: "line"; a: Pt; b: Pt }
   /** Counter-clockwise from start to end angle, degrees (DXF convention). */
   | { id: string; kind: "arc"; c: Pt; r: number; start: number; end: number }
   | { id: string; kind: "circle"; c: Pt; r: number }
   /** Drawn through its fit points. */
-  | { id: string; kind: "spline"; fit: Pt[] };
+  | { id: string; kind: "spline"; fit: Pt[] }
+) & { role?: Role };   // missing = cut
+
+export const roleOf = (e: Entity): Role => e.role ?? "cut";
 
 export interface Drawing {
   id: string;
@@ -39,7 +50,9 @@ export interface CheckResult {
 }
 
 export interface GeometryReport {
-  contours: Contour[];
+  contours: Contour[];     // cutting contours (role cut)
+  traceCount: number;      // tracing lines
+  openCutCount: number;    // open cut lines
   checks: CheckResult[];
   box: Box;
 }
@@ -117,8 +130,8 @@ export function pathOf(e: Entity): string {
   }
 }
 
-/** Joins entities whose end points meet into contours and runs the checks. */
-export function checkGeometry(entities: Entity[]): GeometryReport {
+/** Joins entities whose end points meet into contours (closed loops or open chains). */
+export function buildContours(entities: Entity[]): Contour[] {
   // Cluster end points: each cluster is a node, each entity an edge between two nodes.
   const nodes: Pt[] = [];
   const nodeOf = (p: Pt) => {
@@ -163,6 +176,16 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
     });
   }
 
+  return contours;
+}
+
+/**
+ * Runs the checks. Only cutting lines must form closed contours; tracing and
+ * open cut lines are left open on purpose and are joined separately, so a slit
+ * that touches the outside does not count as a branch of it.
+ */
+export function checkGeometry(entities: Entity[]): GeometryReport {
+  const contours = buildContours(entities.filter((e) => roleOf(e) === "cut"));
   const area = (b: Box) => (b.maxX - b.minX) * (b.maxY - b.minY);
   const outer = contours.reduce<Contour | null>((best, c) => (!best || area(c.box) > area(best.box) ? c : best), null);
   if (outer) outer.outer = true;
@@ -186,7 +209,9 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   return {
     contours,
     checks,
-    box: contours.length ? contours.map((c) => c.box).reduce(union) : { minX: 0, minY: 0, maxX: 100, maxY: 100 },
+    traceCount: entities.filter((e) => roleOf(e) === "trace").length,
+    openCutCount: entities.filter((e) => roleOf(e) === "openCut").length,
+    box: entities.length ? entities.map(boxOf).reduce(union) : { minX: 0, minY: 0, maxX: 100, maxY: 100 },
   };
 }
 
@@ -194,4 +219,9 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
 export function quantityFromName(fileName: string): number | null {
   const m = fileName.replace(/\.(dxf|dwg)$/i, "").match(/(\d+)\D*$/);
   return m ? Number(m[1]) : null;
+}
+
+/** Ids of every entity joined end to end with the given one (the whole chain or loop). */
+export function chainOf(entities: Entity[], id: string): string[] {
+  return buildContours(entities).find((c) => c.entityIds.includes(id))?.entityIds ?? [id];
 }
