@@ -64,6 +64,20 @@ Date filters: `on:` that calendar day, `upTo:` up to and including that day, `fr
 day on; days are shop days (Europe/Ljubljana).
 
 
+## Saved part geometry
+
+`Part.Geometry` is JSON (`format: "gnezdo-part"`, `version: 2`, in mm, y up): the drawing's
+`entities` (line, arc, circle, spline, each with its role) and the `operations` for path generation:
+
+| op | what | leads | start / direction |
+|---|---|---|---|
+| `cut` | closed cutting contour (`outer: true` for the outside) | from the technology table | path generation |
+| `openCut` | connected open cut lines, cut in one go inside the part | lead-in 0, lead-out 0: piercing exactly at one end | one of `ends`, chosen by the cut order rules on the sheet |
+| `engrave` | tracing (engraving), a separate operation, not cut through | none | path generation (shortest travel) |
+
+Parts saved before this (version 1) hold only the entity list with roles; the operations can be
+rebuilt from the roles.
+
 ## Database updates (migrations)
 
 The database is updated by EF Core migrations in `backend/src/Gnezdo.Api/Data/Migrations`.

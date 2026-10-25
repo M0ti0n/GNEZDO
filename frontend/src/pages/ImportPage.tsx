@@ -21,8 +21,8 @@ const MARGIN = 48;
 
 /** Tools that mark lines by clicking them, and the role they give. */
 const MARKING: Record<string, { role: Role; hint: string }> = {
-  trace: { role: "trace", hint: "Click a line, or drag a window, to mark tracing. Again to unmark. Right drag moves the drawing." },
-  openCut: { role: "openCut", hint: "Click a line, or drag a window, to mark open cut. Again to unmark. Right drag moves the drawing." },
+  trace: { role: "trace", hint: "Tracing is engraved, not cut through. Click a line, or drag a window, to mark it; again to unmark. Right drag moves the drawing." },
+  openCut: { role: "openCut", hint: "Open cut: cut inside the part with no lead-in or lead-out; piercing exactly at one end (chosen by the cut order on the sheet). Click a line, or drag a window, to mark it; again to unmark." },
 };
 
 /** Tools that change lines by clicking them (AutoCAD quick mode); Shift swaps trim and extend. */
@@ -513,8 +513,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
           <h3 className="gc-sec">Lines</h3>
           <ul className="legend" aria-label="Line colours">
             <li><i className="sw sw-cut" />Cutting</li>
-            <li><i className="sw sw-trace" />Tracing</li>
-            <li><i className="sw sw-open" />Open cut</li>
+            <li title="Engraved, not cut through"><i className="sw sw-trace" />Tracing</li>
+            <li title="Cut with no lead-in or lead-out, from one end"><i className="sw sw-open" />Open cut</li>
             <li><i className="sw sw-bad" />Open contour</li>
           </ul>
           <h3 className="gc-sec">Part</h3>
