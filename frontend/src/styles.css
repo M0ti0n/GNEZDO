@@ -637,3 +637,34 @@ th.num .th-sort { flex-direction: row-reverse; }
 .btn-fit { height: 30px; padding: 0 14px; background: var(--plate); border: 1px solid var(--line); }
 .btn-fit:hover { background: var(--blue-tint); }
 .tool-hint { order: 2; padding: 5px 12px; border-radius: 999px; background: var(--yellow-tint); color: var(--yellow-ink); font-size: 13.5px; }
+
+/* Line colours. Before processing: cutting black, tracing purple, open cut light blue.
+   After processing: cutting green, tracing stays purple, open cut darker blue.
+   Open cutting contours are red either way. */
+:root {
+  --ln-cut: #1b1b1b;       --ln-cut-done: #1fa83a;
+  --ln-trace: #9b30d9;
+  --ln-open: #4fc3f7;      --ln-open-done: #1565c0;
+  --ln-bad: #e3262b;
+}
+.ent.role-cut { stroke: var(--ln-cut); }
+.ent.role-trace { stroke: var(--ln-trace); }
+.ent.role-openCut { stroke: var(--ln-open); stroke-width: 2.2; }
+.is-processed .ent.role-cut { stroke: var(--ln-cut-done); }
+.is-processed .ent.role-openCut { stroke: var(--ln-open-done); }
+.ent.role-cut.is-flagged { stroke: var(--ln-bad); }
+.ent-hit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; }
+.canvas.is-marking { cursor: crosshair; }
+.canvas.is-marking .ent-hit:hover { stroke: rgba(242, 183, 5, .35); }
+
+.legend { display: flex !important; flex-wrap: wrap; gap: 4px 14px !important; margin: 12px 0 0 !important; padding-top: 10px !important; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-2); }
+.legend li { display: flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 18px; height: 3px; border-radius: 2px; }
+.sw-cut { background: var(--ln-cut); }
+.sw-trace { background: var(--ln-trace); }
+.sw-open { background: var(--ln-open); }
+.sw-bad { background: var(--ln-bad); }
+.gcheck:has(.st-done) .sw-cut { background: var(--ln-cut-done); }
+.gcheck:has(.st-done) .sw-open { background: var(--ln-open-done); }
+.gc-facts .st-done { color: var(--green-ink); }
+.tool-hint.is-bad { background: #fde8e7; color: #b3161b; }

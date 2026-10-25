@@ -2,7 +2,8 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
-import { sampleDrawing } from "./import/sampleDrawing";
+import { sampleDrawings } from "./import/sampleDrawing";
+import type { Drawing } from "./import/geometry";
 import { HomePage, type HomeAction } from "./pages/HomePage";
 import { JobPage } from "./pages/JobPage";
 import { JobSearchPage } from "./pages/JobSearchPage";
@@ -18,6 +19,9 @@ export function App() {
   const [state, dispatch] = useReducer(shellReducer, initialShell);
   const [drawer, setDrawer] = useState<DrawerMode | null>(null);
   const [jobParts, setJobParts] = useState<Record<string, JobPart[] | undefined>>({});
+  // Imported drawings open in tabs; kept here so marks survive switching tabs.
+  const [drawings, setDrawings] = useState<Record<string, { drawing: Drawing; processed: boolean }>>(
+    () => Object.fromEntries(sampleDrawings.map((d) => [d.id, { drawing: d, processed: false }])));
   const [toast, setToast] = useState<string | null>(null);
   const newJobCount = useRef(0);
   // Last job search: results show in the Job search view on the main screen.
@@ -56,8 +60,11 @@ export function App() {
     dispatch({ type: "open", tab: jobTab(`new-${n}`, n === 1 ? "New job" : `New job ${n}`) });
   }, []);
 
-  // Until the import worker reads DXF/DWG files, Import opens the sample drawing.
-  const openImport = () => open(drawingTab(sampleDrawing.id, sampleDrawing.fileName));
+  // Until the import worker reads DXF/DWG files, Import opens the sample drawings.
+  const openImport = () => {
+    sampleDrawings.forEach((d) => open(drawingTab(d.id, d.fileName)));
+    open(drawingTab(sampleDrawings[0].id, sampleDrawings[0].fileName));
+  };
 
   const openJob = (j: JobSummary) => open(jobTab(j.id, j.name));
 
@@ -135,7 +142,12 @@ export function App() {
               <JobSearchPage filter={jobSearch.filter} run={jobSearch.run} onOpenJob={openJob}
                 onShowFilters={() => setDrawer("jobs")} />
             )}
-            {active.kind === "drawing" && <ImportPage key={active.drawingId} drawing={sampleDrawing} />}
+            {active.kind === "drawing" && active.drawingId && drawings[active.drawingId] && (
+              <ImportPage key={active.drawingId}
+                drawing={drawings[active.drawingId].drawing}
+                processed={drawings[active.drawingId].processed}
+                onChange={(drawing, processed) => setDrawings((m) => ({ ...m, [drawing.id]: { drawing, processed } }))} />
+            )}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && <PlaceholderPage tab={active} />}
           </main>
         </div>

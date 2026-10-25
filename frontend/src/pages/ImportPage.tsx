@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
 import {
-  boxOf, checkGeometry, pathOf, quantityFromName, union,
-  type Box, type CheckId, type Drawing, type Pt,
+  boxOf, chainOf, checkGeometry, pathOf, quantityFromName, roleOf, union,
+  type Box, type CheckId, type Drawing, type Pt, type Role,
 } from "../import/geometry";
 
 /** Screen = (x * s + tx, -y * s + ty): s pixels per mm, y flipped (CAD y points up). */
@@ -11,10 +11,24 @@ interface View { s: number; tx: number; ty: number }
 const PANEL_W = 330;   // geometry check panel, kept clear when fitting
 const MARGIN = 48;
 
-export function ImportPage({ drawing }: { drawing: Drawing }) {
+/** Tools that mark lines by clicking them, and the role they give. */
+const MARKING: Record<string, { role: Role; hint: string }> = {
+  trace: { role: "trace", hint: "Click a line to mark it as tracing (engraving). Click again to make it a cutting line." },
+  openCut: { role: "openCut", hint: "Click a line to mark it as open cut. Click again to make it a cutting line." },
+};
+
+interface Props {
+  drawing: Drawing;
+  processed: boolean;
+  /** Any change to the lines clears "processed": the part has to be processed again. */
+  onChange: (drawing: Drawing, processed: boolean) => void;
+}
+
+export function ImportPage({ drawing, processed, onChange }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
   const qty = quantityFromName(drawing.fileName);
   const [tool, setTool] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
   const [selected, setSelected] = useState<CheckId | null>(null);
 
   const host = useRef<HTMLDivElement>(null);
@@ -60,11 +74,14 @@ export function ImportPage({ drawing }: { drawing: Drawing }) {
   }, []);
 
   // Drag with the left or middle button pans.
+  // A press that hardly moves is a click on a line (for the marking tools).
   const drag = useRef<{ x: number; y: number } | null>(null);
+  const press = useRef<{ x: number; y: number } | null>(null);
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
     if ((e.target as Element).closest(".gcheck, .canvas-ui")) return;
     drag.current = { x: e.clientX, y: e.clientY };
+    press.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -74,7 +91,37 @@ export function ImportPage({ drawing }: { drawing: Drawing }) {
     drag.current = { x: e.clientX, y: e.clientY };
     setView((v) => v && { ...v, tx: v.tx + dx, ty: v.ty + dy });
   };
-  const onPointerUp = () => { drag.current = null; };
+  const onPointerUp = (e: React.PointerEvent) => {
+    drag.current = null;
+    const p = press.current;
+    press.current = null;
+    const mark = tool ? MARKING[tool] : undefined;
+    if (!p || !mark || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;
+    const hit = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el instanceof SVGElement && el.dataset.id);
+    const id = (hit as SVGElement | undefined)?.dataset.id;
+    if (id) markChain(id, mark.role);
+  };
+
+  // Marks the whole chain the clicked line belongs to; clicking a marked chain again makes it cutting.
+  const markChain = (id: string, role: Role) => {
+    const chain = new Set(chainOf(drawing.entities, id));
+    const all = drawing.entities.filter((e) => chain.has(e.id)).every((e) => roleOf(e) === role);
+    const next = all ? "cut" : role;
+    onChange({ ...drawing, entities: drawing.entities.map((e) => (chain.has(e.id) ? { ...e, role: next } : e)) }, false);
+    setSelected(null);
+    setMessage({ text: `${chain.size} ${chain.size === 1 ? "line" : "lines"} → ${ROLE_LABEL[next].toLowerCase()}` });
+  };
+
+  const onTool = (id: string) => {
+    if (id === "process") {
+      setTool(null);
+      if (problems) setMessage({ text: "Fix the red problems before processing", bad: true });
+      else { onChange(drawing, true); setMessage({ text: "Processed: cutting lines are green" }); }
+      return;
+    }
+    setMessage(null);
+    setTool((t) => (t === id ? null : id));
+  };
 
   const check = report.checks.find((c) => c.id === selected) ?? null;
   const flagged = useMemo(() => new Set(report.checks.flatMap((c) => c.entityIds)), [report]);
@@ -93,6 +140,7 @@ export function ImportPage({ drawing }: { drawing: Drawing }) {
   const toScreen = (p: Pt, v: View) => ({ x: p.x * v.s + v.tx, y: -p.y * v.s + v.ty });
   const problems = report.checks.filter((c) => c.count > 0).length;
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? "not built yet" : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -100,20 +148,24 @@ export function ImportPage({ drawing }: { drawing: Drawing }) {
 
   return (
     <div className="import">
-      <ImportToolStrip active={tool} onTool={(id) => setTool((t) => (t === id ? null : id))} />
+      <ImportToolStrip active={tool} onTool={onTool} />
       <div
         ref={host}
-        className="canvas"
+        className={`canvas${tool && MARKING[tool] ? " is-marking" : ""}`}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         onDoubleClick={(e) => { if (!(e.target as Element).closest(".gcheck, .canvas-ui")) { setSelected(null); fitAll(); } }}
       >
         {view && (
-          <svg className="drawing" width={size.w} height={size.h} aria-label={`Drawing ${drawing.fileName}`}>
+          <svg className={`drawing${processed ? " is-processed" : ""}`} width={size.w} height={size.h} aria-label={`Drawing ${drawing.fileName}`}>
             <g transform={`matrix(${view.s} 0 0 ${-view.s} ${view.tx} ${view.ty})`}>
               {drawing.entities.map((e) => (
                 <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke"
-                  className={`ent${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
+                  className={`ent role-${roleOf(e)}${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
+              ))}
+              {/* wide invisible strokes so thin lines are easy to click */}
+              {tool && MARKING[tool] && drawing.entities.map((e) => (
+                <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
             </g>
             {report.checks.flatMap((c) => c.points.map((p, i) => {
@@ -141,20 +193,35 @@ export function ImportPage({ drawing }: { drawing: Drawing }) {
           <p className={`gc-sum ${problems ? "is-bad" : "is-ok"}`}>
             {problems ? `${problems} ${problems === 1 ? "problem" : "problems"} to fix before the part can be saved` : "Ready to save"}
           </p>
+          <ul className="legend" aria-label="Line colours">
+            <li><i className="sw sw-cut" />Cutting</li>
+            <li><i className="sw sw-trace" />Tracing</li>
+            <li><i className="sw sw-open" />Open cut</li>
+            <li><i className="sw sw-bad" />Open contour</li>
+          </ul>
           <dl className="gc-facts">
             <dt>Size</dt><dd>{fmt(bw)} × {fmt(bh)} mm</dd>
             <dt>Contours</dt><dd>{report.contours.length}</dd>
+            <dt>Tracing</dt><dd>{report.traceCount} {report.traceCount === 1 ? "line" : "lines"}</dd>
+            <dt>Open cut</dt><dd>{report.openCutCount} {report.openCutCount === 1 ? "line" : "lines"}</dd>
+            <dt>Status</dt><dd className={processed ? "st-done" : undefined}>{processed ? "Processed" : "Not processed"}</dd>
             <dt>Quantity</dt><dd>{qty ?? "–"}{qty !== null && <small> from file name</small>}</dd>
           </dl>
         </aside>
 
         <div className="canvas-ui">
-          {toolLabel && <span className="tool-hint"><b>{toolLabel}</b> · not built yet</span>}
+          {hint && (
+            <span className={`tool-hint${message?.bad ? " is-bad" : ""}`}>
+              {!message && toolLabel && <b>{toolLabel} · </b>}{hint}
+            </span>
+          )}
           <button className="btn btn-fit" onClick={() => { setSelected(null); fitAll(); }} title="Show the whole part (double-click)">Fit</button>
         </div>
       </div>
     </div>
   );
 }
+
+const ROLE_LABEL: Record<Role, string> = { cut: "Cutting", trace: "Tracing", openCut: "Open cut" };
 
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString("en-GB");
