@@ -186,3 +186,134 @@ export function extendAt(all: Entity[], id: string, p: Pt): EditResult {
     added: [fromEnd ? arcOf(e, e.c, e.r, e.end, e.end + d) : arcOf(e, e.c, e.r, e.start - d, e.start)],
     message: `Arc extended by ${(rad(d) * e.r).toFixed(1)} mm` };
 }
+
+/* ---- Telling loose ends apart, and fixing them ------------------------------------------ */
+
+export type EndKind = "overshoot" | "gap" | "loose";
+
+export interface EndIssue {
+  kind: EndKind;
+  at: Pt;            // where to show it
+  size: number;      // mm: how far the line runs past, or how wide the gap is
+  label: string;     // "Line past a corner", "Gap in contour", "Loose end"
+  /** Applies the fix; missing for loose ends that need a person to look. */
+  fix?: (all: Entity[]) => EditResult;
+}
+
+const endsOfEntity = (e: Entity): [Pt, Pt] | null =>
+  e.kind === "line" ? [e.a, e.b]
+  : e.kind === "arc" ? [onCircle(e.c, e.r, e.start), onCircle(e.c, e.r, e.end)]
+  : e.kind === "spline" ? [e.fit[0], e.fit[e.fit.length - 1]] : null;
+
+/** The cutting entity that has p as one of its ends, and which end (0 = start, 1 = end). */
+function ownerOf(cut: Entity[], p: Pt): { e: Entity; end: 0 | 1 } | null {
+  for (const e of cut) {
+    const ends = endsOfEntity(e);
+    if (!ends) continue;
+    if (dist(ends[0], p) < 0.011) return { e, end: 0 };
+    if (dist(ends[1], p) < 0.011) return { e, end: 1 };
+  }
+  return null;
+}
+
+/** How far a line or arc runs from its loose end to the first line it crosses (not at its own ends). */
+function overshootOf(cut: Entity[], e: Entity, end: 0 | 1): { length: number; at: Pt; mid: Pt } | null {
+  if (e.kind === "line") {
+    const len = dist(e.a, e.b), eps = EPS_MM / (len || 1);
+    const ts = crossings(e, { kind: "line", a: e.a, b: e.b }, cut).map((q) => segParam(e.a, e.b, q)).filter((t) => t > eps && t < 1 - eps);
+    if (!ts.length) return null;
+    const t = end === 0 ? Math.min(...ts) : Math.max(...ts);
+    const at = (u: number): Pt => ({ x: e.a.x + u * (e.b.x - e.a.x), y: e.a.y + u * (e.b.y - e.a.y) });
+    return { length: Math.abs(t - end) * len, at: at(t), mid: at((t + end) / 2) };
+  }
+  if (e.kind === "arc") {
+    const sweep = arcSweep(e.start, e.end), eps = deg(EPS_MM / e.r);
+    const us = crossings(e, { kind: "circle", c: e.c, r: e.r }, cut).map((q) => arcSweep(e.start, angleAt(e.c, q)) % 360).filter((u) => u > eps && u < sweep - eps);
+    if (!us.length) return null;
+    const u = end === 0 ? Math.min(...us) : Math.max(...us);
+    const ue = end === 0 ? 0 : sweep;
+    return { length: rad(Math.abs(u - ue)) * e.r, at: onCircle(e.c, e.r, e.start + u), mid: onCircle(e.c, e.r, e.start + (u + ue) / 2) };
+  }
+  return null;
+}
+
+/** Moves one end of a line or arc to p (arcs keep their circle, so only lines move freely). */
+function moveEnd(e: Entity, end: 0 | 1, p: Pt): Entity | null {
+  if (e.kind === "line") return end === 0 ? { ...e, a: p } : { ...e, b: p };
+  return null;
+}
+
+/**
+ * Sorts the loose ends of open cutting contours:
+ *   overshoot - the line runs past a line it crosses (fix: trim the piece beyond it)
+ *   gap       - another loose end is near (fix: extend two straight lines to their corner, or join the ends)
+ *   loose     - neither; needs a look
+ * The point where an overshooting line is touched is part of the overshoot and not listed again.
+ */
+export function diagnoseEnds(all: Entity[], looseEnds: Pt[]): EndIssue[] {
+  const cut = all.filter((e) => (e.role ?? "cut") === "cut");
+  const issues: EndIssue[] = [];
+  const touched: Pt[] = [];   // where overshooting lines are crossed
+  const rest: { p: Pt; owner: { e: Entity; end: 0 | 1 } | null }[] = [];
+
+  for (const p of looseEnds) {
+    const owner = ownerOf(cut, p);
+    const over = owner && overshootOf(cut, owner.e, owner.end);
+    // a nearer loose end means the line is short (gap), not long: the crossing is just the far corner
+    const nearest = Math.min(Infinity, ...looseEnds.filter((q) => q !== p).map((q) => dist(p, q)));
+    if (owner && over && over.length <= nearest + EPS_MM) {
+      touched.push(over.at);
+      const id = owner.e.id, mid = over.mid;
+      issues.push({
+        kind: "overshoot", at: p, size: over.length, label: "Line past a corner",
+        fix: (now) => (now.some((x) => x.id === id) ? trimAt(now, id, mid) : { ok: false, message: "Already changed" }),
+      });
+    } else rest.push({ p, owner });
+  }
+
+  // ends that sit on an overshooting line are the other half of that overshoot
+  const open = rest.filter((r) => !touched.some((t) => dist(t, r.p) < 0.02));
+  const used = new Set<number>();
+  open.forEach((r, i) => {
+    if (used.has(i)) return;
+    let best = -1, bestD = Infinity;
+    open.forEach((o, j) => { if (j !== i && !used.has(j)) { const d = dist(r.p, o.p); if (d < bestD) { bestD = d; best = j; } } });
+    if (best < 0 || !r.owner || !open[best].owner) {
+      issues.push({ kind: "loose", at: r.p, size: 0, label: "Loose end" });
+      used.add(i);
+      return;
+    }
+    used.add(i); used.add(best);
+    const a = r.owner, b = open[best].owner!, pa = r.p, pb = open[best].p;
+    issues.push({
+      kind: "gap", at: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }, size: bestD, label: "Gap in contour",
+      fix: (now) => closeGap(now, a.e.id, a.end, pa, b.e.id, b.end, pb, bestD),
+    });
+  });
+  return issues;
+}
+
+/** Closes a gap: two straight lines meet at their corner if it is close; otherwise one end moves onto the other. */
+function closeGap(all: Entity[], idA: string, endA: 0 | 1, pa: Pt, idB: string, endB: 0 | 1, pb: Pt, gap: number): EditResult {
+  const A = all.find((e) => e.id === idA), B = all.find((e) => e.id === idB);
+  if (!A || !B) return { ok: false, message: "Already changed" };
+  if (A.kind === "line" && B.kind === "line") {
+    const d = (A.b.x - A.a.x) * (B.b.y - B.a.y) - (A.b.y - A.a.y) * (B.b.x - B.a.x);
+    if (Math.abs(d) > 1e-9) {
+      const s = ((B.a.x - A.a.x) * (B.b.y - B.a.y) - (B.a.y - A.a.y) * (B.b.x - B.a.x)) / d;
+      const x = { x: A.a.x + s * (A.b.x - A.a.x), y: A.a.y + s * (A.b.y - A.a.y) };
+      const reach = 3 * gap + 1;   // the corner must be about where the gap is
+      if (dist(x, pa) <= reach && dist(x, pb) <= reach) {
+        const na = moveEnd(A, endA, x)!, nb = moveEnd(B, endB, x)!;
+        return { ok: true, entities: all.map((e) => (e.id === idA ? na : e.id === idB ? nb : e)), removed: [],
+          added: [lineOf(A, pa, x), lineOf(B, pb, x)], message: `Gap closed at the corner (${gap.toFixed(2)} mm)` };
+      }
+    }
+  }
+  // collinear lines, arcs, splines: move a line end onto the other end, else bridge with a short line
+  const moved = moveEnd(A, endA, pb) ?? moveEnd(B, endB, pa);
+  if (moved) return { ok: true, entities: all.map((e) => (e.id === moved.id ? moved : e)), removed: [],
+    added: [lineOf(A, pa, pb)], message: `Gap closed (${gap.toFixed(2)} mm)` };
+  const bridge = lineOf(A, pa, pb);
+  return { ok: true, entities: [...all, bridge], removed: [], added: [bridge], message: `Gap bridged with a ${gap.toFixed(2)} mm line` };
+}

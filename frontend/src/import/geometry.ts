@@ -196,8 +196,13 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   const outer = contours.reduce<Contour | null>((best, c) => (!best || area(c.box) > area(best.box) ? c : best), null);
   if (outer) outer.outer = true;
 
-  const openInside = contours.filter((c) => !c.outer && !c.closed);
-  const openOutside = contours.filter((c) => c.outer && !c.closed);
+  // An open piece that reaches the part's outer edge belongs to the outside contour, even when
+  // a fault (a line past a corner) splits the outside into several pieces.
+  const all = contours.length ? contours.map((c) => c.box).reduce(union) : null;
+  const onEdge = (b: Box) => !!all && (Math.abs(b.minX - all.minX) < 0.01 || Math.abs(b.minY - all.minY) < 0.01 ||
+    Math.abs(b.maxX - all.maxX) < 0.01 || Math.abs(b.maxY - all.maxY) < 0.01);
+  const openOutside = contours.filter((c) => !c.closed && (c.outer || onEdge(c.box)));
+  const openInside = contours.filter((c) => !c.closed && !openOutside.includes(c));
   const splines = entities.filter((e) => e.kind === "spline");
   const outsidePart = marksOutsidePart(entities, contours);
 

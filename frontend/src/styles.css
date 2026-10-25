@@ -992,3 +992,26 @@ th.num .th-sort { flex-direction: row-reverse; }
 .pv-remove { fill: none; stroke: #e3262b; stroke-width: 4; stroke-dasharray: 7 5; opacity: .85; pointer-events: none; }
 .pv-add { fill: none; stroke: #1fa83a; stroke-width: 3; stroke-dasharray: 7 5; pointer-events: none; }
 .canvas-ui .btn-fit:disabled { opacity: .45; }
+
+/* Loose ends: line past a corner (✂), gap (↔), loose end (?) */
+.end-mark { cursor: pointer; }
+.end-mark circle { fill: #fff; stroke: #e3262b; stroke-width: 2; }
+.end-mark text { font-size: 11px; font-weight: 700; fill: #c8171d; pointer-events: none; }
+.end-mark.is-gap circle { stroke: #e08a00; }
+.end-mark.is-gap text { fill: #a85d00; }
+.end-mark.is-loose circle { stroke: var(--ink-3); }
+.end-mark.is-loose text { fill: var(--ink-2); }
+.end-mark.is-hover circle { fill: #fff3c7; stroke-width: 3; }
+.gc-ends { margin-top: 8px; padding: 8px 0 0; border-top: 1px dashed var(--line); }
+.gc-ends ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.gc-end { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; font-size: 13.5px; }
+.gc-end.is-hover { background: #fff3c7; }
+.gc-end-icon { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #e3262b; color: #c8171d; font-size: 11px; font-weight: 700; flex: none; }
+.gc-end.is-gap .gc-end-icon { border-color: #e08a00; color: #a85d00; }
+.gc-end.is-loose .gc-end-icon { border-color: var(--ink-3); color: var(--ink-2); }
+.gc-end-label { flex: 1; min-width: 0; }
+.gc-end-label small, .gc-end-note { color: var(--ink-3); font-size: 12.5px; }
+.gc-fix { padding: 2px 10px; border-radius: 5px; border: 1px solid var(--line); background: var(--plate); font-size: 12.5px; font-weight: 600; }
+.gc-fix:hover { background: var(--green-tint); border-color: #bfe0ad; color: var(--green-ink); }
+.gc-fix-all { margin-top: 6px; width: 100%; height: 30px; background: var(--green-tint); color: var(--green-ink); border: 1px solid #bfe0ad; font-size: 13px; }
+.gc-fix-all:hover { background: #d3ecc6; }
