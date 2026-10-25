@@ -26,9 +26,11 @@ interface Props {
   nestRules?: { rotations: number[]; mirror: boolean };
   /** Any change to the lines clears "processed": the part has to be processed again. */
   onChange: (drawing: Drawing, processed: boolean) => void;
+  /** Process tool on a part without problems: opens the save pop-up. */
+  onProcess: () => void;
 }
 
-export function ImportPage({ drawing, processed, properties, nestRules, onChange }: Props) {
+export function ImportPage({ drawing, processed, properties, nestRules, onChange, onProcess }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
   const [tool, setTool] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -119,7 +121,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onChange
     if (id === "process") {
       setTool(null);
       if (problems) setMessage({ text: "Fix the red problems before processing", bad: true });
-      else { onChange(drawing, true); setMessage({ text: "Processed: cutting lines are green" }); }
+      else { setMessage(null); onProcess(); }
       return;
     }
     setMessage(null);

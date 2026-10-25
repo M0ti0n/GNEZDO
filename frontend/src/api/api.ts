@@ -17,6 +17,21 @@ async function get<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function post<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    // validation problems come back as { errors: { field: [messages] } }
+    let detail = "";
+    try { detail = Object.values((await res.json()).errors ?? {}).flat().join(" "); } catch { /* not JSON */ }
+    throw new Error(detail || `${res.status} ${res.statusText} (${url})`);
+  }
+  return (await res.json()) as T;
+}
+
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
 
 export const materialKey = (m: string, t: number) => `${m} ${t} mm`;
@@ -166,7 +181,65 @@ const matches = (hay: string, needle?: string) =>
 
 const delay = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), 150));
 
+/** Same part = same project (or both none) and same name, ignoring case. */
+export interface PartKey { name: string; project: string }
+export interface ExistingPart extends PartKey { id: string; modifiedAt: string }
+
+/** A processed part from the import screen, as POST /api/parts takes it. */
+export interface SavePart extends PartKey {
+  description: string;
+  material: string;
+  thicknessMm: number;
+  rotations: number[];
+  mirror: boolean;
+  widthMm: number;
+  heightMm: number;
+  areaMm2: number;
+  outlinePath: string;   // y down, origin top-left
+  engraved: boolean;
+  geometry: string;      // entities as JSON
+  sourceFile: string;
+  /** Replace a part with the same project and name; otherwise it is reported as "exists". */
+  replace: boolean;
+}
+export interface SavedPart extends PartKey { id: string | null; status: "created" | "replaced" | "exists" }
+
+const sameKey = (a: PartKey, b: PartKey) =>
+  a.name.trim().toLowerCase() === b.name.trim().toLowerCase() &&
+  a.project.trim().toLowerCase() === b.project.trim().toLowerCase();
+
+let mockSeq = 0;
+
+/** Sample mode: saved parts go into the sample library, so Parts search finds them. */
+function mockSave(parts: SavePart[]): SavedPart[] {
+  return parts.map((p) => {
+    const i = sampleParts.findIndex((x) => sameKey(x, p));
+    if (i >= 0 && !p.replace) return { name: p.name, project: p.project, id: sampleParts[i].id, status: "exists" };
+    const now = new Date().toISOString();
+    const row: PartSummary = {
+      id: i >= 0 ? sampleParts[i].id : `new-${++mockSeq}`,
+      name: p.name.trim(), project: p.project.trim(), material: p.material.trim(), thicknessMm: p.thicknessMm,
+      qty: 1, w: p.widthMm, h: p.heightMm, areaMm2: p.areaMm2, path: p.outlinePath,
+      description: p.description, engraved: p.engraved, importId: "i-new",
+      importedAt: now, createdAt: i >= 0 ? sampleParts[i].createdAt : now, modifiedAt: now,
+    };
+    if (i >= 0) sampleParts[i] = row; else sampleParts.unshift(row);
+    return { name: row.name, project: row.project, id: row.id, status: i >= 0 ? "replaced" : "created" };
+  });
+}
+
 export const api = {
+  /** Which of these parts are already in the database. */
+  existingParts: (keys: PartKey[]) =>
+    useApi
+      ? post<ExistingPart[]>("/api/parts/existing", keys)
+      : delay(sampleParts.filter((p) => keys.some((k) => sameKey(p, k)))
+          .map((p) => ({ name: p.name, project: p.project, id: p.id, modifiedAt: p.modifiedAt }))),
+  /** Saves processed parts to the library. */
+  saveParts: (parts: SavePart[], source: string) =>
+    useApi
+      ? post<SavedPart[]>("/api/parts", { parts, source, importedBy: "" })
+      : delay(mockSave(parts)),
   searchParts: (f: PartFilter, sort: SortOrder = DEFAULT_SORT) =>
     useApi
       ? get<PartSummary[]>(`/api/parts?${partQuery(f, sort)}`)

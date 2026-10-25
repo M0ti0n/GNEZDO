@@ -38,12 +38,15 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
         {
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.Description).HasMaxLength(400);
+            e.Property(x => x.Rotations).HasMaxLength(40);
+            e.Property(x => x.SourceFile).HasMaxLength(260);
             e.Property(x => x.ThicknessMm).HasPrecision(6, 2);
             e.HasOne(x => x.Material).WithMany().HasForeignKey(x => x.MaterialId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Project).WithMany(x => x.Parts).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.ImportBatch).WithMany(x => x.Parts).HasForeignKey(x => x.ImportBatchId).OnDelete(DeleteBehavior.Restrict);
             // Indexes for the part search filters.
             e.HasIndex(x => x.Name);
+            e.HasIndex(x => new { x.ProjectId, x.Name }); // "already in the database" check
             e.HasIndex(x => new { x.MaterialId, x.ThicknessMm });
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => x.ModifiedAt);
