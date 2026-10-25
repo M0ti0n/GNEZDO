@@ -6,6 +6,7 @@ import { DateLine, PanelHead, SizeLine } from "../components/FilterFields";
 import { IconHome, IconImport, IconLibrary, IconSearch } from "../components/Icons";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { JobsPanel } from "./JobsPanel";
+import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { ImportPanel, type ImportPanelProps } from "./ImportPanel";
 
 export type DrawerMode = "parts" | "jobs" | "import";
@@ -116,6 +117,7 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
   const [more, setMore] = useState(false);   // extended filters open
   const [facets, setFacets] = useState<PartFacets>({ materials: [], thicknesses: [] });
   const [parts, setParts] = useState<PartSummary[] | null>(null);
+  const [history, setHistory] = useState<PartSummary | null>(null);   // part whose versions are shown
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [run, setRun] = useState(0);          // bumps on every Search press
   const [view, setView] = useState<PartView>(loadView);
@@ -268,13 +270,14 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
                 <button className={`part-card${on ? " is-selected" : ""}`} {...common}>
                   <PartThumb part={p} size={58} />
                   <span className="part-name">{p.name}</span>
+                  {p.revision > 1 && <VersionBadge part={p} onOpen={setHistory} />}
                   <span className="part-meta">{sizeLabel(p)}<b>{p.qty}×</b></span>
                 </button>
               ) : (
                 <button className={`part-row${on ? " is-selected" : ""}`} {...common}>
                   <PartThumb part={p} size={34} />
                   <span className="pr-name">{p.name}</span>
-                  <span className="pr-qty">{p.qty}×</span>
+                  <span className="pr-qty">{p.revision > 1 && <VersionBadge part={p} onOpen={setHistory} />}{p.qty}×</span>
                   <span className="pr-meta">
                     <span>{p.project}</span>
                     <span>{materialKey(p.material, p.thicknessMm)}</span>
@@ -288,6 +291,11 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
         })}
       </ul>
 
+      {history && (
+        <PartHistoryDialog part={history} onClose={() => setHistory(null)}
+          onRestored={(now) => { setParts((list) => list?.map((x) => (x.id === now.id ? now : x)) ?? list); setHistory(now); }} />
+      )}
+
       <div className="drawer-foot">
         {targetJob ? (
           <button className="btn btn-primary" disabled={!chosen.length} onClick={() => { onAddToJob(chosen); setSelected(new Set()); }}>
@@ -298,5 +306,17 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
         )}
       </div>
     </>
+  );
+}
+
+/** "v3" on a part that has been replaced; opens its versions (inside the card, so not a nested button). */
+function VersionBadge({ part, onOpen }: { part: PartSummary; onOpen: (p: PartSummary) => void }) {
+  const open = (e: React.SyntheticEvent) => { e.stopPropagation(); e.preventDefault(); onOpen(part); };
+  return (
+    <span className="ver-badge" role="button" tabIndex={0} title={`Version ${part.revision}: show earlier versions`}
+      onClick={open} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") open(e); }}
+      onMouseDown={(e) => e.stopPropagation()} draggable={false}>
+      v{part.revision}
+    </span>
   );
 }

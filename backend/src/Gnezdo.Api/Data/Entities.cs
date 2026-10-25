@@ -59,10 +59,43 @@ public class Part
     public bool Mirror { get; set; }
     /// <summary>File the part was imported from.</summary>
     public string SourceFile { get; set; } = "";
+    /// <summary>Version number: 1 when first saved, +1 on every replace or restore.</summary>
+    public int Revision { get; set; } = 1;
+    public List<PartRevision> History { get; set; } = [];
     public int ImportBatchId { get; set; }
     public ImportBatch ImportBatch { get; set; } = null!;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ModifiedAt { get; set; }
+}
+
+/// <summary>
+/// An earlier version of a part, kept when the part is replaced or restored.
+/// Material and project are stored by name, so the version stays readable even if those change.
+/// </summary>
+public class PartRevision
+{
+    public int Id { get; set; }
+    public int PartId { get; set; }
+    public Part Part { get; set; } = null!;
+    public int Revision { get; set; }
+    public required string Name { get; set; }
+    public string Description { get; set; } = "";
+    public string ProjectCode { get; set; } = "";
+    public required string MaterialName { get; set; }
+    public decimal ThicknessMm { get; set; }
+    public string Rotations { get; set; } = "";
+    public bool Mirror { get; set; }
+    public double WidthMm { get; set; }
+    public double HeightMm { get; set; }
+    public double AreaMm2 { get; set; }
+    public string OutlinePath { get; set; } = "";
+    public bool Engraved { get; set; }
+    public string Geometry { get; set; } = "";
+    public string SourceFile { get; set; } = "";
+    /// <summary>When this version was saved (the part's ModifiedAt at that time).</summary>
+    public DateTimeOffset SavedAt { get; set; }
+    /// <summary>When it stopped being the current version.</summary>
+    public DateTimeOffset ReplacedAt { get; set; }
 }
 
 public enum JobStatus { Draft, Nested, Released, Cut }

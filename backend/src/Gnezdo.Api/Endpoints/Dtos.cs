@@ -7,7 +7,8 @@ namespace Gnezdo.Api.Endpoints;
 public record PartDto(
     string Id, string Name, string Project, string Material, decimal ThicknessMm, int Qty,
     double W, double H, double AreaMm2, string Path, string Description, bool Engraved,
-    string ImportId, DateTimeOffset ImportedAt, DateTimeOffset CreatedAt, DateTimeOffset ModifiedAt);
+    string ImportId, DateTimeOffset ImportedAt, DateTimeOffset CreatedAt, DateTimeOffset ModifiedAt,
+    int Revision);
 
 public record ThicknessFacet(string Material, decimal ThicknessMm);
 

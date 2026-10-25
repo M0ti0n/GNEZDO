@@ -22,6 +22,14 @@ public record SavePartsRequest(IReadOnlyList<SavePartRequest> Parts, string? Sou
 /// <summary>Status per part: created, replaced or exists (not saved).</summary>
 public record SavedPartDto(string Name, string Project, string? Id, string Status);
 
+/// <summary>One version of a part; Current is the one in use, the others can be restored.</summary>
+public record PartVersionDto(
+    int Revision, bool Current, string Name, string Project, string Description, string Material, decimal ThicknessMm,
+    IReadOnlyList<int> Rotations, bool Mirror, double W, double H, double AreaMm2, string Path, bool Engraved,
+    string SourceFile, DateTimeOffset SavedAt, DateTimeOffset? ReplacedAt);
+
+public record RestoreRequest(int Revision);
+
 public static class PartSave
 {
     private static readonly int[] AllowedRotations = [90, 45, 30, 5];
@@ -102,6 +110,8 @@ public static class PartSave
             existing ??= db.Parts.Local.FirstOrDefault(p => p.Name == name && p.Project == project && p.Id == 0);
 
             if (existing is not null && !r.Replace) { results.Add((r, existing, "exists")); continue; }
+            // keep the version that is being replaced
+            if (existing is { Id: > 0 }) await KeepVersionAsync(db, existing, now, ct);
 
             var part = existing ?? db.Parts.Add(new Part { Name = name, CreatedAt = now, ImportBatch = batch }).Entity;
             part.Project = project;
@@ -126,6 +136,83 @@ public static class PartSave
 
         return Results.Ok(results.Select(x => new SavedPartDto(
             x.Req.Name.Trim(), x.Req.Project?.Trim() ?? "", x.Part?.Id.ToString(), x.Status)).ToList());
+    }
+
+    /// <summary>Copies the part as it is now into its history and moves it to the next revision.</summary>
+    private static async Task KeepVersionAsync(GnezdoDb db, Part part, DateTimeOffset now, CancellationToken ct)
+    {
+        await db.Entry(part).Reference(p => p.Material).LoadAsync(ct);
+        await db.Entry(part).Reference(p => p.Project).LoadAsync(ct);
+        db.PartRevisions.Add(new PartRevision
+        {
+            PartId = part.Id, Revision = part.Revision,
+            Name = part.Name, Description = part.Description, ProjectCode = part.Project?.Code ?? "",
+            MaterialName = part.Material.Name, ThicknessMm = part.ThicknessMm,
+            Rotations = part.Rotations, Mirror = part.Mirror,
+            WidthMm = part.WidthMm, HeightMm = part.HeightMm, AreaMm2 = part.AreaMm2,
+            OutlinePath = part.OutlinePath, Engraved = part.Engraved, Geometry = part.Geometry, SourceFile = part.SourceFile,
+            SavedAt = part.ModifiedAt, ReplacedAt = now,
+        });
+        part.Revision++;
+    }
+
+    private static IReadOnlyList<int> RotationList(string s) =>
+        s.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse).ToList();
+
+    /// <summary>GET /api/parts/{id}/history: the current version first, then older ones, newest first.</summary>
+    public static async Task<IResult> HistoryAsync(int id, GnezdoDb db, CancellationToken ct)
+    {
+        var part = await db.Parts.AsNoTracking().Include(p => p.Material).Include(p => p.Project)
+            .FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (part is null) return Results.NotFound();
+        var old = await db.PartRevisions.AsNoTracking().Where(r => r.PartId == id).OrderByDescending(r => r.Revision).ToListAsync(ct);
+
+        var list = new List<PartVersionDto>
+        {
+            new(part.Revision, true, part.Name, part.Project?.Code ?? "", part.Description, part.Material.Name, part.ThicknessMm,
+                RotationList(part.Rotations), part.Mirror, part.WidthMm, part.HeightMm, part.AreaMm2, part.OutlinePath, part.Engraved,
+                part.SourceFile, part.ModifiedAt, null),
+        };
+        list.AddRange(old.Select(r => new PartVersionDto(
+            r.Revision, false, r.Name, r.ProjectCode, r.Description, r.MaterialName, r.ThicknessMm,
+            RotationList(r.Rotations), r.Mirror, r.WidthMm, r.HeightMm, r.AreaMm2, r.OutlinePath, r.Engraved,
+            r.SourceFile, r.SavedAt, r.ReplacedAt)));
+        return Results.Ok(list);
+    }
+
+    /// <summary>
+    /// POST /api/parts/{id}/restore: makes an older version current again. The version in use
+    /// goes into the history first, so a restore never loses anything and can itself be undone.
+    /// </summary>
+    public static async Task<IResult> RestoreAsync(int id, RestoreRequest req, GnezdoDb db, TimeProvider clock, CancellationToken ct)
+    {
+        var part = await db.Parts.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (part is null) return Results.NotFound();
+        var old = await db.PartRevisions.AsNoTracking().FirstOrDefaultAsync(r => r.PartId == id && r.Revision == req.Revision, ct);
+        if (old is null)
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["revision"] = [$"Part {id} has no older version {req.Revision}."] });
+
+        var now = clock.GetUtcNow();
+        await KeepVersionAsync(db, part, now, ct);
+
+        part.Description = old.Description;
+        part.Material = await db.Materials.FirstOrDefaultAsync(m => m.Name == old.MaterialName, ct)
+            ?? db.Materials.Add(new Material { Name = old.MaterialName }).Entity;
+        part.ThicknessMm = old.ThicknessMm;
+        part.Rotations = old.Rotations;
+        part.Mirror = old.Mirror;
+        part.WidthMm = old.WidthMm;
+        part.HeightMm = old.HeightMm;
+        part.AreaMm2 = old.AreaMm2;
+        part.OutlinePath = old.OutlinePath;
+        part.Engraved = old.Engraved;
+        part.Geometry = old.Geometry;
+        part.SourceFile = old.SourceFile;
+        part.ModifiedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        var dto = await db.Parts.AsNoTracking().Where(p => p.Id == id).Select(PartEndpoints.ToDto).FirstAsync(ct);
+        return Results.Ok(dto);
     }
 
     private static bool Same(string? a, string? b) =>

@@ -62,6 +62,28 @@ export interface PartSummary {
   importedAt: string;
   createdAt: string;       // ISO 8601, when the part entered the library
   modifiedAt: string;      // ISO 8601, last change to geometry or properties
+  revision: number;        // 1 when first saved, +1 on every replace or restore
+}
+
+/** One version of a part (GET /api/parts/{id}/history); older ones can be restored. */
+export interface PartVersion {
+  revision: number;
+  current: boolean;
+  name: string;
+  project: string;
+  description: string;
+  material: string;
+  thicknessMm: number;
+  rotations: number[];
+  mirror: boolean;
+  w: number;
+  h: number;
+  areaMm2: number;
+  path: string;
+  engraved: boolean;
+  sourceFile: string;
+  savedAt: string;
+  replacedAt: string | null;
 }
 
 /** "Up to" includes the whole day; "On" is that calendar day; "From" starts at 00:00. */
