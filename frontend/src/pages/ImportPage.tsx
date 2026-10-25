@@ -192,6 +192,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     const el = host.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      // over the Geometry check panel the wheel scrolls the panel, not the drawing
+      if ((e.target as Element | null)?.closest?.(".gcheck, .canvas-ui")) return;
       e.preventDefault();
       const r = el.getBoundingClientRect();
       const mx = e.clientX - r.left, my = e.clientY - r.top;
@@ -404,7 +406,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const fixIssue = (i: EndIssue) => {
     const r = i.fix?.(drawing.entities);
     if (!r) return;
-    const label = i.kind === "overshoot" ? "Trim past corner" : i.kind === "gap" ? "Close gap" : i.kind === "stray" ? "Erase stray line" : "Fix loose end";
+    const label = i.kind === "overshoot" ? "Trim past corner" : i.kind === "gap" ? "Close gap" : i.kind === "stray" ? "Erase stray line"
+      : i.kind === "looseLine" ? "Erase loose line" : "Fix loose end";
     if (r.ok) { commit({ ...drawing, entities: r.entities }, label); setSelected(null); }
     setMessage({ text: r.message, bad: !r.ok });
   };
@@ -476,15 +479,22 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               ))}
             </g>
             {issues.map((iss, i) => {
-              const s = toScreen(iss.at, view);
+              // a gap is marked at both its ends, joined by a dashed line; everything else where it is
+              const spots = (iss.ends ?? [iss.at]).map((p) => toScreen(p, view));
+              const hover = hoverIssue === i;
               return (
-                <g key={`iss-${i}`} className={`end-mark is-${iss.kind}${hoverIssue === i ? " is-hover" : ""}${tool ? " is-passive" : ""}`}
+                <g key={`iss-${i}`} className={`end-mark is-${iss.kind}${hover ? " is-hover" : ""}${tool ? " is-passive" : ""}`}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => fixIssue(iss)}
                   onMouseEnter={() => setHoverIssue(i)} onMouseLeave={() => setHoverIssue(null)}>
                   <title>{`${iss.label}${iss.size ? ` · ${fmtMm(iss.size)}` : ""}${iss.fix ? " · click to fix" : ""}`}</title>
-                  <circle cx={s.x} cy={s.y} r={hoverIssue === i ? 11 : 8} />
-                  <text x={s.x} y={s.y + 4} textAnchor="middle">{ISSUE_ICON[iss.kind]}</text>
+                  {spots.length === 2 && <line x1={spots[0].x} y1={spots[0].y} x2={spots[1].x} y2={spots[1].y} className="end-gap" />}
+                  {spots.map((sp, k) => (
+                    <g key={k}>
+                      <circle cx={sp.x} cy={sp.y} r={hover ? 11 : 8} />
+                      <text x={sp.x} y={sp.y + 4} textAnchor="middle">{ISSUE_ICON[iss.kind]}</text>
+                    </g>
+                  ))}
                 </g>
               );
             })}
@@ -568,8 +578,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                     <span className="gc-end-label">{iss.label}{iss.size > 0 && <small> {fmtMm(iss.size)}</small>}</span>
                     {iss.fix
                       ? <button type="button" className="gc-fix" onClick={() => fixIssue(iss)}
-                          title={iss.kind === "overshoot" ? "Trim the piece past the corner" : iss.kind === "stray" ? "Erase the line sticking out" : "Close the gap"}>
-                          {iss.kind === "overshoot" ? "Trim" : iss.kind === "stray" ? "Erase" : "Close"}</button>
+                          title={iss.kind === "overshoot" ? "Trim the piece past the corner" : iss.kind === "stray" ? "Erase the line sticking out"
+                            : iss.kind === "looseLine" ? "Erase this line (or mark it as tracing / open cut instead)" : "Close the gap"}>
+                          {iss.kind === "overshoot" ? "Trim" : iss.kind === "stray" || iss.kind === "looseLine" ? "Erase" : "Close"}</button>
                       : <small className="gc-end-note">check by hand</small>}
                   </li>
                 ))}
@@ -754,4 +765,4 @@ function MeasureLayer({ measures, toScreen, first, snap }: {
   );
 }
 
-const ISSUE_ICON: Record<EndIssue["kind"], string> = { overshoot: "✂", gap: "↔", stray: "✕", loose: "?" };
+const ISSUE_ICON: Record<EndIssue["kind"], string> = { overshoot: "✂", gap: "↔", stray: "✕", looseLine: "✕", loose: "?" };

@@ -1,4 +1,4 @@
-import { arcSweep, findDoubles, lengthOf, pointsAlong, type Entity, type Pt } from "./geometry";
+import { arcSweep, buildContours, findDoubles, lengthOf, pointsAlong, type Entity, type Pt } from "./geometry";
 
 // Trim and Extend like AutoCAD / GstarCAD in quick mode: every other line is a cutting edge
 // (Trim) or a boundary (Extend), nothing has to be picked first.
@@ -189,15 +189,17 @@ export function extendAt(all: Entity[], id: string, p: Pt): EditResult {
 
 /* ---- Telling loose ends apart, and fixing them ------------------------------------------ */
 
-export type EndKind = "overshoot" | "gap" | "stray" | "loose";
+export type EndKind = "overshoot" | "gap" | "stray" | "looseLine" | "loose";
 
 export interface EndIssue {
   kind: EndKind;
   at: Pt;            // where to show it
   size: number;      // mm: how far the line runs past, or how wide the gap is
   label: string;     // "Line past a corner", "Gap in contour", "Stray line", "Loose end"
-  /** The line the issue is about, when it is one line (stray lines). */
+  /** The line the issue is about, when it is one line (stray and loose lines). */
   id?: string;
+  /** A gap: its two loose ends (the marker is shown at both, joined by a dashed line). */
+  ends?: [Pt, Pt];
   /** Applies the fix; missing for loose ends that need a person to look. */
   fix?: (all: Entity[]) => EditResult;
 }
@@ -245,24 +247,52 @@ function moveEnd(e: Entity, end: 0 | 1, p: Pt): Entity | null {
   return null;
 }
 
+/** Two loose ends of different pieces are offered as a gap up to this, or 15 % of the shorter piece. */
+export const GAP_MAX_MM = 10;
+
 /**
  * Sorts the loose ends of open cutting contours:
- *   overshoot - the line runs past a line it crosses (fix: trim the piece beyond it)
- *   gap       - another loose end is near (fix: extend two straight lines to their corner, or join the ends)
- *   stray     - a line sticking out of the part: one end touches other lines, the other is free (fix: erase it)
+ *   overshoot - a line attached at its other end runs past a line it crosses (fix: trim the piece beyond)
+ *   gap       - two ends that are each other's nearest, and either closing them closes a contour or
+ *               they are close (10 mm, or 15 % of the shorter piece) (fix: meet at the corner, move an end, or add a line)
+ *   stray     - a line sticking out: it touches or crosses the part, and has a free end (fix: erase it)
+ *   looseLine - a line on its own, touching nothing (fix: erase it, or mark it as tracing)
  *   loose     - none of these; needs a look
  * The point where an overshooting line is touched is part of the overshoot and not listed again.
  */
 export function diagnoseEnds(all: Entity[], looseEnds: Pt[]): EndIssue[] {
   const doubles = new Set(findDoubles(all));
   const cut = all.filter((e) => (e.role ?? "cut") === "cut" && !doubles.has(e.id));
+  const chainIndex = new Map<string, number>();
+  const chainSize: number[] = [], chainLength: number[] = [];
+  const byId = new Map(cut.map((e) => [e.id, e]));
+  buildContours(cut).forEach((c, i) => {
+    chainSize[i] = c.entityIds.length;
+    chainLength[i] = c.entityIds.reduce((sum, id) => sum + lengthOf(byId.get(id)!), 0);
+    c.entityIds.forEach((id) => chainIndex.set(id, i));
+  });
+  const isLoose = (q: Pt) => looseEnds.some((l) => dist(l, q) < 0.011);
+  /**
+   * A single line or arc with both ends free and no other line ending on it: it belongs to no
+   * contour (a line that another line ends on, in a T, is part of the contour and only not split).
+   */
+  const isFree = (e: Entity) => {
+    const en = endsOfEntity(e);
+    if (!en || chainSize[chainIndex.get(e.id) ?? -1] !== 1 || !isLoose(en[0]) || !isLoose(en[1])) return false;
+    const self = piecesOf(e);
+    return !cut.some((x) => x.id !== e.id && (endsOfEntity(x) ?? []).some((q) => self.some((pc) => nearPiece(pc, q))));
+  };
+  /** Longest gap offered between two different pieces: 10 mm, or 15 % of the shorter piece. */
+  const gapLimit = (a: Entity, b: Entity) =>
+    Math.max(GAP_MAX_MM, 0.15 * Math.min(chainLength[chainIndex.get(a.id) ?? -1] ?? 0, chainLength[chainIndex.get(b.id) ?? -1] ?? 0));
   const issues: EndIssue[] = [];
   const touched: Pt[] = [];   // where overshooting lines are crossed
   const rest: { p: Pt; owner: { e: Entity; end: 0 | 1 } | null }[] = [];
 
   for (const p of looseEnds) {
     const owner = ownerOf(cut, p);
-    const over = owner && overshootOf(cut, owner.e, owner.end);
+    // a line past a corner is attached at its other end; a free line crossing something is a stray line
+    const over = owner && !isFree(owner.e) && overshootOf(cut, owner.e, owner.end);
     // a nearer loose end means the line is short (gap), not long: the crossing is just the far corner
     const nearest = Math.min(Infinity, ...looseEnds.filter((q) => q !== p).map((q) => dist(p, q)));
     if (owner && over && over.length <= nearest + EPS_MM) {
@@ -277,42 +307,76 @@ export function diagnoseEnds(all: Entity[], looseEnds: Pt[]): EndIssue[] {
 
   // ends that sit on an overshooting line are the other half of that overshoot
   const open = rest.filter((r) => !touched.some((t) => dist(t, r.p) < 0.02));
+  const nearestOf = (i: number) => {
+    let best = -1, bestD = Infinity;
+    open.forEach((o, j) => {
+      // a line's own two ends are never a gap with each other
+      if (j === i || (open[i].owner && o.owner && open[i].owner!.e.id === o.owner.e.id)) return;
+      const d = dist(open[i].p, o.p);
+      if (d < bestD) { bestD = d; best = j; }
+    });
+    return { best, bestD };
+  };
   const used = new Set<number>();
   open.forEach((r, i) => {
     if (used.has(i)) return;
-    let best = -1, bestD = Infinity;
-    // a line's own two ends are never a gap with each other
-    open.forEach((o, j) => {
-      if (j === i || used.has(j) || (r.owner && o.owner && r.owner.e.id === o.owner.e.id)) return;
-      const d = dist(r.p, o.p);
-      if (d < bestD) { bestD = d; best = j; }
-    });
-    if (best < 0 || !r.owner || !open[best].owner) {
-      used.add(i);
-      // a line that touches the part at one end and is free at the other sticks out: erase it
-      const own = r.owner;
-      const ends = own && endsOfEntity(own.e);
-      const touches = (q: Pt) => cut.some((x) => x.id !== own!.e.id && piecesOf(x).some((pc) => nearPiece(pc, q)));
-      if (own && ends && (touches(ends[own.end === 0 ? 1 : 0]) || touches(r.p))) {
-        if (issues.some((x) => x.kind === "stray" && x.id === own.e.id)) return;   // its other end is listed already
-        const id = own.e.id;
-        issues.push({
-          kind: "stray", id, at: r.p, size: lengthOf(own.e), label: "Stray line",
-          fix: (now) => (now.some((x) => x.id === id) ? eraseAt(now, id) : { ok: false, message: "Already changed" }),
-        });
-        return;
-      }
-      issues.push({ kind: "loose", at: r.p, size: 0, label: "Loose end" });
+    const { best, bestD } = nearestOf(i);
+    const other = best >= 0 ? open[best] : null;
+    const sameChain = !!(r.owner && other?.owner && chainIndex.get(r.owner.e.id) === chainIndex.get(other.owner.e.id));
+    const isGap = !!other && !used.has(best) && !!r.owner && !!other.owner && nearestOf(best).best === i && (sameChain || bestD <= gapLimit(r.owner.e, other.owner.e));
+    if (isGap) {
+      used.add(i); used.add(best);
+      const a = r.owner!, b = other!.owner!, pa = r.p, pb = other!.p;
+      issues.push({
+        kind: "gap", at: pa, ends: [pa, pb], size: bestD, label: "Gap in contour",
+        fix: (now) => closeGap(now, a.e.id, a.end, pa, b.e.id, b.end, pb, bestD),
+      });
       return;
     }
-    used.add(i); used.add(best);
-    const a = r.owner, b = open[best].owner!, pa = r.p, pb = open[best].p;
-    issues.push({
-      kind: "gap", at: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }, size: bestD, label: "Gap in contour",
-      fix: (now) => closeGap(now, a.e.id, a.end, pa, b.e.id, b.end, pb, bestD),
-    });
+    used.add(i);
+    const own = r.owner;
+    if (!own) { issues.push({ kind: "loose", at: r.p, size: 0, label: "Loose end" }); return; }
+    if (issues.some((x) => x.id === own.e.id)) return;   // its other end is listed already
+    const id = own.e.id;
+    const erase = (now: Entity[]) => (now.some((x) => x.id === id) ? eraseAt(now, id) : { ok: false as const, message: "Already changed" });
+    const ends = endsOfEntity(own.e)!;
+    const others = cut.filter((x) => x.id !== id);
+    const touches = (q: Pt) => others.some((x) => piecesOf(x).some((pc) => nearPiece(pc, q)));
+    const mid = midOf(own.e);
+    if (isFree(own.e)) {
+      // a line on its own: does it cross or touch the part, or is it just lying there?
+      const carrier: Carrier = own.e.kind === "line" ? { kind: "line", a: own.e.a, b: own.e.b } : { kind: "circle", c: (own.e as { c: Pt }).c, r: (own.e as { r: number }).r };
+      const self = piecesOf(own.e);
+      const crosses = crossings(own.e, carrier, others).some((q) => self.some((pc) => nearPiece(pc, q)));
+      issues.push(crosses || touches(ends[0]) || touches(ends[1])
+        ? { kind: "stray", id, at: mid, size: lengthOf(own.e), label: "Stray line", fix: erase }
+        : { kind: "looseLine", id, at: mid, size: lengthOf(own.e), label: "Loose line", fix: erase });
+      return;
+    }
+    // the end of a chain: a line touching the part at one end and free at the other sticks out.
+    // At its other end, one more line simply continues the chain; it touches the part when it
+    // branches there (two or more others) or lands on the middle of another line.
+    const meets = (q: Pt) => {
+      let atEnds = 0, onMiddle = false;
+      for (const x of others) {
+        if (!piecesOf(x).some((pc) => nearPiece(pc, q))) continue;
+        if ((endsOfEntity(x) ?? []).some((e) => dist(e, q) < 0.011)) atEnds++; else onMiddle = true;
+      }
+      return onMiddle || atEnds >= 2;
+    };
+    if (meets(ends[own.end === 0 ? 1 : 0]) || touches(r.p)) {
+      issues.push({ kind: "stray", id, at: r.p, size: lengthOf(own.e), label: "Stray line", fix: erase });
+      return;
+    }
+    issues.push({ kind: "loose", at: r.p, size: 0, label: "Loose end" });
   });
   return issues;
+}
+
+/** Point halfway along a line or arc (where its marker goes). */
+function midOf(e: Entity): Pt {
+  const p = pointsAlong(e);
+  return p[Math.floor(p.length / 2)];
 }
 
 /** Gaps up to this size are closed by moving a line end; larger ones get a new line. */

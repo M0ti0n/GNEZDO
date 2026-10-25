@@ -202,15 +202,20 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   const outer = contours.reduce<Contour | null>((best, c) => (!best || area(c.box) > area(best.box) ? c : best), null);
   if (outer) outer.outer = true;
 
+  // Cutting lines that lie wholly outside the outline are not part of this part (another part
+  // drawn in the same file, or a stray line): they would be taken for holes or break the check.
+  // With a closed outline "outside" is exact; while the outline is still open, a piece counts
+  // as outside when it is wholly clear of the outline's extents.
+  const separate = !outer ? []
+    : outer.closed ? outsideOutline(entities, outer, contours.filter((c) => c !== outer))
+    : farFromPart(contours, outer);
+  const rest = contours.filter((c) => !separate.includes(c));
+
   // An open piece that reaches the part's outer edge belongs to the outside contour, even when
   // a fault (a line past a corner) splits the outside into several pieces.
-  const all = contours.length ? contours.map((c) => c.box).reduce(union) : null;
+  const all = rest.length ? rest.map((c) => c.box).reduce(union) : null;
   const onEdge = (b: Box) => !!all && (Math.abs(b.minX - all.minX) < 0.01 || Math.abs(b.minY - all.minY) < 0.01 ||
     Math.abs(b.maxX - all.maxX) < 0.01 || Math.abs(b.maxY - all.maxY) < 0.01);
-  // With a closed outline, cutting lines that lie wholly outside it are not part of this part
-  // (another part drawn in the same file, or a stray line): they would be taken for holes.
-  const separate = outer && outer.closed ? outsideOutline(entities, outer, contours.filter((c) => c !== outer)) : [];
-  const rest = contours.filter((c) => !separate.includes(c));
   const openOutside = rest.filter((c) => !c.closed && (c.outer || onEdge(c.box)));
   const openInside = rest.filter((c) => !c.closed && !openOutside.includes(c));
   const splines = entities.filter((e) => e.kind === "spline");
@@ -302,6 +307,22 @@ const distToSeg = (p: Pt, [a, b]: Seg) => {
 
 /** Points this close to a cutting contour count as on it (a slit may start at the edge). */
 const ON_EDGE_MM = 0.05;
+
+/**
+ * While the outline is open: pieces belong to the part when they are within 10 mm of it, piece
+ * by piece (an outline broken into several pieces stays one part); what is further away is outside.
+ */
+function farFromPart(contours: Contour[], outer: Contour): Contour[] {
+  const NEAR = 10;
+  const gap = (a: Box, b: Box) => Math.max(0, a.minX - b.maxX, b.minX - a.maxX, a.minY - b.maxY, b.minY - a.maxY);
+  const inPart = new Set<Contour>([outer]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const c of contours) if (!inPart.has(c) && [...inPart].some((p) => gap(c.box, p.box) <= NEAR)) { inPart.add(c); grew = true; }
+  }
+  return contours.filter((c) => !inPart.has(c));
+}
+
 
 /** Contours that lie wholly outside the closed outline (no point inside it or on it). */
 function outsideOutline(entities: Entity[], outer: Contour, others: Contour[]): Contour[] {

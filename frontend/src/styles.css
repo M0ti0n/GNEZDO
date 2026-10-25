@@ -1095,3 +1095,9 @@ th.num .th-sort { flex-direction: row-reverse; }
 /* Demo build: sample data only */
 .demo-badge { align-self: center; flex-shrink: 0; padding: 3px 10px; border-radius: 999px; background: #ffd34d; color: #5a4300;
   font-family: var(--font-cond); font-weight: 700; font-size: 13px; letter-spacing: .08em; cursor: help; }
+
+/* gap: dashed line between its two ends; loose line: grey */
+.end-gap { stroke: #e08a00; stroke-width: 1.5; stroke-dasharray: 4 3; }
+.end-mark.is-looseLine circle { stroke: var(--ink-3); }
+.end-mark.is-looseLine text { fill: var(--ink-2); }
+.gc-end.is-looseLine .gc-end-icon { border-color: var(--ink-3); color: var(--ink-2); }
