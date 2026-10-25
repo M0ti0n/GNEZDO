@@ -78,9 +78,10 @@ export function readDxf(text: string, fileName: string): DxfResult {
   }
 
   // Layer colours, for entities drawn "by layer" (a negative colour means the layer is off).
-  const layerColor = new Map<string, number>();
+  // Colour = AutoCAD colour index, plus True Color (RGB) when the drawing has one (group 420).
+  const layerColor = new Map<string, Colour>();
   for (const r of sections.get("TABLES") ?? [])
-    if (r.type === "LAYER") layerColor.set(str(r, 2), Math.abs(num(r, 62, 7)));
+    if (r.type === "LAYER") layerColor.set(str(r, 2), { aci: Math.abs(num(r, 62, 7)), rgb: rgbOf(r) });
 
   // Blocks: name -> base point and records.
   const blocks = new Map<string, { base: Pt; recs: Rec[] }>();
@@ -97,8 +98,8 @@ export function readDxf(text: string, fileName: string): DxfResult {
   const id = () => `e${++n}`;
 
   // Layer and colour of the entity being converted, added to everything it produces.
-  let style: { layer: string; color: number } = { layer: "0", color: 7 };
-  const push = (e: Entity) => out.push({ ...e, layer: style.layer, color: style.color });
+  let style: { layer: string; colour: Colour } = { layer: "0", colour: { aci: 7 } };
+  const push = (e: Entity) => out.push({ ...e, layer: style.layer, color: style.colour.aci, rgb: style.colour.rgb });
 
   const emitLine = (a: Pt, b: Pt, _layer?: string) => {
     if (Math.hypot(b.x - a.x, b.y - a.y) > 1e-9) push({ id: id(), kind: "line", a, b });
@@ -136,14 +137,19 @@ export function readDxf(text: string, fileName: string): DxfResult {
     }
   };
 
-  const convert = (recs: Rec[], t0: Xf, depth: number, parentLayer?: string, parentColor = 7) => {
+  const convert = (recs: Rec[], t0: Xf, depth: number, parentLayer?: string, parentColour: Colour = { aci: 7 }) => {
     for (let i = 0; i < recs.length; i++) {
       const r = recs[i];
       let layer = str(r, 8) || "0";
       if (layer === "0" && parentLayer) layer = parentLayer;   // block entities on layer 0 take the insert's layer
       const c62 = num(r, 62, 256);
-      const color = c62 === 256 ? layerColor.get(layer) ?? 7 : c62 === 0 ? parentColor : Math.abs(c62);
-      style = { layer, color };
+      const rgb = rgbOf(r);
+      const color: Colour =
+        rgb !== undefined ? { aci: c62 > 0 && c62 < 256 ? c62 : 7, rgb }
+        : c62 === 256 ? layerColor.get(layer) ?? { aci: 7 }
+        : c62 === 0 ? parentColour
+        : { aci: Math.abs(c62) };
+      style = { layer, colour: color };
       const t = num(r, 230, 1) < 0 ? compose(t0, MIRROR_X) : t0;  // extrusion 0,0,-1 = mirrored
       switch (r.type) {
         case "LINE":
@@ -232,6 +238,14 @@ export function readDxf(text: string, fileName: string): DxfResult {
   if (out.length === 0) throw new DxfError("No lines, arcs or circles found");
 
   return { drawing: { id: fileName, fileName: fileName.replace(/\.dxf$/i, ""), entities: out }, ignored, declaredUnits };
+}
+
+interface Colour { aci: number; rgb?: number }
+
+/** True Color from group 420 (0xRRGGBB), if present. */
+function rgbOf(r: Rec): number | undefined {
+  const g = r.g.find((x) => x[0] === 420);
+  return g ? Number(g[1]) & 0xffffff : undefined;
 }
 
 function str(r: Rec, code: number): string {
