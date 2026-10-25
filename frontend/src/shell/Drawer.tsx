@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, materialKey, type PartFacets } from "../api/api";
 import { DEFAULT_SORT, type DateMode, type JobFilter, type PartFilter, type PartSummary, type SortOrder } from "../api/types";
 import { SortControl, loadSort, saveSort } from "../components/SortControl";
@@ -120,6 +120,7 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
   const [parts, setParts] = useState<PartSummary[] | null>(null);
   const [history, setHistory] = useState<PartSummary | null>(null);   // part whose versions are shown
   const [editing, setEditing] = useState<PartSummary | null>(null);   // part whose properties are shown
+  const [menu, setMenu] = useState<{ x: number; y: number; part: PartSummary } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [run, setRun] = useState(0);          // bumps on every Search press
   const [view, setView] = useState<PartView>(loadView);
@@ -262,10 +263,11 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
             draggable: true,
             onDragStart: (e: React.DragEvent) => onDragStart(e, p),
             onDragEnd: (e: React.DragEvent) => { if (e.dataTransfer.dropEffect !== "none") setSelected(new Set()); },
-            // click opens the part's properties; Ctrl / Cmd + click selects it for "Add to job"
-            onClick: (e: React.MouseEvent) => (e.ctrlKey || e.metaKey || e.shiftKey ? toggle(p.id) : setEditing(p)),
+            // click selects the part for "Add to job"; right click opens a menu with Properties
+            onClick: () => toggle(p.id),
+            onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, part: p }); },
             "aria-pressed": on,
-            title: `${p.name}\n${p.project}, ${materialKey(p.material, p.thicknessMm)}\nClick: properties · Ctrl+click: select · drag into a job`,
+            title: `${p.name}\n${p.project}, ${materialKey(p.material, p.thicknessMm)}\nClick: select · right click: properties · drag into a job`,
           };
           return (
             <li key={p.id}>
@@ -294,6 +296,10 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
         })}
       </ul>
 
+      {menu && (
+        <PartMenu x={menu.x} y={menu.y} part={menu.part} onClose={() => setMenu(null)}
+          onProperties={() => setEditing(menu.part)} onVersions={() => setHistory(menu.part)} />
+      )}
       {editing && (
         <PartPropertiesDialog part={editing} onClose={() => setEditing(null)}
           onSaved={(now) => setParts((list) => list?.map((x) => (x.id === now.id ? now : x)) ?? list)}
@@ -314,7 +320,7 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
             Add {chosen.length || ""} to {targetJob.title}
           </button>
         ) : (
-          <p className="hint">Click a part for its properties. Open a job, then drag parts into it (Ctrl+click to select several).</p>
+          <p className="hint">Right click a part for its properties. Open a job, then drag parts into it.</p>
         )}
       </div>
     </>
@@ -330,5 +336,38 @@ function VersionBadge({ part, onOpen }: { part: PartSummary; onOpen: (p: PartSum
       onMouseDown={(e) => e.stopPropagation()} draggable={false}>
       v{part.revision}
     </span>
+  );
+}
+
+/** Right-click menu on a part in the search results. */
+function PartMenu({ x, y, part, onClose, onProperties, onVersions }: {
+  x: number; y: number; part: PartSummary; onClose: () => void; onProperties: () => void; onVersions: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const close = (e: Event) => { if (!(e.target instanceof Node && ref.current?.contains(e.target))) onClose(); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("wheel", onClose, { passive: true });
+    window.addEventListener("resize", onClose);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("wheel", onClose);
+      window.removeEventListener("resize", onClose);
+      window.removeEventListener("keydown", key);
+    };
+  }, [onClose]);
+  const pick = (f: () => void) => () => { onClose(); f(); };
+  // keep the menu on screen
+  const left = Math.min(x, window.innerWidth - 200), top = Math.min(y, window.innerHeight - 110);
+  return (
+    <div ref={ref} className="ctx-menu" role="menu" style={{ left, top }} onContextMenu={(e) => e.preventDefault()}>
+      <div className="ctx-title">{part.name}</div>
+      <button role="menuitem" onClick={pick(onProperties)}>Properties…</button>
+      <button role="menuitem" onClick={pick(onVersions)} disabled={part.revision < 2}
+        title={part.revision < 2 ? "Only one version so far" : undefined}>Versions{part.revision > 1 ? ` (${part.revision})` : ""}…</button>
+    </div>
   );
 }
