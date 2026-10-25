@@ -280,8 +280,8 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 /* ------------------------------------------------------------------
    Home
 ------------------------------------------------------------------- */
-.home { display: grid; gap: 26px; max-width: 1480px; }
-.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.home { display: grid; gap: 26px; max-width: 1280px; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 
 /* Tile = a cut part: strong colour is the cut edge, tint is the plate */
 .tile {
@@ -320,7 +320,7 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 .tile:hover .tile-hole, .tile:focus-visible .tile-hole { background: var(--c); }
 
 /* Recent lists: three columns */
-.recent-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.recent-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .recent {
   background: var(--plate); border: 1px solid var(--line); border-top: 4px solid var(--c);
   border-radius: 0 0 8px 8px; min-width: 0;
@@ -405,6 +405,25 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
   position: fixed; top: -100px; left: -100px; padding: 6px 12px; border-radius: 6px;
   background: var(--green); color: #fff; font-weight: 600; font-size: 14px; white-space: nowrap;
 }
+
+/* Job search results (main screen) */
+.search-page { max-width: 1400px; }
+.search-page > h1, .search-head h1 { font-size: 28px; }
+.search-head { display: flex; align-items: baseline; gap: 16px; }
+.search-page > .state { padding-left: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 16px; }
+.chip { padding: 4px 10px; border-radius: 999px; background: var(--yellow-tint); color: var(--yellow-ink); font-size: 13.5px; font-weight: 600; }
+.chip-all { background: #edf1f2; color: var(--ink-2); }
+.results { border-top-color: var(--yellow); }
+.results .grid td { padding: 9px 10px; }
+.results .grid th:first-child, .results .grid td:first-child { padding-left: 16px; }
+.row-link { cursor: pointer; }
+.results .grid tbody tr:hover { background: var(--yellow-tint); }
+.sub { display: block; color: var(--ink-3); font-size: 12.5px; }
+.nowrap { white-space: nowrap; }
+.row-open { font-weight: 600; text-align: left; }
+.row-open:hover { text-decoration: underline; }
+.panel-hint { margin: 12px 16px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
 
 /* Placeholder pages */
 .placeholder { max-width: 640px; background: var(--plate); border: 1px solid var(--line); border-top: 4px solid var(--yellow); border-radius: 0 0 8px 8px; padding: 24px 28px; }

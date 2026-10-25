@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "../api/api";
-import type { ImportSummary, JobStatus, JobSummary, ProjectSummary } from "../api/types";
-import { IconImport, IconNewJob, IconProject, IconSearch } from "../components/Icons";
+import type { ImportSummary, JobStatus, JobSummary } from "../api/types";
+import { IconImport, IconNewJob } from "../components/Icons";
 import { Tile } from "../components/Tile";
 import { fullDate, mm, when } from "../components/format";
 
@@ -10,10 +10,9 @@ export type HomeAction =
   | { kind: "import" }
   | { kind: "newJob" }
   | { kind: "jobSearch" }
-  | { kind: "projects" }
   | { kind: "openJob"; job: JobSummary }
-  | { kind: "openImport"; imp: ImportSummary }
-  | { kind: "openProject"; project: ProjectSummary };
+  | { kind: "openImport"; imp: ImportSummary };
+
 
 const STATUS_LABEL: Record<JobStatus, string> = {
   draft: "Draft",
@@ -43,7 +42,6 @@ function useLoad<T>(fn: () => Promise<T>): [Load<T>, () => void] {
 export function HomePage({ onAction }: { onAction: (a: HomeAction) => void }) {
   const [imports, reloadImports] = useLoad(() => api.recentImports(8));
   const [jobs, reloadJobs] = useLoad(() => api.recentJobs(8));
-  const [projects, reloadProjects] = useLoad(() => api.recentProjects(8));
 
   return (
     <div className="home">
@@ -52,8 +50,6 @@ export function HomePage({ onAction }: { onAction: (a: HomeAction) => void }) {
           description="Add DXF or DWG drawings to the parts library" />
         <Tile tone="green" icon={<IconNewJob size={30} />} title="New job" onClick={() => onAction({ kind: "newJob" })}
           description="Pick parts and stock sheets, then nest" />
-        <Tile tone="yellow" icon={<IconSearch size={30} />} title="Job search" onClick={() => onAction({ kind: "jobSearch" })}
-          description="Find a job by name, order, status or date" />
       </section>
 
       <div className="recent-row">
@@ -91,22 +87,6 @@ export function HomePage({ onAction }: { onAction: (a: HomeAction) => void }) {
             ))} />
         </Panel>
 
-        <Panel tone="yellow" icon={<IconProject size={18} />} title="Recent projects"
-          more="All projects" onMore={() => onAction({ kind: "projects" })}>
-          <Body load={projects} retry={reloadProjects}
-            empty="No projects yet. Projects are created when you import drawings with an order number."
-            render={(rows) => rows.map((p) => (
-              <Row key={p.id} onOpen={() => onAction({ kind: "openProject", project: p })}
-                title={<>{p.code} <span className="title-sub">{p.name}</span></>}
-                aside={<Progress value={p.cutPercent} />}
-                meta={<>
-                  {p.customer && <span>{p.customer}</span>}
-                  <span>{p.partCount} parts</span>
-                  <span>{p.jobCount} {p.jobCount === 1 ? "job" : "jobs"}</span>
-                </>}
-                when={p.lastActivityAt} />
-            ))} />
-        </Panel>
       </div>
     </div>
   );
@@ -143,15 +123,6 @@ function Row({ title, meta, aside, when: at, who, onOpen }: {
   );
 }
 
-function Progress({ value }: { value: number }) {
-  const done = value >= 100;
-  return (
-    <span className={`progress${done ? " is-done" : ""}`} title={`${value}% of parts cut`}>
-      <span className="progress-bar"><span style={{ width: `${Math.min(100, value)}%` }} /></span>
-      <span className="progress-label">{done ? "Cut" : `${value}% cut`}</span>
-    </span>
-  );
-}
 
 function Body<T>({ load, retry, empty, render }: {
   load: Load<T[]>; retry: () => void; empty: string; render: (rows: T[]) => ReactNode;

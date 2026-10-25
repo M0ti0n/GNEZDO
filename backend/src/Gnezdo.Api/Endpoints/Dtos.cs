@@ -15,7 +15,8 @@ public record PartFacetsDto(IReadOnlyList<string> Materials, IReadOnlyList<Thick
 
 public record JobSummaryDto(
     string Id, string Name, string Material, decimal ThicknessMm, int PartCount, int SheetCount,
-    string Status, DateTimeOffset ModifiedAt, string ModifiedBy);
+    string Status, DateTimeOffset CreatedAt, DateTimeOffset ModifiedAt, string ModifiedBy,
+    IReadOnlyList<string> Projects);
 
 public record JobPartDto(PartDto Part, int Qty);
 

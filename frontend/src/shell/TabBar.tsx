@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { Tab, TabKind } from "../state/tabs";
 import { GnezdoIcon } from "../components/GnezdoIcon";
 import {
-  IconClose, IconHome, IconImport, IconNewJob, IconProject, IconSettings, IconStock, IconTechnology,
+  IconClose, IconHome, IconImport, IconNewJob, IconProject, IconSearch, IconSettings, IconStock, IconTechnology,
 } from "../components/Icons";
 
 export type MenuId = "settings" | "technology" | "stock" | "projects";
@@ -22,6 +22,7 @@ const BADGE: Partial<Record<TabKind, ReactNode>> = {
   job: <IconNewJob size={14} />,
   import: <IconImport size={14} />,
   project: <IconProject size={14} />,
+  jobSearch: <IconSearch size={14} />,
   projects: <IconProject size={14} />,
   settings: <IconSettings size={14} />,
   technology: <IconTechnology size={14} />,

@@ -28,6 +28,11 @@ export const toolsFor = (kind: TabKind): Tool[] => {
         { id: "jobSearch", label: "Job search", icon: <IconSearch />, tone: "yellow" },
         { id: "parts", label: "Imported parts", icon: <IconLibrary />, tone: "brown" },
       ];
+    case "jobSearch":
+      return [
+        { id: "jobSearch", label: "Job filters", icon: <IconSearch />, tone: "yellow" },
+        { id: "newJob", label: "New job", icon: <IconNewJob />, tone: "green" },
+      ];
     case "import":
       return [
         { id: "chooseFolder", label: "Choose folder", icon: <IconFolder />, disabled: true },
