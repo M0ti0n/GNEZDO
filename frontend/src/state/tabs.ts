@@ -2,7 +2,7 @@
 // side rail or the GNEZDO menu, or an open *document tab* (a job, later a part) from the green bar.
 
 export type ViewKind = "home" | "jobSearch" | "import" | "projects" | "settings" | "stock" | "technology";
-export type TabKind = "job" | "part";
+export type TabKind = "job" | "part" | "drawing";   // drawing = an imported file being checked
 export type PageKind = ViewKind | TabKind;
 
 export interface Tab {
@@ -10,6 +10,7 @@ export interface Tab {
   kind: TabKind;
   title: string;
   jobId?: string;
+  drawingId?: string;
 }
 
 export interface ShellState {
@@ -41,6 +42,13 @@ export const jobTab = (jobId: string, name: string): Tab => ({
   kind: "job",
   title: name,
   jobId,
+});
+
+export const drawingTab = (drawingId: string, fileName: string): Tab => ({
+  id: `drawing:${drawingId}`,
+  kind: "drawing",
+  title: fileName,
+  drawingId,
 });
 
 export function shellReducer(state: ShellState, action: ShellAction): ShellState {

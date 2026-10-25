@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
+import { ImportPage } from "./pages/ImportPage";
+import { sampleDrawing } from "./import/sampleDrawing";
 import { HomePage, type HomeAction } from "./pages/HomePage";
 import { JobPage } from "./pages/JobPage";
 import { JobSearchPage } from "./pages/JobSearchPage";
@@ -8,7 +10,7 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
-import { VIEW_TITLE, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
+import { VIEW_TITLE, drawingTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
 
 const USER_NAME = "Fab"; // until sign-in exists
 
@@ -29,7 +31,7 @@ export function App() {
   const showView = (view: ViewKind) => dispatch({ type: "view", view });
   const activeTab = state.tabs.find((t) => t.id === state.activeId) ?? null;
   // what the main area shows: the active document tab, else the current view
-  const active: { kind: PageKind; title: string; jobId?: string } =
+  const active: { kind: PageKind; title: string; jobId?: string; drawingId?: string } =
     activeTab ?? { kind: state.view, title: VIEW_TITLE[state.view] };
   const open = (tab: Tab) => dispatch({ type: "open", tab });
 
@@ -54,6 +56,9 @@ export function App() {
     dispatch({ type: "open", tab: jobTab(`new-${n}`, n === 1 ? "New job" : `New job ${n}`) });
   }, []);
 
+  // Until the import worker reads DXF/DWG files, Import opens the sample drawing.
+  const openImport = () => open(drawingTab(sampleDrawing.id, sampleDrawing.fileName));
+
   const openJob = (j: JobSummary) => open(jobTab(j.id, j.name));
 
   const addParts = (jobId: string, title: string, parts: PartSummary[]) => {
@@ -71,7 +76,7 @@ export function App() {
 
   const onHome = (a: HomeAction) => {
     switch (a.kind) {
-      case "import": return showView("import");
+      case "import": return openImport();
       case "newJob": return newJob();
       case "jobSearch": setDrawer("jobs"); return runJobSearch({}); // "All jobs"
       case "openJob": return openJob(a.job);
@@ -81,7 +86,7 @@ export function App() {
 
   const onTool = (toolId: string) => {
     switch (toolId) {
-      case "import": return showView("import");
+      case "import": return openImport();
       case "newJob": return newJob();
       case "jobSearch": setDrawer("jobs"); return showView("jobSearch");
       case "parts": case "addParts": return setDrawer("parts");
@@ -111,8 +116,8 @@ export function App() {
           onHome={() => showView("home")}
         />
         <div className="workspace">
-          {active.kind !== "jobSearch" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
-          <main className={`page${active.kind === "jobSearch" ? " page-flush" : ""}`} aria-label={active.title}>
+          {active.kind !== "jobSearch" && active.kind !== "drawing" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
+          <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && (
               <JobPage
@@ -130,7 +135,8 @@ export function App() {
               <JobSearchPage filter={jobSearch.filter} run={jobSearch.run} onOpenJob={openJob}
                 onShowFilters={() => setDrawer("jobs")} />
             )}
-            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && <PlaceholderPage tab={active} />}
+            {active.kind === "drawing" && <ImportPage key={active.drawingId} drawing={sampleDrawing} />}
+            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && <PlaceholderPage tab={active} />}
           </main>
         </div>
       </div>
