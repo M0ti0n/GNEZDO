@@ -11,22 +11,17 @@ export interface Step<T> {
   label: string;
 }
 
-interface Entry<T> { past: Step<T>[]; future: Step<T>[] }
+interface Entry<T> { past: Step<T>[]; future: Step<T>[]; first: T }
 
 const LIMIT = 100;
 
 export class HistoryStore<T> {
   private map = new Map<string, Entry<T>>();
 
-  private entry(key: string): Entry<T> {
-    let e = this.map.get(key);
-    if (!e) this.map.set(key, (e = { past: [], future: [] }));
-    return e;
-  }
-
   /** A new change: remembers the state before it. Steps that were undone are dropped. */
   record(key: string, before: T, label: string) {
-    const e = this.entry(key);
+    let e = this.map.get(key);
+    if (!e) this.map.set(key, (e = { past: [], future: [], first: before }));
     e.past.push({ state: before, label });
     if (e.past.length > LIMIT) e.past.shift();
     e.future = [];
@@ -52,7 +47,13 @@ export class HistoryStore<T> {
   undoLabel = (key: string) => this.map.get(key)?.past.at(-1)?.label ?? null;
   redoLabel = (key: string) => this.map.get(key)?.future.at(-1)?.label ?? null;
 
-  /** The tab was closed or its part was saved: its history ends. */
+  /** Has it been changed since it was opened (something to undo)? */
+  changed = (key: string) => (this.map.get(key)?.past.length ?? 0) > 0;
+
+  /** How it was before the first change (kept even when old steps are dropped). */
+  original = (key: string): T | null => this.map.get(key)?.first ?? null;
+
+  /** Closed without saving, saved, or removed from the list: its history ends. */
   forget(key: string) { this.map.delete(key); }
 }
 

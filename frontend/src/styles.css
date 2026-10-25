@@ -1057,3 +1057,8 @@ th.num .th-sort { flex-direction: row-reverse; }
 .line-cross { stroke: var(--ink-2); stroke-width: 1; }
 .line-len { font-size: 12px; font-weight: 600; fill: var(--blue-ink); paint-order: stroke; stroke: #fff; stroke-width: 3px; }
 .end-mark.is-passive { pointer-events: none; }   /* a tool is on: clicks go to the lines */
+
+/* Close without saving? */
+.close-dlg { width: min(520px, calc(100vw - 32px)); }
+.close-dlg-icon { background: #fdecea; color: #c62828; }
+.close-dlg-text { margin: 0; padding: 18px 24px 22px; color: var(--ink-2, #3a4a40); line-height: 1.5; }
