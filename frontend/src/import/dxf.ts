@@ -77,6 +77,11 @@ export function readDxf(text: string, fileName: string): DxfResult {
     i = j;
   }
 
+  // Layer colours, for entities drawn "by layer" (a negative colour means the layer is off).
+  const layerColor = new Map<string, number>();
+  for (const r of sections.get("TABLES") ?? [])
+    if (r.type === "LAYER") layerColor.set(str(r, 2), Math.abs(num(r, 62, 7)));
+
   // Blocks: name -> base point and records.
   const blocks = new Map<string, { base: Pt; recs: Rec[] }>();
   let current: { name: string; base: Pt; recs: Rec[] } | null = null;
@@ -91,8 +96,12 @@ export function readDxf(text: string, fileName: string): DxfResult {
   let n = 0;
   const id = () => `e${++n}`;
 
-  const emitLine = (a: Pt, b: Pt, layer: string) => {
-    if (Math.hypot(b.x - a.x, b.y - a.y) > 1e-9) out.push({ id: id(), kind: "line", a, b, layer });
+  // Layer and colour of the entity being converted, added to everything it produces.
+  let style: { layer: string; color: number } = { layer: "0", color: 7 };
+  const push = (e: Entity) => out.push({ ...e, layer: style.layer, color: style.color });
+
+  const emitLine = (a: Pt, b: Pt, _layer?: string) => {
+    if (Math.hypot(b.x - a.x, b.y - a.y) > 1e-9) push({ id: id(), kind: "line", a, b });
   };
 
   /** Arc given in drawing coordinates, transformed; mirroring reverses its direction. */
@@ -104,7 +113,7 @@ export function readDxf(text: string, fileName: string): DxfResult {
       return deg(Math.atan2(p.y - cc.y, p.x - cc.x));
     };
     const [s, e] = det(t) < 0 ? [ang(end), ang(start)] : [ang(start), ang(end)];
-    out.push({ id: id(), kind: "arc", c: cc, r: r * scale, start: norm(s), end: norm(e), layer });
+    push({ id: id(), kind: "arc", c: cc, r: r * scale, start: norm(s), end: norm(e), layer });
   };
 
   /** Polyline vertices with bulges -> lines and arcs. */
@@ -127,11 +136,14 @@ export function readDxf(text: string, fileName: string): DxfResult {
     }
   };
 
-  const convert = (recs: Rec[], t0: Xf, depth: number, parentLayer?: string) => {
+  const convert = (recs: Rec[], t0: Xf, depth: number, parentLayer?: string, parentColor = 7) => {
     for (let i = 0; i < recs.length; i++) {
       const r = recs[i];
       let layer = str(r, 8) || "0";
       if (layer === "0" && parentLayer) layer = parentLayer;   // block entities on layer 0 take the insert's layer
+      const c62 = num(r, 62, 256);
+      const color = c62 === 256 ? layerColor.get(layer) ?? 7 : c62 === 0 ? parentColor : Math.abs(c62);
+      style = { layer, color };
       const t = num(r, 230, 1) < 0 ? compose(t0, MIRROR_X) : t0;  // extrusion 0,0,-1 = mirrored
       switch (r.type) {
         case "LINE":
@@ -139,7 +151,7 @@ export function readDxf(text: string, fileName: string): DxfResult {
           break;
         case "CIRCLE": {
           const c = apply(t, { x: num(r, 10), y: num(r, 20) });
-          out.push({ id: id(), kind: "circle", c, r: num(r, 40) * Math.sqrt(Math.abs(det(t))), layer });
+          push({ id: id(), kind: "circle", c, r: num(r, 40) * Math.sqrt(Math.abs(det(t))) });
           break;
         }
         case "ARC":
@@ -170,7 +182,7 @@ export function readDxf(text: string, fileName: string): DxfResult {
         case "SPLINE": {
           const pts = splinePoints(r);
           if (pts.points.length < 2) { ignored.SPLINE = (ignored.SPLINE ?? 0) + 1; break; }
-          out.push({ id: id(), kind: "spline", fit: pts.points.map((p) => apply(t, p)), sampled: pts.sampled, layer });
+          push({ id: id(), kind: "spline", fit: pts.points.map((p) => apply(t, p)), sampled: pts.sampled });
           break;
         }
         case "ELLIPSE": {
@@ -205,7 +217,7 @@ export function readDxf(text: string, fileName: string): DxfResult {
             e: ins.x - (cos * sx * block.base.x - sin * sy * block.base.y),
             f: ins.y - (sin * sx * block.base.x + cos * sy * block.base.y),
           };
-          convert(block.recs, compose(t, local), depth + 1, layer);
+          convert(block.recs, compose(t, local), depth + 1, layer, color);
           break;
         }
         case "VERTEX": case "SEQEND": case "ATTRIB": case "ATTDEF":

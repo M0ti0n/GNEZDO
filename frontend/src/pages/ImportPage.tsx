@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
 import type { BatchProperties } from "../import/batch";
 import {
-  boxOf, chainOf, checkGeometry, pathOf, quantityFromName, roleOf, union,
+  boxOf, chainOf, checkGeometry, pathOf, roleOf, union,
   type Box, type CheckId, type Drawing, type Pt, type Role,
 } from "../import/geometry";
 
@@ -22,13 +22,14 @@ interface Props {
   drawing: Drawing;
   processed: boolean;
   properties?: BatchProperties;
+  /** Rotations and mirror this part gets (or got, when processed). */
+  nestRules?: { rotations: number[]; mirror: boolean };
   /** Any change to the lines clears "processed": the part has to be processed again. */
   onChange: (drawing: Drawing, processed: boolean) => void;
 }
 
-export function ImportPage({ drawing, processed, properties, onChange }: Props) {
+export function ImportPage({ drawing, processed, properties, nestRules, onChange }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
-  const qty = quantityFromName(drawing.fileName);
   const [tool, setTool] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
   const [selected, setSelected] = useState<CheckId | null>(null);
@@ -210,7 +211,10 @@ export function ImportPage({ drawing, processed, properties, onChange }: Props) 
             <dt>Tracing</dt><dd>{report.traceCount} {report.traceCount === 1 ? "line" : "lines"}</dd>
             <dt>Open cut</dt><dd>{report.openCutCount} {report.openCutCount === 1 ? "line" : "lines"}</dd>
             <dt>Status</dt><dd className={processed ? "st-done" : undefined}>{processed ? "Processed" : "Not processed"}</dd>
-            <dt>Quantity</dt><dd>{qty ?? "–"}{qty !== null && <small> from file name</small>}</dd>
+            {nestRules && <>
+              <dt>Rotations</dt><dd>{nestRules.rotations.length ? nestRules.rotations.map((r) => `${r}°`).join(", ") : "none"}</dd>
+              <dt>Mirror</dt><dd>{nestRules.mirror ? "yes" : "no"}</dd>
+            </>}
           </dl>
         </aside>
 

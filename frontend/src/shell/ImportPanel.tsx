@@ -3,12 +3,14 @@ import { api, type PartFacets } from "../api/api";
 import { PanelHead } from "../components/FilterFields";
 import { IMPORT_TOOLS } from "../import/ImportTools";
 import { isDrawingFile, statusOf, type BatchProperties, type ImportItem, type Verdict } from "../import/batch";
+import { ROTATIONS, type ImportRules, type Rotation } from "../import/rules";
 
 type Mode = "bulk" | "single";
 
 export interface ImportPanelProps {
   items: ImportItem[];
   properties: BatchProperties;
+  rules: ImportRules;
   onProperties: (p: BatchProperties) => void;
   /** Files dropped or chosen; single import opens the part straight away. */
   onFiles: (files: File[], openFirst: boolean) => void;
@@ -33,6 +35,9 @@ const TITLE: Record<Verdict, string> = {
   ok: "Only closed contours: ready to process",
   processed: "Processed",
 };
+
+const toggle = (list: Rotation[], r: Rotation, on: boolean) =>
+  on ? ROTATIONS.filter((x) => x === r || list.includes(x)) : list.filter((x) => x !== r);
 
 const icon = (id: string) => IMPORT_TOOLS.find((t) => t.id === id)?.icon;
 
@@ -111,6 +116,28 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           </div>
           <input className="field" value={p.properties.project} placeholder="Project" aria-label="Project"
             onChange={(e) => setProp({ project: e.target.value })} />
+
+          <div className="imp-rules" role="group" aria-label="Rules">
+            <span className="imp-rules-title">Rules</span>
+            <div className="imp-rules-row" role="group" aria-label="Rotations">
+              <span className="imp-rules-label">Rotations</span>
+              {ROTATIONS.map((r) => (
+                <label key={r} className="chk">
+                  <input type="checkbox" checked={p.properties.rotations.includes(r)}
+                    onChange={(e) => setProp({ rotations: toggle(p.properties.rotations, r, e.target.checked) })} />
+                  {r}°
+                </label>
+              ))}
+            </div>
+            <div className="imp-rules-row">
+              <span className="imp-rules-label" />
+              <label className="chk">
+                <input type="checkbox" checked={p.properties.mirror} onChange={(e) => setProp({ mirror: e.target.checked })} />
+                Mirror
+              </label>
+              {p.properties.mirror && p.rules.mirrorWithoutOpenCut && <span className="imp-rules-note">not for parts with open cut</span>}
+            </div>
+          </div>
         </section>
       </div>
 
@@ -145,7 +172,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
         )}
         {statuses.map(({ item, st }) => {
           const notes = [
-            st.verdict === "attention" && `${st.openContours} open ${st.openContours === 1 ? "contour" : "contours"}`,
+            st.verdict === "attention" && st.problems.join(" · "),
             st.splines > 0 && `${st.splines} ${st.splines === 1 ? "spline" : "splines"}`,
             item.declaredUnits && `file says ${item.declaredUnits}, read as mm`,
             item.error,
@@ -156,7 +183,6 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                 title={TITLE[st.verdict]}>
                 <span className="imp-status" aria-label={TITLE[st.verdict]}>{ICON[st.verdict]}</span>
                 <span className="imp-name">{item.name}</span>
-                {item.qty !== null && <span className="imp-qty">× {item.qty}</span>}
                 {notes.length > 0 && <span className="imp-notes">{notes.join(" · ")}</span>}
               </button>
               <button className="icon-btn imp-remove" onClick={() => p.onRemove(item.id)} aria-label={`Remove ${item.name}`} title="Remove from list">×</button>
