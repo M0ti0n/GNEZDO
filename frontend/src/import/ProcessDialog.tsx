@@ -3,6 +3,7 @@ import { api, type PartFacets } from "../api/api";
 import { checkGeometry, pathOf, roleOf, type Drawing } from "./geometry";
 import { ROTATIONS, type Rotation } from "./rules";
 import { IMPORT_TOOLS } from "./ImportTools";
+import { loopPoints } from "./toPart";
 
 /** What the dialog saves. */
 export interface ProcessValues {
@@ -192,12 +193,21 @@ function LockedField({ label, hint, value, editing, onEdit, onChange }: {
 
 /** The part with its processed colours: cutting green, tracing purple, open cut dark blue. */
 function Preview({ drawing }: { drawing: Drawing }) {
-  const box = useMemo(() => checkGeometry(drawing.entities).box, [drawing]);
+  // Material is filled: closed cutting contours, even-odd so windows and holes stay open.
+  const { box, fill } = useMemo(() => {
+    const report = checkGeometry(drawing.entities);
+    const byId = new Map(drawing.entities.map((e) => [e.id, e]));
+    const fill = report.contours.filter((c) => c.closed)
+      .map((c) => loopPoints(c, byId).map((p, i) => `${i ? "L" : "M"}${+p.x.toFixed(3)} ${+p.y.toFixed(3)}`).join("") + "Z")
+      .join(" ");
+    return { box: report.box, fill };
+  }, [drawing]);
   const w = box.maxX - box.minX, h = box.maxY - box.minY, pad = Math.max(w, h) * 0.06 + 1;
   return (
     <svg className="is-processed proc-svg" viewBox={`${box.minX - pad} ${-box.maxY - pad} ${w + 2 * pad} ${h + 2 * pad}`}
       preserveAspectRatio="xMidYMid meet" aria-label={`Part ${drawing.fileName}`}>
       <g transform="scale(1 -1)">
+        {fill && <path className="proc-fill" d={fill} fillRule="evenodd" />}
         {drawing.entities.map((e) => (
           <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={`ent role-${roleOf(e)}`} />
         ))}
