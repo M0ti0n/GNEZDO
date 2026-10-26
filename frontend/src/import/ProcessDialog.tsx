@@ -227,7 +227,7 @@ export function Preview({ drawing }: { drawing: Drawing }) {
       <g transform="scale(1 -1)">
         {fill && <path className="proc-fill" d={fill} fillRule="evenodd" />}
         {drawing.entities.map((e) => (
-          <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={`ent role-${roleOf(e)}`} />
+          <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}`} />
         ))}
       </g>
     </svg>

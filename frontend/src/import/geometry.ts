@@ -22,6 +22,8 @@ export type Entity = (
   role?: Role;     // missing = cut
   /** Hole: a cutting contour cut slowly (machines / post processors that support it). */
   slow?: boolean;
+  /** The role the line got on import (from its layer / color); while it still has it, it shows its DXF color. */
+  fileRole?: Role;
   layer?: string;
   color?: number;  // AutoCAD color index, resolved (no BYLAYER / BYBLOCK): 1 red, 3 green, 4 cyan, 7 black/white
   rgb?: number;    // True Color 0xRRGGBB, when the drawing uses one (wins over the index)

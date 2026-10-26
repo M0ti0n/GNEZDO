@@ -113,7 +113,7 @@ export function roleFromRules(e: Entity, rules: ImportRules): Role {
 }
 
 export const applyRules = (entities: Entity[], rules: ImportRules): Entity[] =>
-  entities.map((e) => ({ ...e, role: roleFromRules(e, rules) }));
+  entities.map((e) => { const role = roleFromRules(e, rules); return { ...e, role, fileRole: role }; });
 
 /**
  * Color a line is drawn in on the canvas: its own color from the DXF, as in CAD (white / black /
@@ -121,9 +121,10 @@ export const applyRules = (entities: Entity[], rules: ImportRules): Entity[] =>
  * line should show its role color instead: it has no color, or its role was set by hand or by
  * layer and differs from what its color means (a line marked as tracing shows purple).
  */
-export function lineColour(e: { color?: number; rgb?: number; role?: Role; slow?: boolean }): string | null {
+export function lineColour(e: { color?: number; rgb?: number; role?: Role; slow?: boolean; fileRole?: Role }): string | null {
   if (e.rgb === undefined && e.color === undefined) return null;
-  if (e.slow || (e.role ?? "cut") !== colourRole(e, false)) return null;
+  // changed by a tool since import (marked as tracing, open cut or hole): show what it does now
+  if (e.slow || (e.role ?? "cut") !== (e.fileRole ?? colourRole(e, false))) return null;
   const [, sat] = e.rgb !== undefined ? rgbHsv(e.rgb) : aciHsv(e.color!);
   if (sat < 0.15) return null;   // black, white, grays: the normal cutting color
   return colourHex(e);
