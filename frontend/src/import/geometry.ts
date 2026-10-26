@@ -20,6 +20,8 @@ export type Entity = (
   | { id: string; kind: "spline"; fit: Pt[]; sampled?: boolean }
 ) & {
   role?: Role;     // missing = cut
+  /** Hole: a cutting contour cut slowly (machines / post processors that support it). */
+  slow?: boolean;
   layer?: string;
   color?: number;  // AutoCAD colour index, resolved (no BYLAYER / BYBLOCK): 1 red, 3 green, 4 cyan, 7 black/white
   rgb?: number;    // True Color 0xRRGGBB, when the drawing uses one (wins over the index)

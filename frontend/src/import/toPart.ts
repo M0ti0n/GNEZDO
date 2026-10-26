@@ -47,7 +47,8 @@ function orderChain(c: Contour, byId: Map<string, Entity>): string[] {
 
 /**
  * What path generation does with the part's lines. Saved inside Part.Geometry, next to the lines.
- *   cut      closed cutting contour; lead-in / lead-out from the technology table
+ *   cut      closed cutting contour; lead-in / lead-out from the technology table. slow = marked as
+ *            a hole: machines and post processors that can, cut it at a slower speed
  *   openCut  connected open cut lines cut in one go, on the inside of the contour; no lead-in and
  *            no lead-out: piercing is exactly at one end of the chain. Which end, and the direction,
  *            is decided by the cut order rules when the part is placed on a sheet.
@@ -55,7 +56,7 @@ function orderChain(c: Contour, byId: Map<string, Entity>): string[] {
  *            chosen by path generation for the shortest travel.
  */
 export type Operation =
-  | { op: "cut"; entityIds: string[]; outer: boolean }
+  | { op: "cut"; entityIds: string[]; outer: boolean; slow: boolean }
   | { op: "openCut"; entityIds: string[]; closed: boolean; ends: Pt[]; leadInMm: 0; leadOutMm: 0; start: "cutOrder" }
   | { op: "engrave"; entityIds: string[] };
 
@@ -73,7 +74,7 @@ export function operationsOf(entities: Entity[]): Operation[] {
   const of = (role: string) => buildContours(entities.filter((e) => roleOf(e) === role));
   const ops: Operation[] = [];
   // cutting contours come from the geometry check, which also finds the outside contour
-  for (const c of checkGeometry(entities).contours) if (c.closed) ops.push({ op: "cut", entityIds: orderChain(c, byId), outer: c.outer });
+  for (const c of checkGeometry(entities).contours) if (c.closed) ops.push({ op: "cut", entityIds: orderChain(c, byId), outer: c.outer, slow: c.entityIds.some((id) => byId.get(id)?.slow) });
   for (const c of of("openCut")) {
     ops.push({ op: "openCut", entityIds: orderChain(c, byId), closed: c.closed, ends: c.openEnds, leadInMm: 0, leadOutMm: 0, start: "cutOrder" });
   }

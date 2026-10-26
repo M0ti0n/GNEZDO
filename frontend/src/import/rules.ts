@@ -121,14 +121,34 @@ export const applyRules = (entities: Entity[], rules: ImportRules): Entity[] =>
  * line should show its role colour instead: it has no colour, or its role was set by hand or by
  * layer and differs from what its colour means (a line marked as tracing shows purple).
  */
-export function lineColour(e: { color?: number; rgb?: number; role?: Role }): string | null {
+export function lineColour(e: { color?: number; rgb?: number; role?: Role; slow?: boolean }): string | null {
   if (e.rgb === undefined && e.color === undefined) return null;
-  if ((e.role ?? "cut") !== colourRole(e, false)) return null;
-  const [h, sat, val] = e.rgb !== undefined ? rgbHsv(e.rgb) : aciHsv(e.color!);
+  if (e.slow || (e.role ?? "cut") !== colourRole(e, false)) return null;
+  const [, sat] = e.rgb !== undefined ? rgbHsv(e.rgb) : aciHsv(e.color!);
   if (sat < 0.15) return null;   // black, white, greys: the normal cutting colour
+  return colourHex(e);
+}
+
+/** The DXF colour as #rrggbb for the light canvas (white shows black; very light colours a little darker). */
+export function colourHex(e: { color?: number; rgb?: number }): string {
+  if (e.rgb === undefined && e.color === undefined) return "#1b1b1b";
+  const [h, sat, val] = e.rgb !== undefined ? rgbHsv(e.rgb) : aciHsv(e.color!);
+  if (sat < 0.15) return val > 0.85 || val < 0.15 ? "#1b1b1b" : `#${Math.round(val * 255).toString(16).padStart(2, "0").repeat(3)}`;
   const c = val * sat, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = val - c;
   const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
   const k = (r + m) * 0.3 + (g + m) * 0.59 + (b + m) * 0.11 > 0.75 ? 0.78 : 1;
   const to = (v: number) => Math.round((v + m) * 255 * k).toString(16).padStart(2, "0");
   return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+const ACI_NAME: Record<number, string> = { 1: "Red", 2: "Yellow", 3: "Green", 4: "Cyan", 5: "Blue", 6: "Magenta", 7: "White / black", 8: "Dark grey", 9: "Light grey" };
+
+/** One colour group of a drawing: the key, how it is named, and its swatch. */
+export function colourKey(e: { color?: number; rgb?: number }): { key: string; name: string; hex: string } {
+  if (e.rgb !== undefined) {
+    const r = (e.rgb >> 16) & 255, g = (e.rgb >> 8) & 255, b = e.rgb & 255;
+    return { key: `rgb:${e.rgb}`, name: `RGB ${r}, ${g}, ${b}`, hex: colourHex(e) };
+  }
+  if (e.color === undefined || e.color === 0 || e.color === 256) return { key: "none", name: "No colour", hex: "#1b1b1b" };
+  return { key: `aci:${e.color}`, name: ACI_NAME[e.color] ?? `Colour ${e.color}`, hex: colourHex(e) };
 }
