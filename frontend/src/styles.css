@@ -1101,3 +1101,10 @@ th.num .th-sort { flex-direction: row-reverse; }
 .end-mark.is-looseLine circle { stroke: var(--ink-3); }
 .end-mark.is-looseLine text { fill: var(--ink-2); }
 .gc-end.is-looseLine .gc-end-icon { border-color: var(--ink-3); color: var(--ink-2); }
+
+/* a screen that failed (ErrorBoundary) */
+.crash { margin: 40px auto; max-width: 640px; padding: 20px 24px; background: var(--plate); border-radius: 10px;
+  box-shadow: 0 0 0 1px #f2c2c2, 0 10px 28px rgba(20, 50, 30, .12); }
+.crash h2 { margin: 0 0 8px; color: #c62828; font-size: 18px; }
+.crash p { margin: 0 0 12px; color: var(--ink-2); line-height: 1.5; }
+.crash pre { margin: 0; padding: 10px 12px; background: #fdf3f3; border-radius: 6px; white-space: pre-wrap; font-size: 12.5px; color: #8a1c1c; }
