@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
 import { ROTATIONS, lineColour, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
+import { ColourLinesDialog, applyColours } from "../import/ColourLinesDialog";
 import { angleOf, diameterOf, dimensionOf, pickEntity, radiusOf, type Measure, type Pick } from "../import/measure";
 import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
@@ -28,6 +29,7 @@ const MARKING: Record<string, { role: Role; hint: string }> = {
 /** Tools that change lines by clicking them (AutoCAD quick mode); Shift swaps trim and extend. */
 /** Pixels within which a point snaps to the end of a line. */
 const SNAP_PX = 12;
+const HOLE_HINT = "Click a closed cutting contour, or drag a window, to mark it as a hole: cut at slower speed by machines that can (e.g. plasma). Again to unmark.";
 const SWEEP_HINT = "Highlighted: lines on top of other lines (within 0.1 mm), lines outside the part outline and loose points. Click a line to keep it; Delete removes the rest.";
 const LINE_HINT = "Click the start point, then the end point; the line goes on from there. Ends of lines snap (green square). Esc or right click finishes.";
 
@@ -218,7 +220,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     if ((e.target as Element).closest(".gcheck, .canvas-ui")) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    if (e.button === 0 && tool && MARKING[tool]) {
+    if (e.button === 0 && tool && (MARKING[tool] || tool === "hole")) {
       const p = local(e);
       setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
       return;
@@ -291,6 +293,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     }
     const b = box;
     setBox(null);
+    if (tool === "hole" && b && view) {
+      if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) > 4) { holeBox(b, view); return; }
+      const id = lineUnder(e.clientX, e.clientY);
+      if (id) holeAt(id);
+      return;
+    }
     const mark = tool ? MARKING[tool] : undefined;
     if (!b || !mark || !view) return;
     if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) > 4) { markBox(b, mark.role, view); return; }
@@ -299,6 +307,42 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     const id = (hit as SVGElement | undefined)?.dataset.id;
     if (id) markLine(id, mark.role);
   };
+
+  // Hole: a closed cutting contour cut slowly. Marked contour by contour; again unmarks.
+  const closedContours = useMemo(() => report.contours.filter((c) => c.closed), [report]);
+  const toggleHoles = (contours: { entityIds: string[] }[]) => {
+    const ids = new Set(contours.flatMap((c) => c.entityIds));
+    const all = drawing.entities.filter((e) => ids.has(e.id)).every((e) => e.slow);
+    commit({ ...drawing, entities: drawing.entities.map((e) => (ids.has(e.id) ? { ...e, slow: all ? undefined : true } : e)) },
+      all ? "Unmark hole" : "Mark hole");
+    setSelected(null);
+    const n = contours.length;
+    setMessage({ text: all ? `${n} ${n === 1 ? "hole" : "holes"} unmarked` : `${n} ${n === 1 ? "contour" : "contours"} → hole (cut slowly)` });
+  };
+  const holeAt = (id: string) => {
+    const e = drawing.entities.find((x) => x.id === id);
+    if (!e) return;
+    if (roleOf(e) !== "cut") { setMessage({ text: "Only cutting contours can be holes (this line is tracing or open cut)", bad: true }); return; }
+    const c = closedContours.find((x) => x.entityIds.includes(id));
+    if (!c) { setMessage({ text: "This contour is not closed: close it first (see Geometry check)", bad: true }); return; }
+    toggleHoles([c]);
+  };
+  const holeBox = (b: { x0: number; y0: number; x1: number; y1: number }, v: View) => {
+    const toMm = (x: number, y: number): Pt => ({ x: (x - v.tx) / v.s, y: -(y - v.ty) / v.s });
+    const a = toMm(Math.min(b.x0, b.x1), Math.max(b.y0, b.y1)), c = toMm(Math.max(b.x0, b.x1), Math.min(b.y0, b.y1));
+    const rect = { minX: a.x, minY: a.y, maxX: c.x, maxY: c.y };
+    const crossing = b.x1 < b.x0;
+    const byId = new Map(drawing.entities.map((e) => [e.id, e]));
+    const hit = closedContours.filter((ct) => {
+      const pts = ct.entityIds.flatMap((id) => pointsAlong(byId.get(id)!));
+      return crossing ? touchesRect(pts, rect) : pts.every((p) => inRect(p, rect));
+    });
+    if (!hit.length) { setMessage({ text: crossing ? "No closed contour touches the box" : "No closed contour is fully inside the box" }); return; }
+    toggleHoles(hit);
+  };
+
+  // Colour lines: a pop-up with every colour in the part and the operation its lines get
+  const [colouring, setColouring] = useState(false);
 
   // Lines in a selection box get the role; when they all have it already, they go back to cutting.
   const markBox = (b: { x0: number; y0: number; x1: number; y1: number }, role: Role, v: View) => {
@@ -356,6 +400,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       return;
     }
     if (id === "properties") { setTool(null); setMessage(null); onProperties(); return; }
+    if (id === "colourLines") { setTool(null); setMessage(null); setColouring(true); return; }
     // Check lines = the Geometry check panel: shows or hides it, with the result in the hint
     if (id === "checkLines") {
       setTool(null);
@@ -438,7 +483,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : tool === "sweep" ? SWEEP_HINT : "not built yet") : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -450,7 +495,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         blocked={problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
-        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "line" || tool === "sweep") ? " is-marking" : ""}`}
+        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "line" || tool === "sweep" || tool === "hole") ? " is-marking" : ""}`}
         onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -468,7 +513,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {drawing.entities.map((e) => (
                 <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke"
                   style={!processed && lineColour(e) ? { stroke: lineColour(e)! } : undefined}
-                  className={`ent role-${roleOf(e)}${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
+                  className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
               ))}
               {/* wide invisible strokes so thin lines are easy to click */}
               {preview?.removed.map((e) => <path key={`rm-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="pv-remove" />)}
@@ -480,7 +525,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {tool === "sweep" && drawing.entities.filter((e) => sweptIds.has(e.id)).map((e) => (
                 <path key={`sw-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={keep.has(e.id) ? "sweep-keep" : "sweep-hl"} />
               ))}
-              {tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep") && drawing.entities.map((e) => (
+              {tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep" || tool === "hole") && drawing.entities.map((e) => (
                 <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
             </g>
@@ -605,6 +650,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
             <li><i className="sw sw-cut" />Cutting</li>
             <li title="Engraved, not cut through"><i className="sw sw-trace" />Tracing</li>
             <li title="Cut with no lead-in or lead-out, from one end"><i className="sw sw-open" />Open cut</li>
+            <li title="Cutting contour cut at slower speed (Hole tool)"><i className="sw sw-hole" />Hole</li>
             <li title="A line with a problem keeps its colour and gets a red glow"><i className="sw sw-bad" />Problem</li>
           </ul>
           <h3 className="gc-sec">Part</h3>
@@ -664,6 +710,16 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
           <button className="btn btn-fit" onClick={() => { setSelected(null); fitAll(); }} title="Show the whole part (double-click)">Fit</button>
         </div>
       </div>
+      {colouring && (
+        <ColourLinesDialog entities={drawing.entities} onCancel={() => setColouring(false)}
+          onApply={(byColour) => {
+            setColouring(false);
+            if (!byColour.size) return;
+            commit({ ...drawing, entities: applyColours(drawing.entities, byColour) }, "Colour lines");
+            setSelected(null);
+            setMessage({ text: `${byColour.size} ${byColour.size === 1 ? "colour" : "colours"} applied` });
+          }} />
+      )}
     </div>
   );
 }

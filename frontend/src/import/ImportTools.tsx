@@ -168,6 +168,27 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     icon: <Ico><Nozzle beam={R} /><path d="M7 41L42 32" stroke={R} strokeWidth="4" /></Ico>,
   },
   {
+    // placeholder until Fab's icon: a plate with a hole marked to be cut slowly
+    id: "hole", label: "Hole",
+    icon: (
+      <Ico>
+        <rect x="6" y="9" width="36" height="30" rx="2" stroke={K} strokeWidth="2.6" />
+        <circle cx="24" cy="24" r="8.5" stroke="#f08c00" strokeWidth="3.6" />
+      </Ico>
+    ),
+  },
+  {
+    // placeholder until Fab's icon: lines of several colours
+    id: "colourLines", label: "Colour lines",
+    icon: (
+      <Ico>
+        <path d="M8 13H40" stroke="#e3262b" strokeWidth="3.4" />
+        <path d="M8 24H40" stroke={G} strokeWidth="3.4" />
+        <path d="M8 35H40" stroke="#1565c0" strokeWidth="3.4" />
+      </Ico>
+    ),
+  },
+  {
     // Fab's sketch: a rake (broom) sweeping, red line underneath
     id: "sweep", label: "Sweep",
     icon: (

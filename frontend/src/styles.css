@@ -1109,3 +1109,18 @@ th.num .th-sort { flex-direction: row-reverse; }
 /* problem lines keep their colour (cutting / tracing / open cut) with a red glow around them */
 .ent-glow { fill: none; stroke: #e3262b; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; opacity: .28; pointer-events: none; }
 .sw-bad { background: #1b1b1b; box-shadow: 0 0 0 3px rgba(227, 38, 43, .3); }
+
+/* Hole: a cutting contour cut slowly (orange) */
+:root { --ln-hole: #f08c00; }
+.ent.is-slow, .is-processed .ent.is-slow { stroke: var(--ln-hole); stroke-width: 2.4; }
+.sw-hole { background: var(--ln-hole); }
+
+/* Colour lines pop-up */
+.colour-dlg { width: min(560px, calc(100vw - 32px)); }
+.colour-table { width: 100%; border-collapse: collapse; margin: 6px 0 4px; }
+.colour-table th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); padding: 8px 24px; border-bottom: 1px solid var(--line); }
+.colour-table td { padding: 8px 24px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.colour-table .num { text-align: right; width: 60px; }
+.colour-table select.field { width: 100%; }
+.colour-swatch { display: inline-block; width: 22px; height: 6px; border-radius: 3px; margin-right: 10px; vertical-align: middle; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12); }
+.colour-mixed { display: block; color: var(--ink-3); font-size: 12px; margin-top: 2px; }

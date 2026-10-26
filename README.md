@@ -80,9 +80,13 @@ day on; days are shop days (Europe/Ljubljana).
 
 | op | what | leads | start / direction |
 |---|---|---|---|
-| `cut` | closed cutting contour (`outer: true` for the outside) | from the technology table | path generation |
+| `cut` | closed cutting contour (`outer: true` for the outside; `slow: true` = marked with the **Hole** tool: cut at slower speed by machines / post processors that can, e.g. plasma) | from the technology table | path generation |
 | `openCut` | connected open cut lines, cut in one go inside the part | lead-in 0, lead-out 0: piercing exactly at one end | one of `ends`, chosen by the cut order rules on the sheet |
 | `engrave` | tracing (engraving), a separate operation, not cut through | none | path generation (shortest travel) |
+
+Entities keep their DXF colour (`color` / `rgb`) and the `slow` flag. Each machine decides what it
+does with the operations: one that cannot engrave (e.g. plasma) skips `engrave` as if it were not
+there; one without a slow mode cuts `slow` contours normally.
 
 Parts saved before this (version 1) hold only the entity list with roles; the operations can be
 rebuilt from the roles.
