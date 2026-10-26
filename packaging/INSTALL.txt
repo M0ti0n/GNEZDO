@@ -1,7 +1,8 @@
 GNEZDO - TEST BUILD FOR WINDOWS
 ===============================
 
-Nothing has to be installed: GNEZDO.exe contains everything it needs.
+Nothing has to be installed: the "program" folder contains everything GNEZDO needs.
+Start it with start.bat; settings are in config.json next to it.
 
 
 1. COPY GNEZDO TO THE PC
@@ -45,3 +46,18 @@ To go back to the demo, empty the "Gnezdo" value again ("").
 ------------------
 Extract the new zip over the old folder. Your config.json is kept (the zip only
 has config.example.json). The database updates itself on the first start.
+
+
+5. "ACCESS DENIED" OR "BLOCKED" ON A COMPANY PC
+-----------------------------------------------
+- "This app has been blocked by your system administrator" or "Access is denied"
+  when starting: company rules do not allow programs from your own folders
+  (Desktop, Downloads, Documents). Ask IT to allow the GNEZDO folder, or put it
+  where programs are allowed (for example on the server, or C:\Programs if IT
+  allows it), or run it on the server where it will live anyway.
+- In the black window: "GNEZDO could not start ... port ...": another program
+  uses port 8090 or it is reserved on this PC. Open config.json, change 8090 in
+  "Urls" to another number (e.g. 8091), start again and open
+  http://localhost:8091 instead.
+- The browser says it cannot reach the page: wait a few seconds after the black
+  window shows "Open http://localhost:8090" and refresh.

@@ -5,9 +5,16 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Windows build: settings sit next to the program in config.json (database, port). Without a
-// database connection GNEZDO runs as a demo on sample data and saves nothing.
-builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "config.json"), optional: true, reloadOnChange: false);
+// Windows build: settings in config.json (database, port) - in the GNEZDO folder, next to start.bat
+// (the program itself sits in its "program" subfolder), or next to the exe, or where GNEZDO_CONFIG
+// points. Without a database connection GNEZDO runs as a demo on sample data and saves nothing.
+var configFile = new[]
+{
+    Environment.GetEnvironmentVariable("GNEZDO_CONFIG"),
+    Path.Combine(AppContext.BaseDirectory, "config.json"),
+    Path.Combine(AppContext.BaseDirectory, "..", "config.json"),
+}.FirstOrDefault(f => !string.IsNullOrEmpty(f) && File.Exists(f));
+if (configFile is not null) builder.Configuration.AddJsonFile(Path.GetFullPath(configFile), optional: true, reloadOnChange: false);
 var demo = string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("Gnezdo"));
 if (builder.Configuration["Urls"] is { Length: > 0 } urls) builder.WebHost.UseUrls(urls);
 
@@ -52,7 +59,20 @@ if (Directory.Exists(web))
         $"GNEZDO {(demo ? "DEMO - sample data, nothing is saved" : "with the database")}. Open {string.Join(", ", app.Urls).Replace("0.0.0.0", "localhost")} in a browser. Close this window to stop GNEZDO."));
 }
 
-app.Run();
+try
+{
+    app.Run();
+}
+catch (IOException ex) when (Directory.Exists(web))
+{
+    // Windows build: say plainly why it cannot start (port taken or not allowed on this PC)
+    Console.Error.WriteLine();
+    Console.Error.WriteLine($"GNEZDO could not start: {ex.Message}");
+    Console.Error.WriteLine("The port is used by another program or not allowed on this PC.");
+    Console.Error.WriteLine("Open config.json in Notepad, change 8090 in \"Urls\" to another number (e.g. 8091),");
+    Console.Error.WriteLine("save it and start GNEZDO again; then open http://localhost:8091");
+    Environment.ExitCode = 1;
+}
 
 /// <summary>Entry point; public so integration tests can start the app.</summary>
 public partial class Program { }
