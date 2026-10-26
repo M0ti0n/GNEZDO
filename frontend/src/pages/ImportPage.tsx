@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
-import { ROTATIONS, type Rotation } from "../import/rules";
+import { ROTATIONS, lineColour, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
 import { angleOf, diameterOf, dimensionOf, pickEntity, radiusOf, type Measure, type Pick } from "../import/measure";
 import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
@@ -460,8 +460,14 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         {view && (
           <svg className={`drawing${processed ? " is-processed" : ""}`} width={size.w} height={size.h} aria-label={`Drawing ${drawing.fileName}`}>
             <g transform={`matrix(${view.s} 0 0 ${-view.s} ${view.tx} ${view.ty})`}>
+              {/* lines with a problem: a red glow underneath, so the line keeps its own colour on top */}
+              {drawing.entities.filter((e) => flagged.has(e.id)).map((e) => (
+                <path key={`glow-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-glow" />
+              ))}
+              {/* each line in its own DXF colour, as in CAD; after processing, the role colours */}
               {drawing.entities.map((e) => (
                 <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke"
+                  style={!processed && lineColour(e) ? { stroke: lineColour(e)! } : undefined}
                   className={`ent role-${roleOf(e)}${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
               ))}
               {/* wide invisible strokes so thin lines are easy to click */}
@@ -599,7 +605,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
             <li><i className="sw sw-cut" />Cutting</li>
             <li title="Engraved, not cut through"><i className="sw sw-trace" />Tracing</li>
             <li title="Cut with no lead-in or lead-out, from one end"><i className="sw sw-open" />Open cut</li>
-            <li><i className="sw sw-bad" />Open contour</li>
+            <li title="A line with a problem keeps its colour and gets a red glow"><i className="sw sw-bad" />Problem</li>
           </ul>
           <h3 className="gc-sec">Part</h3>
           <dl className="gc-facts">

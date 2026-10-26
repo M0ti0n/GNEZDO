@@ -114,3 +114,21 @@ export function roleFromRules(e: Entity, rules: ImportRules): Role {
 
 export const applyRules = (entities: Entity[], rules: ImportRules): Entity[] =>
   entities.map((e) => ({ ...e, role: roleFromRules(e, rules) }));
+
+/**
+ * Colour a line is drawn in on the canvas: its own colour from the DXF, as in CAD (white / black /
+ * greys show dark on the light canvas; very light colours are darkened a little). Null when the
+ * line should show its role colour instead: it has no colour, or its role was set by hand or by
+ * layer and differs from what its colour means (a line marked as tracing shows purple).
+ */
+export function lineColour(e: { color?: number; rgb?: number; role?: Role }): string | null {
+  if (e.rgb === undefined && e.color === undefined) return null;
+  if ((e.role ?? "cut") !== colourRole(e, false)) return null;
+  const [h, sat, val] = e.rgb !== undefined ? rgbHsv(e.rgb) : aciHsv(e.color!);
+  if (sat < 0.15) return null;   // black, white, greys: the normal cutting colour
+  const c = val * sat, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = val - c;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  const k = (r + m) * 0.3 + (g + m) * 0.59 + (b + m) * 0.11 > 0.75 ? 0.78 : 1;
+  const to = (v: number) => Math.round((v + m) * 255 * k).toString(16).padStart(2, "0");
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
