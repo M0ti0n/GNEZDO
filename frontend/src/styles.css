@@ -60,7 +60,8 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 /* ------------------------------------------------------------------
    Shell
 ------------------------------------------------------------------- */
-.app { display: grid; grid-template-rows: var(--tabbar-h) 1fr; height: 100%; }
+/* minmax(0, 1fr): the app never grows wider than the window (long tool strips scroll inside) */
+.app { display: grid; grid-template-rows: var(--tabbar-h) 1fr; grid-template-columns: minmax(0, 1fr); height: 100%; }
 
 .tabbar {
   display: flex; align-items: stretch; gap: 8px;
@@ -127,7 +128,7 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
   background: rgba(255, 255, 255, .2); color: #fff; font-weight: 600; font-size: 14px;
 }
 
-.body { position: relative; display: flex; min-height: 0; }
+.body { position: relative; display: flex; min-height: 0; min-width: 0; }
 
 /* Left drawer: rail with Parts / Jobs, docked panel pushes the page */
 .drawer { display: flex; flex-shrink: 0; background: var(--plate); border-right: 1px solid var(--line); min-height: 0; }
@@ -1126,3 +1127,17 @@ th.num .th-sort { flex-direction: row-reverse; }
 .colour-table select.field { width: 100%; }
 .colour-swatch { display: inline-block; width: 30px; height: 18px; border-radius: 4px; margin-right: 10px; vertical-align: middle; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12); }
 .colour-mixed { display: block; color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+
+/* Tool strip on smaller screens: arrows at the ends when tools are hidden there */
+.itools-wrap { position: relative; flex-shrink: 0; }
+.itools-wrap .itools { scrollbar-width: none; }
+.itools-wrap .itools::-webkit-scrollbar { display: none; }
+.itools.is-dragging { cursor: grabbing; }
+.itools-more {
+  position: absolute; top: 0; bottom: 1px; width: 40px; z-index: 2; display: grid; place-items: center;
+  color: var(--ink); border: 0; cursor: pointer;
+}
+.itools-more.is-left { left: 0; background: linear-gradient(90deg, var(--plate) 55%, rgba(255, 255, 255, 0)); justify-items: start; padding-left: 6px; }
+.itools-more.is-right { right: 0; background: linear-gradient(270deg, var(--plate) 55%, rgba(255, 255, 255, 0)); justify-items: end; padding-right: 6px; }
+.itools-more svg { width: 26px; height: 26px; padding: 5px; border-radius: 50%; background: #fff; box-shadow: 0 1px 5px rgba(20, 50, 30, .25); }
+.itools-more:hover svg { background: var(--blue-tint); }

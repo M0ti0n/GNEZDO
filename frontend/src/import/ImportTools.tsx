@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 // Tools of the import screen, drawn after Fab's icon sheet.
 // Black = existing geometry, red = what the tool changes or measures, green = laser / direction.
@@ -236,17 +236,75 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
 export function ImportToolStrip({ active, onTool, blocked = {}, lit = {} }: {
   active: string | null; onTool: (id: string) => void; blocked?: Record<string, string>; lit?: Record<string, boolean>;
 }) {
+  // When not all tools fit (smaller screens): arrows at the ends, the mouse wheel scrolls sideways,
+  // and the strip can be dragged with the mouse (a drag is not a click). Touch screens swipe as usual.
+  const strip = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({ left: false, right: false });
+  const update = () => {
+    const el = strip.current;
+    if (el) setMore({ left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+  };
+  useEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (!d) return;
+      e.preventDefault();
+      el.scrollLeft += d;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => { ro.disconnect(); el.removeEventListener("wheel", onWheel); };
+  }, []);
+  const page = (dir: 1 | -1) => strip.current?.scrollBy({ left: dir * strip.current.clientWidth * 0.7, behavior: "smooth" });
+
+  // mouse drag (touch scrolls natively)
+  const drag = useRef<{ x: number; left: number; moved: boolean } | null>(null);
+  const dragged = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse" || e.button !== 0 || !strip.current) return;
+    drag.current = { x: e.clientX, left: strip.current.scrollLeft, moved: false };
+    dragged.current = false;
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d || !strip.current) return;
+    const dx = e.clientX - d.x;
+    if (!d.moved && Math.abs(dx) > 5) { d.moved = true; setDragging(true); strip.current.setPointerCapture(e.pointerId); }
+    if (d.moved) strip.current.scrollLeft = d.left - dx;
+  };
+  const onPointerUp = () => { dragged.current = !!drag.current?.moved; drag.current = null; setDragging(false); };
+
   return (
-    <div className="itools" role="toolbar" aria-label="Import tools">
-      {IMPORT_TOOLS.map((t) => (
-        <button key={t.id} className={`itool${t.wide ? " is-wide" : ""}${active === t.id || lit[t.id] ? " is-on" : ""}`}
-          aria-pressed={active === t.id || !!lit[t.id]} aria-disabled={blocked[t.id] ? true : undefined}
-          // greyed out but still hoverable, so the tooltip can say why it is blocked
-          title={blocked[t.id] ? `${t.label}: ${blocked[t.id]}` : t.label} onClick={() => !blocked[t.id] && onTool(t.id)}>
-          <span className="itool-box">{t.icon}</span>
-          <span className="itool-label">{t.label}</span>
+    <div className="itools-wrap">
+      {more.left && (
+        <button type="button" className="itools-more is-left" onClick={() => page(-1)} aria-label="More tools to the left" title="More tools">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
-      ))}
+      )}
+      <div ref={strip} className={`itools${dragging ? " is-dragging" : ""}`} role="toolbar" aria-label="Import tools" onScroll={update}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
+        {IMPORT_TOOLS.map((t) => (
+          <button key={t.id} className={`itool${t.wide ? " is-wide" : ""}${active === t.id || lit[t.id] ? " is-on" : ""}`}
+            aria-pressed={active === t.id || !!lit[t.id]} aria-disabled={blocked[t.id] ? true : undefined}
+            // greyed out but still hoverable, so the tooltip can say why it is blocked
+            title={blocked[t.id] ? `${t.label}: ${blocked[t.id]}` : t.label}
+            onClick={() => { if (dragged.current) { dragged.current = false; return; } if (!blocked[t.id]) onTool(t.id); }}>
+            <span className="itool-box">{t.icon}</span>
+            <span className="itool-label">{t.label}</span>
+          </button>
+        ))}
+      </div>
+      {more.right && (
+        <button type="button" className="itools-more is-right" onClick={() => page(1)} aria-label="More tools to the right" title="More tools">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+      )}
     </div>
   );
 }
