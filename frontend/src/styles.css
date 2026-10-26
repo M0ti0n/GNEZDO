@@ -607,7 +607,6 @@ th.num .th-sort { flex-direction: row-reverse; }
 .canvas:active { cursor: grabbing; }
 .drawing { position: absolute; inset: 0; display: block; }
 .ent { fill: none; stroke: var(--ink); stroke-width: 1.6; }
-.ent.is-flagged { stroke: #e3262b; }
 .ent.is-spline { stroke-dasharray: 7 4; }
 .ent.is-hl { stroke-width: 3.6; }
 .open-end { fill: rgba(227, 38, 43, .15); stroke: #e3262b; stroke-width: 2; }
@@ -632,7 +631,6 @@ th.num .th-sort { flex-direction: row-reverse; }
 .ent.role-openCut { stroke: var(--ln-open); stroke-width: 2.2; }
 .is-processed .ent.role-cut { stroke: var(--ln-cut-done); }
 .is-processed .ent.role-openCut { stroke: var(--ln-open-done); }
-.ent.role-cut.is-flagged { stroke: var(--ln-bad); }
 .ent-hit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; }
 .canvas.is-marking { cursor: crosshair; }
 .canvas.is-marking .ent-hit:hover { stroke: rgba(242, 183, 5, .35); }
@@ -760,7 +758,6 @@ th.num .th-sort { flex-direction: row-reverse; }
 .rule-fixed ul { margin: 8px 0 0; padding-left: 20px; color: var(--ink-2); font-size: 14px; display: grid; gap: 4px; }
 .settings-foot { font-size: 13px; color: var(--ink-3); }
 /* tracing / open cut lines that leave the part: dashed red over their colour */
-.ent.role-trace.is-flagged, .ent.role-openCut.is-flagged { stroke: var(--ln-bad); stroke-dasharray: 6 4; }
 .colour-map { grid-template-columns: none; }
 .colour-map li { grid-template-columns: 112px 230px 22px auto; }
 .shades { display: flex; gap: 3px; }
@@ -1108,3 +1105,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .crash h2 { margin: 0 0 8px; color: #c62828; font-size: 18px; }
 .crash p { margin: 0 0 12px; color: var(--ink-2); line-height: 1.5; }
 .crash pre { margin: 0; padding: 10px 12px; background: #fdf3f3; border-radius: 6px; white-space: pre-wrap; font-size: 12.5px; color: #8a1c1c; }
+
+/* problem lines keep their colour (cutting / tracing / open cut) with a red glow around them */
+.ent-glow { fill: none; stroke: #e3262b; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; opacity: .28; pointer-events: none; }
+.sw-bad { background: #1b1b1b; box-shadow: 0 0 0 3px rgba(227, 38, 43, .3); }
