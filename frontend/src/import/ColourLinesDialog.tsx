@@ -3,14 +3,18 @@ import { roleOf, type Entity } from "./geometry";
 import { colourKey } from "./rules";
 import { IMPORT_TOOLS } from "./ImportTools";
 
-/** What a colour group becomes. */
-export type Operation = "cut" | "hole" | "trace" | "openCut";
+/**
+ * The tool applied to all lines of a color, as if each line had been clicked with it:
+ * Cut = no tool (plain cutting), Trace, Open cut or Hole. Each gives the line a property that
+ * path generation and the post processor read later.
+ */
+export type Operation = "cut" | "trace" | "openCut" | "hole";
 
 export const OPERATION_LABEL: Record<Operation, string> = {
-  cut: "Cutting",
-  hole: "Cutting – hole (slow)",
-  trace: "Tracing",
+  cut: "Cut",
+  trace: "Trace",
   openCut: "Open cut",
+  hole: "Hole",
 };
 
 const operationOf = (e: Entity): Operation => (roleOf(e) === "cut" ? (e.slow ? "hole" : "cut") : roleOf(e) === "trace" ? "trace" : "openCut");
@@ -20,12 +24,12 @@ interface Group { key: string; name: string; hex: string; count: number; now: Op
 interface Props {
   entities: Entity[];
   onCancel: () => void;
-  /** The new operation per colour group (only groups that change). */
+  /** The new operation per color group (only groups that change). */
   onApply: (byColour: Map<string, Operation>) => void;
 }
 
-// Colour lines: every colour in the part with the operation its lines get. Change the drop-downs
-// and Apply: all lines of that colour get the operation (bulk marking, in one Undo step).
+// Color lines: every color in the part with the operation its lines get. Change the drop-downs
+// and Apply: all lines of that color get the operation (bulk marking, in one Undo step).
 export function ColourLinesDialog({ entities, onCancel, onApply }: Props) {
   const groups = useMemo<Group[]>(() => {
     const m = new Map<string, { key: string; name: string; hex: string; ops: Map<Operation, number> }>();
@@ -43,7 +47,7 @@ export function ColourLinesDialog({ entities, onCancel, onApply }: Props) {
   }, [entities]);
 
   const [choice, setChoice] = useState<Map<string, Operation>>(() => new Map(groups.map((g) => [g.key, g.now])));
-  // only the colours whose drop-down was changed are applied: a mixed colour (say one contour
+  // only the colors whose drop-down was changed are applied: a mixed color (say one contour
   // already marked as a hole) is left as it is unless it is chosen on purpose
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const changed = groups.filter((g) => touched.has(g.key) && (choice.get(g.key) !== g.now || g.mixed));
@@ -61,20 +65,20 @@ export function ColourLinesDialog({ entities, onCancel, onApply }: Props) {
         <header className="dlg-head">
           <span className="dlg-icon" aria-hidden="true">{IMPORT_TOOLS.find((t) => t.id === "colourLines")?.icon}</span>
           <div className="dlg-title">
-            <h2 id="cl-title">Colour lines</h2>
-            <p>{groups.length} {groups.length === 1 ? "colour" : "colours"} in this part</p>
+            <h2 id="cl-title">Color lines</h2>
+            <p>{groups.length} {groups.length === 1 ? "color" : "colors"} in this part</p>
           </div>
           <button type="button" className="icon-btn dlg-close" onClick={onCancel} aria-label="Close" title="Close (Esc)">×</button>
         </header>
         <table className="colour-table">
-          <thead><tr><th>Colour</th><th className="num">Lines</th><th>Operation</th></tr></thead>
+          <thead><tr><th>Color</th><th className="num">Lines</th><th>Tool</th></tr></thead>
           <tbody>
             {groups.map((g) => (
               <tr key={g.key}>
                 <td><span className="colour-swatch" style={{ background: g.hex }} />{g.name}</td>
                 <td className="num">{g.count}</td>
                 <td>
-                  <select className="field" value={choice.get(g.key)} aria-label={`Operation for ${g.name}`}
+                  <select className="field" value={choice.get(g.key)} aria-label={`Tool for ${g.name}`}
                     onChange={(e) => {
                       setChoice((c) => new Map(c).set(g.key, e.target.value as Operation));
                       setTouched((t) => new Set(t).add(g.key));
@@ -97,7 +101,7 @@ export function ColourLinesDialog({ entities, onCancel, onApply }: Props) {
   );
 }
 
-/** Lines get the operation of their colour group. */
+/** Lines get the operation of their color group. */
 export function applyColours(entities: Entity[], byColour: Map<string, Operation>): Entity[] {
   return entities.map((e) => {
     const op = byColour.get(colourKey(e).key);

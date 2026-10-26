@@ -18,9 +18,9 @@ export interface ImportRules {
   /** Layer names (parts of names) that mean tracing / open cut, when layers are used. */
   traceLayers: string;
   openCutLayers: string;
-  /** Colours decide: black/white cutting, green or red tracing, light blue open cut. */
+  /** Colors decide: black/white cutting, green or red tracing, light blue open cut. */
   coloursAsCuts: boolean;
-  /** Only the basic colours 1 red, 3 green, 4 cyan count; otherwise every shade of them does. */
+  /** Only the basic colors 1 red, 3 green, 4 cyan count; otherwise every shade of them does. */
   exactColours: boolean;
 }
 
@@ -36,9 +36,9 @@ export const DEFAULT_RULES: ImportRules = {
 };
 
 /**
- * Colour groups, when colours decide. "shades" are examples for the Rules page;
- * any colour whose hue falls in the range counts (dark, light or True Color).
- * Black, white, greys, very dark colours and other hues (blue, yellow, magenta) are cutting.
+ * Color groups, when colors decide. "shades" are examples for the Rules page;
+ * any color whose hue falls in the range counts (dark, light or True Color).
+ * Black, white, grays, very dark colors and other hues (blue, yellow, magenta) are cutting.
  */
 export const COLOUR_ROLES: { name: string; aci: number; hue: [number, number]; shades: string[]; role: Role }[] = [
   { name: "Greens", aci: 3, hue: [70, 160], role: "trace", shades: ["#00ff00", "#00bd00", "#008100", "#3f803f", "#7fff7f"] },
@@ -46,7 +46,7 @@ export const COLOUR_ROLES: { name: string; aci: number; hue: [number, number]; s
   { name: "Light blues and cyans", aci: 4, hue: [160, 215], role: "openCut", shades: ["#00ffff", "#00bfff", "#00a5bd", "#3fbfff", "#7fdfff"] },
 ];
 
-/** Hue (degrees), saturation and value (0..1) of an AutoCAD colour index. */
+/** Hue (degrees), saturation and value (0..1) of an AutoCAD color index. */
 export function aciHsv(i: number): [number, number, number] {
   const basic: Record<number, [number, number, number]> = {
     1: [0, 1, 1], 2: [60, 1, 1], 3: [120, 1, 1], 4: [180, 1, 1], 5: [240, 1, 1], 6: [300, 1, 1],
@@ -58,7 +58,7 @@ export function aciHsv(i: number): [number, number, number] {
     const k = (i - 10) % 10;
     return [Math.floor((i - 10) / 10) * 15, k % 2 ? 0.5 : 1, [1, 0.74, 0.5, 0.41, 0.31][k >> 1]];
   }
-  return [0, 0, 0.5]; // 250..255 greys, 0 / 256 unresolved
+  return [0, 0, 0.5]; // 250..255 grays, 0 / 256 unresolved
 }
 
 export function rgbHsv(rgb: number): [number, number, number] {
@@ -71,12 +71,12 @@ export function rgbHsv(rgb: number): [number, number, number] {
 
 const inHue = (h: number, [from, to]: [number, number]) => (from <= to ? h >= from && h <= to : h >= from || h <= to);
 
-/** Role from a line's colour, or "cut" when the colour means nothing special. */
+/** Role from a line's color, or "cut" when the color means nothing special. */
 export function colourRole(e: { color?: number; rgb?: number }, exact: boolean): Role {
   if (exact) return COLOUR_ROLES.find((c) => c.aci === e.color)?.role ?? "cut";
   if (e.rgb === undefined && e.color === undefined) return "cut";
   const [h, sat, val] = e.rgb !== undefined ? rgbHsv(e.rgb) : aciHsv(e.color!);
-  if (sat < 0.25 || val < 0.2) return "cut";           // black, white, greys, almost black
+  if (sat < 0.25 || val < 0.2) return "cut";           // black, white, grays, almost black
   return COLOUR_ROLES.find((c) => inHue(h, c.hue))?.role ?? "cut";
 }
 
@@ -98,9 +98,9 @@ export function saveRules(r: ImportRules) {
 const words = (s: string) => s.split(",").map((w) => w.trim().toUpperCase()).filter(Boolean);
 
 /**
- * Gives each line its role when a file is read. Layer names win over colours
- * (a layer called MARK is tracing whatever its colour); with "all layers as one"
- * only colours count, and with neither everything is cutting.
+ * Gives each line its role when a file is read. Layer names win over colors
+ * (a layer called MARK is tracing whatever its color); with "all layers as one"
+ * only colors count, and with neither everything is cutting.
  */
 export function roleFromRules(e: Entity, rules: ImportRules): Role {
   if (!rules.allLayersAsOne && e.layer) {
@@ -116,20 +116,20 @@ export const applyRules = (entities: Entity[], rules: ImportRules): Entity[] =>
   entities.map((e) => ({ ...e, role: roleFromRules(e, rules) }));
 
 /**
- * Colour a line is drawn in on the canvas: its own colour from the DXF, as in CAD (white / black /
- * greys show dark on the light canvas; very light colours are darkened a little). Null when the
- * line should show its role colour instead: it has no colour, or its role was set by hand or by
- * layer and differs from what its colour means (a line marked as tracing shows purple).
+ * Color a line is drawn in on the canvas: its own color from the DXF, as in CAD (white / black /
+ * grays show dark on the light canvas; very light colors are darkened a little). Null when the
+ * line should show its role color instead: it has no color, or its role was set by hand or by
+ * layer and differs from what its color means (a line marked as tracing shows purple).
  */
 export function lineColour(e: { color?: number; rgb?: number; role?: Role; slow?: boolean }): string | null {
   if (e.rgb === undefined && e.color === undefined) return null;
   if (e.slow || (e.role ?? "cut") !== colourRole(e, false)) return null;
   const [, sat] = e.rgb !== undefined ? rgbHsv(e.rgb) : aciHsv(e.color!);
-  if (sat < 0.15) return null;   // black, white, greys: the normal cutting colour
+  if (sat < 0.15) return null;   // black, white, grays: the normal cutting color
   return colourHex(e);
 }
 
-/** The DXF colour as #rrggbb for the light canvas (white shows black; very light colours a little darker). */
+/** The DXF color as #rrggbb for the light canvas (white shows black; very light colors a little darker). */
 export function colourHex(e: { color?: number; rgb?: number }): string {
   if (e.rgb === undefined && e.color === undefined) return "#1b1b1b";
   const [h, sat, val] = e.rgb !== undefined ? rgbHsv(e.rgb) : aciHsv(e.color!);
@@ -141,14 +141,14 @@ export function colourHex(e: { color?: number; rgb?: number }): string {
   return `#${to(r)}${to(g)}${to(b)}`;
 }
 
-const ACI_NAME: Record<number, string> = { 1: "Red", 2: "Yellow", 3: "Green", 4: "Cyan", 5: "Blue", 6: "Magenta", 7: "White / black", 8: "Dark grey", 9: "Light grey" };
+const ACI_NAME: Record<number, string> = { 1: "Red", 2: "Yellow", 3: "Green", 4: "Cyan", 5: "Blue", 6: "Magenta", 7: "White / black", 8: "Dark gray", 9: "Light gray" };
 
-/** One colour group of a drawing: the key, how it is named, and its swatch. */
+/** One color group of a drawing: the key, how it is named, and its swatch. */
 export function colourKey(e: { color?: number; rgb?: number }): { key: string; name: string; hex: string } {
   if (e.rgb !== undefined) {
     const r = (e.rgb >> 16) & 255, g = (e.rgb >> 8) & 255, b = e.rgb & 255;
     return { key: `rgb:${e.rgb}`, name: `RGB ${r}, ${g}, ${b}`, hex: colourHex(e) };
   }
-  if (e.color === undefined || e.color === 0 || e.color === 256) return { key: "none", name: "No colour", hex: "#1b1b1b" };
-  return { key: `aci:${e.color}`, name: ACI_NAME[e.color] ?? `Colour ${e.color}`, hex: colourHex(e) };
+  if (e.color === undefined || e.color === 0 || e.color === 256) return { key: "none", name: "No color", hex: "#1b1b1b" };
+  return { key: `aci:${e.color}`, name: ACI_NAME[e.color] ?? `Color ${e.color}`, hex: colourHex(e) };
 }

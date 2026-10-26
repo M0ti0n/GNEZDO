@@ -85,7 +85,7 @@ export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (
                 <span>Open cut layers</span>
                 <input className="field" value={rules.openCutLayers} onChange={(e) => set({ openCutLayers: e.target.value })} />
               </label>
-              <p className="rule-help">Parts of layer names, separated by commas, upper or lower case. A layer called <code>MARKING_1</code> matches <code>MARK</code>. Layer names win over colours.</p>
+              <p className="rule-help">Parts of layer names, separated by commas, upper or lower case. A layer called <code>MARKING_1</code> matches <code>MARK</code>. Layer names win over colors.</p>
             </div>
           )}
         </section>
@@ -93,35 +93,35 @@ export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (
         <section className="rule">
           <label className="rule-check">
             <input type="checkbox" checked={rules.coloursAsCuts} onChange={(e) => set({ coloursAsCuts: e.target.checked })} />
-            <span><b>Treat different colours as different cuts</b>
-              <small>Line colours from the drawing decide what the laser does.</small></span>
+            <span><b>Treat different colors as different cuts</b>
+              <small>Line colors from the drawing decide what the laser does.</small></span>
           </label>
           {rules.coloursAsCuts && (
             <div className="rule-sub">
               <ul className="colour-map">
                 <li>
                   <span className="shades"><i style={{ background: "#1b1b1b" }} /><i style={{ background: "#fff" }} /><i style={{ background: "#8c8c8c" }} /></span>
-                  <span>Black, white and greys</span><span className="arrow">→</span><b>Cutting</b>
+                  <span>Black, white and grays</span><span className="arrow">→</span><b>Cutting</b>
                 </li>
                 {COLOUR_ROLES.map((c) => (
                   <li key={c.name}>
                     <span className="shades">
                       {(rules.exactColours ? c.shades.slice(0, 1) : c.shades).map((css) => <i key={css} style={{ background: css }} />)}
                     </span>
-                    <span>{rules.exactColours ? `${c.name.split(" ")[0].replace(/s$/, "")} (colour ${c.aci}) only` : `${c.name}, any shade`}</span>
+                    <span>{rules.exactColours ? `${c.name.split(" ")[0].replace(/s$/, "")} (color ${c.aci}) only` : `${c.name}, any shade`}</span>
                     <span className="arrow">→</span>
                     <b className={`role-${c.role}`}>{ROLE_NAME[c.role]}</b>
                   </li>
                 ))}
                 <li className="colour-other">
                   <span className="shades"><i /></span>
-                  <span>Other colours (blue, yellow …)</span><span className="arrow">→</span><b>Cutting</b>
+                  <span>Other colors (blue, yellow …)</span><span className="arrow">→</span><b>Cutting</b>
                 </li>
               </ul>
               <label className="rule-check rule-check-small">
                 <input type="checkbox" checked={rules.exactColours} onChange={(e) => set({ exactColours: e.target.checked })} />
-                <span><b>Exact colours only</b>
-                  <small>Only the basic colours red (1), green (3) and cyan (4) count. Off: dark, light and True Color (RGB) shades count too, e.g. a darker green that plots better on paper.</small></span>
+                <span><b>Exact colors only</b>
+                  <small>Only the basic colors red (1), green (3) and cyan (4) count. Off: dark, light and True Color (RGB) shades count too, e.g. a darker green that plots better on paper.</small></span>
               </label>
             </div>
           )}

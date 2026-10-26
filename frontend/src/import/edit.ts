@@ -448,7 +448,7 @@ export function rotateEntity(e: Entity, c: Pt, d: number): Entity {
 }
 
 /**
- * Align H / Align V: turns the whole part counter-clockwise about its centre until the
+ * Align H / Align V: turns the whole part counter-clockwise about its center until the
  * clicked straight line is horizontal (H) or vertical (V). Always CCW, by the smallest
  * such angle (0 to 180 degrees).
  */
@@ -461,7 +461,7 @@ export function alignAt(all: Entity[], id: string, to: "h" | "v", points?: { id:
   let turn = (((target - dir) % 180) + 180) % 180;                         // CCW, 0..180
   if (turn < 1e-7 || 180 - turn < 1e-7) return { ok: false, message: `This line is already ${to === "h" ? "horizontal" : "vertical"}` };
   turn = Math.round(turn * 1e9) / 1e9;
-  // centre of the part's extents
+  // center of the part's extents
   // (a loop, not Math.min(...points): large drawings have too many points for that)
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const x of all) for (const p of pointsAlong(x)) {

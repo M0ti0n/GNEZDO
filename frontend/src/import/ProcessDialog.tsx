@@ -65,7 +65,7 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel, saving]);
 
-  // X × Y of the part (outside contour), whole millimetres: "899 × 785 mm"
+  // X × Y of the part (outside contour), whole millimeters: "899 × 785 mm"
   const size = useMemo(() => {
     const r = checkGeometry(drawing.entities);
     const b = r.contours.find((c) => c.outer)?.box ?? r.box;
@@ -209,7 +209,7 @@ function LockedField({ label, hint, value, editing, onEdit, onChange, options, o
   );
 }
 
-/** The part with its processed colours: cutting green, tracing purple, open cut dark blue. */
+/** The part with its processed colors: cutting green, tracing purple, open cut dark blue. */
 export function Preview({ drawing }: { drawing: Drawing }) {
   // Material is filled: closed cutting contours, even-odd so windows and holes stay open.
   const { box, fill } = useMemo(() => {

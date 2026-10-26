@@ -3,7 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 export interface ComboOption {
   value: string;
   label?: string;   // shown instead of value, e.g. "5 mm"
-  hint?: string;    // small grey text on the right, e.g. project name
+  hint?: string;    // small gray text on the right, e.g. project name
 }
 
 interface Props {

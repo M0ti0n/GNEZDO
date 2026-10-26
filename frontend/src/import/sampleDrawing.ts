@@ -30,7 +30,7 @@ export const sampleDrawing: Drawing = {
     arc(20, 20, 20, 180, 270),
     // fixing holes
     circle(40, 40, 9), circle(360, 40, 9), circle(40, 210, 9), circle(360, 210, 9),
-    // centre hole
+    // center hole
     circle(130, 125, 45),
     // slot 80 x 20, left end open
     line(250, 70, 330, 70),
