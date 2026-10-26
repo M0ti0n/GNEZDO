@@ -97,9 +97,9 @@ function crossings(target: Entity, carrier: Carrier, all: Entity[]): Pt[] {
 }
 
 const arcOf = (base: Entity, c: Pt, r: number, start: number, end: number): Entity =>
-  ({ id: newId(base.id), kind: "arc", c, r, start: norm(start), end: norm(end), role: base.role, slow: base.slow, layer: base.layer, color: base.color, rgb: base.rgb });
+  ({ id: newId(base.id), kind: "arc", c, r, start: norm(start), end: norm(end), role: base.role, slow: base.slow, fileRole: base.fileRole, layer: base.layer, color: base.color, rgb: base.rgb });
 const lineOf = (base: Entity, a: Pt, b: Pt): Entity =>
-  ({ id: newId(base.id), kind: "line", a, b, role: base.role, slow: base.slow, layer: base.layer, color: base.color, rgb: base.rgb });
+  ({ id: newId(base.id), kind: "line", a, b, role: base.role, slow: base.slow, fileRole: base.fileRole, layer: base.layer, color: base.color, rgb: base.rgb });
 
 const replace = (all: Entity[], id: string, by: Entity[]) => all.flatMap((e) => (e.id === id ? by : [e]));
 
