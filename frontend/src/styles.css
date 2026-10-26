@@ -1132,16 +1132,21 @@ th.num .th-sort { flex-direction: row-reverse; }
 .colour-mixed { display: block; color: var(--ink-3); font-size: 12px; margin-top: 2px; }
 
 /* Tool strip on smaller screens: arrows at the ends when tools are hidden there */
-.itools-wrap { position: relative; flex-shrink: 0; }
-.itools-wrap .itools { scrollbar-width: none; }
-.itools-wrap .itools::-webkit-scrollbar { display: none; }
-.itools.is-dragging { cursor: grabbing; }
-.itools-more {
+/* rows that scroll sideways when not everything fits (tool strip, tabs): arrows at the ends */
+.sidescroll { position: relative; min-width: 0; --fade: var(--plate); }
+.sidescroll > :not(.sidescroll-more) { scrollbar-width: none; }
+.sidescroll > :not(.sidescroll-more)::-webkit-scrollbar { display: none; }
+.sidescroll .is-dragging { cursor: grabbing; }
+.sidescroll-more {
   position: absolute; top: 0; bottom: 1px; width: 40px; z-index: 2; display: grid; place-items: center;
   color: var(--ink); border: 0; cursor: pointer;
 }
-.itools-more.is-left { left: 0; background: linear-gradient(90deg, var(--plate) 55%, rgba(255, 255, 255, 0)); justify-items: start; padding-left: 6px; }
-.itools-more.is-right { right: 0; background: linear-gradient(270deg, var(--plate) 55%, rgba(255, 255, 255, 0)); justify-items: end; padding-right: 6px; }
-.itools-more svg { width: 26px; height: 26px; padding: 5px; border-radius: 50%; background: #fff; box-shadow: 0 1px 5px rgba(20, 50, 30, .25); }
-.itools-more:hover svg { background: var(--blue-tint); }
+.sidescroll-more.is-left { left: 0; background: linear-gradient(90deg, var(--fade) 55%, transparent); justify-items: start; padding-left: 6px; }
+.sidescroll-more.is-right { right: 0; background: linear-gradient(270deg, var(--fade) 55%, transparent); justify-items: end; padding-right: 6px; }
+.sidescroll-more svg { width: 26px; height: 26px; padding: 5px; border-radius: 50%; background: #fff; box-shadow: 0 1px 5px rgba(20, 50, 30, .25); }
+.sidescroll-more:hover svg { background: var(--blue-tint); }
+.itools-wrap { flex-shrink: 0; }
+.tabs-wrap { flex: 1; display: flex; --fade: var(--chrome); }
+.tabs-wrap .tabs { flex: 1; }
+.tabs-wrap .sidescroll-more svg { width: 24px; height: 24px; padding: 4px; }
 .imp-note.is-skipped { color: #b45309; }
