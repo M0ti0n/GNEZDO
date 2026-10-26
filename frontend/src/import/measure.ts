@@ -3,7 +3,7 @@ import type { Entity, Pt } from "./geometry";
 // Measuring tools of the import screen: Diameter, Radius, Angle and Dimension.
 // They only read the drawing; what they show disappears when the tool is switched off.
 
-/** What a click picked: an end point, a straight line, or an arc / circle (by its centre). */
+/** What a click picked: an end point, a straight line, or an arc / circle (by its center). */
 export type Pick =
   | { kind: "point"; p: Pt }
   | { kind: "line"; id: string; a: Pt; b: Pt; at: Pt }
@@ -54,7 +54,7 @@ export function pickEntity(e: Entity, at: Pt): Pick | null {
   return null;
 }
 
-/** Point on the circle in the direction of the click (or straight right when clicked at the centre). */
+/** Point on the circle in the direction of the click (or straight right when clicked at the center). */
 const onCircle = (c: Pt, r: number, at: Pt) => {
   const u = dist(at, c) > 1e-9 ? unit(sub(at, c)) : { x: 1, y: 0 };
   return add(c, mul(u, r));
@@ -94,7 +94,7 @@ export function angleOf(p1: Pick, p2: Pick): MeasureResult {
   return { ok: true, m: { kind: "angle", at, u1, u2, deg, ext: [...extension(at, p1.a, p1.b), ...extension(at, p2.a, p2.b)] } };
 }
 
-/** The point a pick stands for: an end point, or the centre of an arc / circle. */
+/** The point a pick stands for: an end point, or the center of an arc / circle. */
 const pointOf = (p: Pick): Pt | null => (p.kind === "point" ? p.p : p.kind === "round" ? p.c : null);
 
 /** From point q square onto line l (shortest distance to the endless line). */
@@ -105,8 +105,8 @@ function pointToLine(q: Pt, l: { a: Pt; b: Pt }, note: string): Measure {
 
 /**
  * Dimension between two picks:
- *   point / centre  ↔ point / centre: straight distance
- *   line            ↔ point or centre: square (perpendicular) to the line
+ *   point / center  ↔ point / center: straight distance
+ *   line            ↔ point or center: square (perpendicular) to the line
  *   line            ↔ line, parallel: distance between them
  *   line            ↔ line, not parallel: shortest distance (from the end point nearest to the other line)
  */
@@ -136,13 +136,13 @@ export function dimensionOf(p1: Pick, p2: Pick): MeasureResult {
     const l = (p1.kind === "line" ? p1 : p2) as Pick & { kind: "line" };
     const o = p1.kind === "line" ? p2 : p1;
     const q = pointOf(o)!;
-    const m = pointToLine(q, l, o.kind === "round" ? "centre square to the line" : "square to the line");
+    const m = pointToLine(q, l, o.kind === "round" ? "center square to the line" : "square to the line");
     if (m.kind === "distance" && m.value < 1e-6) return { ok: false, message: "The point is on the line: 0 mm" };
     return { ok: true, m };
   }
   const a = pointOf(p1)!, b = pointOf(p2)!;
   const v = dist(a, b);
   if (v < 1e-6) return { ok: false, message: "Same point: 0 mm" };
-  const note = p1.kind === "round" && p2.kind === "round" ? "between centres" : p1.kind === "round" || p2.kind === "round" ? "centre to point" : "point to point";
+  const note = p1.kind === "round" && p2.kind === "round" ? "between centers" : p1.kind === "round" || p2.kind === "round" ? "center to point" : "point to point";
   return { ok: true, m: { kind: "distance", from: a, to: b, value: v, note, ext: [] } };
 }

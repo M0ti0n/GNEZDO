@@ -576,11 +576,13 @@ th.num .th-sort { flex-direction: row-reverse; }
 .import { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
 .itools {
-  display: flex; align-items: flex-start; gap: 6px;
+  display: flex; align-items: flex-start; gap: 2px;
   padding: 8px 14px 6px; background: var(--plate); border-bottom: 1px solid var(--line);
   overflow-x: auto; flex-shrink: 0; scrollbar-width: thin;
 }
-.itool { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; padding: 0; }
+/* every tool the same width, so the boxes are evenly spaced; long names go on two lines */
+.itool { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; padding: 0; width: 72px; }
+.itool.is-wide { width: 112px; }
 .itool-box {
   display: grid; place-items: center; width: 64px; height: 58px;
   background: #fff; border: 1.5px solid #3a3a3a; border-radius: 10px;
@@ -589,7 +591,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .itool.is-wide .itool-box { width: 104px; border-radius: 16px; }
 .itool-label {
   font-family: var(--font-cond); font-size: 12.5px; font-weight: 600; letter-spacing: .02em;
-  text-transform: uppercase; color: var(--ink-2); white-space: nowrap;
+  text-transform: uppercase; color: var(--ink-2); white-space: normal; text-align: center; line-height: 1.1; max-width: 100%;
 }
 .itool:hover .itool-box { background: var(--blue-tint); }
 .itool:active .itool-box { transform: translateY(1px); }
@@ -1122,5 +1124,5 @@ th.num .th-sort { flex-direction: row-reverse; }
 .colour-table td { padding: 8px 24px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .colour-table .num { text-align: right; width: 60px; }
 .colour-table select.field { width: 100%; }
-.colour-swatch { display: inline-block; width: 22px; height: 6px; border-radius: 3px; margin-right: 10px; vertical-align: middle; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12); }
+.colour-swatch { display: inline-block; width: 30px; height: 18px; border-radius: 4px; margin-right: 10px; vertical-align: middle; box-shadow: 0 0 0 1px rgba(0, 0, 0, .12); }
 .colour-mixed { display: block; color: var(--ink-3); font-size: 12px; margin-top: 2px; }

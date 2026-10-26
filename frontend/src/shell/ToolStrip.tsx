@@ -9,7 +9,7 @@ export interface Tool {
   id: string;
   label: string;
   icon: ReactNode;
-  tone?: Tone;          // colour shared with the matching home tile
+  tone?: Tone;          // color shared with the matching home tile
   disabled?: boolean;   // not built yet
 }
 

@@ -168,23 +168,27 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     icon: <Ico><Nozzle beam={R} /><path d="M7 41L42 32" stroke={R} strokeWidth="4" /></Ico>,
   },
   {
-    // placeholder until Fab's icon: a plate with a hole marked to be cut slowly
+    // Fab's icon: a section through the plate, material hatched, the hole's walls in orange
     id: "hole", label: "Hole",
     icon: (
       <Ico>
-        <rect x="6" y="9" width="36" height="30" rx="2" stroke={K} strokeWidth="2.6" />
-        <circle cx="24" cy="24" r="8.5" stroke="#f08c00" strokeWidth="3.6" />
+        <rect x="7" y="11" width="10" height="26" stroke={K} strokeWidth="2" />
+        <rect x="31" y="11" width="10" height="26" stroke={K} strokeWidth="2" />
+        <path d="M17 11H31M17 37H31" stroke={K} strokeWidth="1.4" />
+        <path d="M9 19L15 14M9 27L15 22M9 35L15 30M33 19L39 14M33 27L39 22M33 35L39 30" stroke={K} strokeWidth="1.8" />
+        <path d="M18.6 11V37M29.4 11V37" stroke="#f47c20" strokeWidth="2.6" strokeLinecap="butt" />
       </Ico>
     ),
   },
   {
-    // placeholder until Fab's icon: lines of several colours
-    id: "colourLines", label: "Colour lines",
+    // Fab's icon: four colored bars
+    id: "colourLines", label: "Color lines",
     icon: (
       <Ico>
-        <path d="M8 13H40" stroke="#e3262b" strokeWidth="3.4" />
-        <path d="M8 24H40" stroke={G} strokeWidth="3.4" />
-        <path d="M8 35H40" stroke="#1565c0" strokeWidth="3.4" />
+        <rect x="10" y="9" width="28" height="7.4" fill="#404bd0" />
+        <rect x="10" y="16.9" width="28" height="7.4" fill="#b5e61d" />
+        <rect x="10" y="24.8" width="28" height="7.4" fill="#ed1c24" />
+        <rect x="10" y="32.7" width="28" height="7.4" fill={K} />
       </Ico>
     ),
   },

@@ -46,7 +46,7 @@ const MEASURING: Record<string, { hint: string }> = {
   diameter: { hint: "Click an arc or a circle to show its diameter." },
   radius: { hint: "Click an arc or a circle to show its radius." },
   angle: { hint: "Click the first line, then the second. Click near the ends that form the angle you want." },
-  dimension: { hint: "Click two things: end points (green square), lines, or arcs and circles (their centre). Esc starts again." },
+  dimension: { hint: "Click two things: end points (green square), lines, or arcs and circles (their center). Esc starts again." },
 };
 
 interface Props {
@@ -341,7 +341,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     toggleHoles(hit);
   };
 
-  // Colour lines: a pop-up with every colour in the part and the operation its lines get
+  // Color lines: a pop-up with every color in the part and the operation its lines get
   const [colouring, setColouring] = useState(false);
 
   // Lines in a selection box get the role; when they all have it already, they go back to cutting.
@@ -505,11 +505,11 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         {view && (
           <svg className={`drawing${processed ? " is-processed" : ""}`} width={size.w} height={size.h} aria-label={`Drawing ${drawing.fileName}`}>
             <g transform={`matrix(${view.s} 0 0 ${-view.s} ${view.tx} ${view.ty})`}>
-              {/* lines with a problem: a red glow underneath, so the line keeps its own colour on top */}
+              {/* lines with a problem: a red glow underneath, so the line keeps its own color on top */}
               {drawing.entities.filter((e) => flagged.has(e.id)).map((e) => (
                 <path key={`glow-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-glow" />
               ))}
-              {/* each line in its own DXF colour, as in CAD; after processing, the role colours */}
+              {/* each line in its own DXF color, as in CAD; after processing, the role colors */}
               {drawing.entities.map((e) => (
                 <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke"
                   style={!processed && lineColour(e) ? { stroke: lineColour(e)! } : undefined}
@@ -646,12 +646,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               : processed ? "Processed." : "All contours are closed: ready to process."}
           </p>
           <h3 className="gc-sec">Lines</h3>
-          <ul className="legend" aria-label="Line colours">
+          <ul className="legend" aria-label="Line colors">
             <li><i className="sw sw-cut" />Cutting</li>
             <li title="Engraved, not cut through"><i className="sw sw-trace" />Tracing</li>
             <li title="Cut with no lead-in or lead-out, from one end"><i className="sw sw-open" />Open cut</li>
             <li title="Cutting contour cut at slower speed (Hole tool)"><i className="sw sw-hole" />Hole</li>
-            <li title="A line with a problem keeps its colour and gets a red glow"><i className="sw sw-bad" />Problem</li>
+            <li title="A line with a problem keeps its color and gets a red glow"><i className="sw sw-bad" />Problem</li>
           </ul>
           <h3 className="gc-sec">Part</h3>
           <dl className="gc-facts">
@@ -715,9 +715,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
           onApply={(byColour) => {
             setColouring(false);
             if (!byColour.size) return;
-            commit({ ...drawing, entities: applyColours(drawing.entities, byColour) }, "Colour lines");
+            commit({ ...drawing, entities: applyColours(drawing.entities, byColour) }, "Color lines");
             setSelected(null);
-            setMessage({ text: `${byColour.size} ${byColour.size === 1 ? "colour" : "colours"} applied` });
+            setMessage({ text: `${byColour.size} ${byColour.size === 1 ? "color" : "colors"} applied` });
           }} />
       )}
     </div>

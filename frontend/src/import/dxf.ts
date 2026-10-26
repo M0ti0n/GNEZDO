@@ -1,6 +1,6 @@
 import type { Drawing, Entity, Pt } from "./geometry";
 
-// Reads ASCII DXF files (R12 up to current versions) into drawing entities, in millimetres.
+// Reads ASCII DXF files (R12 up to current versions) into drawing entities, in millimeters.
 //
 // Supported: LINE, ARC, CIRCLE, LWPOLYLINE and POLYLINE (with bulges), SPLINE (NURBS with
 // control points, or fit points), ELLIPSE (as short lines), INSERT of blocks (nested, moved,
@@ -13,7 +13,7 @@ import type { Drawing, Entity, Pt } from "./geometry";
 export interface DxfResult {
   drawing: Drawing;
   ignored: Record<string, number>;   // entity type -> how many were skipped
-  /** Units the file says it uses, when not millimetres. The drawing is still read as mm. */
+  /** Units the file says it uses, when not millimeters. The drawing is still read as mm. */
   declaredUnits?: string;
 }
 
@@ -37,10 +37,10 @@ const det = (t: Xf) => t.a * t.d - t.b * t.c;
 const MIRROR_X: Xf = { a: -1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 
 /**
- * $INSUNITS names. Laser drawings are in millimetres, and the units setting is often left
+ * $INSUNITS names. Laser drawings are in millimeters, and the units setting is often left
  * over from a template, so the drawing is always read as mm and other units are only reported.
  */
-const UNIT_NAME: Record<number, string> = { 1: "inches", 2: "feet", 5: "centimetres", 6: "metres", 8: "microinches", 9: "mils", 10: "yards", 14: "decimetres" };
+const UNIT_NAME: Record<number, string> = { 1: "inches", 2: "feet", 5: "centimeters", 6: "meters", 8: "microinches", 9: "mils", 10: "yards", 14: "decimeters" };
 
 const deg = (r: number) => (r * 180) / Math.PI;
 const rad = (d: number) => (d * Math.PI) / 180;

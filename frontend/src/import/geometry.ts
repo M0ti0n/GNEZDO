@@ -1,4 +1,4 @@
-// Drawing entities of an imported DXF/DWG, in millimetres, y up (as in the CAD file),
+// Drawing entities of an imported DXF/DWG, in millimeters, y up (as in the CAD file),
 // and the geometry check that runs on them.
 
 export interface Pt { x: number; y: number }
@@ -23,7 +23,7 @@ export type Entity = (
   /** Hole: a cutting contour cut slowly (machines / post processors that support it). */
   slow?: boolean;
   layer?: string;
-  color?: number;  // AutoCAD colour index, resolved (no BYLAYER / BYBLOCK): 1 red, 3 green, 4 cyan, 7 black/white
+  color?: number;  // AutoCAD color index, resolved (no BYLAYER / BYBLOCK): 1 red, 3 green, 4 cyan, 7 black/white
   rgb?: number;    // True Color 0xRRGGBB, when the drawing uses one (wins over the index)
 };
 
