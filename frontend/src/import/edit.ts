@@ -345,9 +345,11 @@ export function diagnoseEnds(all: Entity[], looseEnds: Pt[]): EndIssue[] {
     const mid = midOf(own.e);
     if (isFree(own.e)) {
       // a line on its own: does it cross or touch the part, or is it just lying there?
-      const carrier: Carrier = own.e.kind === "line" ? { kind: "line", a: own.e.a, b: own.e.b } : { kind: "circle", c: (own.e as { c: Pt }).c, r: (own.e as { r: number }).r };
-      const self = piecesOf(own.e);
-      const crosses = crossings(own.e, carrier, others).some((q) => self.some((pc) => nearPiece(pc, q)));
+      // piece by piece, so lines, arcs, circles and splines (many short pieces) all work
+      const crosses = piecesOf(own.e).some((pc) => {
+        const carrier: Carrier = pc.kind === "seg" ? { kind: "line", a: pc.a, b: pc.b } : { kind: "circle", c: pc.c, r: pc.r };
+        return crossings(own.e, carrier, others).some((q) => nearPiece(pc, q));
+      });
       issues.push(crosses || touches(ends[0]) || touches(ends[1])
         ? { kind: "stray", id, at: mid, size: lengthOf(own.e), label: "Stray line", fix: erase }
         : { kind: "looseLine", id, at: mid, size: lengthOf(own.e), label: "Loose line", fix: erase });

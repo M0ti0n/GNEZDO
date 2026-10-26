@@ -10,6 +10,7 @@ import {
 import { ProcessDialog, type ProcessValues } from "./import/ProcessDialog";
 import { CloseUnsavedDialog } from "./import/CloseUnsavedDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { partGeometry } from "./import/toPart";
 import type { SavePart } from "./api/api";
 import { applyRules, loadRules, saveRules, type ImportRules } from "./import/rules";
@@ -326,6 +327,7 @@ export function App() {
                 onShowFilters={() => setDrawer("jobs")} />
             )}
             {shownItem?.drawing && (
+              <ErrorBoundary key={shownItem.id} what={shownItem.name}>
               <ImportPage key={shownItem.id}
                 drawing={shownItem.drawing}
                 processed={shownItem.processed}
@@ -337,6 +339,7 @@ export function App() {
                 mirrorBlocked={mirrorBlocked(shownItem, rules)}
                 onEdit={(drawing, label) => editDrawing(shownItem.id, shownItem.drawing!, drawing, label)}
                 undone={undone} />
+              </ErrorBoundary>
             )}
             {active.kind === "rules" && <RulesPage rules={rules} onChange={(r) => {
               setRules(r);
