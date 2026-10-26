@@ -139,9 +139,14 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (tool === "line") finishLine();
-      if (firstPick) { setFirstPick(null); setMessage({ text: "Started again: click the first one" }); }
+      if (e.key !== "Escape" || !tool) return;
+      // a pop-up on top gets the Esc, not the tool under it
+      if (document.querySelector(".dlg-backdrop")) return;
+      // Esc steps back: a line being drawn is finished, a half-done measurement starts again,
+      // and otherwise the tool is put away (as clicking its button again)
+      if (tool === "line" && lineStart) { finishLine(); return; }
+      if (firstPick) { setFirstPick(null); setMessage({ text: "Started again: click the first one" }); return; }
+      onTool(tool);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

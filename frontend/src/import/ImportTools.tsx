@@ -153,9 +153,10 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     icon: (
       <Ico>
         <path d="M8 8L18 37H43" stroke={K} strokeWidth="3.4" />
-        <path d="M12.5 13.5Q30 9 39.5 33" stroke={R} strokeWidth="2.2" />
-        <Arrow x={11} y={14.5} angle={200} color={R} />
-        <Arrow x={40} y={34.5} angle={75} color={R} />
+        {/* an arc around the corner (18,37), tips touching both lines */}
+        <path d="M14.94 15.21A22 22 0 0 1 39.44 32.05" stroke={R} strokeWidth="2.2" />
+        <Arrow x={11.94} y={15.85} angle={164} color={R} />
+        <Arrow x={39.92} y={35.08} angle={85} color={R} />
       </Ico>
     ),
   },

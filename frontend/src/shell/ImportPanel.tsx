@@ -8,7 +8,29 @@ import { isDrawingFile, statusOf, type BatchProperties, type ImportItem, type Ve
 import { ROTATIONS, type ImportRules, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
 
-type Mode = "bulk" | "single";
+type Mode = "folder" | "files";
+
+/** Every file in what was dropped: folders are read through, subfolders included. */
+async function droppedFiles(dt: DataTransfer): Promise<File[]> {
+  const entries = [...dt.items].map((i) => i.webkitGetAsEntry?.()).filter((e): e is FileSystemEntry => !!e);
+  if (!entries.length) return [...dt.files];
+  const out: File[] = [];
+  const walk = async (e: FileSystemEntry): Promise<void> => {
+    if (e.isFile) {
+      out.push(await new Promise<File>((ok, bad) => (e as FileSystemFileEntry).file(ok, bad)));
+    } else if (e.isDirectory) {
+      const reader = (e as FileSystemDirectoryEntry).createReader();
+      // a directory reader hands its entries out in batches until an empty one
+      for (;;) {
+        const batch = await new Promise<FileSystemEntry[]>((ok, bad) => reader.readEntries(ok, bad));
+        if (!batch.length) break;
+        for (const c of batch) await walk(c);
+      }
+    }
+  };
+  for (const e of entries) await walk(e).catch(() => undefined);
+  return out;
+}
 
 export interface ImportPanelProps {
   items: ImportItem[];
@@ -60,7 +82,8 @@ const toggle = (list: Rotation[], r: Rotation, on: boolean) =>
 const icon = (id: string) => IMPORT_TOOLS.find((t) => t.id === id)?.icon;
 
 export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
-  const [mode, setMode] = useState<Mode>("bulk");
+  const [mode, setMode] = useState<Mode>("files");
+  const [skipped, setSkipped] = useState(0);
   const [over, setOver] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const lists = usePickLists(p.properties.material);
@@ -68,10 +91,13 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
   const projectMissing = lists.projectsLoaded && !lists.projectKnown(p.properties.project);
   const [projectError, setProjectError] = useState<string | null>(null);
 
-  const take = (list: FileList | null) => {
-    const files = [...(list ?? [])].filter(isDrawingFile);
+  // only DXF and DWG are taken, anything else in a folder is left out; a single file
+  // opens on the main screen straight away, several go to the list
+  const take = (list: File[], fromFolder: boolean) => {
+    const files = list.filter(isDrawingFile);
+    setSkipped(list.length - files.length);
     if (!files.length) return;
-    p.onFiles(mode === "single" ? files.slice(0, 1) : files, mode === "single");
+    p.onFiles(files, !fromFolder && files.length === 1);
   };
 
   const statuses = p.items.map((i) => ({ item: i, st: statusOf(i) }));
@@ -111,9 +137,10 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
 
       <div className="imp-body">
         <div className="seg" role="tablist" aria-label="Import mode">
-          {(["bulk", "single"] as const).map((m) => (
-            <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? "is-on" : ""} onClick={() => setMode(m)}>
-              {m === "bulk" ? "Bulk import" : "Single import"}
+          {(["folder", "files"] as const).map((m) => (
+            <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? "is-on" : ""} onClick={() => setMode(m)}
+              title={m === "folder" ? "Choose a folder: all DXF and DWG files in it are imported" : "Choose one or more DXF or DWG files"}>
+              {m === "folder" ? "Folder import" : "File import"}
             </button>
           ))}
         </div>
@@ -125,17 +152,25 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
           onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setOver(true); } }}
           onDragLeave={() => setOver(false)}
-          onDrop={(e) => { e.preventDefault(); setOver(false); take(e.dataTransfer.files); }}
+          onDrop={(e) => {
+            e.preventDefault(); setOver(false);
+            const hasFolder = [...e.dataTransfer.items].some((i) => i.webkitGetAsEntry?.()?.isDirectory);
+            void droppedFiles(e.dataTransfer).then((files) => take(files, hasFolder));
+          }}
         >
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" /><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />
           </svg>
-          <b>{mode === "bulk" ? "Drop DXF or DWG files here" : "Drop one DXF or DWG file here"}</b>
-          <span>or click to choose {mode === "bulk" ? "files" : "a file"}</span>
-          <input ref={input} type="file" hidden multiple={mode === "bulk"} accept=".dxf,.dwg"
-            onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
+          <b>Drop a folder or DXF / DWG files here</b>
+          <span>or click to choose {mode === "folder" ? "a folder" : "files"}</span>
+          <input ref={input} type="file" hidden multiple accept=".dxf,.dwg"
+            {...(mode === "folder" ? { webkitdirectory: "", directory: "" } : {})}
+            onChange={(e) => { take([...(e.target.files ?? [])], mode === "folder"); e.target.value = ""; }} />
         </div>
-        {mode === "single" && <p className="imp-note">The part opens on the main screen as soon as it is read.</p>}
+        <p className={`imp-note${skipped ? " is-skipped" : ""}`}>
+          {skipped ? `${skipped} ${skipped === 1 ? "file was" : "files were"} not DXF or DWG and ${skipped === 1 ? "was" : "were"} left out.`
+            : "One file opens on the main screen; several go to the list."}
+        </p>
 
         <section className={`imp-props${p.propsOpen ? " is-open" : ""}`} aria-label="Properties">
           <button type="button" className="imp-props-head" aria-expanded={p.propsOpen} onClick={() => p.onPropsOpen(!p.propsOpen)}
