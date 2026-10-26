@@ -792,8 +792,11 @@ th.num .th-sort { flex-direction: row-reverse; }
 .dlg-title { flex: 1; min-width: 0; }
 .dlg-title h2 { font-size: 21px; }
 .dlg-title p { margin: 1px 0 0; font-size: 13.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dlg-close { width: 32px; height: 32px; font-size: 22px; color: var(--ink-3); border-radius: 6px; }
-.dlg-close:hover { background: var(--sheet); color: var(--ink); }
+.dlg-close { width: 32px; height: 32px; font-size: 22px; color: var(--green-ink); border-radius: 6px; border: 1.5px solid var(--green); background: var(--green-tint); }
+.dlg-close:hover { background: #d3ebc4; color: var(--green-ink); }
+.dlg-backdrop.is-light { background: rgba(20, 40, 35, .12); }
+.dlg-head.is-grab { cursor: grab; user-select: none; touch-action: none; }
+.dlg-head.is-grab.is-dragging { cursor: grabbing; }
 
 .proc-body { display: grid; grid-template-columns: 320px 1fr; gap: 22px; padding: 20px; }
 .proc-image { margin: 0; display: grid; gap: 10px; align-content: start; }

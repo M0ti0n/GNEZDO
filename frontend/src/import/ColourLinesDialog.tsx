@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { roleOf, type Entity } from "./geometry";
 import { colourKey } from "./rules";
 import { IMPORT_TOOLS } from "./ImportTools";
@@ -58,11 +58,36 @@ export function ColourLinesDialog({ entities, onCancel, onApply }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
+  // the dialog can be dragged by its header, out of the way of the part
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ px: number; py: number; x: number; y: number; box: DOMRect } | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const onHeadDown = (e: RPointerEvent<HTMLElement>) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+    const box = formRef.current?.getBoundingClientRect();
+    if (!box) return;
+    drag.current = { px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, box };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(true);
+    e.preventDefault();
+  };
+  const onHeadMove = (e: RPointerEvent<HTMLElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    // keep at least part of the header on screen so the dialog can always be grabbed again
+    const dx = Math.min(Math.max(e.clientX - d.px, 80 - d.box.right), window.innerWidth - 80 - d.box.left);
+    const dy = Math.min(Math.max(e.clientY - d.py, -d.box.top), window.innerHeight - 60 - d.box.top);
+    setPos({ x: d.x + dx, y: d.y + dy });
+  };
+  const onHeadUp = () => { drag.current = null; setDragging(false); };
+
   return (
-    <div className="dlg-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
-      <form className="dlg colour-dlg" role="dialog" aria-modal="true" aria-labelledby="cl-title"
+    <div className="dlg-backdrop is-light" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <form ref={formRef} className="dlg colour-dlg" role="dialog" style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }} aria-modal="true" aria-labelledby="cl-title"
         onSubmit={(e) => { e.preventDefault(); onApply(new Map(changed.map((g) => [g.key, choice.get(g.key)!]))); }}>
-        <header className="dlg-head">
+        <header className={`dlg-head is-grab${dragging ? " is-dragging" : ""}`} title="Drag to move"
+          onPointerDown={onHeadDown} onPointerMove={onHeadMove} onPointerUp={onHeadUp} onPointerCancel={onHeadUp}>
           <span className="dlg-icon" aria-hidden="true">{IMPORT_TOOLS.find((t) => t.id === "colourLines")?.icon}</span>
           <div className="dlg-title">
             <h2 id="cl-title">Color lines</h2>
