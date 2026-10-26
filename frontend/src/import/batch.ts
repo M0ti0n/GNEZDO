@@ -1,4 +1,4 @@
-import { checkGeometry, quantityFromName, type Drawing } from "./geometry";
+import { checkGeometry, fixMarkRules, quantityFromName, type Drawing } from "./geometry";
 import { DxfError, readDxf } from "./dxf";
 import { applyRules, type ImportRules, type Rotation } from "./rules";
 
@@ -132,7 +132,9 @@ export async function readItem(item: ImportItem, file: File, rules: ImportRules)
   if (item.state === "dwg") return item;
   try {
     const { drawing, ignored, declaredUnits } = readDxf(await file.text(), file.name);
-    const entities = applyRules(drawing.entities, rules);
+    // roles come from layers and colors; the outer contour is always plain cutting and a closed
+    // contour never open cut, whatever color it was drawn in
+    const { entities } = fixMarkRules(applyRules(drawing.entities, rules));
     return { ...item, state: "ready", drawing: { ...drawing, id: item.id, entities }, ignored, declaredUnits };
   } catch (e) {
     return { ...item, state: "failed", error: e instanceof DxfError ? e.message : `Could not read the file (${(e as Error).message})` };

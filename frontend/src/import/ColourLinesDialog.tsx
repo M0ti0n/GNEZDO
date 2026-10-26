@@ -117,7 +117,7 @@ export function ColourLinesDialog({ entities, onCancel, onApply }: Props) {
           </tbody>
         </table>
         <footer className="dlg-foot">
-          <span className="proc-missing">A hole only counts on a closed contour.</span>
+          <span className="proc-missing">The outer contour always stays cut; a hole needs a closed contour; a closed contour can't be open cut.</span>
           <button type="button" className="btn btn-plain" onClick={onCancel}>Cancel</button>
           <button type="submit" className="btn btn-save" disabled={!changed.length}>Apply</button>
         </footer>

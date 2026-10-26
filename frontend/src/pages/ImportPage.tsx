@@ -8,7 +8,7 @@ import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type
 import type { BatchProperties } from "../import/batch";
 import {
   endsOf,
-  boxOf, checkGeometry, pathOf, pointsAlong, roleOf, union,
+  boxOf, checkGeometry, keepMarkRules, markRulesText, pathOf, pointsAlong, roleOf, union,
   type Box, type CheckId, type Drawing, type Entity, type Pt, type Role,
 } from "../import/geometry";
 
@@ -318,11 +318,16 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const toggleHoles = (contours: { entityIds: string[] }[]) => {
     const ids = new Set(contours.flatMap((c) => c.entityIds));
     const all = drawing.entities.filter((e) => ids.has(e.id)).every((e) => e.slow);
-    commit({ ...drawing, entities: drawing.entities.map((e) => (ids.has(e.id) ? { ...e, slow: all ? undefined : true } : e)) },
-      all ? "Unmark hole" : "Mark hole");
+    const g = keepMarkRules(drawing.entities, drawing.entities.map((e) => (ids.has(e.id) ? { ...e, slow: all ? undefined : true } : e)));
+    const why = g.outer ? "the outer contour can't be a hole, it is always plain cut" : "";
+    if (!g.changed) { setMessage({ text: why ? `Not marked: ${why}` : "Nothing to change", bad: !!why }); return; }
+    commit({ ...drawing, entities: g.entities }, all ? "Unmark hole" : "Mark hole");
     setSelected(null);
-    const n = contours.length;
-    setMessage({ text: all ? `${n} ${n === 1 ? "hole" : "holes"} unmarked` : `${n} ${n === 1 ? "contour" : "contours"} → hole (cut slowly)` });
+    // count contours that really changed (the outer one may have been held back)
+    const changedIds = new Set(g.entities.filter((e, i) => e !== drawing.entities[i]).map((e) => e.id));
+    const n = contours.filter((c) => c.entityIds.some((id) => changedIds.has(id))).length;
+    const text = all ? `${n} ${n === 1 ? "hole" : "holes"} unmarked` : `${n} ${n === 1 ? "contour" : "contours"} → hole (cut slowly)`;
+    setMessage({ text: why ? `${text}; ${why}` : text, bad: !!why });
   };
   const holeAt = (id: string) => {
     const e = drawing.entities.find((x) => x.id === id);
@@ -362,10 +367,13 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (!ids.size) { setMessage({ text: crossing ? "No line touches the box" : "No line is fully inside the box" }); return; }
     const all = drawing.entities.filter((e) => ids.has(e.id)).every((e) => roleOf(e) === role);
     const next = all ? "cut" : role;
-    commit({ ...drawing, entities: drawing.entities.map((e) => (ids.has(e.id) ? { ...e, role: next } : e)) },
-      `${next === "cut" ? "Unmark" : "Mark"} ${role === "trace" ? "tracing" : "open cut"}`);
+    const g = keepMarkRules(drawing.entities, drawing.entities.map((e) => (ids.has(e.id) ? { ...e, role: next } : e)));
+    const why = markRulesText(g.outer, g.closed);
+    if (!g.changed) { setMessage({ text: why ? `Not marked: ${why}` : `Already ${ROLE_LABEL[next].toLowerCase()}`, bad: !!why }); return; }
+    commit({ ...drawing, entities: g.entities }, `${next === "cut" ? "Unmark" : "Mark"} ${role === "trace" ? "tracing" : "open cut"}`);
     setSelected(null);
-    setMessage({ text: `${ids.size} ${ids.size === 1 ? "line" : "lines"} → ${ROLE_LABEL[next].toLowerCase()}` });
+    const text = `${g.changed} ${g.changed === 1 ? "line" : "lines"} → ${ROLE_LABEL[next].toLowerCase()}`;
+    setMessage({ text: why ? `${text}; ${why}` : text, bad: !!why });
   };
 
   // Marks the clicked line; clicking a marked line again makes it a cutting line again.
@@ -373,8 +381,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     const line = drawing.entities.find((e) => e.id === id);
     if (!line) return;
     const next = roleOf(line) === role ? "cut" : role;
-    commit({ ...drawing, entities: drawing.entities.map((e) => (e.id === id ? { ...e, role: next } : e)) },
-      `${next === "cut" ? "Unmark" : "Mark"} ${role === "trace" ? "tracing" : "open cut"}`);
+    const g = keepMarkRules(drawing.entities, drawing.entities.map((e) => (e.id === id ? { ...e, role: next } : e)));
+    if (!g.changed) { setMessage({ text: `Not marked: ${g.outer ? "the outer contour is always plain cut" : "a closed contour can't be open cut"}`, bad: true }); return; }
+    commit({ ...drawing, entities: g.entities }, `${next === "cut" ? "Unmark" : "Mark"} ${role === "trace" ? "tracing" : "open cut"}`);
     setSelected(null);
     setMessage({ text: next === "cut" ? "1 line unmarked (cutting)" : `1 line → ${ROLE_LABEL[next].toLowerCase()}` });
   };
@@ -467,6 +476,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     commit({ ...drawing, entities: drawing.entities.filter((e) => !drop.has(e.id)) }, id === "doubles" ? "Remove double lines" : "Remove lines outside");
     setSelected(null);
     setMessage({ text: `${ids.length} ${ids.length === 1 ? "line" : "lines"} removed` });
+  };
+  const makeCut = (ids: string[]) => {
+    const set = new Set(ids);
+    commit({ ...drawing, entities: drawing.entities.map((e) => (set.has(e.id) ? { ...e, role: "cut" as Role, slow: undefined } : e)) }, "Make cut");
+    setSelected(null);
+    setMessage({ text: `${ids.length} ${ids.length === 1 ? "line" : "lines"} → cutting` });
   };
   const SMALL_MM = 1;
   const small = issues.filter((i) => i.fix && i.size <= SMALL_MM);
@@ -614,6 +629,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   <span className="gc-label">{c.label}</span>
                   {c.count > 0 && <span className="gc-count">{c.count}</span>}
                 </button>
+                {c.count > 0 && (c.id === "outerNotCut" || c.id === "closedOpenCut") && (
+                  <button type="button" className="gc-fix" onClick={() => makeCut(c.entityIds)}
+                    title={c.id === "outerNotCut" ? "The outer contour is always plain cutting: make these lines cut" : "A closed contour is never open cut: make these lines cut"}>
+                    Make cut
+                  </button>
+                )}
                 {c.count > 0 && (c.id === "doubles" || c.id === "separate") && (
                   <button type="button" className="gc-fix gc-remove" onClick={() => removeCheck(c.id, c.entityIds)}
                     title={c.id === "doubles" ? "Remove the double and tiny lines (one of each double stays)" : "Remove everything outside the part outline"}>
@@ -720,9 +741,13 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
           onApply={(byColour) => {
             setColouring(false);
             if (!byColour.size) return;
-            commit({ ...drawing, entities: applyColours(drawing.entities, byColour) }, "Color lines");
+            const g = keepMarkRules(drawing.entities, applyColours(drawing.entities, byColour));
+            const why = markRulesText(g.outer, g.closed);
+            if (!g.changed) { setMessage({ text: why ? `Nothing changed: ${why}` : "Nothing changed", bad: !!why }); return; }
+            commit({ ...drawing, entities: g.entities }, "Color lines");
             setSelected(null);
-            setMessage({ text: `${byColour.size} ${byColour.size === 1 ? "color" : "colors"} applied` });
+            const text = `${byColour.size} ${byColour.size === 1 ? "color" : "colors"} applied`;
+            setMessage({ text: why ? `${text}; ${why}` : text, bad: !!why });
           }} />
       )}
     </div>
