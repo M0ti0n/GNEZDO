@@ -60,9 +60,15 @@ jobs:
           jq '.ConnectionStrings.Gnezdo = ""' out/publish/appsettings.json > $d/program/appsettings.json
           cp -r out/web-db $d/program/wwwroot
           cp -r out/web-demo $d/program/wwwroot-demo
-          cp packaging/start.bat packaging/config.example.json packaging/INSTALL.txt $d/
+          cp packaging/start.bat packaging/config.example.json packaging/INSTALL.txt packaging/demo_server.py $d/
           echo "GNEZDO test build $(date -u +%Y-%m-%d) from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}" > $d/VERSION.txt
           ls -la $d; ls $d/program | wc -l
+          # the Python demo (for PCs that block GNEZDO.exe) serves the pages with the right types
+          (cd $d && python3 demo_server.py 8099 >/dev/null 2>&1 &) ; sleep 2
+          curl -fsS http://localhost:8099/ | grep -q 'id="root"'
+          js=$(curl -fsS http://localhost:8099/ | grep -o 'assets/[^"]*\.js' | head -1)
+          curl -fsSI "http://localhost:8099/$js" | grep -qi 'content-type: text/javascript'
+          pkill -f "demo_server.py 8099" || true
           (cd out && zip -qr gnezdo-windows.zip gnezdo)
           ls -la out/gnezdo-windows.zip
 
@@ -94,6 +100,9 @@ jobs:
         run: |
           Expand-Archive gnezdo-windows.zip -DestinationPath .
           Copy-Item gnezdo/config.example.json gnezdo/config.json
+          # start.bat asks the program first whether it may run here
+          & gnezdo/program/GNEZDO.exe --check
+          if ($LASTEXITCODE -ne 0) { throw "--check failed" }
           # as start.bat does: the program from its subfolder, config.json from the GNEZDO folder
           $p = Start-Process -FilePath gnezdo/program/GNEZDO.exe -WorkingDirectory gnezdo -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           $ok = $false

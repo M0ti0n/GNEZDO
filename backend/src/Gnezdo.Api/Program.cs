@@ -3,6 +3,9 @@ using Gnezdo.Api.Data;
 using Gnezdo.Api.Endpoints;
 using Microsoft.EntityFrameworkCore;
 
+// start.bat runs "GNEZDO.exe --check" first, to find out whether this PC lets the program run at all
+if (args.Contains("--check")) { Console.WriteLine("GNEZDO can run on this PC"); return; }
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Windows build: settings in config.json (database, port) - in the GNEZDO folder, next to start.bat
