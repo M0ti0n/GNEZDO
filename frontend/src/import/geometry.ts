@@ -50,7 +50,7 @@ export interface Contour {
   outer: boolean;          // the largest contour is the outside of the part
 }
 
-export type CheckId = "doubles" | "separate" | "crossing" | "insideOpen" | "outsideOpen" | "outsidePart" | "splines";
+export type CheckId = "doubles" | "separate" | "crossing" | "insideOpen" | "outsideOpen" | "outerNotCut" | "closedOpenCut" | "outsidePart" | "splines";
 
 export interface CheckResult {
   id: CheckId;
@@ -224,6 +224,7 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   const openInside = rest.filter((c) => !c.closed && !openOutside.includes(c));
   const splines = entities.filter((e) => e.kind === "spline");
   const crossing = crossingContours(entities, rest.filter((c) => c.closed));
+  const marks = markRuleBreaks(entities);
   const outsidePart = marksOutsidePart(entities.filter((e) => !doubleSet.has(e.id)), rest);
 
   const checks: CheckResult[] = [
@@ -244,6 +245,9 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
       id: "outsideOpen", label: "Outside contour open", count: openOutside.length,
       entityIds: openOutside.flatMap((c) => c.entityIds), points: openOutside.flatMap((c) => c.openEnds),
     },
+    // the outside is always plain cutting; a closed contour is never open cut
+    { id: "outerNotCut", label: "Outer contour not plain cut", count: marks.outerNotCut.length, entityIds: marks.outerNotCut, points: [] },
+    { id: "closedOpenCut", label: "Closed contour as open cut", count: marks.closedOpenCut.length, entityIds: marks.closedOpenCut, points: [] },
     {
       id: "outsidePart", label: "Tracing or open cut outside part", count: outsidePart.length,
       entityIds: outsidePart.flat(), points: [],
@@ -523,3 +527,159 @@ function crossingContours(entities: Entity[], closed: Contour[]): { groups: stri
   }
   return { groups, points };
 }
+
+/**
+ * Lines that are marked against the rules of a part's contours:
+ *   - the outer contour is always plain cutting: never tracing, open cut or hole;
+ *   - a closed contour is never open cut (open cut is for slits that end in the material).
+ * Roles do not matter for finding the contours here: an outline drawn as tracing is still the
+ * outline. Lines hanging loose (slits, marks) are peeled off first; what is left are loops.
+ * The outer contour is followed around its outside edge, so a line across the part from edge
+ * to edge (a bend line) is not taken for part of it.
+ */
+export function markRuleBreaks(entities: Entity[]): { outer: string[]; outerNotCut: string[]; closedOpenCut: string[] } {
+  const none = { outer: [], outerNotCut: [], closedOpenCut: [] };
+  const doubles = new Set(findDoubles(entities));
+  const list = entities.filter((e) => !doubles.has(e.id));
+  if (!list.length) return none;
+
+  const nodes: Pt[] = [];
+  const nodeOf = (p: Pt) => {
+    const i = nodes.findIndex((n) => Math.hypot(n.x - p.x, n.y - p.y) <= JOIN_TOLERANCE_MM);
+    if (i >= 0) return i;
+    nodes.push(p);
+    return nodes.length - 1;
+  };
+  interface Edge { e: Entity; a: number; b: number; pts: Pt[] }
+  const edges: Edge[] = [];
+  const circles: Entity[] = [];
+  for (const e of list) {
+    const ends = endsOf(e);
+    if (!ends) { circles.push(e); continue; }
+    edges.push({ e, a: nodeOf(ends[0]), b: nodeOf(ends[1]), pts: pointsAlong(e, 2) });
+  }
+
+  // peel off loose lines until only loops are left
+  const alive = new Set(edges.map((_, i) => i));
+  const degree = new Array<number>(nodes.length).fill(0);
+  edges.forEach((ed) => { degree[ed.a]++; degree[ed.b]++; });
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const i of alive) {
+      const ed = edges[i];
+      if (degree[ed.a] <= 1 || degree[ed.b] <= 1) { alive.delete(i); degree[ed.a]--; degree[ed.b]--; changed = true; }
+    }
+  }
+  const loopIds = new Set([...alive].map((i) => edges[i].e.id));
+  const closedOpenCut = list.filter((e) => roleOf(e) === "openCut" && (loopIds.has(e.id) || e.kind === "circle")).map((e) => e.id);
+
+  // groups of loops; the one with the largest extents is the part's outside
+  const parent = nodes.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (const i of alive) parent[find(edges[i].a)] = find(edges[i].b);
+  const groups = new Map<number, number[]>();
+  for (const i of alive) { const r = find(edges[i].a); groups.set(r, [...(groups.get(r) ?? []), i]); }
+  const area = (b: Box) => (b.maxX - b.minX) * (b.maxY - b.minY);
+  type Cand = { box: Box; circle?: Entity; edges?: number[] };
+  const cands: Cand[] = [
+    ...circles.map((c) => ({ box: boxOf(c), circle: c })),
+    ...[...groups.values()].map((g) => ({ box: g.map((i) => boxOf(edges[i].e)).reduce(union), edges: g })),
+  ];
+  if (!cands.length) return { ...none, closedOpenCut };
+  const best = cands.reduce((a, c) => (area(c.box) > area(a.box) ? c : a));
+  // the largest loop is only the outside when it holds everything; while the outline is still
+  // open (a gap) it would be a hole, and the outline rules wait until the gap is closed
+  const all = list.map(boxOf).reduce(union);
+  const tol = 0.01;
+  if (best.box.minX > all.minX + tol || best.box.minY > all.minY + tol || best.box.maxX < all.maxX - tol || best.box.maxY < all.maxY - tol)
+    return { ...none, closedOpenCut };
+
+  let outer: string[];
+  if (best.circle) outer = [best.circle.id];
+  else {
+    // start on the line holding the leftmost point (it is on the outside), then at every corner
+    // take the line turning furthest left: that walks round one face next to it
+    const g = best.edges!;
+    let start = g[0], at = 0;
+    for (const i of g) edges[i].pts.forEach((p, k) => { if (p.x < edges[start].pts[at].x) { start = i; at = k; } });
+    const out = (i: number, from: number) => { // direction leaving node `from` along edge i
+      const p = edges[i].pts;
+      const [q0, q1] = edges[i].a === from ? [p[0], p[1]] : [p[p.length - 1], p[p.length - 2]];
+      return Math.atan2(q1.y - q0.y, q1.x - q0.x);
+    };
+    const byNode = new Map<number, number[]>();
+    for (const i of g) for (const n of [edges[i].a, edges[i].b]) byNode.set(n, [...(byNode.get(n) ?? []), i]);
+    // walking one way traces the face on the left of the start line, the other way the face on
+    // its right: the outside is the one that goes round clockwise (y up)
+    const walk = (fwd: boolean) => {
+      const seen = new Set<string>();
+      const ids = new Set<string>();
+      let edge = start, twice = 0; // signed area x2 of the path walked
+      for (let step = 0; step < 4 * g.length + 4; step++) {
+        const key = `${edge}:${fwd}`;
+        if (seen.has(key)) break;
+        seen.add(key);
+        ids.add(edges[edge].e.id);
+        const p = fwd ? edges[edge].pts : [...edges[edge].pts].reverse();
+        for (let k = 1; k < p.length; k++) twice += p[k - 1].x * p[k].y - p[k].x * p[k - 1].y;
+        const v = fwd ? edges[edge].b : edges[edge].a;
+        const back = out(edge, v);
+        let next = edge, nextF = fwd, nextCw = Infinity;
+        for (const i of byNode.get(v) ?? []) {
+          // a line from a node to itself leaves it both ways
+          const dirs = edges[i].a === edges[i].b ? [true, false] : [edges[i].a === v];
+          for (const f of dirs) {
+            if (i === edge && f !== fwd && edges[i].a !== edges[i].b) continue;
+            const q = edges[i].pts;
+            const [q0, q1] = f ? [q[0], q[1]] : [q[q.length - 1], q[q.length - 2]];
+            let cw = (back - Math.atan2(q1.y - q0.y, q1.x - q0.x)) % (2 * Math.PI);
+            if (cw <= 1e-9) cw += 2 * Math.PI;
+            if (cw < nextCw) { nextCw = cw; next = i; nextF = f; }
+          }
+        }
+        if (nextCw === Infinity) break;
+        edge = next;
+        fwd = nextF;
+      }
+      return { ids, twice };
+    };
+    const one = walk(true), other = walk(false);
+    outer = [...(one.twice < other.twice ? one : other).ids];
+  }
+  const byId = new Map(list.map((e) => [e.id, e]));
+  const outerNotCut = outer.filter((id) => { const e = byId.get(id)!; return roleOf(e) !== "cut" || !!e.slow; });
+  return { outer, outerNotCut, closedOpenCut };
+}
+
+/** Puts the contour rules right: the outside becomes plain cutting, closed contours lose open cut. */
+export function fixMarkRules(entities: Entity[]): { entities: Entity[]; changed: number } {
+  const r = markRuleBreaks(entities);
+  const bad = new Set([...r.outerNotCut, ...r.closedOpenCut]);
+  if (!bad.size) return { entities, changed: 0 };
+  return { entities: entities.map((e) => (bad.has(e.id) ? { ...e, role: "cut" as Role, slow: undefined } : e)), changed: bad.size };
+}
+
+/**
+ * A marking (tracing, open cut, hole) checked against the contour rules: lines it would put
+ * against them keep what they had before. Says how many were held back, and how many changed.
+ */
+export function keepMarkRules(before: Entity[], after: Entity[]): { entities: Entity[]; outer: number; closed: number; changed: number } {
+  const r = markRuleBreaks(after);
+  const was = new Map(before.map((e) => [e.id, e]));
+  const differs = (e: Entity) => { const b = was.get(e.id); return !!b && (roleOf(b) !== roleOf(e) || !!b.slow !== !!e.slow); };
+  const outerBad = new Set(r.outerNotCut), closedBad = new Set(r.closedOpenCut);
+  let outer = 0, closed = 0;
+  const entities = after.map((e) => {
+    if (!differs(e)) return e;
+    if (outerBad.has(e.id)) { outer++; return was.get(e.id)!; }
+    if (closedBad.has(e.id)) { closed++; return was.get(e.id)!; }
+    return e;
+  });
+  return { entities, outer, closed, changed: entities.filter(differs).length };
+}
+
+/** Why some lines were not marked, for the hint under the drawing. */
+export const markRulesText = (outer: number, closed: number) => [
+  outer ? `the outer contour is always plain cut (${outer} ${outer === 1 ? "line" : "lines"} left as cut)` : "",
+  closed ? `a closed contour can't be open cut (${closed} ${closed === 1 ? "line" : "lines"} left as ${closed === 1 ? "it was" : "they were"})` : "",
+].filter(Boolean).join("; ");
