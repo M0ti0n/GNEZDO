@@ -5,6 +5,7 @@ import type { UndoState } from "../state/history";
 import { demoMode } from "../api/api";
 import { GnezdoIcon } from "../components/GnezdoIcon";
 import { IconRules } from "../components/Icons";
+import { SideScroll } from "../components/SideScroll";
 import {
   IconClose, IconLibrary, IconNewJob, IconProject, IconSettings, IconStock, IconTechnology,
 } from "../components/Icons";
@@ -43,7 +44,7 @@ export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu, 
     <header className="tabbar">
       <AppMenu onMenu={onMenu} />
       <UndoRedo {...undo} />
-      <div className="tabs" role="tablist" aria-label="Open jobs and parts">
+      <SideScroll className="tabs" wrapClassName="tabs-wrap" role="tablist" label="Open jobs and parts" more="tabs" activeKey={activeId}>
         {tabs.length === 0 && <span className="tabs-empty">Opened jobs appear here</span>}
         {tabs.map((t) => {
           const active = t.id === activeId;
@@ -61,7 +62,7 @@ export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu, 
             </div>
           );
         })}
-      </div>
+      </SideScroll>
       {demoMode && <div className="demo-badge" title="Demo: sample data. What you import and save stays in this browser tab only.">DEMO</div>}
       <div className="user" title={`Signed in as ${userName}`}>{userName}</div>
     </header>
