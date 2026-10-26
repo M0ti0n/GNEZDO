@@ -1137,16 +1137,25 @@ th.num .th-sort { flex-direction: row-reverse; }
 .sidescroll > :not(.sidescroll-more) { scrollbar-width: none; }
 .sidescroll > :not(.sidescroll-more)::-webkit-scrollbar { display: none; }
 .sidescroll .is-dragging { cursor: grabbing; }
+/* the arrow sits on a solid end piece that hides what scrolls under it */
 .sidescroll-more {
-  position: absolute; top: 0; bottom: 1px; width: 40px; z-index: 2; display: grid; place-items: center;
-  color: var(--ink); border: 0; cursor: pointer;
+  position: absolute; top: 0; bottom: 1px; z-index: 2; display: flex; align-items: stretch;
+  padding: 8px 6px 6px; background: var(--fade); border: 0; cursor: pointer; color: var(--ink);
 }
-.sidescroll-more.is-left { left: 0; background: linear-gradient(90deg, var(--fade) 55%, transparent); justify-items: start; padding-left: 6px; }
-.sidescroll-more.is-right { right: 0; background: linear-gradient(270deg, var(--fade) 55%, transparent); justify-items: end; padding-right: 6px; }
-.sidescroll-more svg { width: 26px; height: 26px; padding: 5px; border-radius: 50%; background: #fff; box-shadow: 0 1px 5px rgba(20, 50, 30, .25); }
-.sidescroll-more:hover svg { background: var(--blue-tint); }
+.sidescroll-more.is-left { left: 0; box-shadow: 6px 0 8px -6px rgba(20, 50, 30, .25); }
+.sidescroll-more.is-right { right: 0; box-shadow: -6px 0 8px -6px rgba(20, 50, 30, .25); }
+/* tool strip: a tall rectangle outlined like the tool buttons, as tall as button and name */
+.sidescroll-btn {
+  display: grid; place-items: center; width: 28px;
+  background: #fff; border: 1.5px solid #3a3a3a; border-radius: 10px;
+}
+.sidescroll-btn svg { width: 18px; height: 18px; }
+.sidescroll-more:hover .sidescroll-btn { background: var(--blue-tint); }
 .itools-wrap { flex-shrink: 0; }
 .tabs-wrap { flex: 1; display: flex; --fade: var(--chrome); }
 .tabs-wrap .tabs { flex: 1; }
-.tabs-wrap .sidescroll-more svg { width: 24px; height: 24px; padding: 4px; }
+/* green bar: a square outlined in white */
+.tabs-wrap .sidescroll-more { padding: 0 6px; align-items: center; color: #fff; box-shadow: none; }
+.tabs-wrap .sidescroll-btn { width: 28px; height: 28px; background: transparent; border-color: rgba(255, 255, 255, .85); border-radius: 6px; }
+.tabs-wrap .sidescroll-more:hover .sidescroll-btn { background: rgba(255, 255, 255, .18); }
 .imp-note.is-skipped { color: #b45309; }

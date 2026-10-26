@@ -97,7 +97,7 @@ export function SideScroll({ children, className, wrapClassName = "", role, labe
     <div className={`sidescroll ${wrapClassName}`}>
       {ends.left && (
         <button type="button" className="sidescroll-more is-left" onClick={() => page(-1)} aria-label={`More ${more} to the left`} title={`More ${more}`}>
-          <Chevron left />
+          <span className="sidescroll-btn"><Chevron left /></span>
         </button>
       )}
       <div ref={row} className={`${className}${dragging ? " is-dragging" : ""}`} role={role} aria-label={label} onScroll={update}
@@ -107,7 +107,7 @@ export function SideScroll({ children, className, wrapClassName = "", role, labe
       </div>
       {ends.right && (
         <button type="button" className="sidescroll-more is-right" onClick={() => page(1)} aria-label={`More ${more} to the right`} title={`More ${more}`}>
-          <Chevron />
+          <span className="sidescroll-btn"><Chevron /></span>
         </button>
       )}
     </div>
