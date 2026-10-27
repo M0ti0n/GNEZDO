@@ -19,6 +19,13 @@ Unzip it, double-click `start.bat`, and open http://localhost:8090. Nothing to i
 **demo** (sample data, nothing saved) until a SQL Server connection is put in `config.json` — see
 [packaging/INSTALL.txt](packaging/INSTALL.txt).
 
+## Test parts
+
+**[⬇ Download TEST_PARTS_FOR_GNEZDO.7z](https://github.com/M0ti0n/GNEZDO/raw/main/test-parts/TEST_PARTS_FOR_GNEZDO.7z)**
+(in [`test-parts/`](test-parts/))
+
+DXF parts for trying the import: unpack the archive (7-Zip) and drop the folder on the Import panel.
+
 ## Run on the server (Docker)
 
 ```bash
