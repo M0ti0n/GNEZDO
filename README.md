@@ -7,8 +7,9 @@ Users work in the browser; parts, jobs and nests live in SQL Server.
 |---|---|---|
 | `frontend/` | Screens: home, tabs, imported parts panel, job part list | TypeScript + React (Vite) |
 | `backend/` | Web server and database: parts, imports, projects, jobs | C# / .NET 10, SQL Server |
+| `nesting/` | Nesting engine kept at hand: PackingSolver with our fixes, and our hole-filling pre-pass ([nesting/README.md](nesting/README.md)); not called by the app yet | C++, Python |
 
-Planned: DXF/DWG import worker (Python, ezdxf), nesting with PackingSolver (C++), postprocessor.
+Planned: DXF/DWG import worker (Python, ezdxf), connecting the nesting engine, postprocessor.
 
 ## Download a test build (Windows)
 

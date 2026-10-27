@@ -1,0 +1,858 @@
+#include "packingsolver/rectangleguillotine/solution.hpp"
+
+#include "rectangleguillotine/solution_builder.hpp"
+
+#include "optimizationtools/utils/utils.hpp"
+
+#include <fstream>
+
+using namespace packingsolver;
+using namespace packingsolver::rectangleguillotine;
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////// Node /////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+std::ostream& print(
+        std::ostream& os,
+        const std::vector<SolutionNode>& res,
+        SolutionNodeId id,
+        std::string tab)
+{
+    os << tab << res[id] << std::endl;
+    for (SolutionNodeId c: res[id].children)
+        print(os, res, c, tab + "  ");
+    return os;
+}
+
+std::ostream& packingsolver::rectangleguillotine::operator<<(
+        std::ostream& os,
+        const SolutionNode& node)
+{
+    os
+        << " f " << node.f
+        << " d " << node.d
+        << " l " << node.l
+        << " r " << node.r
+        << " b " << node.b
+        << " t " << node.t
+        << " item_type_id " << node.item_type_id;
+    return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////// Solution ///////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void Solution::update_indicators(
+        BinPos bin_pos)
+{
+    SolutionBin& bin = bins_[bin_pos];
+    const BinType& bin_type = instance().bin_type(bin.bin_type_id);
+    Area waste_before_bin = waste();
+
+    number_of_bins_ += bin.copies;
+    bin_copies_[bin.bin_type_id] += bin.copies;
+    cost_ += bin.copies * bin_type.cost;
+    if (instance().objective() == Objective::BinPackingCuttingCost) {
+        const CutCost& bin_cutting_cost = instance().parameters().cutting_costs[0];
+        cutting_cost_ += bin.copies * (bin_cutting_cost.fixed + bin_cutting_cost.variable * bin_type.area());
+    }
+    full_area_ += bin.copies * bin_type.area();
+    area_ = full_area_;
+    second_leftover_value_ = 0;
+    bin.resource_consumption.assign(bin_type.number_of_resources(), 0.0);
+
+    width_ = 0;
+    height_ = 0;
+    Counter bincurr_number_of_1_cuts = 0;
+    Length bincurr_end = (bin.first_cut_orientation == CutOrientation::Vertical)?
+        ((bin_type.right_trim_type == TrimType::Soft)?
+            bin_type.rect.w:
+            bin_type.rect.w - bin_type.right_trim):
+        ((bin_type.top_trim_type == TrimType::Soft)?
+            bin_type.rect.h:
+            bin_type.rect.h - bin_type.top_trim);
+    Counter subplate1curr_number_of_2_cuts = 0;
+    Length subpalte1curr_end = -1;
+    // Number of copies of each item type already placed in this bin, so
+    // far, at the point each item below is processed - needed to look up
+    // the correct entry of a per-copy resource consumption schedule.
+    std::vector<ItemPos> item_type_copies_in_bin(instance().number_of_item_types(), 0);
+    for (const SolutionNode& node: bin.nodes) {
+        if (node.f != -1 && node.item_type_id >= 0) {
+            number_of_items_ += bin.copies;
+            item_area_ += bin.copies * instance().item_type(node.item_type_id).area();
+            profit_ += bin.copies * instance().item_type(node.item_type_id).profit;
+            item_copies_[node.item_type_id] += bin.copies;
+            if (item_copies_[node.item_type_id]
+                    > instance().item_type(node.item_type_id).copies) {
+                item_copies_feasible_ = false;
+            }
+
+            // Update bin.resource_consumption.
+            const ItemType& item_type = instance().item_type(node.item_type_id);
+            for (const ItemResourceConsumption& consumption: item_type.resources[bin.bin_type_id]) {
+                ResourceId resource_id = consumption.resource_id;
+                const Resource& resource = bin_type.resource(resource_id);
+                const std::vector<double>& schedule = resource.item_consumptions[consumption.consumption_pos].second;
+                double previous_consumption = bin.resource_consumption[resource_id];
+                bin.resource_consumption[resource_id]
+                    += schedule_consumption(
+                            schedule,
+                            item_type_copies_in_bin[node.item_type_id]);
+                if (bin.resource_consumption[resource_id] > resource.capacity) {
+                    if (resource.penalize) {
+                        // Charge the penalty only once per bin, the first
+                        // time consumption crosses the capacity (it never
+                        // decreases afterwards, so this check would
+                        // otherwise keep firing for every subsequent item
+                        // added to the same bin).
+                        if (previous_consumption <= resource.capacity)
+                            profit_ -= resource.penalty;
+                    } else {
+                        resource_feasible_ = false;
+                    }
+                }
+            }
+            ++item_type_copies_in_bin[node.item_type_id];
+        }
+
+        // Subtract residual area. The area of the bin doesn't include the
+        // trims, so only the part of the residual inside the trims.
+        if (node.item_type_id == -3) {
+            Length l = (std::max)(node.l, bin_type.left_trim);
+            Length r = (std::min)(node.r, bin_type.rect.w - bin_type.right_trim);
+            Length b = (std::max)(node.b, bin_type.bottom_trim);
+            Length t = (std::min)(node.t, bin_type.rect.h - bin_type.top_trim);
+            if (l < r && b < t)
+                area_ -= (Area)(t - b) * (r - l);
+        }
+
+        // Update width_ and height_.
+        if (node.d > 0 && node.item_type_id != -3) {
+            if (width_ < node.r)
+                width_ = node.r;
+            if (height_ < node.t)
+                height_ = node.t;
+        }
+
+        // Update second_leftover_value_.
+        if (node.d == 1 && node.item_type_id != -3)
+            second_leftover_value_ = 0;
+        if (node.d == 2 && node.item_type_id != -1)
+            second_leftover_value_ = 0;
+        if (node.d == 2 && node.item_type_id == -1)
+            second_leftover_value_ = (node.r - node.l) * (node.t - node.b);
+
+        // Check minimum waste length.
+        if (node.d >= 1
+                && node.item_type_id < 0) {
+            if ((node.r - node.l
+                        < instance().parameters().minimum_waste_length)
+                    || (node.t - node.b
+                        < instance().parameters().minimum_waste_length)) {
+                std::cout << "minimum_waste_length_feasible_ = false" << std::endl;
+                std::cout << "bin_pos " << bin_pos << " node " << node << std::endl;
+                minimum_waste_length_feasible_ = false;
+            }
+        }
+
+        // Check minimum distance between 1-cuts.
+        if (node.d == 1
+                && node.item_type_id == -2) {
+            if ((bin.first_cut_orientation == CutOrientation::Vertical
+                        && node.r - node.l
+                        < instance().parameters().minimum_distance_1_cuts)
+                    || (bin.first_cut_orientation == CutOrientation::Horizontal
+                        && node.t - node.b
+                        < instance().parameters().minimum_distance_1_cuts)) {
+                //std::cout << "minimum_distance_1_cuts = false" << std::endl;
+                minimum_distance_1_cuts_feasible_ = false;
+            }
+        }
+
+        // Check maximum distance between 1-cuts.
+        if (instance().parameters().maximum_distance_1_cuts >= 0) {
+            if (node.d == 1
+                    && node.item_type_id == -2) {
+                if ((bin.first_cut_orientation == CutOrientation::Vertical
+                            && node.r - node.l
+                            > instance().parameters().maximum_distance_1_cuts)
+                        || (bin.first_cut_orientation == CutOrientation::Horizontal
+                            && node.t - node.b
+                            > instance().parameters().maximum_distance_1_cuts)) {
+                    //std::cout << "maximum_distance_1_cuts = false" << std::endl;
+                    maximum_distance_1_cuts_feasible_ = false;
+                }
+            }
+        }
+
+        // Check minimum distance between 2-cuts.
+        if (node.d == 2
+                && node.item_type_id == -2) {
+            if ((bin.first_cut_orientation == CutOrientation::Vertical
+                        && node.t - node.b
+                        < instance().parameters().minimum_distance_2_cuts)
+                    || (bin.first_cut_orientation == CutOrientation::Horizontal
+                        && node.r - node.l
+                        < instance().parameters().minimum_distance_2_cuts)) {
+                //std::cout << "minimum_distance_2_cuts = false" << std::endl;
+                minimum_distance_2_cuts_feasible_ = false;
+            }
+        }
+
+        // Check maximum distance between 2-cuts.
+        if (instance().parameters().maximum_distance_2_cuts >= 0) {
+            if (node.d == 2
+                    && node.item_type_id == -2) {
+                if ((bin.first_cut_orientation == CutOrientation::Vertical
+                            && node.t - node.b
+                            > instance().parameters().maximum_distance_2_cuts)
+                        || (bin.first_cut_orientation == CutOrientation::Horizontal
+                            && node.r - node.l
+                            > instance().parameters().maximum_distance_2_cuts)) {
+                    //std::cout << "maximum_distance_2_cuts = false" << std::endl;
+                    maximum_distance_2_cuts_feasible_ = false;
+                }
+            }
+        }
+
+        // Check maximum number of 1-cuts.
+        if (instance().parameters().maximum_number_1_cuts >= 0) {
+            if (node.d == 1) {
+                if ((bin.first_cut_orientation == CutOrientation::Vertical
+                            && node.r != bincurr_end)
+                        || (bin.first_cut_orientation == CutOrientation::Horizontal
+                            && node.t != bincurr_end)) {
+                    bincurr_number_of_1_cuts++;
+                    if (bincurr_number_of_1_cuts
+                            > instance().parameters().maximum_number_1_cuts) {
+                        //std::cout << "maximum_number_1_cuts = false" << std::endl;
+                        maximum_number_1_cuts_feasible_ = false;
+                    }
+                }
+            }
+        }
+
+        // Check maximum number of 2-cuts.
+        if (instance().parameters().maximum_number_2_cuts >= 0) {
+            if (node.d == 1) {
+                subpalte1curr_end = (bin.first_cut_orientation == CutOrientation::Vertical)?
+                    node.t:
+                    node.r;
+                subplate1curr_number_of_2_cuts = 0;
+            }
+            if (node.d == 2) {
+                if ((bin.first_cut_orientation == CutOrientation::Vertical
+                            && node.t != subpalte1curr_end)
+                        || (bin.first_cut_orientation == CutOrientation::Horizontal
+                            && node.r != subpalte1curr_end)) {
+                    subplate1curr_number_of_2_cuts++;
+                    if (subplate1curr_number_of_2_cuts
+                            > instance().parameters().maximum_number_2_cuts) {
+                        //std::cout << "maximum_number_2_cuts = false" << std::endl;
+                        maximum_number_2_cuts_feasible_ = false;
+                    }
+                }
+            }
+        }
+
+        // Update cutting_cost_ for the 'BinPackingCuttingCost' objective.
+        // Whether odd depths (1, 3) or even depths (2, 4) are cuts along the
+        // width axis (checked/measured like 1-cuts) vs. the height axis
+        // (checked/measured like 2-cuts) depends on bin.first_cut_orientation,
+        // exactly like the maximum_number_1_cuts / minimum_distance_2_cuts /
+        // etc. checks above. A cut is only real (chargeable) if it doesn't
+        // just extend to its parent's own boundary.
+        if (instance().objective() == Objective::BinPackingCuttingCost
+                && node.d >= 1 && node.d <= 4) {
+            const CutCost& node_cutting_cost = (node.d < (Counter)instance().parameters().cutting_costs.size())?
+                instance().parameters().cutting_costs[node.d]:
+                CutCost();
+            bool is_odd_depth = (node.d % 2 == 1);
+            bool is_width_axis_cut = (bin.first_cut_orientation == CutOrientation::Vertical)?
+                is_odd_depth:
+                !is_odd_depth;
+            bool is_real_cut = (is_width_axis_cut)?
+                (node.r != bin.nodes[node.f].r):
+                (node.t != bin.nodes[node.f].t);
+            if (is_real_cut) {
+                Length length = (is_width_axis_cut)?
+                    (node.t - node.b):
+                    (node.r - node.l);
+                cutting_cost_ += bin.copies * (node_cutting_cost.fixed + node_cutting_cost.variable * length);
+            }
+        }
+
+        // Check stacks.
+        if (node.d >= 1
+                && node.item_type_id >= 0) {
+            const ItemType& item_type = instance().item_type(node.item_type_id);
+            if (item_type.stack_pos > 0) {
+                ItemTypeId item_type_id_pred = instance().item(
+                        item_type.stack_id,
+                        item_type.stack_pos - 1);
+                const ItemType& item_type_pred = instance().item_type(item_type_id_pred);
+                if (item_copies(item_type_id_pred) != item_type_pred.copies) {
+                    //std::cout << "stacks_feasible = false" << std::endl;
+                    //std::cout << "item_type_id " << node.item_type_id
+                    //    << " stack_id " << item_type.stack_id
+                    //    << " stack_pos " << item_type.stack_pos
+                    //    << std::endl;
+                    //std::cout << "item_type_id_pred " << item_type_id_pred
+                    //    << " stack_id " << item_type_pred.stack_id
+                    //    << " stack_pos " << item_type_pred.stack_pos
+                    //    << " copies " << item_copies(item_type_id_pred)
+                    //    << " / " << item_type_pred.copies
+                    //    << std::endl;
+                    stacks_feasible_ = false;
+                }
+            }
+        }
+
+        // Check defect intersections.
+        if (node.d >= 1
+                && node.item_type_id >= 0) {
+            DefectId k = instance().rect_intersects_defect(
+                    node.l,
+                    node.r,
+                    node.b,
+                    node.t,
+                    bin_type);
+            if (k != -1) {
+                //std::cout << "defects_feasible = false" << std::endl;
+                defects_feasible_ = false;
+            }
+        }
+
+        // Check trims.
+        if (node.d >= 1
+                && node.item_type_id >= 0) {
+            if (node.l < bin_type.left_trim
+                    || node.r > bin_type.rect.w - bin_type.right_trim
+                    || node.b < bin_type.bottom_trim
+                    || node.t > bin_type.rect.h - bin_type.top_trim) {
+                trims_feasible_ = false;
+            }
+        }
+
+        // Check cuts through defects.
+        if (!instance().parameters().cut_through_defects
+                && node.d >= 1) {
+            DefectId kl = instance().x_intersects_defect(
+                    node.l,
+                    node.b,
+                    node.t,
+                    bin_type);
+            DefectId kr = instance().x_intersects_defect(
+                    node.r,
+                    node.b,
+                    node.t,
+                    bin_type);
+            DefectId kb = instance().y_intersects_defect(
+                    node.l,
+                    node.r,
+                    node.b,
+                    bin_type);
+            DefectId kt = instance().y_intersects_defect(
+                    node.l,
+                    node.r,
+                    node.t,
+                    bin_type);
+            if (kl != -1 || kr != -1 || kb != -1 || kt != -1) {
+                cut_through_defects_feasible_ = false;
+            }
+        }
+    }
+    // Staging analysis.
+    //
+    // First pass: compute the maximum depth of any CUT node in this bin.
+    // This is the "real" staged count as if all cuts were Exact.
+    for (const SolutionNode& node: bin.nodes) {
+        if (node.f != -1) {
+            const SolutionNode& parent = bin.nodes[node.f];
+            if (node.l == parent.l && node.r == parent.r && node.b == parent.b && node.t == parent.t)
+                continue;
+        }
+        bin.number_of_stages_real = std::max(
+                bin.number_of_stages_real, (Counter)node.d);
+    }
+
+    // Second pass: classify the deepest-level CUT nodes.
+    //
+    // A pattern is non-exact if ALL depth-k CUT nodes (where k =
+    // number_of_stages_real) contain no cuts or a single cut separating one
+    // item from one waste (i.e. ≤ 2 non-residual children, exactly 1 item).
+    // A pattern is Roadef2018-style if ALL depth-k CUT nodes are valid
+    // Roadef2018 extra cuts (≥ 2 item children, ≤ 3 non-residual children
+    // total).  If any depth-k CUT node is a regular intermediate stage the
+    // flags remain false.
+    if (bin.number_of_stages_real > 0) {
+        bool all_non_exact = true;
+        bool all_roadef2018_compatible = true;
+        bool any_roadef2018_style = false;
+        bool found = false;
+
+        for (SolutionNodeId node_id = 0;
+                node_id < (SolutionNodeId)bin.nodes.size();
+                ++node_id) {
+            const SolutionNode& node = bin.nodes[node_id];
+            if (node.item_type_id != -2 || node.d != bin.number_of_stages_real - 1)
+                continue;
+            found = true;
+            Counter item_children = 0;
+            Counter total_children = 0;
+            for (SolutionNodeId child_id: node.children) {
+                const SolutionNode& child = bin.nodes[child_id];
+                if (child.item_type_id == -3)  // residual — ignore
+                    continue;
+                ++total_children;
+                if (child.item_type_id >= 0)
+                    ++item_children;
+            }
+            if (item_children == 1 && total_children <= 2) {
+                // Non-exact style: one item + at most one waste.
+            } else if (item_children >= 2 && total_children <= 3) {
+                // Roadef2018 style: two items + at most one waste.
+                any_roadef2018_style = true;
+                all_non_exact = false;
+            } else {
+                // Regular intermediate stage: too many children or no items.
+                all_non_exact = false;
+                all_roadef2018_compatible = false;
+            }
+        }
+
+        if (found) {
+            bin.cut_type_is_non_exact = all_non_exact;
+            bin.cut_type_is_roadef2018 = all_roadef2018_compatible && any_roadef2018_style;
+        }
+    }
+
+    // Compute the effective number of stages for this bin.
+    // If the deepest CUT level consists entirely of valid non-exact or
+    // Roadef2018 extra cuts, that level does not count as a full stage.
+    bool extra_cut_applies
+        = (instance().parameters().cut_type == CutType::NonExact
+                && bin.cut_type_is_non_exact)
+        || (instance().parameters().cut_type == CutType::Roadef2018
+                && (bin.cut_type_is_non_exact || bin.cut_type_is_roadef2018));
+    bin.number_of_stages = extra_cut_applies?
+        bin.number_of_stages_real - 1:
+        bin.number_of_stages_real;
+
+    // Aggregate staging information to the solution level.
+    this->number_of_stages_ = std::max(this->number_of_stages_, bin.number_of_stages);
+
+    // Number-of-stages feasibility check.
+    if (this->number_of_stages_ > instance().parameters().number_of_stages) {
+        this->number_of_stages_feasible_ = false;
+    }
+
+    if (!minimum_waste_length_feasible()) {
+        for (const SolutionNode& node: bin.nodes) {
+            std::cout << node << std::endl;
+        }
+        write("solution_rectangleguillotine.csv");
+        exit(1);
+    }
+
+    cutting_cost_ += instance().parameters().waste_cost * (waste() - waste_before_bin);
+
+    // Update number_of_infeasible_item_copies_min_.
+    this->number_of_infeasible_item_copies_min_ = 0;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance().number_of_item_types();
+            ++item_type_id) {
+        if (item_copies_[item_type_id] < instance().item_type(item_type_id).copies_min)
+            this->number_of_infeasible_item_copies_min_++;
+    }
+
+    // Feasibility callback.
+    FeasibilityCallbackResult callback_result = instance().feasibility_callback()(*this);
+    callback_feasible_ = callback_result.feasible;
+    callback_resources_ = std::move(callback_result.resources);
+
+    // Aggregate feasibility flags into the overall feasibility indicator.
+    // Recomputed (not accumulated) on every call since the feasibility
+    // callback's result is not required to be monotonic as bins are added.
+    feasible_ = number_of_stages_feasible_
+        && minimum_waste_length_feasible_
+        && minimum_distance_1_cuts_feasible_
+        && maximum_distance_1_cuts_feasible_
+        && minimum_distance_2_cuts_feasible_
+        && maximum_distance_2_cuts_feasible_
+        && maximum_number_1_cuts_feasible_
+        && maximum_number_2_cuts_feasible_
+        && stacks_feasible_
+        && defects_feasible_
+        && trims_feasible_
+        && cut_through_defects_feasible_
+        && item_copies_feasible_
+        && resource_feasible_
+        && callback_feasible_
+        && (number_of_infeasible_item_copies_min_ == 0);
+}
+
+void Solution::append_bin(
+        const Solution& solution,
+        BinPos bin_pos,
+        BinPos copies,
+        const std::vector<BinTypeId>& bin_type_ids,
+        const std::vector<ItemTypeId>& item_type_ids)
+{
+    if (number_of_different_bins() > 0) {
+        SolutionNode& node = bins_.back().nodes.back();
+        if (node.item_type_id == -3) {
+            node.item_type_id = -1;
+            area_ -= (node.t - node.b) * (node.r - node.l);
+        }
+    }
+    const SolutionBin& bin_old = solution.bin(bin_pos);
+    BinTypeId bin_type_id = (bin_type_ids.empty())?
+        bin_old.bin_type_id:
+        bin_type_ids[bin_old.bin_type_id];
+    SolutionBin bin;
+    bin.bin_type_id = bin_type_id;
+    bin.copies = copies;
+    bin.first_cut_orientation = bin_old.first_cut_orientation;
+    for (SolutionNode node: bin_old.nodes) {
+        if (node.t == -4) {
+        } else if (node.f == -1) {
+            node.item_type_id = bin_type_id;
+            const BinType& new_bin_type = instance().bin_type(bin_type_id);
+            node.r = new_bin_type.rect.w;
+            node.t = new_bin_type.rect.h;
+        } else if (node.item_type_id >= 0) {
+            node.item_type_id = (item_type_ids.empty())?
+                node.item_type_id:
+                item_type_ids[node.item_type_id];
+        }
+        bin.nodes.push_back(node);
+    }
+    bins_.push_back(bin);
+    update_indicators(bins_.size() - 1);
+}
+
+void Solution::append_bins(
+        const Solution& solution,
+        const std::vector<BinTypeId>& bin_type_ids,
+        const std::vector<ItemTypeId>& item_type_ids)
+{
+    for (BinPos bin_pos = 0; bin_pos < solution.number_of_bins(); ++bin_pos)
+        append_bin(solution, bin_pos, 1, bin_type_ids, item_type_ids);
+}
+
+void Solution::append_empty_bin(
+        BinTypeId bin_type_id,
+        BinPos copies)
+{
+    CutOrientation first_cut_orientation = (instance().parameters().first_stage_orientation != CutOrientation::Any)?
+        instance().parameters().first_stage_orientation:
+        CutOrientation::Vertical;
+    SolutionBuilder solution_builder(instance());
+    solution_builder.add_bin(bin_type_id, copies, first_cut_orientation);
+    append_bins(solution_builder.build(), {}, {});
+}
+
+bool Solution::operator<(const Solution& solution) const
+{
+    // Check feasibility.
+    if (!solution.feasible_)
+        return false;
+    if (!feasible_)
+        return true;
+
+    switch (instance().objective()) {
+    case Objective::BinPacking: {
+        return solution.number_of_bins() < number_of_bins();
+    } case Objective::BinPackingWithLeftovers: {
+        if (solution.waste() != waste())
+            return solution.waste() < waste();
+        return solution.second_leftover_value() > second_leftover_value();
+    } case Objective::OpenDimensionX: {
+        return solution.width() < width();
+    } case Objective::OpenDimensionY: {
+        return solution.height() < height();
+    } case Objective::BinPackingCuttingCost: {
+        return solution.cutting_cost() < cutting_cost();
+    } case Objective::Knapsack: {
+        return strictly_greater_profit(solution.profit(), profit());
+    } case Objective::Feasibility: {
+        return strictly_greater_profit(solution.profit(), profit());
+    } case Objective::VariableSizedBinPacking: {
+        return strictly_lesser_cost(solution.cost(), cost());
+    } default: {
+        std::stringstream ss;
+        ss << FUNC_SIGNATURE << ": "
+            << "solution rectangleguillotine::Solution does not support objective \""
+            << instance().objective() << "\"";
+        throw std::logic_error(ss.str());
+    }
+    }
+}
+
+void Solution::write(
+        const std::string& certificate_path) const
+{
+    if (certificate_path.empty())
+        return;
+    std::ofstream file{certificate_path};
+    if (!file.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + certificate_path + "\".");
+    }
+    write(file);
+}
+
+void Solution::write(
+        std::ostream& os) const
+{
+    os << "PLATE_ID,COPIES,NODE_ID,X,Y,WIDTH,HEIGHT,TYPE,CUT,PARENT" << std::endl;
+    SolutionNodeId offset = 0;
+    for (BinPos bin_pos = 0; bin_pos < number_of_different_bins(); ++bin_pos) {
+        const SolutionBin& solution_bin = bins_[bin_pos];
+        BinTypeId bin_type_id = solution_bin.bin_type_id;
+        const BinType& bin_type = instance().bin_type(bin_type_id);
+        for (SolutionNodeId node_id = 0;
+                node_id < (SolutionNodeId)solution_bin.nodes.size();
+                ++node_id) {
+            const SolutionNode& n = solution_bin.nodes[node_id];
+            os
+                << bin_pos << ","
+                << solution_bin.copies << ","
+                << offset + node_id << ","
+                << n.l << ","
+                << n.b << ","
+                << n.r - n.l << ","
+                << n.t - n.b << ","
+                << n.item_type_id << ","
+                << n.d << ",";
+            if (n.f != -1)
+                os << offset + n.f;
+            os << std::endl;
+        }
+        offset += solution_bin.nodes.size();
+        for (const Defect& defect: bin_type.defects) {
+            os
+                << bin_pos << ","
+                << solution_bin.copies << ","
+                << -1 << ","
+                << defect.pos.x << ","
+                << defect.pos.y << ","
+                << defect.rect.w << ","
+                << defect.rect.h << ","
+                << -4 << ","
+                << -1 << ","
+                << std::endl;
+        }
+    }
+}
+
+nlohmann::json Solution::to_json() const
+{
+    return nlohmann::json {
+        {"NumberOfItems", number_of_items()},
+        {"ItemArea", item_area()},
+        {"ItemProfit", profit()},
+        {"NumberOfBins", number_of_bins()},
+        {"NumberOfDifferentBins", number_of_different_bins()},
+        {"BinArea", full_area()},
+        {"BinCost", cost()},
+        {"CuttingCost", cutting_cost()},
+        {"Waste", waste()},
+        {"WastePercentage", waste_percentage()},
+        {"FullWaste", full_waste()},
+        {"FullWastePercentage", full_waste_percentage()},
+        {"Width", width()},
+        {"Height", height()},
+        {"SecondLeftoverValue", second_leftover_value()},
+        {"NumberOfStages", number_of_stages()},
+        {"Feasible", {
+            {"Feasible", feasible()},
+            {"NumberOfStages", number_of_stages_feasible()},
+            {"MinimumWasteLength", minimum_waste_length_feasible()},
+            {"MinimumDistance1Cuts", minimum_distance_1_cuts_feasible()},
+            {"MaximumDistance1Cuts", maximum_distance_1_cuts_feasible()},
+            {"MinimumDistance2Cuts", minimum_distance_2_cuts_feasible()},
+            {"MaximumDistance2Cuts", maximum_distance_2_cuts_feasible()},
+            {"MaximumNumber1Cuts", maximum_number_1_cuts_feasible()},
+            {"MaximumNumber2Cuts", maximum_number_2_cuts_feasible()},
+            {"Stacks", stacks_feasible()},
+            {"Defects", defects_feasible()},
+            {"Trims", trims_feasible()},
+            {"CutThroughDefects", cut_through_defects_feasible()},
+            {"ItemCopies", item_copies_feasible()},
+        }},
+    };
+}
+
+void Solution::format(
+        std::ostream& os,
+        int verbosity_level) const
+{
+    if (verbosity_level >= 1) {
+        os
+            << "Number of items:           " << optimizationtools::Ratio<ItemPos>(number_of_items(), instance().number_of_items()) << std::endl
+            << "Item area:                 " << optimizationtools::Ratio<Area>(item_area(), instance().item_area()) << std::endl
+            << "Item profit:               " << optimizationtools::Ratio<Profit>(profit(), instance().item_profit()) << std::endl
+            << "Number of bins:            " << optimizationtools::Ratio<BinPos>(number_of_bins(), instance().number_of_bins()) << std::endl
+            << "Number of different bins:  " << number_of_different_bins() << std::endl
+            << "Bin area:                  " << optimizationtools::Ratio<BinPos>(full_area(), instance().bin_area()) << std::endl
+            << "Bin cost:                  " << cost() << std::endl
+            << "Cutting cost:              " << cutting_cost() << std::endl
+            << "Waste:                     " << waste() << " (" << 100 * waste_percentage() << "%)" << std::endl
+            << "Full waste:                " << full_waste() << " (" << 100 * full_waste_percentage() << "%)" << std::endl
+            << "Width:                     " << width() << std::endl
+            << "Height:                    " << height() << std::endl
+            << "Second leftover value:     " << second_leftover_value() << std::endl
+            << "Number of stages:          " << number_of_stages() << std::endl
+            << "Feasible:                  " << feasible() << std::endl
+            << "    Number of stages:      " << number_of_stages_feasible() << std::endl
+            << "    Min. waste length:     " << minimum_waste_length_feasible() << std::endl
+            << "    Min. dist. 1-cuts:     " << minimum_distance_1_cuts_feasible() << std::endl
+            << "    Max. dist. 1-cuts:     " << maximum_distance_1_cuts_feasible() << std::endl
+            << "    Min. dist. 2-cuts:     " << minimum_distance_2_cuts_feasible() << std::endl
+            << "    Max. dist. 2-cuts:     " << maximum_distance_2_cuts_feasible() << std::endl
+            << "    Max. no. 1-cuts:       " << maximum_number_1_cuts_feasible() << std::endl
+            << "    Max. no. 2-cuts:       " << maximum_number_2_cuts_feasible() << std::endl
+            << "    Stacks:                " << stacks_feasible() << std::endl
+            << "    Defects:               " << defects_feasible() << std::endl
+            << "    Trims:                 " << trims_feasible() << std::endl
+            << "    Cut through defects:   " << cut_through_defects_feasible() << std::endl
+            << "    Item copies:           " << item_copies_feasible() << std::endl
+            ;
+    }
+
+    if (verbosity_level >= 2) {
+        os
+            << std::right << std::endl
+            << std::setw(12) << "Bin"
+            << std::setw(12) << "Type"
+            << std::setw(12) << "Copies"
+            << std::endl
+            << std::setw(12) << "---"
+            << std::setw(12) << "----"
+            << std::setw(12) << "------"
+            << std::endl;
+        for (BinPos bin_pos = 0;
+                bin_pos < number_of_different_bins();
+                ++bin_pos) {
+            os
+                << std::setw(12) << bin_pos
+                << std::setw(12) << bin(bin_pos).bin_type_id
+                << std::setw(12) << bin(bin_pos).copies
+                << std::endl;
+        }
+    }
+
+    if (verbosity_level >= 3) {
+        os
+            << std::right << std::endl
+            << std::setw(12) << "Bin"
+            << std::setw(12) << "Node"
+            << std::setw(12) << "Parent"
+            << std::setw(12) << "Depth"
+            << std::setw(12) << "Left"
+            << std::setw(12) << "Right"
+            << std::setw(12) << "Bottom"
+            << std::setw(12) << "Top"
+            << std::setw(12) << "Item"
+            << std::endl
+            << std::setw(12) << "---"
+            << std::setw(12) << "----"
+            << std::setw(12) << "------"
+            << std::setw(12) << "-----"
+            << std::setw(12) << "----"
+            << std::setw(12) << "-----"
+            << std::setw(12) << "------"
+            << std::setw(12) << "---"
+            << std::setw(12) << "----"
+            << std::endl;
+        for (BinPos bin_pos = 0; bin_pos < number_of_different_bins(); ++bin_pos) {
+            const SolutionBin& solution_bin = bins_[bin_pos];
+            for (SolutionNodeId node_id = 0;
+                    node_id < (SolutionNodeId)solution_bin.nodes.size();
+                    ++node_id) {
+                const SolutionNode& node = solution_bin.nodes[node_id];
+                //const BinType& bin_type = instance().bin_type(bin(bin_pos).i);
+                os
+                    << std::setw(12) << bin_pos
+                    << std::setw(12) << node_id
+                    << std::setw(12) << node.f
+                    << std::setw(12) << node.d
+                    << std::setw(12) << node.l
+                    << std::setw(12) << node.r
+                    << std::setw(12) << node.b
+                    << std::setw(12) << node.t
+                    << std::setw(12) << node.item_type_id
+                    << std::endl;
+            }
+        }
+    }
+
+    if (verbosity_level >= 3) {
+        os
+            << std::right << std::endl
+            << std::setw(12) << "Item type"
+            << std::setw(12) << "Width"
+            << std::setw(12) << "Height"
+            << std::setw(12) << "Copies"
+            << std::endl
+            << std::setw(12) << "---------"
+            << std::setw(12) << "-----"
+            << std::setw(12) << "------"
+            << std::setw(12) << "------"
+            << std::endl;
+        for (ItemTypeId item_type_id = 0;
+                item_type_id < instance().number_of_item_types();
+                ++item_type_id) {
+            const ItemType& item_type = instance().item_type(item_type_id);
+            os
+                << std::setw(12) << item_type_id
+                << std::setw(12) << item_type.rect.w
+                << std::setw(12) << item_type.rect.h
+                << std::setw(12) << item_copies(item_type_id)
+                << std::endl;
+        }
+    }
+}
+
+bool packingsolver::rectangleguillotine::operator==(
+        const SolutionNode& solution_node_1,
+        const SolutionNode& solution_node_2)
+{
+    return solution_node_1.f == solution_node_2.f
+        && solution_node_1.d == solution_node_2.d
+        && solution_node_1.l == solution_node_2.l
+        && solution_node_1.r == solution_node_2.r
+        && solution_node_1.b == solution_node_2.b
+        && solution_node_1.t == solution_node_2.t
+        && solution_node_1.children == solution_node_2.children
+        && solution_node_1.item_type_id == solution_node_2.item_type_id;
+}
+
+bool packingsolver::rectangleguillotine::operator!=(
+        const SolutionNode& solution_node_1,
+        const SolutionNode& solution_node_2)
+{
+    return !(solution_node_1 == solution_node_2);
+}
+
+bool packingsolver::rectangleguillotine::operator==(
+        const SolutionBin& solution_bin_1,
+        const SolutionBin& solution_bin_2)
+{
+    return solution_bin_1.bin_type_id == solution_bin_2.bin_type_id
+        && solution_bin_1.first_cut_orientation == solution_bin_2.first_cut_orientation
+        && solution_bin_1.nodes == solution_bin_2.nodes;
+}
+
+bool packingsolver::rectangleguillotine::operator!=(
+        const SolutionBin& solution_bin_1,
+        const SolutionBin& solution_bin_2)
+{
+    return !(solution_bin_1 == solution_bin_2);
+}

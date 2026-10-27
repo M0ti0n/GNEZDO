@@ -1,0 +1,149 @@
+# Enable FetchContent.
+include(FetchContent)
+
+# Fetch boost.
+if(PACKINGSOLVER_BUILD_MAIN OR PACKINGSOLVER_BUILD_TEST)
+    set(BOOST_INCLUDE_LIBRARIES thread filesystem system program_options dynamic_bitset)
+    set(BOOST_ENABLE_CMAKE ON)
+    FetchContent_Declare(
+            Boost
+            URL https://github.com/boostorg/boost/releases/download/boost-1.84.0/boost-1.84.0.tar.xz
+            EXCLUDE_FROM_ALL)
+    FetchContent_MakeAvailable(Boost)
+endif()
+
+# Fetch googletest.
+if(PACKINGSOLVER_BUILD_TEST)
+    FetchContent_Declare(
+            googletest
+            URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip)
+    # For Windows: Prevent overriding the parent project's compiler/linker settings
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    set(INSTALL_GTEST OFF)
+    FetchContent_MakeAvailable(googletest)
+endif()
+
+# Fetch fontanf/optimizationtools.
+set(OPTIMIZATIONTOOLS_BUILD_TEST OFF)
+FetchContent_Declare(
+    optimizationtools
+    GIT_REPOSITORY https://github.com/fontanf/optimizationtools.git
+    GIT_TAG 7e29ad3e2dab11a44887fbcc9382188c5d0ead12
+    #SOURCE_DIR "${PROJECT_SOURCE_DIR}/../optimizationtools/"
+    EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(optimizationtools)
+
+# Fetch fontanf/shape.
+set(SHAPE_BUILD_TEST OFF)
+FetchContent_Declare(
+    shape
+    GIT_REPOSITORY https://github.com/fontanf/shape.git
+    GIT_TAG a4efbe93472fb47144d469c2de35b9f25386bc87
+    #SOURCE_DIR "${PROJECT_SOURCE_DIR}/../shape/"
+    EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(shape)
+
+# Fetch Highs.
+set(BUILD_SHARED_LIBS OFF)
+FetchContent_Declare(
+    highs
+    URL https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.13.1.zip
+    EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(highs)
+
+# Fetch fontanf/mathoptsolverscmake.
+if (PACKINGSOLVER_USE_CLP)
+    set(MATHOPTSOLVERSCMAKE_USE_CLP ON)
+endif()
+if (PACKINGSOLVER_USE_HIGHS)
+    set(MATHOPTSOLVERSCMAKE_USE_HIGHS ON)
+endif()
+if (PACKINGSOLVER_USE_KNITRO)
+    set(MATHOPTSOLVERSCMAKE_USE_KNITRO oN)
+endif()
+FetchContent_Declare(
+    mathoptsolverscmake
+    GIT_REPOSITORY https://github.com/fontanf/mathoptsolverscmake.git
+    GIT_TAG 358904e29889b129ec2f733866abd8d18f7a4978
+    #SOURCE_DIR "${PROJECT_SOURCE_DIR}/../mathoptsolverscmake/"
+    EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(mathoptsolverscmake)
+
+# Fetch fontanf/knapsacksolver.
+set(KNAPSACKSOLVER_BUILD_MAIN OFF)
+set(KNAPSACKSOLVER_BUILD_TEST OFF)
+FetchContent_Declare(
+    knapsacksolver
+    GIT_REPOSITORY https://github.com/fontanf/knapsacksolver.git
+    GIT_TAG 605153f85b0781ae0c2b7548a18639ef77d25c09
+    #SOURCE_DIR "${PROJECT_SOURCE_DIR}/../knapsacksolver/"
+    EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(knapsacksolver)
+
+# Fetch fontanf/multiplechoicesubsetsumsolver.
+set(MULTIPLECHOICESUBSETSUMSOLVER_BUILD_MAIN OFF)
+set(MULTIPLECHOICESUBSETSUMSOLVER_BUILD_TEST OFF)
+FetchContent_Declare(
+    multiplechoicesubsetsumsolver
+    GIT_REPOSITORY https://github.com/fontanf/multiplechoicesubsetsumsolver.git
+    GIT_TAG 83406f59044425aef1391030db0b29333c208d7f
+    #SOURCE_DIR "${PROJECT_SOURCE_DIR}/../multiplechoicesubsetsumsolver/"
+    EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(multiplechoicesubsetsumsolver)
+
+# Fetch fontanf/subsetsumsolver.
+set(SUBSETSUMSOLVER_BUILD_MAIN OFF)
+set(SUBSETSUMSOLVER_BUILD_TEST OFF)
+FetchContent_Declare(
+    subsetsumsolver
+    GIT_REPOSITORY https://github.com/fontanf/subsetsumsolver.git
+    GIT_TAG 2ba9d52e87cf01d0dd80df082db5539d5d5850b8
+    #SOURCE_DIR "${PROJECT_SOURCE_DIR}/../subsetsumsolver/"
+    EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(subsetsumsolver)
+
+# Fetch fontanf/treesearchsolver.
+set(TREESEARCHSOLVER_BUILD_TEST OFF)
+set(TREESEARCHSOLVER_BUILD_EXAMPLES OFF)
+FetchContent_Declare(
+    treesearchsolver
+    GIT_REPOSITORY https://github.com/fontanf/treesearchsolver.git
+    GIT_TAG b7254420989dd804144d16b898f323f1d606dda4
+    #SOURCE_DIR "${PROJECT_SOURCE_DIR}/../treesearchsolver/"
+    EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(treesearchsolver)
+
+# Fetch fontanf/localsearchsolver.
+set(LOCALSEARCHSOLVER_BUILD_TEST OFF)
+set(LOCALSEARCHSOLVER_BUILD_EXAMPLES OFF)
+FetchContent_Declare(
+    localsearchsolver
+    GIT_REPOSITORY https://github.com/fontanf/localsearchsolver.git
+    GIT_TAG 237395a1fb7b5e1e586a1d3bcb22a38ec958616f
+    #SOURCE_DIR "${PROJECT_SOURCE_DIR}/../localsearchsolver/"
+    EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(localsearchsolver)
+
+# Fetch fontanf/columngenerationsolver.
+set(COLUMNGENERATIONSOLVER_USE_CLP ${PACKINGSOLVER_USE_CLP})
+set(COLUMNGENERATIONSOLVER_USE_HIGHS ${PACKINGSOLVER_USE_HIGHS})
+set(COLUMNGENERATIONSOLVER_BUILD_TEST OFF)
+set(COLUMNGENERATIONSOLVER_BUILD_EXAMPLES OFF)
+FetchContent_Declare(
+    columngenerationsolver
+    GIT_REPOSITORY https://github.com/fontanf/columngenerationsolver.git
+    GIT_TAG 091ee511c51352076974e62c85aed046f83e401a
+    #SOURCE_DIR "${PROJECT_SOURCE_DIR}/../columngenerationsolver/"
+    EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(columngenerationsolver)
+
+# Fetch fontanf/knitrocpp.
+if (PACKINGSOLVER_USE_KNITRO)
+    FetchContent_Declare(
+        knitrocpp
+        GIT_REPOSITORY https://github.com/fontanf/knitrocpp.git
+        GIT_TAG 6c63e3f3931329e2c1a2c22ce465fe8667516a36
+        #SOURCE_DIR "${PROJECT_SOURCE_DIR}/../knitrocpp/"
+        EXCLUDE_FROM_ALL)
+    FetchContent_MakeAvailable(knitrocpp)
+endif()

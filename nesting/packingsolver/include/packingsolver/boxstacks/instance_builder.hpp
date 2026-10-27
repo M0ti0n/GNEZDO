@@ -1,0 +1,318 @@
+#pragma once
+
+#include "packingsolver/boxstacks/instance.hpp"
+
+namespace packingsolver
+{
+namespace boxstacks
+{
+
+class InstanceBuilder
+{
+
+public:
+
+    /** Constructor. */
+    InstanceBuilder() { }
+
+    /** Set the objective. */
+    void set_objective(Objective objective) { instance_.objective_ = objective; }
+
+    /*
+     * Read from files
+     */
+
+    /** Read parameters from a file. */
+    void read_parameters(const std::string& parameters_path);
+
+    /** Read bin types from a file. */
+    void read_bin_types(const std::string& bins_path);
+
+    /** Read defects from a file. */
+    void read_defects(const std::string& defects_path);
+
+    /** Read item types from a file. */
+    void read_item_types(const std::string& items_path);
+
+    /**
+     * Read a full instance from a JSON file.
+     *
+     * The file contains the objective, the parameters, the bin types (with
+     * their defects and semi-trailer truck data) and the item types; it
+     * supports the same features as the CSV readers above.
+     */
+    void read(const std::string& instance_path);
+
+    /** Read an instance in the JSON format from a stream. */
+    void read(std::istream& is);
+
+    /*
+     * Set parameters
+     */
+
+    /** Set parameters. */
+    void set_parameters(const Parameters& parameters) { instance_.parameters_ = parameters; }
+
+    /**
+     * Set the absolute tolerance for bin weight comparisons (see
+     * 'Parameters::weight_tolerance').
+     *
+     * Use this when building a boxstacks sub-instance from an instance of a
+     * different problem type (so 'set_parameters()', which only copies a
+     * same-type 'Parameters', can't be used to propagate it) - pass the
+     * parent instance's own weight tolerance so both stay consistent.
+     */
+    void set_weight_tolerance(Weight weight_tolerance) { instance_.parameters_.weight_tolerance = weight_tolerance; }
+
+    /** Set the feasibility callback. */
+    void set_feasibility_callback(const FeasibilityCallback& feasibility_callback) { instance_.feasibility_callback_ = feasibility_callback; }
+
+    /** Set whether or not to consider weight constraints for a group. */
+    void set_group_weight_constraints(
+            GroupId group_id,
+            bool check_weight_constraints);
+
+    /** Set unloading constraint type. */
+    void set_unloading_constraint(rectangle::UnloadingConstraint unloading_constraint) { instance_.parameters_.unloading_constraint = unloading_constraint; }
+
+    /** Set the leftover mode (see 'LeftoverMode'). */
+    void set_leftover_mode(LeftoverMode leftover_mode) { instance_.parameters_.leftover_mode = leftover_mode; }
+
+    /*
+     * Set bin types
+     */
+
+    /** Add a bin type. */
+    BinTypeId add_bin_type(
+            Length x,
+            Length y,
+            Length z);
+
+    /** Set the cost of a bin type. */
+    void set_bin_type_cost(
+            BinTypeId bin_type_id,
+            Profit cost);
+
+    /** Set the maximum weight of a bin type. */
+    void set_bin_type_maximum_weight(
+            BinTypeId bin_type_id,
+            Weight maximum_weight);
+
+    /** Set the maximum stack density of a bin type. */
+    void set_bin_type_maximum_stack_density(
+            BinTypeId bin_type_id,
+            double maximum_stack_density);
+
+    /** Set the semi-trailer truck parameters of a bin type. */
+    void set_bin_type_semi_trailer_truck_parameters(
+            BinTypeId bin_type_id,
+            const SemiTrailerTruckData& semi_trailer_truck_data);
+
+    /** Add a defect. */
+    DefectId add_defect(
+            BinTypeId bin_type_id,
+            Length x,
+            Length y,
+            Length w,
+            Length h);
+
+    /**
+     * Add a bin type from another bin type.
+     *
+     * This method is used in the column generation procedure.
+     */
+    BinTypeId add_bin_type(
+            const Instance& original_instance,
+            BinTypeId original_bin_type_id);
+
+    /** Set the number of copies of a bin type. */
+    void set_bin_type_copies(
+            BinTypeId bin_type_id,
+            BinPos copies);
+
+    /** Set the minimum number of copies of a bin type. */
+    void set_bin_type_copies_min(
+            BinTypeId bin_type_id,
+            BinPos copies_min);
+
+    /**
+     * For each bin type, set an infinite x.
+     *
+     * This method is used to transform a problem into a Strip Packing problem.
+     */
+    void set_bin_types_infinite_x();
+
+    /**
+     * For each bin type, set an infinite y.
+     *
+     * This method is used to transform a problem into a Strip Packing problem.
+     */
+    void set_bin_types_infinite_y();
+
+    /**
+     * Foe each bin type, set an infinite number of copies.
+     *
+     * This method should be used after reading bin files of Bin Packing
+     * Problems where the number of bin types is not given. By default, the
+     * number of bins would be set to 1.
+     */
+    void set_bin_types_infinite_copies();
+
+    /**
+     * For each bin type, set its cost to its volume.
+     *
+     * This method is used to transform a Variable-sized Bin Packing Problem
+     * into an Unweighted Variable-sized Bin Packing Problem.
+     */
+    void set_bin_types_unweighted();
+
+    /*
+     * Set item types
+     */
+
+    /** Add an item type. */
+    ItemTypeId add_item_type(
+            Length x,
+            Length y,
+            Length z);
+
+    /**
+     * Add a rotation to an item type.
+     *
+     * Only rotations 'XYZ' and 'YXZ' are allowed.
+     */
+    void add_item_type_rotation(
+            ItemTypeId item_type_id,
+            Rotation rotation);
+
+    /** Set the rotations of an item type, replacing the ones already added. */
+    void set_item_type_rotations(
+            ItemTypeId item_type_id,
+            const std::vector<Rotation>& rotations);
+
+    /** Set the dimensions of an item type. */
+    void set_item_type_box(
+            ItemTypeId item_type_id,
+            const Box& box);
+
+    /** Set the group of an item type. */
+    void set_item_type_group(
+            ItemTypeId item_type_id,
+            GroupId group_id);
+
+    /** Set the weight of an item type. */
+    void set_item_type_weight(
+            ItemTypeId item_type_id,
+            Weight weight);
+
+    /** Set the weight of an item type. */
+    void set_item_type_stackability_id(
+            ItemTypeId item_type_id,
+            StackabilityId stackability_id);
+
+    /** Set the nesting height of an item type. */
+    void set_item_type_nesting_height(
+            ItemTypeId item_type_id,
+            Length nesting_height);
+
+    /** Set the maximum stackability of an item type. */
+    void set_item_type_maximum_stackability(
+            ItemTypeId item_type_id,
+            ItemPos maximum_stackability);
+
+    /** Set the maximum weight above of an item type. */
+    void set_item_type_maximum_weight_above(
+            ItemTypeId item_type_id,
+            Weight maximum_weight_above);
+
+    /**
+     * Add an item type from another item type.
+     *
+     * This method is used in the column generation procedure.
+     */
+    ItemTypeId add_item_type(
+            const Instance& original_instance,
+            ItemTypeId original_item_type_id);
+
+    /** Set the profit of an item type. */
+    void set_item_type_profit(
+            ItemTypeId item_type_id,
+            Profit profit);
+
+    /** Set the number of copies of an item type. */
+    void set_item_type_copies(
+            ItemTypeId item_type_id,
+            ItemPos copies);
+
+    /** Set the minimum number of copies to pack of an item type. */
+    void set_item_type_copies_min(
+            ItemTypeId item_type_id,
+            ItemPos copies_min);
+
+    /** Set a default value for the item type profits. */
+    void set_item_types_profits_auto();
+
+    /**
+     * For each item type, set an infinite number of copies.
+     *
+     * This method is used to transform a Knapsack Problem into an Unbounded
+     * Knapsack Problem.
+     */
+    void set_item_types_infinite_copies();
+
+    /**
+     * For each item type, set its profit to its volume.
+     *
+     * This method is used to transform a Knapsack Problem into an Unweighted
+     * Knapsack Problem.
+     */
+    void set_item_types_unweighted();
+
+    /** For each item type, set 'oriented' to 'true'. */
+    void set_item_types_oriented();
+
+    /*
+     * Build
+     */
+
+    /** Build. */
+    Instance build();
+
+private:
+
+    /*
+     * Private methods
+     */
+
+    /**
+     * Resolve the item types with unlimited copies ('copies' == -1): as many
+     * copies as the total volume of the bins allows.
+     */
+    void resolve_item_types_unlimited_copies();
+
+    /** Compute item type max length sum. */
+    Length compute_item_types_max_length_sum() const;
+
+    /** Compute bin attributes. */
+    void compute_bin_attributes();
+
+    /** Compute bin types volume max. */
+    Area compute_bin_types_volume_max() const;
+
+    /*
+     * Private attributes
+     */
+
+    /** Instance. */
+    Instance instance_;
+
+    /** Mapping from original bin type IDs to sub-instance bin type IDs. */
+    std::vector<BinTypeId> orig_to_sub_bin_type_ids_;
+
+    /** Mapping from original item type IDs to sub-instance item type IDs. */
+    std::vector<ItemTypeId> orig_to_sub_item_type_ids_;
+
+};
+
+}
+}

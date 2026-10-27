@@ -1,0 +1,407 @@
+#include "packingsolver/box/algorithm_formatter.hpp"
+
+#include <iomanip>
+#include <sstream>
+
+using namespace packingsolver;
+using namespace packingsolver::box;
+
+void AlgorithmFormatter::start()
+{
+    if (parameters_.write_json_output)
+        output_.json["Parameters"] = parameters_.to_json();
+
+    if (parameters_.verbosity_level == 0)
+        return;
+    *os_
+        << "=================================" << std::endl
+        << "          PackingSolver          " << std::endl
+        << "=================================" << std::endl
+        << std::endl
+        << "Problem type" << std::endl
+        << "------------" << std::endl
+        << Instance::type() << std::endl
+        << std::endl
+        << "Instance" << std::endl
+        << "--------" << std::endl;
+    output_.solution_pool.best().instance().format(*os_, parameters_.verbosity_level);
+}
+
+void AlgorithmFormatter::print_header()
+{
+    if (parameters_.verbosity_level == 0)
+        return;
+    *os_ << std::endl;
+    switch (instance_.objective()) {
+    case Objective::BinPacking: {
+        *os_
+                << std::setw(12) << "Time"
+                << std::setw(8) << "Bins"
+                << std::setw(16) << "Full waste (%)"
+                << std::setw(32) << "Comment"
+                << std::endl
+                << std::setw(12) << "----"
+                << std::setw(8) << "----"
+                << std::setw(16) << "--------------"
+                << std::setw(32) << "-------"
+                << std::endl;
+        break;
+    } case Objective::BinPackingWithLeftovers: {
+        *os_
+                << std::setw(12) << "Time"
+                << std::setw(12) << "Waste"
+                << std::setw(12) << "Waste (%)"
+                << std::setw(32) << "Comment"
+                << std::endl
+                << std::setw(12) << "----"
+                << std::setw(12) << "-----"
+                << std::setw(12) << "---------"
+                << std::setw(32) << "-------"
+                << std::endl;
+        break;
+    } case Objective::OpenDimensionX: {
+        *os_
+                << std::setw(12) << "Time"
+                << std::setw(12) << "X"
+                << std::setw(32) << "Comment"
+                << std::endl
+                << std::setw(12) << "----"
+                << std::setw(12) << "-"
+                << std::setw(32) << "-------"
+                << std::endl;
+        break;
+    } case Objective::OpenDimensionY: {
+        *os_
+                << std::setw(12) << "Time"
+                << std::setw(12) << "Y"
+                << std::setw(32) << "Comment"
+                << std::endl
+                << std::setw(12) << "----"
+                << std::setw(12) << "-"
+                << std::setw(32) << "-------"
+                << std::endl;
+        break;
+    } case Objective::OpenDimensionZ: {
+        *os_
+                << std::setw(12) << "Time"
+                << std::setw(12) << "Z"
+                << std::setw(32) << "Comment"
+                << std::endl
+                << std::setw(12) << "----"
+                << std::setw(12) << "-"
+                << std::setw(32) << "-------"
+                << std::endl;
+        break;
+    } case Objective::Knapsack: {
+        *os_
+                << std::setw(12) << "Time"
+                << std::setw(14) << "Profit"
+                << std::setw(10) << "# items"
+                << std::setw(32) << "Comment"
+                << std::endl
+                << std::setw(12) << "----"
+                << std::setw(14) << "------"
+                << std::setw(10) << "-------"
+                << std::setw(32) << "-------"
+                << std::endl;
+        break;
+    } case Objective::Feasibility: {
+        *os_
+                << std::setw(12) << "Time"
+                << std::setw(14) << "Profit"
+                << std::setw(10) << "# items"
+                << std::setw(32) << "Comment"
+                << std::endl
+                << std::setw(12) << "----"
+                << std::setw(14) << "------"
+                << std::setw(10) << "-------"
+                << std::setw(32) << "-------"
+                << std::endl;
+        break;
+    } case Objective::VariableSizedBinPacking: {
+        *os_
+                << std::setw(12) << "Time"
+                << std::setw(14) << "Cost"
+                << std::setw(8) << "# bins"
+                << std::setw(16) << "Full waste (%)"
+                << std::setw(32) << "Comment"
+                << std::endl
+                << std::setw(12) << "----"
+                << std::setw(14) << "----"
+                << std::setw(8) << "------"
+                << std::setw(16) << "--------------"
+                << std::setw(32) << "-------"
+                << std::endl;
+        break;
+    } default: {
+        std::stringstream ss;
+        ss << FUNC_SIGNATURE << ": "
+            << "problem type '" << Instance::type() << "' does not support objective \""
+            << instance_.objective() << "\"";
+        throw std::logic_error(ss.str());
+    }
+    }
+}
+
+void AlgorithmFormatter::print(
+        const std::string& s)
+{
+    if (parameters_.verbosity_level == 0)
+        return;
+    std::streamsize precision = std::cout.precision();
+
+    switch (instance_.objective()) {
+    case Objective::BinPacking: {
+        *os_
+                << std::setw(12) << std::fixed << std::setprecision(3) << output_.time << std::defaultfloat << std::setprecision(precision)
+                << std::setw(8) << output_.solution_pool.best().number_of_bins()
+                << std::setw(16) << std::fixed << std::setprecision(2) << 100 * output_.solution_pool.best().full_waste_percentage() << std::defaultfloat << std::setprecision(precision)
+                << std::setw(32) << s
+                << std::endl;
+        break;
+    } case Objective::BinPackingWithLeftovers: {
+        *os_
+                << std::setw(12) << std::fixed << std::setprecision(3) << output_.time << std::defaultfloat << std::setprecision(precision)
+                << std::setw(12) << output_.solution_pool.best().waste()
+                << std::setw(12) << std::fixed << std::setprecision(2) << 100 * output_.solution_pool.best().waste_percentage() << std::defaultfloat << std::setprecision(precision)
+                << std::setw(32) << s
+                << std::endl;
+        break;
+    } case Objective::OpenDimensionX: {
+        *os_
+                << std::setw(12) << std::fixed << std::setprecision(3) << output_.time << std::defaultfloat << std::setprecision(precision)
+                << std::setw(12) << output_.solution_pool.best().x_max()
+                << std::setw(32) << s
+                << std::endl;
+        break;
+    } case Objective::OpenDimensionY: {
+        *os_
+                << std::setw(12) << std::fixed << std::setprecision(3) << output_.time << std::defaultfloat << std::setprecision(precision)
+                << std::setw(12) << output_.solution_pool.best().y_max()
+                << std::setw(32) << s
+                << std::endl;
+        break;
+    } case Objective::OpenDimensionZ: {
+        *os_
+                << std::setw(12) << std::fixed << std::setprecision(3) << output_.time << std::defaultfloat << std::setprecision(precision)
+                << std::setw(12) << output_.solution_pool.best().z_max()
+                << std::setw(32) << s
+                << std::endl;
+        break;
+    } case Objective::Knapsack: {
+        *os_
+                << std::setw(12) << std::fixed << std::setprecision(3) << output_.time << std::defaultfloat << std::setprecision(precision)
+                << std::setw(14) << output_.solution_pool.best().profit()
+                << std::setw(10) << output_.solution_pool.best().number_of_items()
+                << std::setw(32) << s
+                << std::endl;
+        break;
+    } case Objective::Feasibility: {
+        *os_
+                << std::setw(12) << std::fixed << std::setprecision(3) << output_.time << std::defaultfloat << std::setprecision(precision)
+                << std::setw(14) << output_.solution_pool.best().profit()
+                << std::setw(10) << output_.solution_pool.best().number_of_items()
+                << std::setw(32) << s
+                << std::endl;
+        break;
+    } case Objective::VariableSizedBinPacking: {
+        *os_
+                << std::setw(12) << std::fixed << std::setprecision(3) << output_.time << std::defaultfloat << std::setprecision(precision)
+                << std::setw(14) << output_.solution_pool.best().cost()
+                << std::setw(8) << output_.solution_pool.best().number_of_bins()
+                << std::setw(16) << std::fixed << std::setprecision(2) << 100 * output_.solution_pool.best().full_waste_percentage() << std::defaultfloat << std::setprecision(precision)
+                << std::setw(32) << s
+                << std::endl;
+        break;
+    } default: {
+        std::stringstream ss;
+        ss << FUNC_SIGNATURE << ": "
+            << "problem type '" << Instance::type() << "' does not support objective \""
+            << instance_.objective() << "\"";
+        throw std::logic_error(ss.str());
+    }
+    }
+}
+
+void AlgorithmFormatter::update_solution(
+        const Solution& solution,
+        const std::string& s)
+{
+    mutex_.lock();
+    output_.time = parameters_.timer.elapsed_time();
+    int new_best = output_.solution_pool.add(solution, s);
+    if (new_best == 1) {
+        print(s);
+        if (parameters_.write_json_output)
+            output_.json["IntermediaryOutputs"].push_back(output_.to_json());
+        parameters_.new_solution_callback(output_);
+
+        if (output_.is_proven_optimal())
+            end_ = true;
+    }
+    mutex_.unlock();
+}
+
+void AlgorithmFormatter::update_is_proven_infeasible()
+{
+    mutex_.lock();
+    if (!output_.is_proven_infeasible) {
+        output_.is_proven_infeasible = true;
+        if (parameters_.write_json_output)
+            output_.json["IntermediaryOutputs"].push_back(output_.to_json());
+        parameters_.new_solution_callback(output_);
+        end_ = true;
+    }
+    mutex_.unlock();
+}
+
+void AlgorithmFormatter::update_knapsack_bound(
+        Profit profit)
+{
+    mutex_.lock();
+    if (profit < output_.knapsack_bound) {
+        output_.knapsack_bound = profit;
+        if (parameters_.write_json_output)
+            output_.json["IntermediaryOutputs"].push_back(output_.to_json());
+        parameters_.new_solution_callback(output_);
+
+        if (output_.is_proven_optimal())
+            end_ = true;
+    }
+    mutex_.unlock();
+}
+
+void AlgorithmFormatter::update_bin_packing_bound(
+        BinPos number_of_bins)
+{
+    mutex_.lock();
+    if (number_of_bins > output_.bin_packing_bound) {
+        output_.bin_packing_bound = number_of_bins;
+        // A proven bound above the number of bins actually available means
+        // no feasible solution exists. Set before the JSON push/callback/
+        // 'is_proven_optimal' check below so they see the complete,
+        // up-to-date state in a single update instead of a separate one.
+        if (output_.bin_packing_bound > instance_.number_of_bins())
+            output_.is_proven_infeasible = true;
+        if (parameters_.write_json_output)
+            output_.json["IntermediaryOutputs"].push_back(output_.to_json());
+        parameters_.new_solution_callback(output_);
+
+        if (output_.is_proven_optimal())
+            end_ = true;
+    }
+    mutex_.unlock();
+}
+
+void AlgorithmFormatter::update_variable_sized_bin_packing_bound(
+        Profit cost)
+{
+    mutex_.lock();
+    if (cost > output_.variable_sized_bin_packing_bound) {
+        output_.variable_sized_bin_packing_bound = cost;
+        if (parameters_.write_json_output)
+            output_.json["IntermediaryOutputs"].push_back(output_.to_json());
+        parameters_.new_solution_callback(output_);
+
+        if (output_.is_proven_optimal())
+            end_ = true;
+    }
+    mutex_.unlock();
+}
+
+void AlgorithmFormatter::update_open_dimension_x_bound(
+        Length x)
+{
+    mutex_.lock();
+    if (x > output_.open_dimension_x_bound) {
+        output_.open_dimension_x_bound = x;
+        if (parameters_.write_json_output)
+            output_.json["IntermediaryOutputs"].push_back(output_.to_json());
+        parameters_.new_solution_callback(output_);
+
+        if (output_.is_proven_optimal())
+            end_ = true;
+    }
+    mutex_.unlock();
+}
+
+void AlgorithmFormatter::update_open_dimension_y_bound(
+        Length y)
+{
+    mutex_.lock();
+    if (y > output_.open_dimension_y_bound) {
+        output_.open_dimension_y_bound = y;
+        if (parameters_.write_json_output)
+            output_.json["IntermediaryOutputs"].push_back(output_.to_json());
+        parameters_.new_solution_callback(output_);
+
+        if (output_.is_proven_optimal())
+            end_ = true;
+    }
+    mutex_.unlock();
+}
+
+void AlgorithmFormatter::update_open_dimension_z_bound(
+        Length z)
+{
+    mutex_.lock();
+    if (z > output_.open_dimension_z_bound) {
+        output_.open_dimension_z_bound = z;
+        if (parameters_.write_json_output)
+            output_.json["IntermediaryOutputs"].push_back(output_.to_json());
+        parameters_.new_solution_callback(output_);
+
+        if (output_.is_proven_optimal())
+            end_ = true;
+    }
+    mutex_.unlock();
+}
+
+void AlgorithmFormatter::update_bounds(
+        const Output& output)
+{
+    if (output.is_proven_infeasible)
+        update_is_proven_infeasible();
+    switch (instance_.objective()) {
+    case Objective::Knapsack:
+        update_knapsack_bound(output.knapsack_bound);
+        break;
+    case Objective::BinPacking:
+        update_bin_packing_bound(output.bin_packing_bound);
+        break;
+    case Objective::VariableSizedBinPacking:
+        update_variable_sized_bin_packing_bound(output.variable_sized_bin_packing_bound);
+        break;
+    case Objective::OpenDimensionX:
+        update_open_dimension_x_bound(output.open_dimension_x_bound);
+        break;
+    case Objective::OpenDimensionY:
+        update_open_dimension_y_bound(output.open_dimension_y_bound);
+        break;
+    case Objective::OpenDimensionZ:
+        update_open_dimension_z_bound(output.open_dimension_z_bound);
+        break;
+    default:
+        break;
+    }
+}
+
+void AlgorithmFormatter::end()
+{
+    output_.time = parameters_.timer.elapsed_time();
+    if (parameters_.write_json_output)
+        output_.json["Output"] = output_.to_json();
+
+    if (parameters_.verbosity_level == 0)
+        return;
+    *os_
+        << std::endl
+        << "Final statistics" << std::endl
+        << "----------------" << std::endl;
+    output_.format(*os_);
+    *os_
+        << std::endl
+        << "Solution" << std::endl
+        << "--------" << std::endl;
+    output_.solution_pool.best().format(*os_, parameters_.verbosity_level);
+}

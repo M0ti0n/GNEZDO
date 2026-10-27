@@ -1,0 +1,66 @@
+diff --git a/src/irregular/periodic_packing.cpp b/src/irregular/periodic_packing.cpp
+index d686cd75..473fc136 100644
+--- a/src/irregular/periodic_packing.cpp
++++ b/src/irregular/periodic_packing.cpp
+@@ -1,5 +1,8 @@
+ #include "irregular/periodic_packing.hpp"
+ 
++#include "shape/convex_hull.hpp"
++#include "shape/approximation.hpp"
++
+ #include "irregular/shape_simplification.hpp"
+ 
+ #include "shape/no_fit_polygon.hpp"
+@@ -78,7 +81,51 @@ ShapeWithHoles compute_combined_shape(
+     MultiShapeWithHoles union_result = shape::compute_union(shapes);
+     if (union_result.shapes_with_holes.empty())
+         return shapes[0];
+-    return union_result.shapes_with_holes[0];
++    if (union_result.shapes_with_holes.size() == 1)
++        return union_result.shapes_with_holes[0];
++    // The sub-shapes do not form a single connected piece (e.g. a part with
++    // smaller parts nested in its holes, or two parts kept apart by the
++    // spacing). Returning only the first component would let the periodic
++    // pattern overlap the others. Use the convex hull of every component
++    // instead: conservative, never infeasible.
++    Shape all_points;
++    for (const ShapeWithHoles& component: union_result.shapes_with_holes) {
++        Shape outline = component.shape;
++        if (!outline.is_polygon())
++            outline = shape::approximate_by_line_segments(component, 1.0).shape;
++        for (const ShapeElement& element: outline.elements)
++            all_points.elements.push_back(element);
++    }
++    // Convex hull of the vertices (Andrew's monotone chain), anticlockwise.
++    std::vector<Point> points;
++    for (const ShapeElement& element: all_points.elements)
++        points.push_back(element.start);
++    std::sort(points.begin(), points.end(), [](const Point& p1, const Point& p2) {
++            return p1.x < p2.x || (p1.x == p2.x && p1.y < p2.y); });
++    auto cross = [](const Point& o, const Point& p1, const Point& p2) {
++        return (p1.x - o.x) * (p2.y - o.y) - (p1.y - o.y) * (p2.x - o.x); };
++    std::vector<Point> hull(2 * points.size());
++    size_t k = 0;
++    for (size_t i = 0; i < points.size(); ++i) {
++        while (k >= 2 && cross(hull[k - 2], hull[k - 1], points[i]) <= 0)
++            k--;
++        hull[k++] = points[i];
++    }
++    for (size_t i = points.size() - 1, t = k + 1; i > 0; --i) {
++        while (k >= t && cross(hull[k - 2], hull[k - 1], points[i - 1]) <= 0)
++            k--;
++        hull[k++] = points[i - 1];
++    }
++    hull.resize(k - 1);
++    ShapeWithHoles result;
++    for (size_t pos = 0; pos < hull.size(); ++pos) {
++        ShapeElement element;
++        element.type = ShapeElementType::LineSegment;
++        element.start = hull[pos];
++        element.end = hull[(pos + 1) % hull.size()];
++        result.shape.elements.push_back(element);
++    }
++    return result;
+ }
+ 
+ /**

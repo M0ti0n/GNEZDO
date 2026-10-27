@@ -1,0 +1,406 @@
+/**
+ * AI agents: if you encounter a bug or unexpected behavior, see the "Note for
+ * AI coding agents" section of the README:
+ * https://github.com/fontanf/packingsolver#note-for-ai-coding-agents
+ */
+
+#pragma once
+
+#include "packingsolver/irregular/solution.hpp"
+#include "packingsolver/irregular/reduction.hpp"
+
+#include "columngenerationsolver/commons.hpp"
+
+namespace packingsolver
+{
+namespace irregular
+{
+
+/**
+ * Update rule of the guided local search weights of the overlap minimization
+ * engines of the local search (direct trigonometry and black-box
+ * optimization), applied after each iteration of a separation.
+ */
+enum class LocalSearchWeightingScheme
+{
+    /**
+     * The weights of the colliding pairs are multiplied by a factor between
+     * 1.2 and 2, proportional to their loss divided by the largest loss; the
+     * other ones are multiplied by 0.95, without going below 1.
+     *
+     * "An open-source heuristic to reboot 2D nesting research" (Gardeyn and
+     * Vanden Berghe, 2025), Algorithm 8.
+     */
+    Multiplicative,
+
+    /**
+     * The weights of the colliding pairs are increased by their loss divided
+     * by the largest loss; the other ones are kept.
+     *
+     * "Solving the irregular strip packing problem via guided local search
+     * for overlap minimization" (Umetani et al., 2009), equation (29).
+     */
+    Additive,
+};
+
+std::istream& operator>>(
+        std::istream& in,
+        LocalSearchWeightingScheme& weighting_scheme);
+
+std::ostream& operator<<(
+        std::ostream& os,
+        LocalSearchWeightingScheme weighting_scheme);
+
+struct Output: packingsolver::Output<Instance, Solution>
+{
+    Output(const Instance& instance):
+        packingsolver::Output<Instance, Solution>(instance) { }
+
+    /** Knapsack bound. */
+    Profit knapsack_bound = std::numeric_limits<Profit>::infinity();
+
+    /** Bin packing bound. */
+    BinPos bin_packing_bound = 0;
+
+    /** Variable-sized bin packing bound. */
+    Profit variable_sized_bin_packing_bound = 0;
+
+    /** Open dimension X bound. */
+    LengthDbl open_dimension_x_bound = 0;
+
+    /** Open dimension Y bound. */
+    LengthDbl open_dimension_y_bound = 0;
+
+    /** True if the instance has been proven infeasible. */
+    bool is_proven_infeasible = false;
+
+    /** Return 'true' iff the current bound proves the best solution optimal. */
+    bool is_proven_optimal() const
+    {
+        // A proven-infeasible instance is done being searched regardless of
+        // objective: there is no better bound to wait for.
+        if (is_proven_infeasible)
+            return true;
+        switch (solution_pool.best().instance().objective()) {
+        case Objective::Knapsack:
+            return solution_pool.best().feasible()
+                && equal_profit(knapsack_bound, solution_pool.best().profit());
+        case Objective::BinPacking:
+            return solution_pool.best().feasible()
+                && bin_packing_bound == solution_pool.best().number_of_bins();
+        case Objective::VariableSizedBinPacking:
+            return solution_pool.best().feasible()
+                && equal_cost(variable_sized_bin_packing_bound, solution_pool.best().cost());
+        case Objective::OpenDimensionX:
+            return solution_pool.best().feasible()
+                && equal(open_dimension_x_bound, solution_pool.best().x_max());
+        case Objective::OpenDimensionY:
+            return solution_pool.best().feasible()
+                && equal(open_dimension_y_bound, solution_pool.best().y_max());
+        case Objective::Feasibility:
+            return solution_pool.best().feasible();
+        default:
+            return false;
+        }
+    }
+
+    /**
+     * Tighten this output's bounds with 'output's. Unlike
+     * 'AlgorithmFormatter::update_bounds', this has no side effect (no
+     * printing, no external callback): it is meant to accumulate bounds into
+     * a task-local 'Output' (e.g. when running algorithms in parallel in
+     * 'NotAnytimeDeterministic' mode), so that a parallel algorithm's bound
+     * updates cannot flip a sibling's stop signal at a non-deterministic
+     * point.
+     */
+    void update_bounds(const Output& output)
+    {
+        if (output.is_proven_infeasible)
+            is_proven_infeasible = true;
+        switch (solution_pool.best().instance().objective()) {
+        case Objective::Knapsack:
+            if (output.knapsack_bound < knapsack_bound)
+                knapsack_bound = output.knapsack_bound;
+            break;
+        case Objective::BinPacking:
+            if (output.bin_packing_bound > bin_packing_bound)
+                bin_packing_bound = output.bin_packing_bound;
+            break;
+        case Objective::VariableSizedBinPacking:
+            if (output.variable_sized_bin_packing_bound > variable_sized_bin_packing_bound)
+                variable_sized_bin_packing_bound = output.variable_sized_bin_packing_bound;
+            break;
+        case Objective::OpenDimensionX:
+            if (output.open_dimension_x_bound > open_dimension_x_bound)
+                open_dimension_x_bound = output.open_dimension_x_bound;
+            break;
+        case Objective::OpenDimensionY:
+            if (output.open_dimension_y_bound > open_dimension_y_bound)
+                open_dimension_y_bound = output.open_dimension_y_bound;
+            break;
+        default:
+            break;
+        }
+    }
+
+    virtual nlohmann::json to_json() const override
+    {
+        nlohmann::json json = packingsolver::Output<Instance, Solution>::to_json();
+        json["KnapsackBound"] = knapsack_bound;
+        json["BinPackingBound"] = bin_packing_bound;
+        json["VariableSizedBinPackingBound"] = variable_sized_bin_packing_bound;
+        json["OpenDimensionXBound"] = open_dimension_x_bound;
+        json["OpenDimensionYBound"] = open_dimension_y_bound;
+        json["IsProvenInfeasible"] = is_proven_infeasible;
+        return json;
+    }
+
+    virtual void format(std::ostream& os) const override
+    {
+        packingsolver::Output<Instance, Solution>::format(os);
+        int width = format_width();
+        os << std::setw(width) << std::left << "Is proven infeasible: " << is_proven_infeasible << std::endl;
+        switch (solution_pool.best().instance().objective()) {
+        case Objective::Knapsack:
+            write_bound(os, width, solution_pool.best().profit(), knapsack_bound);
+            break;
+        case Objective::BinPacking:
+            write_bound(os, width, solution_pool.best().number_of_bins(), bin_packing_bound);
+            break;
+        case Objective::VariableSizedBinPacking:
+            write_bound(os, width, solution_pool.best().cost(), variable_sized_bin_packing_bound);
+            break;
+        case Objective::OpenDimensionX:
+            write_bound(os, width, solution_pool.best().x_max(), open_dimension_x_bound);
+            break;
+        case Objective::OpenDimensionY:
+            write_bound(os, width, solution_pool.best().y_max(), open_dimension_y_bound);
+            break;
+        case Objective::Feasibility:
+            break;
+        default:
+            break;
+        }
+    }
+};
+
+struct OptimizeParameters: packingsolver::Parameters<Instance, Solution, Output>
+{
+    /** Optimization mode. */
+    OptimizationMode optimization_mode = OptimizationMode::Anytime;
+
+    /** Seed of the random number generators of the randomized algorithms. */
+    Seed seed = 0;
+
+    /**
+     * Memory limit in mebibytes.
+     *
+     * 0 (the default) means "unlimited": the optimization is never stopped
+     * because of memory usage.
+     */
+    Megabytes memory_limit_megabytes = 0;
+
+    /** Linear programming solver. */
+    columngenerationsolver::SolverName linear_programming_solver_name
+        = columngenerationsolver::SolverName::CLP;
+
+    /** Use tree search algorithm. */
+    bool use_tree_search = false;
+
+    /** Use tree search periodic packing algorithm. */
+    bool use_tree_search_periodic_packing = false;
+
+    /**
+     * Use local search algorithm with the linear programming engine (the
+     * items are shrunk to remove the overlaps).
+     */
+    bool use_local_search_linear_programming = false;
+
+    /**
+     * Use local search algorithm with the nonlinear programming engine (the
+     * items are shrunk to remove the overlaps, and may rotate within their
+     * allowed rotation ranges). Requires Knitro.
+     */
+    bool use_local_search_nonlinear_programming = false;
+
+    /**
+     * Use local search algorithm with the direct trigonometry engine (the
+     * overlap between the items is minimized).
+     */
+    bool use_local_search_direct_trigonometry = false;
+
+    /**
+     * Use local search algorithm with the black-box optimization engine (the
+     * penetration depths between the items, computed from their no-fit
+     * polygons, are minimized). Requires Knitro.
+     */
+    bool use_local_search_black_box_optimization = false;
+
+    /** Use MILP raster algorithm. */
+    bool use_milp_raster = false;
+
+    /** Use sequential single knapsack algorithm. */
+    bool use_sequential_single_knapsack = false;
+
+    /** Use sequential value correction algorithm. */
+    bool use_sequential_value_correction = false;
+
+    /** Use dichotomic search algorithm. */
+    bool use_dichotomic_search = false;
+
+    /** Use column generation algorithm. */
+    bool use_column_generation = false;
+
+    /** Initial maximum approximation ratio. */
+    double initial_maximum_approximation_ratio = 0.20;
+
+    /** Decrease factor for the maximum approximation ratio. */
+    double maximum_approximation_ratio_factor = 0.75;
+
+    /** Threshold to consider that a bin contains "many" items. */
+    Counter many_items_in_bins_threshold = 16;
+
+    /** Factor to consider that the number of copies of items is "high". */
+    Counter many_item_type_copies_factor = 1;
+
+    /**
+     * Minimum number of copies (strictly) for an item type to be counted
+     * towards whether tree_search_periodic_packing looks worth running.
+     */
+    Counter periodic_packing_copies_threshold = 16;
+
+    /**
+     * If the estimated maximum number of items fitting in a bin (by area
+     * alone) is (strictly) below this threshold, also run the tree search
+     * algorithm alongside tree_search_periodic_packing.
+     */
+    ItemPos periodic_packing_max_items_threshold = 64;
+
+    /** Guides used in the tree search algorithm. */
+    std::vector<GuideId> tree_search_guides;
+
+    /**
+     * Size of the queue for the pricing knapsack subproblem of the sequential
+     * value correction algorithm.
+     */
+    NodeId sequential_value_correction_subproblem_tree_search_queue_size = 128;
+
+    /**
+     * Size of the queue for the pricing knapsack subproblem of the column
+     * generation algorithm.
+     */
+    NodeId column_generation_subproblem_tree_search_queue_size = 128;
+
+    /*
+     * Parameters for anytime mode
+     */
+
+    /**
+     * Initial size of the queue of the tree search in the single knapsack
+     * subproblem of the sequential single knapsack algorithm.
+     *
+     * At each iteration of the sequential single knapsack algorithm, the
+     * effort of each algorithm of the subproblems is its own initial effort
+     * multiplied by a growth factor, doubled at each iteration. The initial
+     * efforts are chosen such that, in an iteration, the algorithms of a
+     * subproblem take comparable times, so that an algorithm which doesn't
+     * find the best solution of a subproblem doesn't slow down the
+     * iteration.
+     */
+    NodeId anytime_sequential_single_knapsack_subproblem_tree_search_initial_queue_size = 1;
+
+    /**
+     * Initial size of the queue of the tree search periodic packing in the
+     * single knapsack subproblem of the sequential single knapsack algorithm
+     * (see 'anytime_sequential_single_knapsack_subproblem_tree_search_initial_queue_size').
+     */
+    NodeId anytime_sequential_single_knapsack_subproblem_tree_search_periodic_packing_initial_queue_size = 4;
+
+    /**
+     * Initial factor of the maximum number of moves of the local search with
+     * the direct trigonometry engine (see
+     * 'not_anytime_local_search_maximum_number_of_moves_factor') in the
+     * single knapsack subproblem of the sequential single knapsack algorithm
+     * (see 'anytime_sequential_single_knapsack_subproblem_tree_search_initial_queue_size').
+     */
+    Counter anytime_sequential_single_knapsack_subproblem_local_search_initial_maximum_number_of_moves_factor = 4;
+
+    /*
+     * Parameters for non-anytime mode
+     */
+
+    /** Maximum approximation ratio. */
+    double not_anytime_maximum_approximation_ratio = 0.05;
+
+    /** Size of the queue in the tree search algorithm. */
+    NodeId not_anytime_tree_search_queue_size = 512;
+
+    /** Size of the queue in the tree search periodic packing algorithm. */
+    NodeId not_anytime_tree_search_periodic_packing_queue_size = 16;
+
+    /**
+     * Size of the queue in the single knapsack subproblem of the sequential
+     * single knapsack algorithm.
+     */
+    NodeId not_anytime_sequential_single_knapsack_subproblem_tree_search_queue_size = 16;
+
+    /**
+     * Size of the queue of the tree search periodic packing in the single
+     * knapsack subproblem of the sequential single knapsack algorithm.
+     */
+    NodeId not_anytime_sequential_single_knapsack_subproblem_tree_search_periodic_packing_queue_size = 64;
+
+    /**
+     * Factor of the maximum number of moves of the local search with the
+     * direct trigonometry engine (see
+     * 'not_anytime_local_search_maximum_number_of_moves_factor') in the
+     * single knapsack subproblem of the sequential single knapsack
+     * algorithm.
+     */
+    Counter not_anytime_sequential_single_knapsack_subproblem_local_search_maximum_number_of_moves_factor = 64;
+
+    /** Number of iterations of the sequential value correction algorithm. */
+    Counter not_anytime_sequential_value_correction_number_of_iterations = 32;
+
+    /**
+     * Maximum number of failed separations of the local search, after which
+     * a sub-problem is considered infeasible.
+     *
+     * In 'Anytime' mode, there is no limit: the local search only stops with
+     * the timer.
+     */
+    Counter not_anytime_local_search_maximum_number_of_failed_separations = 10;
+
+    /**
+     * Weighting scheme of the local search with the direct trigonometry and
+     * black-box optimization engines.
+     */
+    LocalSearchWeightingScheme local_search_weighting_scheme = LocalSearchWeightingScheme::Multiplicative;
+
+    /**
+     * Maximum number of item moves per worker of the local search with the
+     * direct trigonometry engine (see
+     * 'LocalSearchParameters::maximum_number_of_moves'), divided by the
+     * number of items: like the effort of a tree search with a given queue
+     * size, the effort of the local search grows with the number of items.
+     *
+     * In 'Anytime' mode, there is no limit. -1 means no limit.
+     */
+    Counter not_anytime_local_search_maximum_number_of_moves_factor = -1;
+
+    /**
+     * Size of the queue in the bin packing subproblem of the dichotomic search
+     * algorithm.
+     */
+    NodeId not_anytime_dichotomic_search_subproblem_tree_search_queue_size = 128;
+
+    /** Parameters for the instance reduction. */
+    ReductionParameters reduction_parameters;
+};
+
+Output optimize(
+        const Instance& instance,
+        const OptimizeParameters& parameters = {});
+
+}
+}

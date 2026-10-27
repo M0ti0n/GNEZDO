@@ -1,0 +1,342 @@
+#pragma once
+
+#include "packingsolver/irregular/instance.hpp"
+
+namespace packingsolver
+{
+namespace irregular
+{
+
+struct SolutionBin
+{
+    /** Bin type. */
+    BinTypeId bin_type_id;
+
+    /** Number of copies. */
+    BinPos copies;
+
+    /** Items. */
+    std::vector<SolutionItem> items;
+
+    /** Item area. */
+    AreaDbl item_area = 0;
+
+    /** Minimum x of the items in this bin. */
+    LengthDbl x_min = +std::numeric_limits<LengthDbl>::infinity();
+
+    /** Maximum x of the items in this bin. */
+    LengthDbl x_max = -std::numeric_limits<LengthDbl>::infinity();
+
+    /** Minimum y of the items in this bin. */
+    LengthDbl y_min = +std::numeric_limits<LengthDbl>::infinity();
+
+    /** Maximum y of the items in this bin. */
+    LengthDbl y_max = -std::numeric_limits<LengthDbl>::infinity();
+
+    /** Resource consumption, indexed by resource_id. */
+    std::vector<double> resource_consumption;
+};
+
+bool operator==(const SolutionBin& solution_bin_1, const SolutionBin& solution_bin_2);
+bool operator!=(const SolutionBin& solution_bin_1, const SolutionBin& solution_bin_2);
+
+/**
+ * Solution class for a problem of type "irregular".
+ */
+class Solution
+{
+
+public:
+
+    /** Standard constructor. */
+    Solution(const Instance& instance):
+        instance_(&instance),
+        bin_copies_(instance.number_of_bin_types(), 0),
+        item_copies_(instance.number_of_item_types(), 0)
+    {
+        for (ItemTypeId item_type_id = 0;
+                item_type_id < instance.number_of_item_types();
+                ++item_type_id) {
+            if (instance.item_type(item_type_id).copies_min > 0)
+                number_of_infeasible_item_copies_min_++;
+        }
+        feasible_ = (number_of_infeasible_item_copies_min_ == 0);
+    }
+
+    /** Append a single bin of 'solution' (at 'bin_pos') to this solution. */
+    void append_bin(
+            const Solution& solution,
+            BinPos bin_pos,
+            BinPos copies,
+            const std::vector<BinTypeId>& bin_type_ids = {},
+            const std::vector<ItemTypeId>& item_type_ids = {});
+
+    /** Append every bin of 'solution' to this solution. */
+    void append_bins(
+            const Solution& solution,
+            const std::vector<BinTypeId>& bin_type_ids,
+            const std::vector<ItemTypeId>& item_type_ids);
+
+    /** Append 'copies' empty (no items) bins of bin type 'bin_type_id' to this solution. */
+    void append_empty_bin(
+            BinTypeId bin_type_id,
+            BinPos copies);
+
+    /*
+     * Getters
+     */
+
+    /** Get the instance. */
+    inline const Instance& instance() const { return *instance_; }
+
+    /*
+     * Getters: feasibility
+     */
+
+    /** Feasibility according to the user feasibility callback. */
+    inline bool callback_feasible() const { return callback_feasible_; }
+
+    /** Cuts the feasibility callback returned, if any - see 'FeasibilityCallbackResult'. */
+    inline const std::vector<Resource>& callback_resources() const { return callback_resources_; }
+
+    /** Overall feasibility. */
+    inline bool feasible() const { return feasible_; }
+
+    /** Feasibility with respect to non-'penalize' resource capacities. */
+    inline bool resource_feasible() const { return resource_feasible_; }
+
+    /*
+     * Getters: bins
+     */
+
+    /** Get the number of bins in the solution. */
+    inline BinPos number_of_bins() const { return number_of_bins_; }
+
+    /** Get the number of different bins in the solution. */
+    inline BinPos number_of_different_bins() const { return bins_.size(); }
+
+    /** Get a bin. */
+    inline const SolutionBin& bin(BinPos bin_pos) const { return bins_[bin_pos]; }
+
+    /** Get the number of copies of a bin type in the solution. */
+    inline BinPos bin_copies(BinTypeId bin_type_id) const { return bin_copies_[bin_type_id]; }
+
+    /** Get the cost of the solution. */
+    inline Profit cost() const { return bin_cost_; }
+
+    /** Get the total area of the bins of the solution. */
+    inline AreaDbl bin_area() const { return bin_area_; }
+
+    /*
+     * Getters: items
+     */
+
+    /** Get the number of items in the solution. */
+    inline ItemPos number_of_items() const { return number_of_items_; }
+
+    /** Return 'true' iff the solution contains all items. */
+    inline bool full() const { return number_of_items() == instance().number_of_items(); }
+
+    /** Get the total area of the items of the solution. */
+    inline AreaDbl item_area() const { return item_area_; }
+
+    /** Get the profit of the solution. */
+    inline Profit profit() const { return item_profit_; }
+
+    /** Get the number of copies of an item type in the solution. */
+    inline ItemPos item_copies(ItemTypeId item_type_id) const { return item_copies_[item_type_id]; }
+
+    /**
+     * Get the number of item types for which fewer than 'copies_min' copies
+     * have been packed.
+     */
+    inline ItemPos number_of_infeasible_item_copies_min() const { return number_of_infeasible_item_copies_min_; }
+
+    /** Return 'true' iff no item type has been packed more than 'copies' times. */
+    inline bool item_copies_feasible() const { return item_copies_feasible_; }
+
+    /*
+     * Getters: others
+     */
+
+    /** Get the minimum x of the (last bin of the) solution. */
+    inline LengthDbl x_min() const { return x_min_; }
+
+    /** Get the minimum y of the (last bin of the) solution. */
+    inline LengthDbl y_min() const { return y_min_; }
+
+    /** Get the maximum x of the (last bin of the) solution. */
+    inline LengthDbl x_max() const { return x_max_; }
+
+    /** Get the maximum y of the (last bin of the) solution. */
+    inline LengthDbl y_max() const { return y_max_; }
+
+    /** Get the area of the (last bin of the) solution. */
+    AreaDbl open_dimension_xy_area() const;
+
+    /** Get the area of the solution. */
+    inline Profit leftover_value_orig() const { return leftover_value_orig_; }
+
+    inline Profit leftover_value_scaled() const { return leftover_value_scaled_; }
+
+    /** Get the waste of the solution including the residual. */
+    inline AreaDbl full_waste() const { return bin_area() - item_area(); }
+
+    /** Get the fraction of waste of the solution including the residual. */
+    inline double full_waste_percentage() const { return (double)full_waste() / bin_area(); }
+
+    /** Get the x-density of the solution. */
+    double density_x() const;
+
+    /** Get the y-density of the solution. */
+    double density_y() const;
+
+    bool operator<(const Solution& solution) const;
+
+    /**
+     * Get the shape of an item in a bin transformed to world coordinates
+     * (mirror, rotate, shift applied).
+     */
+    shape::ShapeWithHoles shape_scaled(
+            BinPos bin_pos,
+            ItemPos item_pos,
+            ItemShapePos item_shape_pos,
+            double scale_value = 1.0) const;
+
+    struct OverlappingItems
+    {
+        /** Overlapping (item_pos, border_pos) pairs. */
+        std::vector<std::pair<ItemPos, Counter>> item_border_pairs;
+
+        /** Overlapping (item_pos, defect_pos) pairs. */
+        std::vector<std::pair<ItemPos, DefectId>> item_defect_pairs;
+
+        /** Overlapping (item_1_pos, item_2_pos) pairs, with item_1_pos < item_2_pos. */
+        std::vector<std::pair<ItemPos, ItemPos>> item_item_pairs;
+
+        /** Items (item_pos) that are (partially or fully) outside the bin. */
+        std::vector<ItemPos> items_outside_bin;
+    };
+
+    /**
+     * Compute all overlapping pairs (item/border, item/defect, item/item)
+     * in the given bin using a shape::IntersectionTree.
+     */
+    OverlappingItems compute_overlapping_items(
+            BinPos bin_pos,
+            const std::vector<double>* items_scale_values = nullptr) const;
+
+    /*
+     * Export
+     */
+
+    /** Write the solution to a file. */
+    void write(const std::string& certificate_path) const;
+
+    /** Write the solution to a stream, in the same format as 'write(certificate_path)'. */
+    void write(std::ostream& os) const;
+
+    /** Write the solution to an SVG file. */
+    void write_svg(
+            const std::string& file_path,
+            BinPos bin_pos,
+            bool scaled = false) const;
+
+    /** Export solution characteristics to a JSON structure. */
+    nlohmann::json to_json() const;
+
+    /** Write a formatted output of the instance to a stream. */
+    void format(
+            std::ostream& os,
+            int verbosity_level = 1) const;
+
+private:
+
+    /*
+     * Private methods.
+     */
+
+    void update_indicators(
+            BinPos bin_pos);
+
+    /*
+     * Private attributes.
+     */
+
+    /** Instance. */
+    const Instance* instance_;
+
+    /** Feasibility according to the user feasibility callback. */
+    bool callback_feasible_ = true;
+
+    /** Cuts the feasibility callback returned, if any - see 'FeasibilityCallbackResult'. */
+    std::vector<Resource> callback_resources_;
+
+    /** Overall feasibility. */
+    bool feasible_ = true;
+
+    /** Feasibility with respect to non-'penalize' resource capacities. */
+    bool resource_feasible_ = true;
+
+    /** bins. */
+    std::vector<SolutionBin> bins_;
+
+    /** Number of bins. */
+    BinPos number_of_bins_ = 0;
+
+    /** Number of items. */
+    ItemPos number_of_items_ = 0;
+
+    /** Value of the leftover in original coordinates. */
+    Profit leftover_value_orig_ = 0.0;
+
+    /** Value of the leftover in scaled coordinates. */
+    Profit leftover_value_scaled_ = 0.0;
+
+    /** Total area of the bins of the solution. */
+    AreaDbl bin_area_ = 0;
+
+    /** Total area of the items of the solution. */
+    AreaDbl item_area_ = 0;
+
+    /** Profit of the solution. */
+    Profit item_profit_ = 0;
+
+    /** Cost of the solution. */
+    Profit bin_cost_ = 0;
+
+    /** Minimum x of the solution. */
+    LengthDbl x_min_ = +std::numeric_limits<LengthDbl>::infinity();
+
+    /** Minimum y of the solution. */
+    LengthDbl y_min_ = +std::numeric_limits<LengthDbl>::infinity();
+
+    /** Maximum x of the solution. */
+    LengthDbl x_max_ = -std::numeric_limits<LengthDbl>::infinity();
+
+    /** Maximum y of the solution. */
+    LengthDbl y_max_ = -std::numeric_limits<LengthDbl>::infinity();
+
+    /** Number of copies of each bin type in the solution. */
+    std::vector<BinPos> bin_copies_;
+
+    /** Number of copies of each item type in the solution. */
+    std::vector<ItemPos> item_copies_;
+
+    /**
+     * Number of item types for which fewer than 'copies_min' copies have
+     * been packed.
+     */
+    ItemPos number_of_infeasible_item_copies_min_ = 0;
+
+    /** 'true' iff no item type has been packed more than 'copies' times. */
+    bool item_copies_feasible_ = true;
+
+    friend class SolutionBuilder;
+
+};
+
+std::ostream& operator<<(std::ostream &os, const Solution& solution);
+
+}
+}

@@ -1,0 +1,199 @@
+// Run with: node --test wasm/tests/*.test.js wasm/tests/*.test.mjs
+// The certificates read by the solution viewer ('viewer/solution.js').
+
+import assert from "node:assert";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import {fileURLToPath} from "node:url";
+
+import {parseCsv} from "../web/viewer/common.js";
+import * as viewerSolution from "../web/viewer/solution.js";
+
+const TESTS = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(TESTS, "..", "..");
+const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), "utf8");
+
+test("viewer: problem types of the certificates", () => {
+    const certificates = {
+        rectangleguillotine: read("data", "rectangleguillotine", "tests", "bin_packing_3nvr", "solution.csv"),
+        rectangle: read("data", "rectangle", "tests", "bin_packing_merge_identical_items_with_defects", "solution.csv"),
+        onedimensional: read("data", "onedimensional", "tests", "bin_packing_perfect_pair", "solution.csv"),
+        irregular: read("wasm", "tests", "fixtures", "viewer", "irregular_arcs_solution.json"),
+        box: read("wasm", "tests", "fixtures", "viewer", "box_defects.csv"),
+        boxstacks: read("wasm", "tests", "fixtures", "viewer", "boxstacks_copies.csv"),
+    };
+    for (const [problemType, text] of Object.entries(certificates))
+        assert.strictEqual(viewerSolution.detectProblemType(text), problemType);
+    assert.strictEqual(viewerSolution.detectProblemType("WIDTH,HEIGHT\n1,2"), null);
+    assert.strictEqual(viewerSolution.detectProblemType('{"bin_types": []}'), null);
+    assert.strictEqual(viewerSolution.detectProblemType("{"), null);
+    // All the problem types are drawn by the viewer.
+    for (const [problemType, text] of Object.entries(certificates))
+        assert.strictEqual(viewerSolution.readSolution(text).problemType, problemType);
+    assert.throws(() => viewerSolution.readSolution("a,b\n1,2"), /not a certificate/);
+});
+
+test("viewer: rectangle", () => {
+    const text = read("data", "rectangle", "tests", "bin_packing_merge_identical_items_with_defects", "solution.csv");
+    const solution = viewerSolution.readSolution(text);
+    const rows = parseCsv(text);
+    assert.strictEqual(solution.problemType, "rectangle");
+    assert.strictEqual(solution.bins.length, rows.filter((r) => r.TYPE === "BIN").length);
+    const bin = solution.bins[0];
+    assert.deepStrictEqual(bin.box, {x0: 0, y0: 0, x1: 100, y1: 100});
+    assert.strictEqual(bin.defects.length, rows.filter((r) => r.TYPE === "DEFECT" && r.BIN === "0").length);
+    assert.strictEqual(bin.items.length, rows.filter((r) => r.TYPE === "ITEM" && r.BIN === "0").length);
+    assert.deepStrictEqual(bin.items[0].box, {x0: 0, y0: 0, x1: 4, y1: 4});
+    assert.strictEqual(bin.items[0].label, "Item type 0: 4 × 4 at (0, 0), group 0");
+    // The copies of the bins.
+    const copies = viewerSolution.readSolution(
+        "TYPE,ID,COPIES,BIN,X,Y,LX,LY\nBIN,0,4,0,0,0,10,5\nITEM,1,4,0,0,0,2,3\nBIN,1,1,1,0,0,8,8\n");
+    assert.deepStrictEqual(copies.bins.map((b) => [b.binTypeId, b.copies]), [[0, 4], [1, 1]]);
+    assert.strictEqual(viewerSolution.numberOfBins(copies), 5);
+});
+
+test("viewer: rectangleguillotine", () => {
+    // A certificate without COPIES column: a copy of each plate.
+    const text = read("data", "rectangleguillotine", "tests", "knapsack_2evo_defects_1", "solution.csv");
+    const rows = parseCsv(text);
+    const solution = viewerSolution.readSolution(text);
+    assert.strictEqual(solution.problemType, "rectangleguillotine");
+    // The defects (TYPE -4) have no parent either.
+    const plates = rows.filter((r) => !r.PARENT && r.TYPE !== "-4");
+    assert.strictEqual(solution.bins.length, plates.length);
+    assert.ok(solution.bins.every((bin) => bin.copies === 1 && bin.binTypeId === null));
+    const bin = solution.bins[0];
+    const ofPlate = rows.filter((r) => r.PLATE_ID === "0" && r.PARENT);
+    assert.strictEqual(bin.items.length, ofPlate.filter((r) => Number(r.TYPE) >= 0).length);
+    assert.strictEqual(bin.defects.length, rows.filter((r) => r.PLATE_ID === "0" && r.TYPE === "-4").length);
+    assert.ok(bin.defects.length > 0);
+    assert.strictEqual(bin.trims.length, ofPlate.filter((r) => r.CUT === "-1").length);
+    assert.strictEqual(bin.wastes.length, ofPlate.filter((r) => r.TYPE === "-1" && r.CUT !== "-1").length);
+    assert.strictEqual(bin.cuts.length,
+        ofPlate.filter((r) => Number(r.TYPE) < 0 && r.TYPE !== "-4" && r.CUT !== "-1").length);
+    // With the COPIES column.
+    const copies = viewerSolution.readSolution(
+        "PLATE_ID,COPIES,NODE_ID,X,Y,WIDTH,HEIGHT,TYPE,CUT,PARENT\n"
+        + "0,3,0,0,0,100,50,-2,0,\n0,3,1,0,0,40,50,2,1,0\n0,3,2,40,0,60,50,-1,1,0\n");
+    assert.strictEqual(copies.bins[0].copies, 3);
+    assert.deepStrictEqual(copies.bins[0].items.map((item) => item.itemTypeId), [2]);
+    assert.strictEqual(copies.bins[0].wastes.length, 1);
+});
+
+test("viewer: onedimensional", () => {
+    // The copies of the bins.
+    const text = read("data", "onedimensional", "tests", "bin_packing_dominant_set_all_fit", "solution.csv");
+    const rows = parseCsv(text);
+    const solution = viewerSolution.readSolution(text);
+    assert.strictEqual(solution.problemType, "onedimensional");
+    const bins = rows.filter((r) => r.TYPE === "BIN");
+    assert.deepStrictEqual(solution.bins.map((bin) => bin.copies), bins.map((r) => Number(r.COPIES)));
+    assert.strictEqual(viewerSolution.numberOfBins(solution), bins.reduce((n, r) => n + Number(r.COPIES), 0));
+    assert.ok(viewerSolution.numberOfBins(solution) > solution.bins.length);
+    const item = solution.bins[0].items[0];
+    assert.strictEqual(item.box.y0, 0);
+    assert.strictEqual(item.box.y1, 1);
+});
+
+test("viewer: irregular", () => {
+    // Arcs: closed contours, the points of the arcs on their circles.
+    const arcs = viewerSolution.readSolution(
+        read("wasm", "tests", "fixtures", "viewer", "irregular_arcs_solution.json"));
+    assert.strictEqual(arcs.problemType, "irregular");
+    for (const bin of arcs.bins) {
+        for (const item of bin.items) {
+            for (const itemPath of item.paths) {
+                for (const contour of itemPath)
+                    assert.ok(contour.length >= 3);
+            }
+        }
+    }
+    // An item of several shapes: a path for each shape (overlapping shapes
+    // aren't holes).
+    assert.deepStrictEqual(arcs.bins[0].items.map((item) => item.paths.length), [1, 2]);
+    // Its label in its largest shape, within its bounding box.
+    const item = arcs.bins[0].items[1];
+    const inside = (b, c) => b.x0 >= c.x0 && b.y0 >= c.y0 && b.x1 <= c.x1 && b.y1 <= c.y1;
+    assert.ok(inside(item.labelBox, item.box));
+    assert.notDeepStrictEqual(item.labelBox, item.box);
+    // Holes: a path for each shape of an item, with a contour for the shape
+    // and one for each hole.
+    const json = JSON.parse(read("wasm", "tests", "fixtures", "viewer", "irregular_holes_solution.json"));
+    const holes = viewerSolution.readSolution(JSON.stringify(json));
+    json.bins.forEach((jsonBin, i) => {
+        const bin = holes.bins[i];
+        assert.strictEqual(bin.copies, jsonBin.copies);
+        assert.strictEqual(bin.defects.length, (jsonBin.defects || []).length);
+        jsonBin.items.forEach((jsonItem, j) => {
+            assert.deepStrictEqual(bin.items[j].paths.map((p) => p.length),
+                jsonItem.item_shapes.map((s) => 1 + (s.holes || []).length));
+        });
+    });
+    // A full circle: points on the circle, all around it.
+    const circle = viewerSolution.shapeContour([
+        {type: "CircularArc", xs: 2, ys: 0, xe: 2, ye: 0, xc: 1, yc: 0, orientation: "Full"}]);
+    assert.ok(circle.length >= 64);
+    for (const [x, y] of circle)
+        assert.ok(Math.abs(Math.hypot(x - 1, y) - 1) < 1e-9);
+    const xs = circle.map(([x]) => x);
+    assert.ok(Math.min(...xs) < 0.01 && Math.max(...xs) > 1.99);
+    // A quarter circle, anticlockwise: from (1, 0) to (0, 1).
+    const quarter = viewerSolution.shapeContour([
+        {type: "CircularArc", xs: 1, ys: 0, xe: 0, ye: 1, xc: 0, yc: 0, orientation: "Anticlockwise"},
+        {type: "LineSegment", xs: 0, ys: 1, xe: 0, ye: 0},
+        {type: "LineSegment", xs: 0, ys: 0, xe: 1, ye: 0}]);
+    assert.ok(quarter.every(([x, y]) => x >= -1e-9 && y >= -1e-9));
+});
+
+test("viewer: all the bins at the same scale", async () => {
+    // The frame of the bins: the largest width and the largest height.
+    const {binsFrame} = await import("../web/viewer/render.js");
+    const solution = viewerSolution.readSolution(
+        "TYPE,ID,COPIES,BIN,X,Y,LX,LY\nBIN,0,1,0,0,0,1000,500\nBIN,1,1,1,0,0,700,400\nBIN,2,1,2,0,0,600,800\n");
+    assert.deepStrictEqual(binsFrame(solution.bins), {width: 1000, height: 800});
+});
+
+test("viewer: box and boxstacks", async () => {
+    const {binsFrame3, paintOrder, rotateBox} = await import("../web/viewer/render3d.js");
+    // box: bins and items in three dimensions, with their copies.
+    const text = read("wasm", "tests", "fixtures", "viewer", "box_defects.csv");
+    const rows = parseCsv(text);
+    const box = viewerSolution.readSolution(text);
+    assert.strictEqual(box.dimensions, 3);
+    assert.strictEqual(box.bins.length, rows.filter((r) => r.TYPE === "BIN").length);
+    const bin = box.bins[0];
+    const binRow = rows.find((r) => r.TYPE === "BIN" && r.BIN === "0");
+    assert.deepStrictEqual(bin.box3, {x0: 0, y0: 0, z0: 0,
+        x1: Number(binRow.LX), y1: Number(binRow.LY), z1: Number(binRow.LZ)});
+    assert.strictEqual(bin.items.length, rows.filter((r) => r.TYPE === "ITEM" && r.BIN === "0").length);
+    assert.strictEqual(bin.defects3.length, rows.filter((r) => r.TYPE === "DEFECT" && r.BIN === "0").length);
+    assert.match(bin.items[0].label, /^Item type \d+: \d+ × \d+ × \d+ at \(/);
+    // boxstacks: the items with their stacks.
+    const boxstacks = viewerSolution.readSolution(
+        read("wasm", "tests", "fixtures", "viewer", "boxstacks_copies.csv"));
+    assert.strictEqual(boxstacks.problemType, "boxstacks");
+    assert.strictEqual(boxstacks.dimensions, 3);
+    assert.ok(boxstacks.bins.every((b) => b.items.every((item) => item.box3.z1 > item.box3.z0)));
+    assert.match(boxstacks.bins[0].items[0].label, /stack \d+/);
+    // The frame of the bins: their largest dimensions.
+    const sized = viewerSolution.readSolution("TYPE,ID,COPIES,BIN,X,Y,Z,LX,LY,LZ,ROTATION\n"
+        + "BIN,0,1,0,0,0,0,100,50,40,\nBIN,1,1,1,0,0,0,60,80,20,\n");
+    assert.deepStrictEqual(binsFrame3(sized.bins), {x: 100, y: 80, z: 40});
+    // Seen from the next corner: a quarter turn.
+    assert.deepStrictEqual(rotateBox({x0: 0, x1: 20, y0: 0, y1: 10, z0: 0, z1: 5}, {x: 100, y: 50}, 1),
+        {x0: 0, x1: 10, y0: 80, y1: 100, z0: 0, z1: 5});
+    assert.deepStrictEqual(rotateBox({x0: 0, x1: 20, y0: 0, y1: 10, z0: 0, z1: 5}, {x: 100, y: 50}, 2),
+        {x0: 80, x1: 100, y0: 40, y1: 50, z0: 0, z1: 5});
+    // The order of drawing: the boxes behind first (farther along x or y, or
+    // below).
+    const near = {x0: 0, y0: 0, z0: 0, x1: 1, y1: 1, z1: 1};
+    const farX = {x0: 1, y0: 0, z0: 0, x1: 2, y1: 1, z1: 1};
+    const farY = {x0: 0, y0: 1, z0: 0, x1: 1, y1: 2, z1: 1};
+    const above = {x0: 0, y0: 0, z0: 1, x1: 1, y1: 1, z1: 2};
+    const order = paintOrder([above, near, farX, farY]);
+    const position = (i) => order.indexOf(i);
+    assert.ok(position(2) < position(1) && position(3) < position(1));
+    assert.ok(position(1) < position(0));
+    assert.deepStrictEqual([...order].sort(), [0, 1, 2, 3]);
+});

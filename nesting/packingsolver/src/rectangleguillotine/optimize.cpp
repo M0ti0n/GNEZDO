@@ -1,0 +1,1270 @@
+#include "packingsolver/rectangleguillotine/optimize.hpp"
+
+#include "packingsolver/rectangleguillotine/algorithm_formatter.hpp"
+#include "packingsolver/rectangleguillotine/instance_builder.hpp"
+#include "rectangleguillotine/tree_search.hpp"
+#include "rectangleguillotine/tree_search_maximal_spaces.hpp"
+#include "rectangleguillotine/column_generation_strips.hpp"
+#include "rectangleguillotine/sequential_strips_onedimensional.hpp"
+#include "rectangleguillotine/tree_search_hypergraph_infinite_copies.hpp"
+#include "rectangleguillotine/tree_search_hypergraph.hpp"
+#include "rectangle/dual_feasible_functions.hpp"
+#include "packingsolver/rectangle/instance_builder.hpp"
+#include "packingsolver/onedimensional/instance_builder.hpp"
+#include "packingsolver/onedimensional/optimize.hpp"
+#include "algorithms/dichotomic_search.hpp"
+#include "algorithms/sequential_value_correction.hpp"
+#include "algorithms/column_generation.hpp"
+#include "algorithms/thread_pool.hpp"
+
+
+
+using namespace packingsolver;
+using namespace packingsolver::rectangleguillotine;
+
+namespace
+{
+
+void optimize_trivial_bound(
+        const Instance& instance,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    if (instance.objective() == Objective::Knapsack) {
+        // 1D continuous relaxation (area-based Dantzig bound): sort items
+        // by decreasing profit/area ratio and greedily fill the total
+        // available bin area, taking the last item fractionally. Always a
+        // valid, cheap (O(n log n), no search) upper bound, and much
+        // tighter than the trivial "sum of all profits" whenever item
+        // profits aren't roughly proportional to their area.
+        Area total_capacity = 0;
+        for (BinTypeId bin_type_id = 0;
+                bin_type_id < instance.number_of_bin_types();
+                ++bin_type_id) {
+            const BinType& bin_type = instance.bin_type(bin_type_id);
+            total_capacity += bin_type.area() * bin_type.copies;
+        }
+        std::vector<ItemTypeId> sorted_item_types(instance.number_of_item_types());
+        std::iota(sorted_item_types.begin(), sorted_item_types.end(), 0);
+        std::sort(
+                sorted_item_types.begin(),
+                sorted_item_types.end(),
+                [&instance](ItemTypeId item_type_id_1, ItemTypeId item_type_id_2) -> bool
+                {
+                    const ItemType& item_type_1 = instance.item_type(item_type_id_1);
+                    const ItemType& item_type_2 = instance.item_type(item_type_id_2);
+                    return item_type_1.profit * item_type_2.area()
+                        > item_type_2.profit * item_type_1.area();
+                });
+        Profit bound = 0.0;
+        Area remaining_capacity = total_capacity;
+        for (ItemTypeId item_type_id: sorted_item_types) {
+            if (remaining_capacity <= 0)
+                break;
+            const ItemType& item_type = instance.item_type(item_type_id);
+            if (item_type.area() <= 0)
+                continue;
+            Area item_total_area = item_type.area() * item_type.copies;
+            if (item_total_area <= remaining_capacity) {
+                bound += item_type.profit * item_type.copies;
+                remaining_capacity -= item_total_area;
+            } else {
+                bound += item_type.profit
+                    * ((double)remaining_capacity / item_type.area());
+                remaining_capacity = 0;
+            }
+        }
+        // This bound ignores resources entirely. A 'penalize' resource with
+        // a negative penalty *increases* the reported profit when
+        // triggered (see 'Resource'), so add back the worst case - every
+        // such resource triggering at once - to keep the bound valid.
+        bound += negative_penalty_sum(instance);
+        algorithm_formatter.update_knapsack_bound(bound);
+        return;
+    }
+
+    if (instance.objective() == Objective::BinPacking) {
+        // Area-based bound: fill bin types in the order they are provided
+        // (as bins are used for this objective) until enough area is
+        // available to fit all the items. Cheap (linear in the number of
+        // bin/item types), so useful when there are too many (small) items
+        // for the more expensive dual feasible functions bound to run.
+        Area remaining_item_area = instance.item_area();
+        BinPos bound = 0;
+        for (BinTypeId bin_type_id = 0;
+                bin_type_id < instance.number_of_bin_types();
+                ++bin_type_id) {
+            if (remaining_item_area <= 0)
+                break;
+            const BinType& bin_type = instance.bin_type(bin_type_id);
+            if (bin_type.area() <= 0)
+                continue;
+            BinPos bins_needed = (BinPos)((remaining_item_area + bin_type.area() - 1) / bin_type.area());
+            BinPos bins_used = std::min(bins_needed, bin_type.copies);
+            bound += bins_used;
+            remaining_item_area -= bins_used * bin_type.area();
+        }
+        algorithm_formatter.update_bin_packing_bound(bound);
+        return;
+    }
+
+    if (instance.objective() != Objective::OpenDimensionX
+            && instance.objective() != Objective::OpenDimensionY) {
+        return;
+    }
+
+    // Area-based bound: the open dimension cannot be smaller than what is
+    // required to fit the total area of the items in the fixed dimension of
+    // the bin.
+    // Item-based bound: the open dimension cannot be smaller than the
+    // smallest extent an item can have in that direction (accounting for
+    // whether it may be rotated), for the item requiring the most space in
+    // that direction.
+    const auto& bin_type = instance.bin_type(0);
+    Length fixed_dimension = (instance.objective() == Objective::OpenDimensionX)?
+        bin_type.rect.h:
+        bin_type.rect.w;
+    Length bound = (fixed_dimension > 0)?
+        (Length)((instance.item_area() + fixed_dimension - 1) / fixed_dimension):
+        0;
+
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance.number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance.item_type(item_type_id);
+        Length item_min_extent = (instance.objective() == Objective::OpenDimensionX)?
+            item_type.rect.w:
+            item_type.rect.h;
+        if (!item_type.oriented) {
+            item_min_extent = std::min(
+                    item_min_extent,
+                    (instance.objective() == Objective::OpenDimensionX)?
+                        item_type.rect.h:
+                        item_type.rect.w);
+        }
+        bound = std::max(bound, item_min_extent);
+    }
+
+    if (instance.objective() == Objective::OpenDimensionX) {
+        algorithm_formatter.update_open_dimension_x_bound(bound);
+    } else {
+        algorithm_formatter.update_open_dimension_y_bound(bound);
+    }
+}
+
+void optimize_onedimensional_bound(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    // Relax the instance to 1D, keeping only bin/item areas: any solution of
+    // the original instance is also a solution of this relaxation (with the
+    // same cost), so the bound the onedimensional solver finds for it
+    // (which runs the same dichotomic search) is a valid lower bound here.
+    onedimensional::InstanceBuilder onedim_instance_builder;
+    onedim_instance_builder.set_objective(instance.objective());
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance.number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = instance.bin_type(bin_type_id);
+        BinTypeId onedim_bin_type_id = onedim_instance_builder.add_bin_type(bin_type.area());
+        onedim_instance_builder.set_bin_type_cost(onedim_bin_type_id, bin_type.cost);
+        onedim_instance_builder.set_bin_type_copies(onedim_bin_type_id, bin_type.copies);
+        onedim_instance_builder.set_bin_type_copies_min(onedim_bin_type_id, bin_type.copies_min);
+    }
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance.number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance.item_type(item_type_id);
+        if (item_type.area() <= 0)
+            continue;
+        ItemTypeId onedim_item_type_id = onedim_instance_builder.add_item_type(item_type.area());
+        onedim_instance_builder.set_item_type_profit(onedim_item_type_id, item_type.profit);
+        onedim_instance_builder.set_item_type_copies(onedim_item_type_id, item_type.copies);
+    }
+    onedimensional::Instance onedim_instance = onedim_instance_builder.build();
+
+    onedimensional::OptimizeParameters onedim_parameters;
+    onedim_parameters.verbosity_level = 0;
+    onedim_parameters.timer = parameters.timer;
+    onedim_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    onedim_parameters.optimization_mode = OptimizationMode::NotAnytime;
+    onedim_parameters.linear_programming_solver_name = parameters.linear_programming_solver_name;
+    auto onedim_output = optimize(onedim_instance, onedim_parameters);
+
+    // The one-dimensional instance is a relaxation: if it is infeasible, so
+    // is the instance.
+    if (onedim_output.is_proven_infeasible)
+        algorithm_formatter.update_is_proven_infeasible();
+
+    switch (instance.objective()) {
+    case Objective::BinPacking: {
+        algorithm_formatter.update_bin_packing_bound(
+                onedim_output.bin_packing_bound);
+        break;
+    } case Objective::Knapsack: {
+        // The 1D relaxation this bound comes from doesn't carry over
+        // resources at all. A 'penalize' resource with a negative penalty
+        // *increases* the reported profit when triggered (see 'Resource'),
+        // so add back the worst case - every such resource triggering at
+        // once - to keep the bound valid.
+        algorithm_formatter.update_knapsack_bound(
+                onedim_output.knapsack_bound + negative_penalty_sum(instance));
+        break;
+    } case Objective::VariableSizedBinPacking: {
+        algorithm_formatter.update_variable_sized_bin_packing_bound(
+                onedim_output.variable_sized_bin_packing_bound);
+        break;
+    } case Objective::BinPackingWithLeftovers: case Objective::Feasibility: {
+        // No bound for these objectives; only the infeasibility above.
+        break;
+    } default: {
+        std::stringstream ss;
+        ss << FUNC_SIGNATURE << ": "
+            << "objective \""
+            << instance.objective() << "\" not supported.";
+        throw std::logic_error(ss.str());
+    }
+    }
+}
+
+void optimize_dual_feasible_functions(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    rectangle::InstanceBuilder rectangle_instance_builder;
+    rectangle_instance_builder.set_objective(instance.objective());
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance.number_of_bin_types();
+            ++bin_type_id) {
+        BinType bin_type = instance.bin_type(bin_type_id);
+        BinTypeId rectangle_bin_type_id = rectangle_instance_builder.add_bin_type(
+                bin_type.rect.w,
+                bin_type.rect.h);
+        rectangle_instance_builder.set_bin_type_cost(
+                rectangle_bin_type_id,
+                bin_type.cost);
+        rectangle_instance_builder.set_bin_type_copies(
+                rectangle_bin_type_id,
+                bin_type.copies);
+    }
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance.number_of_item_types();
+            ++item_type_id) {
+        ItemType item_type = instance.item_type(item_type_id);
+        ItemTypeId rectangle_item_type_id = rectangle_instance_builder.add_item_type(
+                item_type.rect.w,
+                item_type.rect.h,
+                item_type.oriented);
+        rectangle_instance_builder.set_item_type_profit(
+                rectangle_item_type_id,
+                item_type.profit);
+        rectangle_instance_builder.set_item_type_copies(
+                rectangle_item_type_id,
+                item_type.copies);
+    }
+    rectangle::Instance rectangle_instance = rectangle_instance_builder.build();
+
+    rectangle::DualFeasibleFunctionsParameters dff_parameters;
+    dff_parameters.verbosity_level = 0;
+    dff_parameters.timer = parameters.timer;
+    dff_parameters.new_solution_callback
+        = [&algorithm_formatter](
+                const rectangle::Output& dff_output)
+        {
+            if (dff_output.is_proven_infeasible) {
+                algorithm_formatter.update_is_proven_infeasible();
+            } else {
+                algorithm_formatter.update_bin_packing_bound(
+                        dff_output.bin_packing_bound);
+            }
+        };
+    rectangle::dual_feasible_functions(rectangle_instance, dff_parameters);
+}
+
+void optimize_tree_search(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    TreeSearchParameters ts_parameters;
+    ts_parameters.verbosity_level = 0;
+    ts_parameters.timer = parameters.timer;
+    ts_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    ts_parameters.optimization_mode = parameters.optimization_mode;
+    ts_parameters.guides = parameters.tree_search_guides;
+    ts_parameters.not_anytime_tree_search_queue_size = parameters.not_anytime_tree_search_queue_size;
+    ts_parameters.json_search_tree_path = parameters.json_search_tree_path;
+    ts_parameters.new_solution_callback = [&algorithm_formatter](
+            const rectangleguillotine::Output& ts_output)
+    {
+        algorithm_formatter.update_solution(ts_output.solution_pool.best(), "TS " + ts_output.solution_pool.best_label());
+        algorithm_formatter.update_bounds(ts_output);
+    };
+    tree_search(instance, ts_parameters);
+}
+
+void optimize_tree_search_maximal_spaces(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    TreeSearchMaximalSpacesParameters ts_ms_parameters;
+    ts_ms_parameters.verbosity_level = 0;
+    ts_ms_parameters.timer = parameters.timer;
+    ts_ms_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    ts_ms_parameters.optimization_mode = parameters.optimization_mode;
+    ts_ms_parameters.not_anytime_tree_search_queue_size = parameters.not_anytime_tree_search_maximal_spaces_queue_size;
+    ts_ms_parameters.new_solution_callback = [&algorithm_formatter](
+            const rectangleguillotine::Output& ts_output)
+    {
+        algorithm_formatter.update_solution(ts_output.solution_pool.best(), "TSMS " + ts_output.solution_pool.best_label());
+    };
+    tree_search_maximal_spaces(instance, ts_ms_parameters);
+}
+
+void optimize_tree_search_hypergraph_infinite_copies(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    TreeSearchHypergraphInfiniteCopiesParameters tsh_ic_parameters;
+    tsh_ic_parameters.verbosity_level = 0;
+    tsh_ic_parameters.timer = parameters.timer;
+    if (parameters.optimization_mode != OptimizationMode::Anytime) {
+        tsh_ic_parameters.maximum_array_size
+            = parameters.not_anytime_tree_search_hypergraph_infinite_copies_maximum_array_size;
+    }
+    tsh_ic_parameters.new_solution_callback = [&algorithm_formatter](
+            const rectangleguillotine::Output& ps_output)
+    {
+        algorithm_formatter.update_solution(
+                ps_output.solution_pool.best(),
+                "TSHIC");
+        algorithm_formatter.update_bounds(ps_output);
+    };
+    tree_search_hypergraph_infinite_copies(instance, tsh_ic_parameters);
+}
+
+void optimize_tree_search_hypergraph(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    TreeSearchHypergraphParameters tsh_parameters;
+    tsh_parameters.verbosity_level = 0;
+    tsh_parameters.timer = parameters.timer;
+    tsh_parameters.new_solution_callback = [&algorithm_formatter](
+            const rectangleguillotine::Output& ps_output)
+    {
+        algorithm_formatter.update_solution(
+                ps_output.solution_pool.best(),
+                "TSH " + ps_output.solution_pool.best_label());
+    };
+    tree_search_hypergraph(instance, tsh_parameters);
+}
+
+void optimize_column_generation_strips(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    ColumnGenerationStripsParameters cg_parameters;
+    cg_parameters.verbosity_level = 0;
+    cg_parameters.timer = parameters.timer;
+    cg_parameters.linear_programming_solver_name
+        = parameters.linear_programming_solver_name;
+    cg_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    cg_parameters.optimization_mode = parameters.optimization_mode;
+    cg_parameters.new_solution_callback = [&instance, &algorithm_formatter](
+            const rectangleguillotine::Output& ps_output)
+    {
+        const ColumnGenerationStripsOutput& pscg_output
+            = static_cast<const ColumnGenerationStripsOutput&>(ps_output);
+        algorithm_formatter.update_solution(
+                pscg_output.solution_pool.best(),
+                "CGS " + pscg_output.solution_pool.best_label());
+        if (instance.objective() == Objective::Knapsack) {
+            algorithm_formatter.update_knapsack_bound(ps_output.knapsack_bound);
+        } else if (instance.objective() == Objective::OpenDimensionX) {
+            algorithm_formatter.update_open_dimension_x_bound(ps_output.open_dimension_x_bound);
+        } else if (instance.objective() == Objective::OpenDimensionY) {
+            algorithm_formatter.update_open_dimension_y_bound(ps_output.open_dimension_y_bound);
+        }
+    };
+    column_generation_strips(instance, cg_parameters);
+}
+
+void optimize_sequential_strips_onedimensional(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    SequentialStripsOnedimensionalParameters sso_parameters;
+    sso_parameters.verbosity_level = 0;
+    sso_parameters.timer = parameters.timer;
+    sso_parameters.linear_programming_solver_name
+        = parameters.linear_programming_solver_name;
+    sso_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    sso_parameters.optimization_mode = parameters.optimization_mode;
+    sso_parameters.new_solution_callback = [&algorithm_formatter](
+            const rectangleguillotine::Output& ps_output)
+    {
+        algorithm_formatter.update_solution(
+                ps_output.solution_pool.best(),
+                "SSO " + ps_output.solution_pool.best_label());
+    };
+    sequential_strips_onedimensional(instance, sso_parameters);
+}
+
+void optimize_sequential_single_knapsack(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    for (Counter iteration = 0, queue_size = 1;; ++iteration) {
+        NodeId queue_size_ms = queue_size;
+        if (parameters.optimization_mode != OptimizationMode::Anytime) {
+            queue_size = parameters.not_anytime_sequential_single_knapsack_subproblem_tree_search_queue_size;
+            queue_size_ms = parameters.not_anytime_sequential_single_knapsack_subproblem_tree_search_maximal_spaces_queue_size;
+        }
+
+        SequentialValueCorrectionFunction<Instance, Solution> kp_solve
+            = [&algorithm_formatter, &parameters, &queue_size, &queue_size_ms](const Instance& kp_instance)
+            {
+                OptimizeParameters kp_parameters;
+                kp_parameters.verbosity_level = 0;
+                kp_parameters.timer = parameters.timer;
+                kp_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+                kp_parameters.optimization_mode
+                    = (parameters.optimization_mode == OptimizationMode::NotAnytimeSequential)?
+                    OptimizationMode::NotAnytimeSequential:
+                    OptimizationMode::NotAnytimeDeterministic;
+                kp_parameters.not_anytime_tree_search_queue_size = queue_size;
+                kp_parameters.not_anytime_tree_search_maximal_spaces_queue_size = queue_size_ms;
+                kp_parameters.linear_programming_solver_name = parameters.linear_programming_solver_name;
+                auto kp_output = optimize(kp_instance, kp_parameters);
+                return kp_output.solution_pool;
+            };
+        SequentialValueCorrectionParameters<Instance, Solution, rectangleguillotine::Output> svc_parameters;
+        svc_parameters.verbosity_level = 0;
+        svc_parameters.timer = parameters.timer;
+        svc_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+        svc_parameters.maximum_number_of_iterations = 1;
+        // No later iteration to adjust profits away from this initial
+        // value - see 'SequentialValueCorrectionParameters::
+        // initial_profit_exponent''s own doc comment.
+        svc_parameters.initial_profit_exponent = 1.0;
+        svc_parameters.new_solution_callback = [
+            &algorithm_formatter, iteration](
+                    const rectangleguillotine::Output& ps_output)
+            {
+                const SequentialValueCorrectionOutput<Instance, Solution, rectangleguillotine::Output>& pssvc_output
+                    = static_cast<const SequentialValueCorrectionOutput<Instance, Solution, rectangleguillotine::Output>&>(ps_output);
+                std::stringstream ss;
+                ss << "SSK it " << iteration;
+                algorithm_formatter.update_solution(pssvc_output.solution_pool.best(), ss.str());
+            };
+        sequential_value_correction<Instance, InstanceBuilder, Solution, AlgorithmFormatter, rectangleguillotine::Output>(instance, kp_solve, svc_parameters);
+
+        // Check end.
+        if (algorithm_formatter.end_boolean())
+            break;
+        if (parameters.timer.needs_to_end())
+            break;
+
+        if (parameters.optimization_mode != OptimizationMode::Anytime)
+            break;
+
+        queue_size = std::max(
+                queue_size + 1,
+                (NodeId)(queue_size * 2));
+    }
+}
+
+void optimize_sequential_value_correction(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    SequentialValueCorrectionFunction<Instance, Solution> kp_solve
+        = [&algorithm_formatter, &parameters](const Instance& kp_instance)
+        {
+            OptimizeParameters kp_parameters;
+            kp_parameters.verbosity_level = 0;
+            kp_parameters.timer = parameters.timer;
+            kp_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+            kp_parameters.optimization_mode
+                = (parameters.optimization_mode == OptimizationMode::NotAnytimeSequential)?
+                OptimizationMode::NotAnytimeSequential:
+                OptimizationMode::NotAnytimeDeterministic;
+            kp_parameters.not_anytime_tree_search_queue_size
+                = parameters.sequential_value_correction_subproblem_tree_search_queue_size;
+            kp_parameters.not_anytime_tree_search_maximal_spaces_queue_size
+                = parameters.sequential_value_correction_subproblem_tree_search_maximal_spaces_queue_size;
+            kp_parameters.linear_programming_solver_name = parameters.linear_programming_solver_name;
+            auto kp_output = optimize(kp_instance, kp_parameters);
+            return kp_output.solution_pool;
+        };
+    SequentialValueCorrectionParameters<Instance, Solution, rectangleguillotine::Output> svc_parameters;
+    svc_parameters.verbosity_level = 0;
+    svc_parameters.timer = parameters.timer;
+    svc_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    svc_parameters.initial_profit_exponent = 1.1;
+    if (parameters.optimization_mode != OptimizationMode::Anytime)
+        svc_parameters.maximum_number_of_iterations = parameters.not_anytime_sequential_value_correction_number_of_iterations;
+    svc_parameters.new_solution_callback = [&algorithm_formatter](
+            const rectangleguillotine::Output& ps_output)
+    {
+        const SequentialValueCorrectionOutput<Instance, Solution, rectangleguillotine::Output>& pssvc_output
+            = static_cast<const SequentialValueCorrectionOutput<Instance, Solution, rectangleguillotine::Output>&>(ps_output);
+        std::stringstream ss;
+        ss << "SVC it " << pssvc_output.number_of_iterations;
+        algorithm_formatter.update_solution(pssvc_output.solution_pool.best(), ss.str());
+    };
+    sequential_value_correction<Instance, InstanceBuilder, Solution, AlgorithmFormatter, rectangleguillotine::Output>(instance, kp_solve, svc_parameters);
+}
+
+void optimize_dichotomic_search(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    double waste_percentage_upper_bound = std::numeric_limits<double>::infinity();
+    for (Counter queue_size = 1;;) {
+
+        if (parameters.optimization_mode != OptimizationMode::Anytime)
+            queue_size = parameters.not_anytime_dichotomic_search_subproblem_tree_search_queue_size;
+
+        DichotomicSearchFunction<Instance, Solution> bpp_solve
+            = [&algorithm_formatter, &parameters, &queue_size](const Instance& bpp_instance)
+            {
+                OptimizeParameters bpp_parameters;
+                bpp_parameters.verbosity_level = 0;
+                bpp_parameters.timer = parameters.timer;
+                bpp_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+                bpp_parameters.optimization_mode
+                    = (parameters.optimization_mode == OptimizationMode::NotAnytimeSequential)?
+                    OptimizationMode::NotAnytimeSequential:
+                    OptimizationMode::NotAnytimeDeterministic;
+                bpp_parameters.use_tree_search = true;
+                bpp_parameters.not_anytime_tree_search_queue_size = queue_size;
+                bpp_parameters.linear_programming_solver_name = parameters.linear_programming_solver_name;
+                auto bpp_output = optimize(bpp_instance, bpp_parameters);
+                return bpp_output.solution_pool;
+            };
+        DichotomicSearchParameters<Instance, Solution, rectangleguillotine::Output> ds_parameters;
+        ds_parameters.verbosity_level = 0;
+        ds_parameters.timer = parameters.timer;
+        ds_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+        ds_parameters.initial_waste_percentage_upper_bound = waste_percentage_upper_bound;
+        ds_parameters.new_solution_callback = [
+            &algorithm_formatter, &queue_size](
+                    const rectangleguillotine::Output& ps_output)
+            {
+                const DichotomicSearchOutput<Instance, Solution, rectangleguillotine::Output>& psds_output
+                    = static_cast<const DichotomicSearchOutput<Instance, Solution, rectangleguillotine::Output>&>(ps_output);
+                std::stringstream ss;
+                ss << "DS q " << queue_size
+                    << " w " << psds_output.waste_percentage;
+                algorithm_formatter.update_solution(psds_output.solution_pool.best(), ss.str());
+            };
+        auto ds_output = dichotomic_search<Instance, InstanceBuilder, Solution, AlgorithmFormatter, rectangleguillotine::Output>(instance, bpp_solve, ds_parameters);
+
+        // Check end.
+        if (algorithm_formatter.end_boolean())
+            break;
+        if (parameters.timer.needs_to_end())
+            break;
+
+        if (parameters.optimization_mode != OptimizationMode::Anytime)
+            break;
+
+        queue_size = std::max(
+                queue_size + 1,
+                (NodeId)(queue_size * 2));
+        waste_percentage_upper_bound = ds_output.waste_percentage_upper_bound;
+    }
+}
+
+void optimize_column_generation(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter,
+        BinPos lower_bound)
+{
+    ColumnGenerationPricingFunction<Instance, InstanceBuilder, Solution, rectangleguillotine::Output> pricing_function
+        = [&algorithm_formatter, &parameters](const Instance& kp_instance, PricingType)
+        {
+            OptimizeParameters kp_parameters;
+            kp_parameters.verbosity_level = 0;
+            kp_parameters.timer = parameters.timer;
+            kp_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+            kp_parameters.optimization_mode
+                = (parameters.optimization_mode == OptimizationMode::NotAnytimeSequential)?
+                OptimizationMode::NotAnytimeSequential:
+                OptimizationMode::NotAnytimeDeterministic;
+            kp_parameters.not_anytime_tree_search_queue_size
+                = parameters.column_generation_subproblem_tree_search_queue_size;
+            kp_parameters.not_anytime_tree_search_maximal_spaces_queue_size
+                = parameters.column_generation_subproblem_tree_search_maximal_spaces_queue_size;
+            kp_parameters.linear_programming_solver_name = parameters.linear_programming_solver_name;
+            return optimize(kp_instance, kp_parameters);
+        };
+
+    ColumnGenerationParameters<Instance, Solution, rectangleguillotine::Output> cg_parameters;
+    cg_parameters.verbosity_level = 0;
+    cg_parameters.timer = parameters.timer;
+    cg_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    cg_parameters.optimization_mode = parameters.optimization_mode;
+    cg_parameters.linear_programming_solver_name = parameters.linear_programming_solver_name;
+    // The sequential feasibility scheme solves a column generation for each
+    // number of bins from the lower bound: too slow when the solutions use
+    // many bins. With a single bin type, the bound of the master problem is
+    // valid without it (with several bin types, it is always used).
+    cg_parameters.use_sequential_feasibility = (instance.number_of_items() <= 100);
+    // With many copies per item type, the internal diving and the rounding
+    // heuristic fix the columns a few copies at a time, each step calling the
+    // pricing solver: too slow when the solutions use many bins.
+    ItemPos mean_number_of_items_in_bins
+        = largest_bin_space(instance) / mean_item_space(instance);
+    if (mean_item_type_copies(instance)
+            > parameters.many_item_type_copies_factor
+            * mean_number_of_items_in_bins) {
+        cg_parameters.internal_diving = columngenerationsolver::Activation::Never;
+        cg_parameters.rounding_heuristic = columngenerationsolver::Activation::Never;
+    }
+    cg_parameters.new_solution_callback = [&algorithm_formatter](
+            const rectangleguillotine::Output& ps_output)
+    {
+        algorithm_formatter.update_solution(ps_output.solution_pool.best(), "CG " + ps_output.solution_pool.best_label());
+        algorithm_formatter.update_bounds(ps_output);
+    };
+    column_generation<Instance, InstanceBuilder, Solution, AlgorithmFormatter, rectangleguillotine::Output>(
+            instance, pricing_function, cg_parameters, lower_bound);
+}
+
+/**
+ * Prove the instance infeasible if an item type doesn't fit in any bin type:
+ * with every objective but 'Knapsack', every item must be packed.
+ *
+ * Only uses 'Instance::fits_some_bin', which is a cheap necessary condition.
+ */
+void optimize_item_types_fit(
+        const Instance& instance,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    if (instance.objective() == Objective::Knapsack)
+        return;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance.number_of_item_types();
+            ++item_type_id) {
+        if (instance.item_type(item_type_id).copies == 0)
+            continue;
+        if (!instance.fits_some_bin(item_type_id)) {
+            algorithm_formatter.update_is_proven_infeasible();
+            return;
+        }
+    }
+}
+
+}
+
+packingsolver::rectangleguillotine::Output packingsolver::rectangleguillotine::optimize(
+        const Instance& instance,
+        const OptimizeParameters& parameters)
+{
+    Output output(instance);
+    AlgorithmFormatter algorithm_formatter(instance, parameters, output);
+    algorithm_formatter.start();
+    algorithm_formatter.print_header();
+
+    optimize_item_types_fit(instance, algorithm_formatter);
+    if (output.is_proven_infeasible) {
+        algorithm_formatter.end();
+        return output;
+    }
+
+    // Instance reduction (see 'Reduction'): applied once, upfront,
+    // wrapping the whole dispatch logic below uniformly for every
+    // algorithm - mirrors 'rectangle::optimize''s own wiring. Gated
+    // directly on 'parameters.reduction_parameters.reduce', rather than
+    // constructing a 'Reduction' unconditionally and letting its
+    // constructor no-op, to skip paying for (and discarding) a full pass
+    // building its working representation when disabled.
+    // 'reduced_parameters.reduction_parameters.reduce' is set to 'false'
+    // below to avoid re-running the reduction recursively on the
+    // already-reduced instance.
+    if (parameters.reduction_parameters.reduce) {
+        ReductionParameters reduction_parameters = parameters.reduction_parameters;
+        reduction_parameters.timer = parameters.timer;
+        Reduction reduction(instance, reduction_parameters);
+
+        if (reduction.proven_infeasible()) {
+            // The dedicated bins (see 'Reduction::reduce_full_bin_items'/
+            // 'reduce_perfect_pairs') take every copy of the bin type while
+            // items remain: 'reduction.instance()' is not meaningful.
+            algorithm_formatter.update_is_proven_infeasible();
+            algorithm_formatter.end();
+            return output;
+        }
+
+        // Forwards a solution/bound found for the reduced instance to the
+        // original 'algorithm_formatter', in original-instance
+        // coordinates. The bounds of 'reduced_output' are the original
+        // instance's own bounds, except the dedicated bins (see
+        // 'Reduction::number_of_dedicated_bins', 'BinPacking' only),
+        // absent from the reduced instance: they are added back onto the
+        // bin packing bound.
+        auto report_reduced_output = [&reduction, &algorithm_formatter](
+                const rectangleguillotine::Output& reduced_output)
+            {
+                // Skip incomplete solutions here: 'new_solution_callback' is
+                // threaded, unchanged, into every algorithm this dispatches
+                // to below (including 'use_column_generation''s own
+                // internal pricing subproblems, which recursively call this
+                // same 'optimize()' - with a copy of the *current*
+                // 'OptimizeParameters', this callback included - on tiny,
+                // unrelated sub-instances of their own), so this can fire
+                // with a partial, not-all-items-placed 'best()' that has
+                // nothing to do with a genuine top-level improvement. Every
+                // objective except 'Knapsack' requires every item to be
+                // placed for a solution to be meaningful at all (see
+                // 'Solution::full()') - forwarding an incomplete one anyway
+                // would let it wrongly outrank a real, complete solution:
+                // 'Solution::feasible()' only checks geometric/structural
+                // validity of whatever *is* placed, not completeness, so an
+                // empty solution reads as "feasible" with the fewest
+                // possible bins, and 'operator<''s 'BinPacking'-family
+                // cases rank solely on bin count once feasibility ties.
+                const Solution& reduced_solution = reduced_output.solution_pool.best();
+                if (reduction.instance().objective() == Objective::Knapsack
+                        || reduced_solution.full()) {
+                    algorithm_formatter.update_solution(
+                            reduction.unreduce_solution(reduced_solution),
+                            reduced_output.solution_pool.best_label());
+                }
+                rectangleguillotine::Output translated_output(reduced_output);
+                translated_output.bin_packing_bound += reduction.number_of_dedicated_bins();
+                algorithm_formatter.update_bounds(translated_output);
+            };
+
+        OptimizeParameters reduced_parameters = parameters;
+        reduced_parameters.verbosity_level = 0;
+        reduced_parameters.reduction_parameters.reduce = false;
+        // Forward every solution/bound the recursive solve finds to the
+        // original 'algorithm_formatter' as soon as it is found, rather
+        // than only once at the very end - lets an anytime run on the
+        // reduced instance report live progress (in original-instance
+        // coordinates) the same way a direct, unreduced run would.
+        reduced_parameters.new_solution_callback = report_reduced_output;
+        Output reduced_output = optimize(reduction.instance(), reduced_parameters);
+        // Also report the final result explicitly: some sub-solves never
+        // call 'new_solution_callback' at all (e.g. a reduced instance
+        // left with zero items), so this guarantees the answer is still
+        // reported once regardless. Harmless to call again even when the
+        // callback already reported this exact result, since
+        // 'update_solution'/'update_bounds' are themselves no-ops for
+        // anything that doesn't improve on what is already recorded.
+        report_reduced_output(reduced_output);
+
+        algorithm_formatter.end();
+        return output;
+    }
+
+    optimize_trivial_bound(instance, algorithm_formatter);
+
+    if (instance.objective() == Objective::BinPacking
+            || instance.objective() == Objective::BinPackingWithLeftovers
+            || instance.objective() == Objective::Knapsack
+            || instance.objective() == Objective::VariableSizedBinPacking
+            || instance.objective() == Objective::Feasibility) {
+        optimize_onedimensional_bound(
+                instance,
+                parameters,
+                algorithm_formatter);
+    }
+
+    if (instance.objective() == Objective::BinPacking
+            || instance.objective() == Objective::Feasibility) {
+        if (instance.number_of_bin_types() == 1
+                && (parameters.use_dual_feasible_functions
+                    || instance.number_of_items() <= 100)) {
+            optimize_dual_feasible_functions(
+                    instance,
+                    parameters,
+                    algorithm_formatter);
+        }
+    }
+
+    if (algorithm_formatter.end_boolean()) {
+        algorithm_formatter.end();
+        return output;
+    }
+    if (parameters.timer.needs_to_end()) {
+        algorithm_formatter.end();
+        return output;
+    }
+
+    ItemPos mean_number_of_items_in_bins
+        = largest_bin_space(instance) / mean_item_space(instance);
+
+    // Select algorithms to run.
+    bool use_tree_search = parameters.use_tree_search;
+    bool use_tree_search_maximal_spaces = parameters.use_tree_search_maximal_spaces;
+    bool use_column_generation_strips = parameters.use_column_generation_strips;
+    bool use_sequential_strips_onedimensional = parameters.use_sequential_strips_onedimensional;
+    bool use_tree_search_hypergraph_infinite_copies = parameters.use_tree_search_hypergraph_infinite_copies;
+    bool use_tree_search_hypergraph = parameters.use_tree_search_hypergraph;
+    bool use_sequential_single_knapsack = parameters.use_sequential_single_knapsack;
+    bool use_sequential_value_correction = parameters.use_sequential_value_correction;
+    bool use_dichotomic_search = parameters.use_dichotomic_search;
+    bool use_column_generation = parameters.use_column_generation;
+    if (instance.number_of_bins() <= 1) {
+        // Disable algorithms which are not available for this objective.
+        use_sequential_single_knapsack = false;
+        use_sequential_value_correction = false;
+        use_dichotomic_search = false;
+        use_column_generation = false;
+        use_sequential_strips_onedimensional = false;
+        // Automatic selection.
+        if (!use_tree_search
+                && !use_tree_search_maximal_spaces
+                && !use_column_generation_strips
+                && !use_tree_search_hypergraph_infinite_copies
+                && !use_tree_search_hypergraph) {
+            // Knapsack with "high" numbers of copies (e.g. the subproblems of
+            // the sequential single knapsack and of the column generation
+            // algorithms): the dynamic programming algorithm which ignores
+            // the copies. It gives a bound, and a solution which is often
+            // optimal.
+            Area bin_area = 0;
+            if (instance.number_of_bin_types() == 1) {
+                const BinType& bin_type = instance.bin_type(0);
+                bin_area = (Area)(bin_type.rect.w - bin_type.left_trim - bin_type.right_trim)
+                    * (bin_type.rect.h - bin_type.bottom_trim - bin_type.top_trim);
+            }
+            if (instance.objective() == Objective::Knapsack
+                    && instance.number_of_bins() == 1
+                    && mean_item_type_copies(instance)
+                    > parameters.many_item_type_copies_factor
+                    * mean_number_of_items_in_bins
+                    && bin_area <= parameters.tree_search_hypergraph_infinite_copies_maximum_bin_area
+                    && instance.number_of_stages_unlimited()
+                    && instance.number_of_defects() == 0
+                    && instance.number_of_stacks() == instance.number_of_item_types()
+                    && instance.parameters().minimum_waste_length == 0
+                    && instance.parameters().minimum_distance_1_cuts == 0
+                    && instance.parameters().maximum_distance_1_cuts == -1
+                    && instance.parameters().minimum_distance_2_cuts == 0
+                    && instance.parameters().maximum_distance_2_cuts == -1
+                    && instance.parameters().maximum_number_1_cuts == -1
+                    && instance.parameters().maximum_number_2_cuts == -1
+                    ) {
+                use_tree_search_hypergraph_infinite_copies = true;
+            } else if (instance.number_of_stages_unlimited()
+                    //&& mean_number_of_items_in_bins > parameters.many_items_in_bins_threshold_2
+                    && instance.number_of_defects() == 0
+                    && instance.number_of_stacks() == instance.number_of_item_types()
+                    && instance.parameters().minimum_waste_length == 0
+                    && instance.parameters().minimum_distance_1_cuts == 0
+                    && instance.parameters().maximum_distance_1_cuts == -1
+                    && instance.parameters().minimum_distance_2_cuts == 0
+                    && instance.parameters().maximum_distance_2_cuts == -1
+                    && instance.parameters().maximum_number_1_cuts == -1
+                    && instance.parameters().maximum_number_2_cuts == -1
+                    ) {
+                use_tree_search_maximal_spaces = true;
+            } else if ((instance.objective() == Objective::Knapsack
+                        || instance.objective() == Objective::OpenDimensionX
+                        || instance.objective() == Objective::OpenDimensionY)
+                    && (instance.parameters().number_of_stages <= 2
+                        || instance.parameters().number_of_stages == 3 && instance.parameters().cut_type == CutType::Homogenous)
+                    && instance.number_of_defects() == 0
+                    && instance.number_of_stacks() == instance.number_of_item_types()
+                    && instance.parameters().minimum_waste_length == 0
+                    && instance.parameters().maximum_number_1_cuts == -1
+                    && instance.parameters().maximum_number_2_cuts == -1
+                    // 'column_generation_strips''s pricing solver
+                    // (ColumnGenerationPricingSolver::solve_pricing) falls
+                    // back to 'generate_lower_stage_patterns' whenever
+                    // rotation is allowed (!all_item_types_oriented())
+                    // for these exact (number_of_stages, cut_type)
+                    // combinations. That fallback issues a full recursive
+                    // 'column_generation_strips' call - its own
+                    // from-scratch limited discrepancy search - per
+                    // candidate first-level strip width, at every node
+                    // where the cheap pattern generators
+                    // (generate_1e/1n/1ro/2ho_patterns) found no improving
+                    // column, and dominates run time (see issue #522) -
+                    // don't default into it.
+                    && !(instance.parameters().number_of_stages == 3
+                            && instance.parameters().cut_type == CutType::Homogenous
+                            && !instance.all_item_types_oriented())
+                    && !(instance.parameters().number_of_stages == 2
+                            && instance.parameters().cut_type == CutType::Roadef2018
+                            && !instance.all_item_types_oriented())
+                    ) {
+                use_column_generation_strips = true;
+            } else {
+                use_tree_search = true;
+            }
+        }
+    } else if (instance.objective() == Objective::Feasibility) {
+        // Disable algorithms which are not available for this objective.
+        use_dichotomic_search = false;
+        use_column_generation_strips = false;
+        use_sequential_strips_onedimensional = false;
+        // Automatic selection.
+        if (!use_tree_search
+                && !use_sequential_single_knapsack
+                && !use_sequential_value_correction
+                && !use_column_generation) {
+            if (mean_item_type_copies(instance)
+                    > parameters.many_item_type_copies_factor
+                    * mean_number_of_items_in_bins) {
+                if (mean_number_of_items_in_bins
+                        > parameters.many_items_in_bins_threshold) {
+                    use_sequential_single_knapsack = true;
+                } else {
+                    use_sequential_value_correction = true;
+                }
+                use_column_generation = true;
+            } else {
+                use_tree_search = true;
+                use_column_generation = true;
+            }
+        }
+    } else if (instance.objective() == Objective::Knapsack) {
+        // Disable algorithms which are not available for this objective.
+        use_dichotomic_search = false;
+        use_column_generation_strips = false;
+        use_sequential_strips_onedimensional = false;
+        // Automatic selection.
+        if (!use_tree_search
+                && !use_sequential_single_knapsack
+                && !use_sequential_value_correction
+                && !use_column_generation) {
+            if (mean_item_type_copies(instance)
+                    > parameters.many_item_type_copies_factor
+                    * mean_number_of_items_in_bins) {
+                if (mean_number_of_items_in_bins
+                        > parameters.many_items_in_bins_threshold) {
+                    use_sequential_single_knapsack = true;
+                } else {
+                    use_sequential_value_correction = true;
+                }
+                use_column_generation = true;
+            } else {
+                use_tree_search = true;
+                use_column_generation = true;
+            }
+        }
+    } else if (instance.objective() == Objective::BinPacking
+            || instance.objective() == Objective::BinPackingWithLeftovers) {
+        // Disable algorithms which are not available for this objective.
+        use_column_generation_strips = false;
+        // 'column_generation' doesn't build item-type rows for
+        // 'BinPackingWithLeftovers' at all (see 'get_model' in
+        // 'algorithms/column_generation.hpp'); for 'BinPacking' with more
+        // than one bin type, it instead falls back to its own sequential
+        // feasibility scheme (see 'ColumnGenerationParameters::
+        // use_sequential_feasibility'), so no restriction is needed there.
+        if (instance.objective() == Objective::BinPackingWithLeftovers
+                && instance.number_of_bin_types() > 1) {
+            use_column_generation = false;
+        }
+        if (instance.number_of_bin_types() > 1) {
+            use_sequential_strips_onedimensional = false;
+        }
+        use_dichotomic_search = false;
+        // Automatic selection.
+        if (!use_tree_search
+                && !use_sequential_single_knapsack
+                && !use_sequential_value_correction
+                && !use_sequential_strips_onedimensional
+                && !use_column_generation) {
+            if (mean_item_type_copies(instance)
+                    > parameters.many_item_type_copies_factor
+                    * mean_number_of_items_in_bins) {
+                if (mean_number_of_items_in_bins
+                        > parameters.many_items_in_bins_threshold) {
+                    use_sequential_single_knapsack = true;
+                } else {
+                    use_sequential_value_correction = true;
+                }
+                if (instance.objective() == Objective::BinPacking
+                        && instance.number_of_stacks() == instance.number_of_item_types()) {
+                    use_column_generation = true;
+                }
+            } else {
+                use_tree_search = true;
+                if (mean_number_of_items_in_bins
+                        > parameters.many_items_in_bins_threshold) {
+                    use_sequential_single_knapsack = true;
+                } else {
+                    use_sequential_value_correction = true;
+                    if (instance.objective() == Objective::BinPacking
+                            && instance.number_of_stacks() == instance.number_of_item_types()) {
+                        use_column_generation = true;
+                    }
+                }
+            }
+        }
+    } else if (instance.objective() == Objective::VariableSizedBinPacking) {
+        // Disable algorithms which are not available for this objective.
+        use_column_generation_strips = false;
+        use_sequential_strips_onedimensional = false;
+        if (instance.number_of_bin_types() == 1) {
+            if (use_dichotomic_search) {
+                use_dichotomic_search = false;
+                use_tree_search = true;
+            }
+        } else {
+            use_tree_search = false;
+        }
+        // Automatic selection.
+        if (!use_tree_search
+                && !use_sequential_single_knapsack
+                && !use_sequential_value_correction
+                && !use_dichotomic_search
+                && !use_column_generation) {
+            if (mean_item_type_copies(instance)
+                    > parameters.many_item_type_copies_factor
+                    * mean_number_of_items_in_bins) {
+                if (mean_number_of_items_in_bins
+                        > parameters.many_items_in_bins_threshold) {
+                    use_sequential_single_knapsack = true;
+                } else {
+                    use_sequential_value_correction = true;
+                }
+                use_column_generation = true;
+            } else {
+                if (mean_number_of_items_in_bins
+                        > parameters.many_items_in_bins_threshold) {
+                    use_sequential_single_knapsack = true;
+                    if (instance.number_of_bin_types() > 1) {
+                        use_dichotomic_search = true;
+                    } else {
+                        use_tree_search = true;
+                    }
+                } else {
+                    use_sequential_value_correction = true;
+                    use_column_generation = true;
+                }
+            }
+        }
+    } else if (instance.objective() == Objective::BinPackingCuttingCost) {
+        // Only tree_search supports this objective.
+        use_tree_search = true;
+        use_tree_search_maximal_spaces = false;
+        use_column_generation_strips = false;
+        use_sequential_strips_onedimensional = false;
+        use_tree_search_hypergraph_infinite_copies = false;
+        use_tree_search_hypergraph = false;
+        use_sequential_single_knapsack = false;
+        use_sequential_value_correction = false;
+        use_dichotomic_search = false;
+        use_column_generation = false;
+    }
+
+    // Run selected algorithms.
+    // In 'NotAnytimeDeterministic' mode, algorithms still run in parallel, but
+    // each reports to its own algorithm formatter, writing into its own
+    // output, instead of the shared 'algorithm_formatter', so that their
+    // results can be replayed into it in a fixed, deterministic order once
+    // every algorithm has terminated ('run(tasks, ...)' does not guarantee a
+    // deterministic finish order). Each algorithm can still stop as soon as
+    // its own solution is proven optimal against the bounds already known,
+    // which only depends on its own progress.
+    // These local formatters share 'local_parameters': silenced (no
+    // messages, no JSON output, no new solution callback), and whose timer
+    // also stops on the shared formatter's end boolean (e.g. set by the
+    // memory monitor), since the algorithms only add the end boolean of the
+    // formatter they report to. A 'unique_ptr' is used since an
+    // 'AlgorithmFormatter' is neither copyable nor movable.
+    bool deterministic = (parameters.optimization_mode == OptimizationMode::NotAnytimeDeterministic);
+    OptimizeParameters local_parameters = parameters;
+    local_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    local_parameters.verbosity_level = 0;
+    local_parameters.messages_to_stdout = false;
+    local_parameters.messages_path = "";
+    local_parameters.messages_streams.clear();
+    local_parameters.write_json_output = false;
+    local_parameters.new_solution_callback = [](const Output&) { };
+    std::vector<std::unique_ptr<Output>> local_outputs;
+    std::vector<std::unique_ptr<AlgorithmFormatter>> local_algorithm_formatters;
+    // Return the parameters and the algorithm formatter a new algorithm task
+    // should use.
+    auto task_context = [&instance, &parameters, &algorithm_formatter, &output,
+         deterministic, &local_parameters, &local_outputs, &local_algorithm_formatters]()
+        -> std::pair<const OptimizeParameters*, AlgorithmFormatter*>
+    {
+        if (!deterministic)
+            return {&parameters, &algorithm_formatter};
+        local_outputs.push_back(std::make_unique<Output>(instance));
+        local_outputs.back()->update_bounds(output);
+        local_algorithm_formatters.push_back(std::make_unique<AlgorithmFormatter>(
+                    instance,
+                    local_parameters,
+                    *local_outputs.back()));
+        return {&local_parameters, local_algorithm_formatters.back().get()};
+    };
+    std::vector<std::function<void()>> tasks;
+    std::forward_list<std::exception_ptr> exception_ptr_list;
+    // Tree search.
+    if (use_tree_search) {
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        auto context = task_context();
+        tasks.push_back([&exception_ptr, &instance, context]() {
+            wrapper<decltype(&optimize_tree_search), optimize_tree_search>(
+                    exception_ptr,
+                    instance,
+                    *context.first,
+                    *context.second);
+        });
+    }
+    // Tree search maximal spaces.
+    if (use_tree_search_maximal_spaces) {
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        auto context = task_context();
+        tasks.push_back([&exception_ptr, &instance, context]() {
+            wrapper<decltype(&optimize_tree_search_maximal_spaces), optimize_tree_search_maximal_spaces>(
+                    exception_ptr,
+                    instance,
+                    *context.first,
+                    *context.second);
+        });
+    }
+    // Tree search hypergraph (infinite copies).
+    if (use_tree_search_hypergraph_infinite_copies) {
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        auto context = task_context();
+        tasks.push_back([&exception_ptr, &instance, context]() {
+            wrapper<decltype(&optimize_tree_search_hypergraph_infinite_copies), optimize_tree_search_hypergraph_infinite_copies>(
+                    exception_ptr,
+                    instance,
+                    *context.first,
+                    *context.second);
+        });
+    }
+    // Tree search hypergraph.
+    if (use_tree_search_hypergraph) {
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        auto context = task_context();
+        tasks.push_back([&exception_ptr, &instance, context]() {
+            wrapper<decltype(&optimize_tree_search_hypergraph), optimize_tree_search_hypergraph>(
+                    exception_ptr,
+                    instance,
+                    *context.first,
+                    *context.second);
+        });
+    }
+    // Column generation 2.
+    if (use_column_generation_strips) {
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        auto context = task_context();
+        tasks.push_back([&exception_ptr, &instance, context]() {
+            wrapper<decltype(&optimize_column_generation_strips), optimize_column_generation_strips>(
+                    exception_ptr,
+                    instance,
+                    *context.first,
+                    *context.second);
+        });
+    }
+    // Sequential strips onedimensional.
+    if (use_sequential_strips_onedimensional) {
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        auto context = task_context();
+        tasks.push_back([&exception_ptr, &instance, context]() {
+            wrapper<decltype(&optimize_sequential_strips_onedimensional), optimize_sequential_strips_onedimensional>(
+                    exception_ptr,
+                    instance,
+                    *context.first,
+                    *context.second);
+        });
+    }
+    // Sequential single knapsack.
+    if (use_sequential_single_knapsack) {
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        auto context = task_context();
+        tasks.push_back([&exception_ptr, &instance, context]() {
+            wrapper<decltype(&optimize_sequential_single_knapsack), optimize_sequential_single_knapsack>(
+                    exception_ptr,
+                    instance,
+                    *context.first,
+                    *context.second);
+        });
+    }
+    // Sequential value correction.
+    if (use_sequential_value_correction) {
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        auto context = task_context();
+        tasks.push_back([&exception_ptr, &instance, context]() {
+            wrapper<decltype(&optimize_sequential_value_correction), optimize_sequential_value_correction>(
+                    exception_ptr,
+                    instance,
+                    *context.first,
+                    *context.second);
+        });
+    }
+    // Dichotomic search.
+    if (use_dichotomic_search) {
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        auto context = task_context();
+        tasks.push_back([&exception_ptr, &instance, context]() {
+            wrapper<decltype(&optimize_dichotomic_search), optimize_dichotomic_search>(
+                    exception_ptr,
+                    instance,
+                    *context.first,
+                    *context.second);
+        });
+    }
+    // Column generation.
+    if (use_column_generation) {
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        // Snapshot the bound established so far (only used by the
+        // sequential feasibility scheme of 'column_generation', for the
+        // 'BinPacking' objective): it seeds its starting number of bins
+        // instead of starting from scratch.
+        BinPos column_generation_lower_bound = output.bin_packing_bound;
+        auto context = task_context();
+        tasks.push_back([&exception_ptr, &instance, context, column_generation_lower_bound]() {
+            wrapper<decltype(&optimize_column_generation), optimize_column_generation>(
+                    exception_ptr,
+                    instance,
+                    *context.first,
+                    *context.second,
+                    column_generation_lower_bound);
+        });
+    }
+    run(tasks, algorithm_formatter, parameters);
+    for (std::exception_ptr exception_ptr: exception_ptr_list)
+        if (exception_ptr)
+            std::rethrow_exception(exception_ptr);
+
+    // Replay the solutions and bounds found by each algorithm in a fixed,
+    // deterministic order (registration order), instead of the
+    // (non-deterministic) order in which the algorithms actually finished.
+    if (deterministic) {
+        for (const auto& local_output: local_outputs) {
+            algorithm_formatter.update_solution(
+                    local_output->solution_pool.best(),
+                    local_output->solution_pool.best_label());
+            algorithm_formatter.update_bounds(*local_output);
+        }
+    }
+
+    algorithm_formatter.end();
+    return output;
+}

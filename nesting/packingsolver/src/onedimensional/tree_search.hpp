@@ -1,0 +1,463 @@
+#pragma once
+
+#include "packingsolver/onedimensional/optimize.hpp"
+
+#include "optimizationtools/utils/utils.hpp"
+
+#include <limits>
+#include <sstream>
+
+namespace packingsolver
+{
+namespace onedimensional
+{
+
+/**
+ * Branching scheme class for problem of type "onedimensional".
+ */
+class BranchingScheme
+{
+
+public:
+
+    /*
+     * Sub-structures
+     */
+
+    struct Insertion
+    {
+        /**
+         * Id of the inserted item type.
+         *
+         * '-1' if no item is inserted.
+         */
+        ItemTypeId item_type_id;
+
+        /** 'true' iff the item is inserted in a new bin. */
+        bool new_bin;
+
+        /**
+         * Position of the new bin the item is inserted in, only meaningful
+         * when 'new_bin' is 'true'.
+         *
+         * Not necessarily equal to the parent node's 'number_of_bins': bins
+         * that can't fit any item are skipped so that the next available
+         * bin can be tried instead.
+         */
+        BinPos new_bin_pos = -1;
+
+        bool operator==(const Insertion& insertion) const;
+        bool operator!=(const Insertion& insertion) const { return !(*this == insertion); }
+    };
+
+    /**
+     * Node structure of the branching scheme.
+     */
+    struct Node
+    {
+        /** Id of the node. */
+        NodeId id = -1;
+
+        /**
+         * Pointer to the parent of the node,
+         * 'nullptr' if the node is the root.
+         */
+        std::shared_ptr<Node> parent = nullptr;
+
+        /** Last inserted item type. */
+        ItemTypeId item_type_id = -1;
+
+        /** For each item type, number of copies in the node. */
+        std::vector<ItemPos> item_number_of_copies;
+
+        /** Number of bins in the node. */
+        BinPos number_of_bins = 0;
+
+        /** Number of items in the node. */
+        ItemPos number_of_items = 0;
+
+        /** Item length. */
+        Volume item_length = 0;
+
+        /** Squared item length. */
+        Volume squared_item_length = 0;
+
+        /** Nested item length (see 'BranchingScheme::nested_item_length_'). */
+        Volume nested_item_length = 0;
+
+        /** Current length. */
+        Volume current_length = 0;
+
+        /** Waste. */
+        Volume waste = 0;
+
+        /** Maximum xe of all items in the last bin. */
+        Length xe_max = 0;
+
+        /** Maximum xs of all items in the last bin. */
+        Length xs_max = 0;
+
+        /** Profit. */
+        Profit profit = 0;
+
+        /** Length in the last bin. */
+        Weight last_bin_length = 0;
+
+        /** Weight of the last bin. */
+        Weight last_bin_weight = 0;
+
+        /** Number of items in the last bin. */
+        ItemPos last_bin_number_of_items = 0;
+
+        /** Maximum number of items in the last bin. */
+        ItemPos last_bin_maximum_number_of_items = -1;
+
+        /**
+         * Remaining weight allowed in the last bin to satisfy the maximum
+         * weight after constraint.
+         */
+        Weight last_bin_remaining_weight = -1;
+
+        /** Resource consumption in the last bin, indexed by resource_id. */
+        std::vector<double> last_bin_resource_consumption;
+
+        /**
+         * Number of copies of each item type already placed in the last
+         * bin, indexed by item_type_id - needed to look up the correct
+         * entry of a per-copy resource consumption schedule.
+         */
+        std::vector<ItemPos> last_bin_item_number_of_copies;
+
+    };
+
+    struct Parameters
+    {
+        /** Guide. */
+        GuideId guide_id = 0;
+    };
+
+    /** Constructor. */
+    BranchingScheme(
+            const Instance& instance,
+            const Parameters& parameters);
+
+    /** Get instance. */
+    inline const Instance& instance() const { return instance_; }
+
+    /** Get parameters. */
+    inline const Parameters& parameters() const { return parameters_; }
+
+    /*
+     * Branching scheme methods
+     */
+
+    const std::vector<Insertion>& insertions(
+            const std::shared_ptr<Node>& parent) const;
+
+    Node child_tmp(
+            const std::shared_ptr<Node>& parent,
+            const Insertion& insertion) const;
+
+    std::shared_ptr<Node> child(
+            const std::shared_ptr<Node>& parent,
+            const Insertion& insertion) const
+    {
+        return std::shared_ptr<Node>(new Node(child_tmp(parent, insertion)));
+    }
+
+    const std::shared_ptr<Node> root() const;
+
+    std::vector<std::shared_ptr<Node>> children(
+            const std::shared_ptr<Node>& parent) const;
+
+    inline bool operator()(
+            const std::shared_ptr<Node>& node_1,
+            const std::shared_ptr<Node>& node_2) const;
+
+    inline bool leaf(
+            const std::shared_ptr<Node>& node) const
+    {
+        return node->number_of_items == instance_.number_of_items();
+    }
+
+    bool bound(
+            const std::shared_ptr<Node>& node_1,
+            const std::shared_ptr<Node>& node_2) const;
+
+    bool better(
+            const std::shared_ptr<Node>& node_1,
+            const std::shared_ptr<Node>& node_2) const;
+
+    bool equals(
+            const std::shared_ptr<Node>& node_1,
+            const std::shared_ptr<Node>& node_2) const
+    {
+        (void)node_1;
+        (void)node_2;
+        return false;
+    }
+
+    /*
+     * Dominances
+     */
+
+    inline bool comparable(const std::shared_ptr<Node>&) const { return true; }
+
+    struct NodeHasher
+    {
+        std::hash<ItemPos> hasher;
+        const BranchingScheme& branching_scheme;
+
+        NodeHasher(const BranchingScheme& branching_scheme): branching_scheme(branching_scheme) { }
+
+        inline bool operator()(
+                const std::shared_ptr<Node>& node_1,
+                const std::shared_ptr<Node>& node_2) const
+        {
+            return node_1->item_number_of_copies == node_2->item_number_of_copies;
+        }
+
+        inline std::size_t operator()(
+                const std::shared_ptr<Node>& node) const
+        {
+            if (branching_scheme.instance().unbounded_knapsack())
+                return 0;
+            size_t hash = 0;
+            for (ItemPos s: node->item_number_of_copies)
+                optimizationtools::hash_combine(hash, hasher(s));
+            return hash;
+        }
+    };
+
+    inline NodeHasher node_hasher() const { return NodeHasher(*this); }
+
+    bool dominates(
+            const std::shared_ptr<Node>& node_1,
+            const std::shared_ptr<Node>& node_2) const;
+
+    /*
+     * Outputs
+     */
+
+    std::string display(const std::shared_ptr<Node>& node) const
+    {
+        std::stringstream ss;
+        ss << node->waste;
+        return ss.str();
+    }
+
+    Solution to_solution(
+            const std::shared_ptr<Node>& node) const;
+
+private:
+
+    /** Instance. */
+    const Instance& instance_;
+
+    /** Parameters. */
+    Parameters parameters_;
+
+    /**
+     * Bin type of the bin at each position, in the order in which bins are
+     * considered by the branching scheme.
+     *
+     * For the Knapsack objective, bins are considered by increasing space,
+     * regardless of the order in which they appear in the instance.
+     * Otherwise, this matches 'instance_.bin_type_id(bin_pos)'.
+     */
+    std::vector<BinTypeId> bin_type_ids_;
+
+    /** Total length of the bins preceding each position, in the same order as 'bin_type_ids_'. */
+    std::vector<Length> previous_bins_length_;
+
+    /**
+     * Sum, over all items, of 'length - max(nesting_length, 0)': the
+     * smallest length each item can add to a bin once nested.
+     */
+    Volume nested_item_length_ = 0;
+
+    /**
+     * Largest 'profit / (length - max(nesting_length, 0))' over all item
+     * types; infinite if some item type with a positive profit has a
+     * non-positive nested length.
+     */
+    double largest_nested_efficiency_ = 0.0;
+
+    mutable Counter node_id_ = 0;
+
+    mutable std::vector<Insertion> insertions_;
+
+    /*
+     * Private methods
+     */
+
+    /** Get the percentage of item inserted into a node. */
+    inline double item_percentage(const Node& node) const { return (double)node.number_of_items / instance_.number_of_items(); }
+
+    /** Get the mean length of a node. */
+    inline double mean_length(const Node& node) const { return (double)node.current_length / node.number_of_items; }
+
+    /** Get the mean item length of a node; */
+    inline double mean_item_length(const Node& node) const { return (double)node.item_length / node.number_of_items; }
+
+    /** Get the mean squared item length of a node. */
+    inline double mean_squared_item_length(const Node& node) const { return (double)node.squared_item_length / node.number_of_items; }
+
+    /** Get the mean remaining item length of a node. */
+    inline double mean_remaining_item_length(const Node& node) const { return (double)remaining_item_length(node) / (instance_.number_of_items() - node.number_of_items); }
+
+    /** Get the remaining item length of a node. */
+    inline double remaining_item_length(const Node& node) const { return instance_.item_length() - node.item_length; }
+
+    /** Get the waste percentage of a node. */
+    inline double waste_percentage(const Node& node) const { return (double)node.waste / node.current_length; }
+
+    /** Get the waste ratio of a node. */
+    inline double waste_ratio(const Node& node) const { return (double)node.waste / node.item_length; }
+
+    /** Get the knapsack upper bound of a node. */
+    inline Profit ubkp(const Node& node) const;
+
+    /*
+     * Insertions
+     */
+
+    /** Insertion of one item in the same bin. */
+    void insertion_item_same_bin(
+            const std::shared_ptr<Node>& parent,
+            ItemTypeId item_type_id) const;
+
+    /** Insertion of an item in a new bin. */
+    void insertion_item_new_bin(
+            const std::shared_ptr<Node>& parent,
+            ItemTypeId item_type_id,
+            BinPos new_bin_pos) const;
+
+};
+
+std::ostream& operator<<(
+        std::ostream& os,
+        const BranchingScheme::Insertion& insertion);
+
+std::ostream& operator<<(
+        std::ostream& os,
+        const BranchingScheme::Node& node);
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////// Inlined methods ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+Profit BranchingScheme::ubkp(const Node& node) const
+{
+    // Remaining items may nest, so each one only needs its nested length.
+    Area remaining_item_length = nested_item_length_ - node.nested_item_length;
+    Area remaining_length = instance_.bin_length() - node.current_length;
+    if (remaining_length >= remaining_item_length
+            || largest_nested_efficiency_ == std::numeric_limits<double>::infinity()) {
+        return instance_.item_profit();
+    } else {
+        return node.profit + remaining_length * largest_nested_efficiency_;
+    }
+}
+
+inline bool BranchingScheme::operator()(
+        const std::shared_ptr<Node>& node_1,
+        const std::shared_ptr<Node>& node_2) const
+{
+    switch (parameters_.guide_id) {
+    case 0: {
+        double guide_1 = (double)node_1->current_length / node_1->item_length;
+        double guide_2 = (double)node_2->current_length / node_2->item_length;
+        if (guide_1 != guide_2)
+            return guide_1 < guide_2;
+        break;
+    } case 1: {
+        double guide_1 = (double)node_1->current_length
+            / node_1->item_length
+            / mean_item_length(*node_1);
+        double guide_2 = (double)node_2->current_length
+            / node_2->item_length
+            / mean_item_length(*node_2);
+        if (guide_1 != guide_2)
+            return guide_1 < guide_2;
+        break;
+    } case 2: {
+        if ((0.1 + waste_percentage(*node_1)) / mean_item_length(*node_1)
+                != (0.1 + waste_percentage(*node_2)) / mean_item_length(*node_2))
+            return (0.1 + waste_percentage(*node_1)) / mean_item_length(*node_1)
+                < (0.1 + waste_percentage(*node_2)) / mean_item_length(*node_2);
+        break;
+    } case 3: {
+        if ((0.1 + waste_percentage(*node_1)) / mean_squared_item_length(*node_1)
+                != (0.1 + waste_percentage(*node_2)) / mean_squared_item_length(*node_2))
+            return (0.1 + waste_percentage(*node_1)) / mean_squared_item_length(*node_1)
+                < (0.1 + waste_percentage(*node_2)) / mean_squared_item_length(*node_2);
+        break;
+    } case 4: {
+        double guide_1 = (double)node_1->current_length / node_1->profit;
+        double guide_2 = (double)node_2->current_length / node_2->profit;
+        if (guide_1 != guide_2)
+            return guide_1 < guide_2;
+        break;
+    } case 5: {
+        double guide_1 = (double)node_1->current_length
+            / node_1->profit
+            / mean_item_length(*node_1);
+        double guide_2 = (double)node_2->current_length
+            / node_2->profit
+            / mean_item_length(*node_2);
+        if (guide_1 != guide_2)
+            return guide_1 < guide_2;
+        break;
+    } case 6: {
+        if (node_1->waste != node_2->waste)
+            return node_1->waste < node_2->waste;
+        break;
+    } case 7: {
+        auto ub1 = ubkp(*node_1);
+        auto ub2 = ubkp(*node_2);
+        if (ub1 != ub2)
+            return ub1 > ub2;
+        break;
+    } case 8: {
+        auto ub1 = ubkp(*node_1);
+        auto ub2 = ubkp(*node_2);
+        if (ub1 != ub2)
+            return ub1 > ub2;
+        if (node_1->waste != node_2->waste)
+            return node_1->waste < node_2->waste;
+        break;
+    }
+    }
+    return node_1->id < node_2->id;
+}
+
+}
+}
+
+namespace packingsolver
+{
+namespace onedimensional
+{
+
+struct TreeSearchOutput: Output
+{
+    TreeSearchOutput(const Instance& instance):
+        Output(instance) { }
+};
+
+struct TreeSearchParameters: packingsolver::Parameters<Instance, Solution, Output>
+{
+    std::vector<GuideId> guides;
+
+    OptimizationMode optimization_mode = OptimizationMode::Anytime;
+
+    NodeId not_anytime_tree_search_queue_size = 1;
+};
+
+const TreeSearchOutput tree_search(
+        const Instance& instance,
+        const TreeSearchParameters& parameters = {});
+
+}
+}

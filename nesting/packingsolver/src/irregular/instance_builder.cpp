@@ -1,0 +1,1414 @@
+#include "packingsolver/irregular/instance_builder.hpp"
+
+#include <cmath>
+
+#include "irregular/periodic_packing.hpp"
+#include "irregular/rotations.hpp"
+#include "irregular/shape_simplification.hpp"
+
+#include "shape/offset.hpp"
+#include "shape/boolean_operations.hpp"
+#include "shape/clean.hpp"
+
+#include "optimizationtools/containers/indexed_set.hpp"
+
+#include <sstream>
+
+using namespace packingsolver;
+using namespace packingsolver::irregular;
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Parameters //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Bin types ///////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+BinTypeId InstanceBuilder::add_bin_type(
+        const Shape& shape)
+{
+    BinType bin_type;
+    bin_type.shape_orig = shape;
+    bin_type.area_orig = shape.compute_area();
+    bin_type.aabb_orig = shape.compute_min_max();
+    bin_type.cost = bin_type.area_orig;
+    bin_type.copies = 1;
+    bin_type.copies_min = 0;
+    instance_.bin_types_.push_back(bin_type);
+    return instance_.bin_types_.size() - 1;
+}
+
+DefectId InstanceBuilder::add_defect(
+        BinTypeId bin_type_id,
+        DefectTypeId type,
+        const ShapeWithHoles& shape)
+{
+    if (bin_type_id < 0 || bin_type_id >= instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+
+    BinType& bin_type = this->instance_.bin_types_[bin_type_id];
+    Defect defect;
+    defect.type = type;
+    defect.shape_orig = shape;
+    bin_type.defects.push_back(defect);
+    return bin_type.defects.size() - 1;
+}
+
+BinTypeId InstanceBuilder::add_bin_type(
+        const Instance& original_instance,
+        BinTypeId original_bin_type_id)
+{
+    const BinType& bin_type = original_instance.bin_type(original_bin_type_id);
+    BinTypeId bin_type_id = add_bin_type(bin_type.shape_orig);
+    if ((BinTypeId)orig_to_sub_bin_type_ids_.size() <= original_bin_type_id)
+        orig_to_sub_bin_type_ids_.resize(original_bin_type_id + 1, -1);
+    orig_to_sub_bin_type_ids_[original_bin_type_id] = bin_type_id;
+    set_bin_type_cost(bin_type_id, bin_type.cost);
+    set_bin_type_copies(bin_type_id, bin_type.copies);
+    set_bin_type_copies_min(bin_type_id, bin_type.copies_min);
+    this->set_item_bin_minimum_spacing(
+            bin_type_id,
+            bin_type.item_bin_minimum_spacing);
+    for (const Defect& defect: bin_type.defects) {
+        DefectId defect_id = add_defect(
+                bin_type_id,
+                defect.type,
+                defect.shape_orig);
+        this->set_item_defect_minimum_spacing(
+                bin_type_id,
+                defect_id,
+                defect.item_defect_minimum_spacing);
+    }
+    for (const FixedItem& fixed_item: bin_type.fixed_items) {
+        add_fixed_item(
+                bin_type_id,
+                fixed_item.item_type_id,
+                fixed_item.bl_corner,
+                fixed_item.angle,
+                fixed_item.mirror);
+    }
+    // Copy resources (their consumptions are copied in 'add_item_type',
+    // which assumes the corresponding bin types have already been added).
+    for (ResourceId resource_id = 0;
+            resource_id < bin_type.number_of_resources();
+            ++resource_id) {
+        const Resource& resource = bin_type.resource(resource_id);
+        add_bin_type_resource(
+                bin_type_id,
+                resource.capacity,
+                resource.penalize,
+                resource.penalty);
+    }
+    return bin_type_id;
+}
+
+ResourceId InstanceBuilder::add_bin_type_resource(
+        BinTypeId bin_type_id,
+        double capacity,
+        bool penalize,
+        double penalty)
+{
+    if (bin_type_id < 0 || bin_type_id >= (BinTypeId)instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+
+    BinType& bin_type = instance_.bin_types_[bin_type_id];
+    ResourceId resource_id = bin_type.resources.size();
+    Resource resource;
+    resource.capacity = capacity;
+    resource.penalize = penalize;
+    resource.penalty = penalty;
+    bin_type.resources.push_back(resource);
+    return resource_id;
+}
+
+void InstanceBuilder::add_resource_consumption(
+        BinTypeId bin_type_id,
+        ResourceId resource_id,
+        ItemTypeId item_type_id,
+        const std::vector<double>& schedule)
+{
+    if (bin_type_id < 0 || bin_type_id >= (BinTypeId)instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+
+    BinType& bin_type = instance_.bin_types_[bin_type_id];
+    if (resource_id < 0 || resource_id >= (ResourceId)bin_type.resources.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'resource_id'; "
+                "resource_id: " + std::to_string(resource_id) + "; "
+                "bin_type.resources.size(): " + std::to_string(bin_type.resources.size()) + ".");
+    }
+
+    // May be called at most once per (item type, resource) pair (checked,
+    // and thrown on otherwise, in 'build' below) - no search needed, just
+    // append.
+    bin_type.resources[resource_id].item_consumptions.push_back({item_type_id, schedule});
+}
+
+void InstanceBuilder::set_bin_type_cost(
+        BinTypeId bin_type_id,
+        Profit cost)
+{
+    if (bin_type_id < 0 || bin_type_id >= (BinTypeId)instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+    if (cost <= 0 && cost != -1) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "bin 'cost' must be > 0 (or == -1); "
+                "cost: " + std::to_string(cost) + ".");
+    }
+
+    instance_.bin_types_[bin_type_id].cost = (cost == -1)?
+        instance_.bin_types_[bin_type_id].area_orig:
+        cost;
+}
+
+void InstanceBuilder::set_bin_type_copies(
+        BinTypeId bin_type_id,
+        BinPos copies)
+{
+    if (bin_type_id < 0 || bin_type_id >= (BinTypeId)instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+    if (copies != -1) {
+        if (copies <= 0) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "bin 'copies' must be > 0 (or == -1); "
+                    "copies: " + std::to_string(copies) + ".");
+        }
+        if (instance_.bin_types_[bin_type_id].copies_min > copies) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "bin 'copies_min' must be <= 'copies'; "
+                    "copies: " + std::to_string(copies) + "; "
+                    "copies_min: " + std::to_string(instance_.bin_types_[bin_type_id].copies_min) + ".");
+        }
+    }
+
+    instance_.bin_types_[bin_type_id].copies = copies;
+}
+
+void InstanceBuilder::set_bin_type_copies_min(
+        BinTypeId bin_type_id,
+        BinPos copies_min)
+{
+    if (bin_type_id < 0 || bin_type_id >= (BinTypeId)instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+    if (copies_min < 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "bin 'copies_min' must be >= 0; "
+                "copies_min: " + std::to_string(copies_min) + ".");
+    }
+    if (instance_.bin_types_[bin_type_id].copies != -1
+            && copies_min > instance_.bin_types_[bin_type_id].copies) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "bin 'copies_min' must be <= 'copies'; "
+                "copies: " + std::to_string(instance_.bin_types_[bin_type_id].copies) + "; "
+                "copies_min: " + std::to_string(copies_min) + ".");
+    }
+
+    instance_.bin_types_[bin_type_id].copies_min = copies_min;
+}
+
+void InstanceBuilder::set_item_bin_minimum_spacing(
+        BinTypeId bin_type_id,
+        LengthDbl item_bin_minimum_spacing)
+{
+    if (bin_type_id < 0 || bin_type_id >= instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+
+    BinType& bin_type = this->instance_.bin_types_[bin_type_id];
+    bin_type.item_bin_minimum_spacing = item_bin_minimum_spacing;
+}
+
+void InstanceBuilder::set_item_defect_minimum_spacing(
+        BinTypeId bin_type_id,
+        DefectId defect_id,
+        LengthDbl item_defect_minimum_spacing)
+{
+    if (bin_type_id < 0 || bin_type_id >= instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+
+    BinType& bin_type = this->instance_.bin_types_[bin_type_id];
+
+    if (defect_id < 0 || defect_id >= bin_type.defects.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'defect_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "defect_id: " + std::to_string(defect_id) + "; "
+                "bin_type.defects.size(): " + std::to_string(bin_type.defects.size()) + ".");
+    }
+    Defect& defect = bin_type.defects[defect_id];
+    defect.item_defect_minimum_spacing = item_defect_minimum_spacing;
+}
+
+void InstanceBuilder::set_bin_types_infinite_copies()
+{
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        instance_.bin_types_[bin_type_id].copies = -1;
+    }
+}
+
+void InstanceBuilder::set_bin_types_unweighted()
+{
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        instance_.bin_types_[bin_type_id].cost = instance_.bin_types_[bin_type_id].area_orig;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Item types //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+ItemTypeId InstanceBuilder::add_item_type(
+        const std::vector<ItemShape>& shapes)
+{
+    if (shapes.empty()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "item 'shapes' must be non-empty.");
+    }
+
+    ItemType item_type;
+    item_type.shapes = shapes;
+    item_type.allowed_rotations = {};  // populated via add_item_type_allowed_rotation; defaulted in build()
+    item_type.area_orig = 0;
+    for (const auto& item_shape: item_type.shapes) {
+        item_type.area_orig += item_shape.shape_orig.shape.compute_area();
+        for (const Shape& hole: item_shape.shape_orig.holes)
+            item_type.area_orig -= hole.compute_area();
+    }
+    item_type.profit = item_type.area_orig;
+    item_type.copies = 1;
+    item_type.copies_min = -1;
+    instance_.item_types_.push_back(item_type);
+    return instance_.item_types_.size() - 1;
+}
+
+void InstanceBuilder::add_item_type_allowed_rotation(
+        ItemTypeId item_type_id,
+        Angle start_angle,
+        Angle end_angle,
+        bool mirror)
+{
+    if (item_type_id < 0 || item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+
+    instance_.item_types_[item_type_id].allowed_rotations.push_back({start_angle, end_angle, mirror});
+}
+
+ItemTypeId InstanceBuilder::add_item_type(
+        const Instance& original_instance,
+        ItemTypeId original_item_type_id)
+{
+    const ItemType& item_type = original_instance.item_type(original_item_type_id);
+    ItemTypeId item_type_id = add_item_type(item_type.shapes);
+    set_item_type_profit(item_type_id, item_type.profit);
+    set_item_type_copies(item_type_id, item_type.copies);
+    for (const AllowedRotation& rotation: item_type.allowed_rotations) {
+        add_item_type_allowed_rotation(
+                item_type_id,
+                rotation.start_angle,
+                rotation.end_angle,
+                rotation.mirror);
+    }
+
+    // Carry over already-computed periodic packings instead of recomputing
+    // them from scratch for this sub-instance's item type: they only depend
+    // on the shapes/rotations of their item types, not on anything else
+    // about the instance. The packings of this item type alone are copied
+    // here, with their item type id remapped to this sub-instance's
+    // (possibly different) 'item_type_id', since callers match
+    // blocks/packings to item types by that id. The packings of several
+    // item types are carried over in 'build()', once it is known whether all
+    // their item types have been added.
+    ItemType& new_item_type = instance_.item_types_[item_type_id];
+    new_item_type.periodic_packings_computed = item_type.periodic_packings_computed;
+    if (original_instance_ == nullptr) {
+        original_instance_ = &original_instance;
+        for (const PeriodicItemPacking& packing: original_instance.periodic_packings())
+            if (!periodic_packing_has_single_item_type(packing))
+                original_multiple_item_types_periodic_packings_.push_back(packing);
+    } else if (original_instance_ != &original_instance) {
+        several_original_instances_ = true;
+    }
+    for (const PeriodicItemPacking& packing: original_instance.periodic_packings()) {
+        if (!periodic_packing_has_single_item_type(packing)
+                || packing.items[0].item_type_id != original_item_type_id) {
+            continue;
+        }
+        PeriodicItemPacking new_packing = packing;
+        for (SolutionItem& solution_item: new_packing.items)
+            solution_item.item_type_id = item_type_id;
+        periodic_packings_.push_back(std::move(new_packing));
+    }
+    // Same for the bounding boxes in the discrete allowed orientations.
+    new_item_type.discrete_rotations_min_max = item_type.discrete_rotations_min_max;
+
+    if ((ItemTypeId)orig_to_sub_item_type_ids_.size() <= original_item_type_id)
+        orig_to_sub_item_type_ids_.resize(original_item_type_id + 1, -1);
+    orig_to_sub_item_type_ids_[original_item_type_id] = item_type_id;
+
+    // Copy the consumption of this item type for the resources of
+    // already-added bin types. Assumes the relevant bin types have already
+    // been added via 'add_bin_type(original_instance, ...)'.
+    for (BinTypeId original_bin_type_id = 0;
+            original_bin_type_id < (BinTypeId)orig_to_sub_bin_type_ids_.size();
+            ++original_bin_type_id) {
+        BinTypeId sub_bin_type_id = orig_to_sub_bin_type_ids_[original_bin_type_id];
+        if (sub_bin_type_id == -1)
+            continue;
+        const BinType& original_bin_type = original_instance.bin_type(original_bin_type_id);
+        for (const ItemResourceConsumption& consumption: item_type.resources[original_bin_type_id]) {
+            const std::vector<double>& schedule
+                = original_bin_type.resource(consumption.resource_id)
+                    .item_consumptions[consumption.consumption_pos].second;
+            add_resource_consumption(
+                    sub_bin_type_id,
+                    consumption.resource_id,
+                    item_type_id,
+                    schedule);
+        }
+    }
+
+    return item_type_id;
+}
+
+void InstanceBuilder::set_item_type_profit(
+        ItemTypeId item_type_id,
+        Profit profit)
+{
+    if (item_type_id < 0 || item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+
+    instance_.item_types_[item_type_id].profit = profit;
+}
+
+void InstanceBuilder::set_item_type_copies(
+        ItemTypeId item_type_id,
+        ItemPos copies)
+{
+    if (item_type_id < 0 || item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+    if (copies != -1 && copies <= 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "item 'copies' must be > 0 (or == -1); "
+                "copies: " + std::to_string(copies) + ".");
+    }
+
+    instance_.item_types_[item_type_id].copies = copies;
+}
+
+void InstanceBuilder::set_item_type_copies_min(
+        ItemTypeId item_type_id,
+        ItemPos copies_min)
+{
+    if (item_type_id < 0 || item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+    if (copies_min < -1) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "item 'copies_min' must be >= -1; "
+                "copies_min: " + std::to_string(copies_min) + ".");
+    }
+
+    instance_.item_types_[item_type_id].copies_min = copies_min;
+}
+
+void InstanceBuilder::set_item_types_unweighted()
+{
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        instance_.item_types_[item_type_id].profit = instance_.item_types_[item_type_id].area_orig;
+    }
+}
+
+void InstanceBuilder::set_item_types_continuous_rotations()
+{
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        instance_.item_types_[item_type_id].allowed_rotations = {{0, 360, false}};
+    }
+}
+
+AreaDbl InstanceBuilder::compute_bin_types_area_max() const
+{
+    AreaDbl bin_types_area_max = 0;
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        bin_types_area_max = std::max(
+                bin_types_area_max,
+                instance_.bin_type(bin_type_id).area_orig);
+    }
+    return bin_types_area_max;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////// Read from files ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void InstanceBuilder::read(
+        std::string instance_path)
+{
+    std::ifstream file(instance_path);
+    if (!file.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + instance_path + "\".");
+    }
+    read(file);
+}
+
+void InstanceBuilder::read(
+        std::istream& is)
+{
+    nlohmann::json j;
+    is >> j;
+
+    if (!j.contains("objective")) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "missing \"objective\" field.");
+    }
+    {
+        std::string objective_string = j["objective"];
+        std::stringstream objective_ss(objective_string);
+        Objective objective;
+        objective_ss >> objective;
+        if (objective_ss.fail()) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "unrecognized \"objective\" value \""
+                    + objective_string + "\".");
+        }
+        set_objective(objective);
+    }
+
+    // Read parameters.
+    if (j.contains("parameters")) {
+        auto json_parameters = j["parameters"];
+        if (json_parameters.contains("item_item_minimum_spacing"))
+            set_item_item_minimum_spacing(json_parameters["item_item_minimum_spacing"]);
+        if (json_parameters.contains("open_dimension_xy_aspect_ratio"))
+            set_open_dimension_xy_aspect_ratio(json_parameters["open_dimension_xy_aspect_ratio"]);
+        if (json_parameters.contains("leftover_mode")) {
+            LeftoverMode leftover_mode = read_enum<LeftoverMode>(
+                    json_parameters["leftover_mode"].get<std::string>(),
+                    "leftover_mode");
+            set_leftover_mode(leftover_mode);
+        }
+    }
+
+    // Read bin types.
+    for (const auto& json_item: j["bin_types"]) {
+        Shape shape = Shape::from_json(json_item);
+
+        LengthDbl item_bin_minimum_spacing = 0;
+        if (json_item.contains("item_bin_minimum_spacing"))
+            item_bin_minimum_spacing = json_item["item_bin_minimum_spacing"];
+
+        BinTypeId bin_type_id = add_bin_type(shape);
+        if (json_item.contains("cost"))
+            set_bin_type_cost(bin_type_id, json_item["cost"]);
+        if (json_item.contains("copies"))
+            set_bin_type_copies(bin_type_id, json_item["copies"]);
+        if (json_item.contains("copies_min"))
+            set_bin_type_copies_min(bin_type_id, json_item["copies_min"]);
+        set_item_bin_minimum_spacing(
+                bin_type_id,
+                item_bin_minimum_spacing);
+
+        // Read defects.
+        if (json_item.contains("defects")) {
+            for (auto it_defect = json_item["defects"].begin();
+                    it_defect != json_item["defects"].end();
+                    ++it_defect) {
+                auto json_defect = *it_defect;
+
+                // Read type.
+                DefectTypeId defect_type = -1;
+                if (json_defect.contains("defect_type"))
+                    defect_type = json_defect["defect_type"];
+
+                LengthDbl item_defect_minimum_spacing = 0;
+                if (json_defect.contains("item_defect_minimum_spacing"))
+                    item_defect_minimum_spacing = json_defect["item_defect_minimum_spacing"];
+
+                // Read shape.
+                ShapeWithHoles shape = ShapeWithHoles::from_json(json_defect);
+
+                // Add defect.
+                DefectId defect_id = add_defect(
+                        bin_type_id,
+                        defect_type,
+                        shape);
+                set_item_defect_minimum_spacing(
+                        bin_type_id,
+                        defect_id,
+                        item_defect_minimum_spacing);
+            }
+        }
+
+        // Read fixed items.
+        if (json_item.contains("fixed_items")) {
+            for (const auto& json_fixed_item: json_item["fixed_items"]) {
+                ItemTypeId item_type_id = json_fixed_item["item_type_id"];
+                Point bl_corner;
+                bl_corner.x = json_fixed_item["bl_corner"]["x"];
+                bl_corner.y = json_fixed_item["bl_corner"]["y"];
+                Angle angle = 0;
+                if (json_fixed_item.contains("angle"))
+                    angle = json_fixed_item["angle"];
+                bool mirror = false;
+                if (json_fixed_item.contains("mirror"))
+                    mirror = json_fixed_item["mirror"];
+                add_fixed_item(bin_type_id, item_type_id, bl_corner, angle, mirror);
+            }
+        }
+    }
+
+    // Read item types.
+    for (const auto& json_item: j["item_types"]) {
+        std::vector<ItemShape> item_shapes;
+        if (json_item.contains("shapes")) {
+            // Multiple item shape.
+            for (auto it_shape = json_item["shapes"].begin();
+                    it_shape != json_item["shapes"].end();
+                    ++it_shape) {
+                ItemShape item_shape;
+                item_shape.shape_orig = ShapeWithHoles::from_json(*it_shape);
+                item_shapes.push_back(item_shape);
+            }
+
+        } else {
+            // Single item shape.
+            ItemShape item_shape;
+            item_shape.shape_orig = ShapeWithHoles::from_json(json_item);
+            item_shapes.push_back(item_shape);
+        }
+
+        ItemTypeId item_type_id = add_item_type(item_shapes);
+        if (json_item.contains("profit"))
+            set_item_type_profit(item_type_id, json_item["profit"]);
+        if (json_item.contains("copies"))
+            set_item_type_copies(item_type_id, json_item["copies"]);
+        if (json_item.contains("copies_min"))
+            set_item_type_copies_min(item_type_id, json_item["copies_min"]);
+
+        // Read allowed rotations.
+        if (json_item.contains("allowed_rotations")) {
+            for (auto it = json_item["allowed_rotations"].begin();
+                    it != json_item["allowed_rotations"].end();
+                    ++it) {
+                auto json_rotation = *it;
+                Angle start_angle = json_rotation["start"];
+                Angle end_angle = json_rotation["end"];
+                bool mirror = json_rotation.value("mirror", false);
+                add_item_type_allowed_rotation(
+                        item_type_id,
+                        start_angle,
+                        end_angle,
+                        mirror);
+            }
+        }
+
+        // Backward compatibility: the old format uses a top-level "allow_mirroring"
+        // boolean flag; the new format encodes the mirror flag per rotation entry.
+        // Expand each non-mirrored rotation entry with a corresponding mirrored entry.
+        if (json_item.value("allow_mirroring", false)) {
+            // If no rotations were specified, add the default non-mirrored one
+            // first so it can be expanded below.
+            if (instance_.item_types_[item_type_id].allowed_rotations.empty())
+                add_item_type_allowed_rotation(item_type_id, 0, 0, false);
+            const std::vector<AllowedRotation> rotations
+                = instance_.item_types_[item_type_id].allowed_rotations;
+            for (const AllowedRotation& rotation: rotations) {
+                if (!rotation.mirror) {
+                    add_item_type_allowed_rotation(
+                            item_type_id,
+                            rotation.start_angle,
+                            rotation.end_angle,
+                            true);
+                }
+            }
+        }
+    }
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////// Build /////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void InstanceBuilder::resolve_item_types_unlimited_copies()
+{
+    // Total area of the bins, computed for the first item type with
+    // unlimited copies.
+    AreaDbl bins_area = -1;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        ItemType& item_type = instance_.item_types_[item_type_id];
+        if (item_type.copies != -1)
+            continue;
+        if (instance_.objective() != Objective::Knapsack) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "item type " + std::to_string(item_type_id) + " has "
+                    "unlimited copies ('copies' == -1), "
+                    "which is only allowed with the 'Knapsack' objective.");
+        }
+        if (item_type.area_orig <= 0) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "item type " + std::to_string(item_type_id) + " has "
+                    "unlimited copies ('copies' == -1) and an area of 0.");
+        }
+        if (bins_area == -1) {
+            bins_area = 0;
+            for (BinTypeId bin_type_id = 0;
+                    bin_type_id < instance_.number_of_bin_types();
+                    ++bin_type_id) {
+                const BinType& bin_type = instance_.bin_type(bin_type_id);
+                if (bin_type.copies == -1) {
+                    throw std::invalid_argument(
+                            FUNC_SIGNATURE + ": "
+                            "item type " + std::to_string(item_type_id) + " has "
+                            "unlimited copies ('copies' == -1), "
+                            "which is not allowed if bin type "
+                            + std::to_string(bin_type_id) + " has unlimited copies too.");
+                }
+                bins_area += bin_type.copies * bin_type.area_orig;
+            }
+        }
+        // As many copies as the area of all the bins allows.
+        item_type.copies = (ItemPos)std::ceil(bins_area / item_type.area_orig);
+    }
+}
+
+Instance InstanceBuilder::build()
+{
+    // The OpenDimensionXY objective is only supported with an imposed aspect
+    // ratio.
+    if (instance_.objective() == Objective::OpenDimensionXY
+            && instance_.parameters().open_dimension_xy_aspect_ratio <= 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "the objective 'OpenDimensionXY' without an aspect ratio "
+                "('open_dimension_xy_aspect_ratio') is not supported yet.");
+    }
+
+    // Unlimited copies of the item types.
+    resolve_item_types_unlimited_copies();
+
+    // Remap fixed item type IDs if a sub-instance mapping is present, before
+    // checking them: they refer to the item types of the original instance.
+    if (!orig_to_sub_item_type_ids_.empty()) {
+        for (BinType& bin_type: instance_.bin_types_) {
+            for (FixedItem& fixed_item: bin_type.fixed_items) {
+                if (fixed_item.item_type_id >= (ItemTypeId)orig_to_sub_item_type_ids_.size()
+                        || orig_to_sub_item_type_ids_[fixed_item.item_type_id] == -1) {
+                    throw std::invalid_argument(
+                            FUNC_SIGNATURE + ": "
+                            "fixed item type id not found in sub-instance mapping; "
+                            "item_type_id: " + std::to_string(fixed_item.item_type_id) + ".");
+                }
+                fixed_item.item_type_id = orig_to_sub_item_type_ids_[fixed_item.item_type_id];
+            }
+        }
+    }
+
+    // Check the item types of the fixed items (see 'add_fixed_item').
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < (BinTypeId)instance_.bin_types_.size();
+            ++bin_type_id) {
+        for (const FixedItem& fixed_item: instance_.bin_types_[bin_type_id].fixed_items) {
+            if (fixed_item.item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+                throw std::invalid_argument(
+                        FUNC_SIGNATURE + ": "
+                        "invalid fixed item 'item_type_id'; "
+                        "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                        "item_type_id: " + std::to_string(fixed_item.item_type_id) + ".");
+            }
+        }
+    }
+
+    // Compute scale value.
+    if (instance_.parameters().scale_value == std::numeric_limits<LengthDbl>::infinity()) {
+        LengthDbl value_max = 0.0;
+        for (BinTypeId bin_type_id = 0;
+                bin_type_id < instance_.number_of_bin_types();
+                ++bin_type_id) {
+            BinType& bin_type = instance_.bin_types_[bin_type_id];
+            AxisAlignedBoundingBox aabb = bin_type.shape_orig.compute_min_max();
+            value_max = (std::max)(value_max, std::abs(aabb.x_min));
+            value_max = (std::max)(value_max, std::abs(aabb.y_min));
+            value_max = (std::max)(value_max, std::abs(aabb.x_max));
+            value_max = (std::max)(value_max, std::abs(aabb.y_max));
+        }
+        instance_.parameters_.scale_value = 1024.0 / packingsolver::smallest_power_of_two_greater_or_equal(value_max);
+        //std::cout << "instance_.scale_value() " << instance_.parameters().scale_value << std::endl;
+    }
+
+    // Apply default rotation {{0, 0, false}} to item types with no explicit rotation.
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        ItemType& item_type = instance_.item_types_[item_type_id];
+        if (item_type.allowed_rotations.empty())
+            item_type.allowed_rotations.push_back({0, 0, false});
+    }
+
+    // Compute scaled shapes of item type.
+    AreaDbl smallest_item_area = std::numeric_limits<AreaDbl>::infinity();
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        ItemType& item_type = instance_.item_types_[item_type_id];
+
+        // Compute scaled shapes.
+        for (ShapePos shape_pos = 0;
+                shape_pos < (ShapePos)item_type.shapes.size();
+                ++shape_pos) {
+            ItemShape& item_shape = item_type.shapes[shape_pos];
+            // The shapes of an item type copied from another instance (see
+            // 'add_item_type(const Instance&, ItemTypeId)') are already
+            // scaled, but they still count for the smallest item area,
+            // otherwise all holes would be removed below.
+            if (!item_shape.shape_scaled.shape.elements.empty()) {
+                smallest_item_area = (std::min)(smallest_item_area, item_shape.shape_scaled.shape.compute_area());
+                continue;
+            }
+
+            item_shape.shape_scaled = instance_.parameters().scale_value * item_shape.shape_orig;
+            // The endpoints of the circular arcs of shapes coming from
+            // DXF files are not always exactly equidistant from their
+            // centers, which can create spurious self-intersections.
+            item_shape.shape_scaled = shape::recompute_centers(item_shape.shape_scaled);
+            item_shape.shape_scaled = shape::remove_redundant_vertices(item_shape.shape_scaled).second;
+            item_shape.shape_scaled = shape::remove_aligned_vertices(item_shape.shape_scaled).second;
+            if (!item_shape.shape_scaled.shape.check()) {
+                throw std::runtime_error(
+                        FUNC_SIGNATURE + ": "
+                        "invalid shape; "
+                        "item_type_id: " + std::to_string(item_type_id) + "; "
+                        "shape_pos: " + std::to_string(shape_pos) + ".");
+            }
+            for (ShapePos hole_pos = 0;
+                    hole_pos < (ShapePos)item_shape.shape_scaled.holes.size();
+                    ++hole_pos) {
+                const Shape& hole = item_shape.shape_scaled.holes[hole_pos];
+                if (!hole.check()) {
+                    throw std::runtime_error(
+                            FUNC_SIGNATURE + ": "
+                            "invalid scaled shape; "
+                            "item_type_id: " + std::to_string(item_type_id) + "; "
+                            "shape_pos: " + std::to_string(shape_pos) + "; "
+                            "hole_pos: " + std::to_string(hole_pos) + ".");
+                }
+            }
+            smallest_item_area = (std::min)(smallest_item_area, item_shape.shape_scaled.shape.compute_area());
+        }
+    }
+
+    // Remove small holes.
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        ItemType& item_type = instance_.item_types_[item_type_id];
+        item_type.area_scaled = 0;
+
+        // Compute scaled shapes.
+        for (ShapePos shape_pos = 0;
+                shape_pos < (ShapePos)item_type.shapes.size();
+                ++shape_pos) {
+            ItemShape& item_shape = item_type.shapes[shape_pos];
+            item_shape.shape_scaled = shape::remove_small_holes(
+                    item_shape.shape_scaled,
+                    smallest_item_area);
+            item_type.area_scaled += item_shape.shape_scaled.compute_area();
+        }
+    }
+
+    // Compute item type attributes.
+    AreaDbl bin_types_area_max = compute_bin_types_area_max();
+    instance_.all_item_types_infinite_copies_ = true;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        ItemType& item_type = instance_.item_types_[item_type_id];
+
+        // Resolve copies_min.
+        if (item_type.copies_min == -1) {
+            item_type.copies_min = (instance_.objective() == Objective::Knapsack)?
+                0: item_type.copies;
+        }
+        if (item_type.copies_min > item_type.copies) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "item type " + std::to_string(item_type_id) + " has "
+                    "'copies_min' (" + std::to_string(item_type.copies_min) + ") "
+                    "> 'copies' (" + std::to_string(item_type.copies) + ").");
+        }
+        // Every item must be packed, except with the 'Knapsack' objective.
+        if (instance_.objective() != Objective::Knapsack
+                && item_type.copies_min != item_type.copies) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "item type " + std::to_string(item_type_id) + " has "
+                    "'copies_min' (" + std::to_string(item_type.copies_min) + ") "
+                    "!= 'copies' (" + std::to_string(item_type.copies) + "), "
+                    "which is only allowed with the 'Knapsack' objective.");
+        }
+
+        // Compute inflated shapes.
+        for (ShapePos shape_pos = 0;
+                shape_pos < (ShapePos)item_type.shapes.size();
+                ++shape_pos) {
+            ItemShape& item_shape = item_type.shapes[shape_pos];
+            if (!item_shape.shape_inflated.shape.elements.empty())
+                continue;
+            item_shape.shape_inflated = inflate(
+                    item_shape.shape_scaled,
+                    instance_.item_spacing_scaled());
+            if (!item_shape.shape_inflated.shape.check()) {
+                throw std::runtime_error(
+                        FUNC_SIGNATURE + ": "
+                        "invalid shape; "
+                        "item_type_id: " + std::to_string(item_type_id) + "; "
+                        "shape_pos: " + std::to_string(shape_pos) + ".");
+            }
+            for (ShapePos hole_pos = 0;
+                    hole_pos < (ShapePos)item_shape.shape_inflated.holes.size();
+                    ++hole_pos) {
+                const Shape& hole = item_shape.shape_inflated.holes[hole_pos];
+                if (!hole.check()) {
+                    throw std::runtime_error(
+                            FUNC_SIGNATURE + ": "
+                            "invalid inflated shape; "
+                            "item_type_id: " + std::to_string(item_type_id) + "; "
+                            "shape_pos: " + std::to_string(shape_pos) + "; "
+                            "hole_pos: " + std::to_string(hole_pos) + ".");
+                }
+            }
+
+            if (item_shape.quality_rule < -1) {
+                throw std::invalid_argument(
+                        FUNC_SIGNATURE + ": "
+                        "invalid quality rule; "
+                        "item_type_id: " + std::to_string(item_type_id) + "; "
+                        "item_shape_pos: " + std::to_string(shape_pos) + "; "
+                        "quality_rule: " + std::to_string(item_shape.quality_rule) + ".");
+            }
+            if (item_shape.quality_rule != -1
+                    && item_shape.quality_rule >= instance_.parameters_.quality_rules.size()) {
+                throw std::invalid_argument(
+                        FUNC_SIGNATURE + ": "
+                        "invalid quality rule; "
+                        "item_type_id: " + std::to_string(item_type_id) + "; "
+                        "item_shape_pos: " + std::to_string(shape_pos) + "; "
+                        "quality_rule: " + std::to_string(item_shape.quality_rule) + "; "
+                        "parameters().quality_rules.size(): " + std::to_string(instance_.parameters().quality_rules.size()) + ".");
+            }
+        }
+
+        // Compute the bounding boxes in the discrete allowed orientations,
+        // unless already copied from another instance.
+        for (const AllowedRotation& rotation: item_type.allowed_rotations) {
+            if (rotation.start_angle != rotation.end_angle)
+                continue;
+            bool computed = false;
+            for (const ItemType::DiscreteRotationMinMax& rotation_min_max: item_type.discrete_rotations_min_max)
+                if (rotation_min_max.angle == rotation.start_angle && rotation_min_max.mirror == rotation.mirror)
+                    computed = true;
+            if (computed)
+                continue;
+            ItemType::DiscreteRotationMinMax rotation_min_max;
+            rotation_min_max.angle = rotation.start_angle;
+            rotation_min_max.mirror = rotation.mirror;
+            for (int type = 0; type < 3; ++type) {
+                rotation_min_max.aabbs[type] = item_type.compute_min_max(
+                        rotation.start_angle,
+                        rotation.mirror,
+                        type);
+            }
+            item_type.discrete_rotations_min_max.push_back(rotation_min_max);
+        }
+
+        // Update number_of_items_.
+        // Guard against ItemPos overflow before the running total of item
+        // copies is increased: an absurd 'copies' value (or the accumulation
+        // of many large values) would otherwise silently wrap around.
+        if (item_type.copies
+                > std::numeric_limits<ItemPos>::max() - instance_.number_of_items_) {
+            throw std::runtime_error(
+                    FUNC_SIGNATURE + ": "
+                    "the total number of items would overflow 'ItemPos'; "
+                    "item_type_id: " + std::to_string(item_type_id) + "; "
+                    "copies: " + std::to_string(item_type.copies) + "; "
+                    "number_of_items: " + std::to_string(instance_.number_of_items_) + ".");
+        }
+        instance_.number_of_items_ += item_type.copies;
+        if (item_type.shape_type() == ShapeType::Square
+                || item_type.shape_type() == ShapeType::Rectangle) {
+            instance_.number_of_rectangular_items_ += item_type.copies;
+        }
+        if (item_type.shape_type() == ShapeType::Circle) {
+            instance_.number_of_circular_items_ += item_type.copies;
+        }
+        // Update item_profit_.
+        instance_.item_profit_ += item_type.copies * item_type.profit;
+        // Update largest_item_profit_.
+        instance_.largest_item_profit_ = std::max(instance_.largest_item_profit(), item_type.profit);
+        // Update item_area_.
+        instance_.item_area_ += item_type.copies * item_type.area_orig;
+        // Update smallest_item_area_ and largest_item_area_.
+        instance_.smallest_item_area_ = (std::min)(
+                instance_.smallest_item_area_,
+                item_type.area_orig);
+        instance_.largest_item_area_ = (std::max)(
+                instance_.largest_item_area_,
+                item_type.area_orig);
+        // Update largest_efficiency_item_type_.
+        if (instance_.largest_efficiency_item_type_id_ == -1
+                || instance_.item_type(instance_.largest_efficiency_item_type_id_).profit
+                / instance_.item_type(instance_.largest_efficiency_item_type_id_).area_orig
+                < instance_.item_type(item_type_id).profit
+                / instance_.item_type(item_type_id).area_orig) {
+            instance_.largest_efficiency_item_type_id_ = item_type_id;
+        }
+        // Update all_item_types_infinite_copies_.
+        ItemPos c = (bin_types_area_max - 1) / item_type.area_orig + 1;
+        if (item_type.copies < c)
+            instance_.all_item_types_infinite_copies_ = false;
+        // Update largest_item_copies_.
+        if (instance_.largest_item_copies_ < item_type.copies)
+            instance_.largest_item_copies_ = item_type.copies;
+    }
+
+    // Compute bin type attributes.
+    instance_.bin_area_ = 0;
+    AreaDbl previous_bins_area = 0;
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        BinType& bin_type = instance_.bin_types_[bin_type_id];
+
+        // Compute scaled shapes.
+        if (bin_type.shape_scaled.elements.empty()) {
+            bin_type.shape_scaled = shape::recompute_centers(
+                    instance_.parameters().scale_value * bin_type.shape_orig);
+            for (Defect& defect: bin_type.defects) {
+                defect.shape_scaled = shape::recompute_centers(
+                        instance_.parameters().scale_value * defect.shape_orig);
+            }
+        }
+        bin_type.area_scaled = bin_type.shape_scaled.compute_area();
+        bin_type.aabb_scaled = bin_type.shape_scaled.compute_min_max();
+
+        // Compute inflated defects.
+        for (Defect& defect: bin_type.defects) {
+            if (!defect.shape_inflated.shape.elements.empty())
+                continue;
+            defect.shape_inflated = inflate(
+                    defect.shape_scaled,
+                    instance_.parameters().scale_value * defect.item_defect_minimum_spacing);
+        }
+
+        // Compute inflated borders.
+        if (bin_type.borders.empty()) {
+            // The borders are the parts of the bin's bounding box outside the
+            // bin shape. A boolean difference handles any bin shape,
+            // including ones made of circular arcs.
+            ShapeWithHoles bin_aabb;
+            bin_aabb.shape = build_rectangle(bin_type.aabb_scaled);
+            ShapeWithHoles bin_shape;
+            bin_shape.shape = bin_type.shape_scaled;
+            MultiShapeWithHoles shape_borders = compute_difference(bin_aabb, bin_shape);
+            for (const ShapeWithHoles& shape_border: shape_borders.shapes_with_holes) {
+                Defect border;
+                border.type = -2;
+                border.shape_scaled = shape_border;
+                border.shape_inflated = inflate(
+                        shape_border,
+                        instance_.bin_spacing_scaled(bin_type_id));
+                bin_type.borders.push_back(border);
+            }
+        }
+
+        // Update bin_type.copies.
+        if (bin_type.copies == -1)
+            instance_.bin_types_[bin_type_id].copies = instance_.number_of_items();
+        // Guard against materializing an absurd number of bins before the
+        // dense 'bin_type_ids_' / 'previous_bins_area_' vectors are populated.
+        // The loop below allocates one entry per bin copy, so a pathological
+        // 'copies' value (or the accumulation across bin types) would exhaust
+        // memory or overflow 'BinPos'. The cap is far above any realistic
+        // instance and so does not affect valid inputs.
+        const BinPos number_of_bins_max = (BinPos)100000000;
+        if (bin_type.copies > number_of_bins_max
+                || (BinPos)instance_.bin_type_ids_.size()
+                > number_of_bins_max - bin_type.copies) {
+            throw std::runtime_error(
+                    FUNC_SIGNATURE + ": "
+                    "the total number of bins to materialize is too large; "
+                    "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                    "copies: " + std::to_string(bin_type.copies) + "; "
+                    "number_of_bins_so_far: " + std::to_string(instance_.bin_type_ids_.size()) + "; "
+                    "number_of_bins_max: " + std::to_string(number_of_bins_max) + ".");
+        }
+        // Update bins_area_sum_.
+        instance_.bin_area_ += bin_type.copies * bin_type.area_orig;
+        // Update previous_bins_area_ and bin_type_ids_.
+        for (BinPos copy = 0; copy < bin_type.copies; ++copy) {
+            instance_.bin_type_ids_.push_back(bin_type_id);
+            instance_.previous_bins_area_.push_back(previous_bins_area);
+            previous_bins_area += bin_type.area_orig;
+        }
+        // Update largest_bin_cost_.
+        if (instance_.largest_bin_cost_ < bin_type.cost)
+            instance_.largest_bin_cost_ = bin_type.cost;
+        // Update number_of_defects_.
+        instance_.number_of_defects_ += bin_type.defects.size();
+    }
+
+    // Compute periodic packings per item type, for the periodic-packing tree
+    // search, unless already computed (e.g. copied from a source instance by
+    // add_item_type(instance, item_type_id)). Periodic blocks (tilings of
+    // these packings' unit cells, additionally bounded by a bin's
+    // dimensions) are not cached here: they are recomputed fresh wherever
+    // the periodic-packing tree search is invoked (see
+    // tree_search_periodic_packing.cpp), since they also depend on the
+    // item type's available copies, which can differ across sub-instances
+    // built from the same source item type.
+    // Periodic packings carried over from the original instance (see
+    // add_item_type(original_instance, ...)): those of a single item type
+    // are already remapped; those of several item types are kept only if
+    // all their item types have been added.
+    instance_.periodic_packings_ = periodic_packings_;
+    if (!several_original_instances_) {
+        for (const PeriodicItemPacking& packing: original_multiple_item_types_periodic_packings_) {
+            PeriodicItemPacking new_packing = packing;
+            bool ok = true;
+            for (SolutionItem& solution_item: new_packing.items) {
+                if (solution_item.item_type_id >= (ItemTypeId)orig_to_sub_item_type_ids_.size()
+                        || orig_to_sub_item_type_ids_[solution_item.item_type_id] == -1) {
+                    ok = false;
+                    break;
+                }
+                solution_item.item_type_id = orig_to_sub_item_type_ids_[solution_item.item_type_id];
+            }
+            if (ok)
+                instance_.periodic_packings_.push_back(std::move(new_packing));
+        }
+    }
+
+    if (instance_.number_of_bin_types() > 0) {
+        // The NFP-based self-pairing search periodic_packings relies on can
+        // be expensive (worst case close to quadratic in the shape's vertex
+        // count for highly concave shapes), so it is only worth paying for
+        // item types that will actually be tiled many times over. Below
+        // this threshold, no periodic packing is computed; the item type
+        // still gets plain AABB-grid blocks (cheap regardless of shape
+        // complexity, just no periodic-interlocking ones) when
+        // compute_periodic_blocks_for_item_type is later called on it.
+        const ItemPos periodic_packings_copies_threshold = 16;
+
+        // Even above that copies threshold, a shape with too many vertices
+        // makes this precomputation itself prohibitively expensive: its
+        // cost is driven by the number of convex parts the shape decomposes
+        // into (each pairwise convex-convex NFP, and the final union over
+        // all of them, adds up), and a highly concave shape's part count
+        // grows with its vertex count. Benchmarked against real production
+        // data (fontanf/packingsolver#558): a self-NFP already took ~22s at
+        // 442 vertices (115 convex parts) and didn't finish in two minutes
+        // at 4068 vertices (1070 parts), against ~1s at 151 vertices (47
+        // parts); this cap sits just below where cost starts climbing
+        // steeply, trading a possibly-missed periodic packing for keeping
+        // instance building itself fast regardless of item complexity.
+        const ElementPos periodic_packings_maximum_number_of_vertices = 300;
+
+        // Shapes already at or below this many vertices are left completely
+        // unapproximated by shape_simplification below (see
+        // shape::simplify's minimum_number_of_vertices): only a shape that
+        // actually needs simplifying to fit under the cap above takes on
+        // any approximation risk. 64 is comfortably above the highest floor
+        // observed (by binary search, under -mfma -ffp-contract=fast, which
+        // approximates Apple Silicon's more aggressive FMA contraction) to
+        // still reproduce a real regression on a 127-vertex item type
+        // (fontanf/packingsolver#569): simplifying that shape down to 41
+        // vertices changed which of two near-tied periodic packings the
+        // search preferred; 42 and above did not.
+        const shape::ElementPos periodic_packings_simplification_minimum_number_of_vertices = 64;
+
+        LengthDbl item_item_minimum_spacing = instance_.item_spacing_scaled();
+        // Computed lazily (only the first time they are actually needed) since
+        // most instances have few, if any, item types above the copies
+        // threshold below, and since the item types copied from another
+        // instance already have their periodic packings.
+        SimplifiedInstance simplified_instance;
+        bool simplified_instance_computed = false;
+        decltype(compute_item_type_rotations(instance_)) all_item_type_rotations;
+        bool item_type_rotations_computed = false;
+        // Item types whose periodic packings are computed in this call.
+        std::vector<bool> periodic_packings_computed_here(instance_.number_of_item_types(), false);
+        for (ItemTypeId item_type_id = 0;
+                item_type_id < instance_.number_of_item_types();
+                ++item_type_id) {
+            ItemType& item_type = instance_.item_types_[item_type_id];
+            if (!item_type.periodic_packings_computed) {
+                periodic_packings_computed_here[item_type_id] = true;
+                if (item_type.copies > periodic_packings_copies_threshold) {
+                    if (!simplified_instance_computed) {
+                        simplified_instance = shape_simplification(
+                                instance_,
+                                0.001,
+                                periodic_packings_simplification_minimum_number_of_vertices);
+                        simplified_instance_computed = true;
+                    }
+                    if (!item_type_rotations_computed) {
+                        all_item_type_rotations = compute_item_type_rotations(instance_);
+                        item_type_rotations_computed = true;
+                    }
+                    const std::vector<std::vector<ItemTypeRotation>>& item_type_rotations
+                        = all_item_type_rotations[instance_.bin_type_id(0)];
+                    std::vector<ShapeWithHoles> item_shapes;
+                    ElementPos number_of_vertices = 0;
+                    for (const SimplifiedShape& simplified_shape:
+                            simplified_instance.item_types[item_type_id].shapes) {
+                        item_shapes.push_back(simplified_shape.shape);
+                        number_of_vertices += simplified_shape.shape.shape.elements.size();
+                    }
+
+                    // The cost of the computation below is driven by the
+                    // shapes it actually runs on -- the simplified ones --
+                    // not by the item type's original, unsimplified vertex
+                    // count, so the cap is checked against the former.
+                    if (number_of_vertices <= periodic_packings_maximum_number_of_vertices) {
+                        std::vector<PeriodicItemPacking> item_type_packings
+                            = compute_periodic_packings_for_item_type(
+                                    item_shapes,
+                                    item_type_rotations[item_type_id],
+                                    item_item_minimum_spacing);
+                        for (PeriodicItemPacking& item_packing: item_type_packings) {
+                            for (SolutionItem& item: item_packing.items)
+                                item.item_type_id = item_type_id;
+                            instance_.periodic_packings_.push_back(std::move(item_packing));
+                        }
+                    }
+                }
+                item_type.periodic_packings_computed = true;
+            }
+        }
+
+        // Periodic packings of an item type wrapping around another one (see
+        // compute_wrapping_periodic_packings), between the item types for
+        // which periodic packings are computed above. Those between item
+        // types whose periodic packings were all already computed have been
+        // carried over from the original instance.
+        bool compute_wrapping_periodic_packings_needed = false;
+        ItemTypeId number_of_wrapping_item_types = 0;
+        for (ItemTypeId item_type_id = 0;
+                item_type_id < instance_.number_of_item_types();
+                ++item_type_id) {
+            if (instance_.item_type(item_type_id).copies <= periodic_packings_copies_threshold)
+                continue;
+            number_of_wrapping_item_types++;
+            if (periodic_packings_computed_here[item_type_id])
+                compute_wrapping_periodic_packings_needed = true;
+        }
+        if (compute_wrapping_periodic_packings_needed
+                && number_of_wrapping_item_types >= 2) {
+            if (!simplified_instance_computed) {
+                simplified_instance = shape_simplification(
+                        instance_,
+                        0.001,
+                        periodic_packings_simplification_minimum_number_of_vertices);
+                simplified_instance_computed = true;
+            }
+            if (!item_type_rotations_computed) {
+                all_item_type_rotations = compute_item_type_rotations(instance_);
+                item_type_rotations_computed = true;
+            }
+            const std::vector<std::vector<ItemTypeRotation>>& item_type_rotations
+                = all_item_type_rotations[instance_.bin_type_id(0)];
+            std::vector<PeriodicPackingItemType> wrapping_item_types;
+            for (ItemTypeId item_type_id = 0;
+                    item_type_id < instance_.number_of_item_types();
+                    ++item_type_id) {
+                if (instance_.item_type(item_type_id).copies <= periodic_packings_copies_threshold)
+                    continue;
+                PeriodicPackingItemType wrapping_item_type;
+                wrapping_item_type.item_type_id = item_type_id;
+                ElementPos number_of_vertices = 0;
+                for (const SimplifiedShape& simplified_shape:
+                        simplified_instance.item_types[item_type_id].shapes) {
+                    wrapping_item_type.shapes.push_back(simplified_shape.shape);
+                    number_of_vertices += simplified_shape.shape.shape.elements.size();
+                }
+                // Same cap as above.
+                if (number_of_vertices > periodic_packings_maximum_number_of_vertices)
+                    continue;
+                wrapping_item_type.rotations = item_type_rotations[item_type_id];
+                wrapping_item_type.compute = periodic_packings_computed_here[item_type_id];
+                wrapping_item_types.push_back(wrapping_item_type);
+            }
+            std::vector<PeriodicItemPacking> single_item_type_packings = instance_.periodic_packings_;
+            for (PeriodicItemPacking& packing: compute_wrapping_periodic_packings(
+                        wrapping_item_types,
+                        single_item_type_packings,
+                        item_item_minimum_spacing)) {
+                instance_.periodic_packings_.push_back(std::move(packing));
+            }
+        }
+    }
+
+    // Compute copies_fixed for each item type.
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < this->instance_.number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = this->instance_.bin_types_[bin_type_id];
+        for (const FixedItem& fixed_item: bin_type.fixed_items) {
+            this->instance_.item_types_[fixed_item.item_type_id].copies_fixed += bin_type.copies;
+            this->instance_.number_of_fixed_items_ += bin_type.copies;
+        }
+    }
+    // Compute last_bin_with_fixed_items_: position of the last bin whose bin
+    // type has fixed items.
+    for (BinPos bin_pos = (BinPos)instance_.bin_type_ids_.size() - 1;
+            bin_pos >= 0;
+            --bin_pos) {
+        BinTypeId bin_type_id = instance_.bin_type_ids_[bin_pos];
+        if (!instance_.bin_types_[bin_type_id].fixed_items.empty()) {
+            instance_.last_bin_with_fixed_items_ = bin_pos;
+            break;
+        }
+    }
+
+    if (instance_.objective() == Objective::OpenDimensionX
+            && instance_.number_of_bins() != 1) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "the instance has objective OpenDimensionX and contains " + std::to_string(instance_.number_of_bins()) + " bins; "
+                "an instance with objective OpenDimensionX must contain exactly one bin.");
+    }
+    if (instance_.objective() == Objective::OpenDimensionY
+            && instance_.number_of_bins() != 1) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "the instance has objective OpenDimensionY and contains " + std::to_string(instance_.number_of_bins()) + " bins; "
+                "an instance with objective OpenDimensionY must contain exactly one bin.");
+    }
+
+    // Compute item_type.resources (see its own doc comment).
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        instance_.item_types_[item_type_id].resources.resize(instance_.number_of_bin_types());
+    }
+    optimizationtools::IndexedSet seen_item_type_ids(instance_.number_of_item_types());
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = instance_.bin_types_[bin_type_id];
+        for (ResourceId resource_id = 0;
+                resource_id < bin_type.number_of_resources();
+                ++resource_id) {
+            const Resource& resource = bin_type.resource(resource_id);
+            seen_item_type_ids.clear();
+            for (std::size_t consumption_pos = 0;
+                    consumption_pos < resource.item_consumptions.size();
+                    ++consumption_pos) {
+                const std::pair<ItemTypeId, std::vector<double>>& entry
+                    = resource.item_consumptions[consumption_pos];
+                if (!seen_item_type_ids.add(entry.first)) {
+                    throw std::invalid_argument(
+                            FUNC_SIGNATURE + ": "
+                            "resource " + std::to_string(resource_id) + " of bin type " +
+                            std::to_string(bin_type_id) + " has more than one consumption "
+                            "entry for item type " + std::to_string(entry.first) + "; "
+                            "'add_resource_consumption' may only be called once per "
+                            "(item type, resource) pair.");
+                }
+                if (!entry.second.empty()) {
+                    instance_.item_types_[entry.first].resources[bin_type_id]
+                        .push_back({resource_id, consumption_pos});
+                }
+            }
+        }
+    }
+
+    return std::move(instance_);
+}

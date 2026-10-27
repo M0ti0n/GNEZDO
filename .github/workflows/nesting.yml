@@ -1,0 +1,56 @@
+name: Nesting (PackingSolver + nestprep)
+
+# Builds our copy of PackingSolver and runs the nestprep pre-pass on a small demo job,
+# only when something under nesting/ changes.
+on:
+  push:
+    branches: [main]
+    paths: ["nesting/**", ".github/workflows/nesting.yml"]
+  pull_request:
+    paths: ["nesting/**", ".github/workflows/nesting.yml"]
+  workflow_dispatch:
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy is upstream + our patches
+        run: nesting/update-packingsolver.sh --check
+
+      - name: Build packingsolver_irregular
+        working-directory: nesting/packingsolver
+        run: |
+          sudo apt-get install -y ninja-build
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DPACKINGSOLVER_BUILD_TEST=OFF -DPACKINGSOLVER_USE_CLP=OFF -DPACKINGSOLVER_USE_HIGHS=ON
+          cmake --build build --target packingsolver_irregular -j4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: nestprep on the demo job
+        working-directory: nesting/nestprep
+        run: |
+          pip install numpy matplotlib
+          python nestprep_cli.py compare examples/demo_holes.json \
+            --solver ../packingsolver/build/src/irregular/packingsolver_irregular -t 5 --outdir out
+          python - <<'EOF'
+          import json
+          r = json.load(open("out/compare.json"))
+          for k in ("baseline", "prepass"):
+              print(k, {x: r[k][x] for x in ("sheets", "sheet_equivalents", "parts_in_holes", "valid", "min_gap")})
+          assert r["baseline"]["valid"] and r["prepass"]["valid"], "a layout failed the validator"
+          assert r["prepass"]["parts_in_holes"] > 0, "the pre-pass put nothing into the holes"
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packingsolver-linux
+          path: |
+            nesting/packingsolver/build/src/irregular/packingsolver_irregular
+            nesting/nestprep/out/*.png
+            nesting/nestprep/out/compare.json

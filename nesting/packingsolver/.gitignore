@@ -1,0 +1,12 @@
+bazel-*
+build/*
+.vscode
+checker/checker
+checker/logs/*
+log*
+checker/*
+OLD
+instances/*
+output/*
+data/
+benchmark_results

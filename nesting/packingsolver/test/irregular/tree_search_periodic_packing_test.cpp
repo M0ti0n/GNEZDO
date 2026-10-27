@@ -1,0 +1,173 @@
+#include "packingsolver/irregular/instance_builder.hpp"
+#include "irregular/solution_builder.hpp"
+#include "irregular/tree_search_periodic_packing.hpp"
+
+#include <gtest/gtest.h>
+#include <boost/filesystem.hpp>
+
+using namespace packingsolver::irregular;
+namespace fs = boost::filesystem;
+
+struct IrregularTreeSearchPeriodicPackingTestParams
+{
+    fs::path instance_path;
+    fs::path certificate_path;
+};
+
+inline std::ostream& operator<<(std::ostream& os, const IrregularTreeSearchPeriodicPackingTestParams& test_params)
+{
+    os << test_params.instance_path;
+    return os;
+}
+
+class IrregularTreeSearchPeriodicPackingTest: public testing::TestWithParam<IrregularTreeSearchPeriodicPackingTestParams> { };
+
+// Calls tree_search_periodic_packing() directly instead of optimize():
+// optimize() unconditionally dispatches any 1-item/1-bin Knapsack instance
+// to the separate trivial_single_item fast path (irregular/trivial.cpp),
+// regardless of use_tree_search_periodic_packing -- bypassing this
+// algorithm (and its spacing handling) entirely. Some of the instances
+// below are deliberately single-item/single-copy (to test an exact-fit
+// boundary), so going through optimize() would silently test
+// trivial_single_item instead. Confirmed to produce identical results to
+// optimize(..., use_tree_search_periodic_packing = true) on the
+// multi-item instances too.
+TEST_P(IrregularTreeSearchPeriodicPackingTest, IrregularTreeSearchPeriodicPacking)
+{
+    IrregularTreeSearchPeriodicPackingTestParams test_params = GetParam();
+    std::cout << "Instance path: " << test_params.instance_path << std::endl;
+    std::cout << "Certificate path: " << test_params.certificate_path << std::endl;
+
+    InstanceBuilder instance_builder;
+    instance_builder.read(test_params.instance_path.string());
+    Instance instance = instance_builder.build();
+
+    TreeSearchPeriodicPackingParameters parameters;
+    parameters.verbosity_level = 0;
+    parameters.optimization_mode = packingsolver::OptimizationMode::NotAnytimeSequential;
+    TreeSearchPeriodicPackingOutput output = tree_search_periodic_packing(instance, parameters);
+
+    SolutionBuilder solution_builder(instance);
+    solution_builder.read(test_params.certificate_path.string());
+    Solution solution = solution_builder.build();
+    std::cout << std::endl
+        << "Reference solution" << std::endl
+        << "------------------" << std::endl;
+    solution.format(std::cout);
+
+    EXPECT_EQ(!(output.solution_pool.best() < solution), true);
+    EXPECT_EQ(!(solution < output.solution_pool.best()), true);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        Irregular,
+        IrregularTreeSearchPeriodicPackingTest,
+        testing::ValuesIn(std::vector<IrregularTreeSearchPeriodicPackingTestParams>{
+            {
+                fs::path("data") / "irregular" / "users" / "2025-12-08.json",
+                fs::path("data") / "irregular" / "users" / "2025-12-08_solution.json"
+            }, {
+                fs::path("data") / "irregular" / "users" / "2026-04-08_sub_2.json",
+                fs::path("data") / "irregular" / "users" / "2026-04-08_sub_2_solution.json"
+            }, {
+                fs::path("data") / "irregular" / "users" / "2026-04-08_sub_3.json",
+                fs::path("data") / "irregular" / "users" / "2026-04-08_sub_3_solution.json"
+            }, {
+                fs::path("data") / "irregular" / "users" / "2026-04-08_sub_4.json",
+                fs::path("data") / "irregular" / "users" / "2026-04-08_sub_4_solution.json"
+            }, {
+                fs::path("data") / "irregular" / "users" / "2026-04-23_sub.json",
+                fs::path("data") / "irregular" / "users" / "2026-04-23_sub_solution.json"
+            }, {
+                fs::path("data") / "irregular" / "users" / "2026-04-23_sub_2.json",
+                fs::path("data") / "irregular" / "users" / "2026-04-23_sub_2_solution.json"
+            }, {
+                // Right triangle, 40 copies, bin exactly 50x40 (a 5x4 grid
+                // of 10x10 triangle bounding boxes, both rotations used,
+                // zero gap). item_item_minimum_spacing = 0.5 shrinks that to
+                // a 4x3 grid, so only 24 of the 40 copies fit.
+                fs::path("data") / "irregular" / "tests" / "periodic_packing_item_item_spacing.json",
+                fs::path("data") / "irregular" / "tests" / "periodic_packing_item_item_spacing_solution.json"
+            }, {
+                // Same triangle and copies, bin 52x42 (a little extra slack
+                // on both axes beyond the tight 50x40, so bin spacing --
+                // not a lack of room -- is what breaks the fit).
+                // item_bin_minimum_spacing = 1.2 shrinks the 5x4 grid to
+                // 4x3, so only 24 of the 40 copies fit.
+                fs::path("data") / "irregular" / "tests" / "periodic_packing_item_bin_spacing.json",
+                fs::path("data") / "irregular" / "tests" / "periodic_packing_item_bin_spacing_solution.json"
+            }, {
+                // Single rectangular item (10x6), single copy,
+                // item_bin_minimum_spacing = 1, bin exactly 12x8: the exact
+                // boundary at which the item still fits.
+                fs::path("data") / "irregular" / "tests" / "periodic_packing_single_item_exact_fit_rectangle.json",
+                fs::path("data") / "irregular" / "tests" / "periodic_packing_single_item_exact_fit_rectangle_solution.json"
+            }, {
+                // Same exact-fit boundary as above, but with a
+                // non-rectangular (right triangle) item, to exercise the
+                // NFP-based (not just AABB) bin-wall spacing check.
+                fs::path("data") / "irregular" / "tests" / "periodic_packing_single_item_exact_fit_triangle.json",
+                fs::path("data") / "irregular" / "tests" / "periodic_packing_single_item_exact_fit_triangle_solution.json"
+            }, {
+                // Bin 20x10, a defect covering the 5-wide middle strip
+                // (x in [5,10)), a 10x10 item with 2 copies (a single copy
+                // would make the bin's tracked width collapse via the
+                // solver's "max reachable length" domain reduction - since
+                // one copy could never reach past x=10 anyway - which would
+                // place the defect at the truncated bin's far edge instead
+                // of its middle, defeating the point of this test). Cutting
+                // the initial empty space around the (AABB-approximated)
+                // defect leaves a 5x10 space (too narrow for the item) and
+                // a 10x10 space (an exact fit) - and the 5x10 one, being
+                // closer to the bin's origin, is exactly the kind of
+                // unusable-but-preferred space 'remove_unusable_spaces'
+                // must discard, otherwise the search would wrongly consider
+                // the root infertile despite the still-usable 10x10 space
+                // (and, without the defect cut being applied at all, would
+                // instead silently pack both copies, one of them
+                // overlapping the defect). Only 1 of the 2 copies fits.
+                fs::path("data") / "irregular" / "tests" / "knapsack_defect_blocks_middle.json",
+                fs::path("data") / "irregular" / "tests" / "knapsack_defect_blocks_middle_solution.json"
+            }, {
+                // L-shaped (non-rectangular) bin: a 20x10 bounding box with
+                // its top-right 10x5 corner (x in [10,20), y in [5,10))
+                // missing. root()'s initial empty space spans the bin's full
+                // bounding box, so without cutting out 'bin_type().borders'
+                // -- the AABB decomposition of the bounding-box-minus-shape
+                // area computed alongside 'defects' -- the search would treat
+                // that missing corner as free space. A 10x10 item, 2 copies:
+                // the first fits at (0,0), entirely inside the true L-shape;
+                // a second at (10,0) would need the missing corner, and the
+                // remaining true free space (10x5) is too short for it, so
+                // only 1 of the 2 copies fits.
+                fs::path("data") / "irregular" / "tests" / "knapsack_bin_border.json",
+                fs::path("data") / "irregular" / "tests" / "knapsack_bin_border_solution.json"
+            }, {
+                // Fixed items (#720): bin 20x10, two fixed right triangles
+                // filling the middle strip x in [5,10) without touching each
+                // other, whose AABBs overlap ([5,9] and [6,10]), and a 10x10
+                // item with 2 copies. Like defects, the fixed items are cut
+                // out of the empty spaces (approximated by rectangles): only
+                // 1 of the 2 copies fits, at (10,0), and the fixed items must
+                // be in the solution.
+                fs::path("data") / "irregular" / "tests" / "knapsack_fixed_items_overlapping_aabbs.json",
+                fs::path("data") / "irregular" / "tests" / "knapsack_fixed_items_overlapping_aabbs_solution.json"
+            }, {
+                // Fixed item with a hole (#720): a 100x60 frame with an 80x40
+                // hole, fixed at (0,0) in a 100x60 bin, and a 10x10 item with
+                // 40 copies. The fixed items are approximated by rectangles
+                // instead of their AABB, which would cover the whole bin: the
+                // frame is covered exactly by 4 rectangles, and 32 copies fit
+                // in its hole.
+                fs::path("data") / "irregular" / "tests" / "knapsack_fixed_item_with_hole.json",
+                fs::path("data") / "irregular" / "tests" / "knapsack_fixed_item_with_hole_solution.json"
+            }, {
+                // Same with an item-item spacing of 2: a 100x58 frame with an
+                // 80x38 hole, which leaves a 76x34 free space once the frame
+                // is inflated by the spacing. 3 rows of 10x10 items, 2 apart,
+                // are exactly 34 high, but the extent of a block ends one
+                // spacing past its items: the obstacles must give it back,
+                // otherwise only 2 rows fit. 6 x 3 = 18 copies fit.
+                fs::path("data") / "irregular" / "tests" / "knapsack_fixed_item_with_hole_spacing.json",
+                fs::path("data") / "irregular" / "tests" / "knapsack_fixed_item_with_hole_spacing_solution.json"
+            }}));
