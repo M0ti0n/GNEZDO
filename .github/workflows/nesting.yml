@@ -36,15 +36,19 @@ jobs:
         working-directory: nesting/nestprep
         run: |
           pip install numpy matplotlib
-          python nestprep_cli.py compare examples/demo_holes.json \
-            --solver ../packingsolver/build/src/irregular/packingsolver_irregular -t 5 --outdir out
+          PS=../packingsolver/build/src/irregular/packingsolver_irregular
+          python nestprep_cli.py compare examples/demo_holes.json --solver $PS -t 5 --outdir out --post quick
+          # several sheets, so gap filling, the chain and sheet pairs have something to do
+          python nestprep_cli.py compare examples/demo_sheets.json --solver $PS -t 5 --outdir out_sheets --post thorough
           python - <<'EOF'
           import json
-          r = json.load(open("out/compare.json"))
-          for k in ("baseline", "prepass"):
-              print(k, {x: r[k][x] for x in ("sheets", "sheet_equivalents", "parts_in_holes", "valid", "min_gap")})
-          assert r["baseline"]["valid"] and r["prepass"]["valid"], "a layout failed the validator"
-          assert r["prepass"]["parts_in_holes"] > 0, "the pre-pass put nothing into the holes"
+          for d in ("out", "out_sheets"):
+              r = json.load(open(f"{d}/compare.json"))
+              for k in ("baseline", "prepass", "post"):
+                  print(d, k, {x: r[k][x] for x in ("sheets", "sheet_equivalents", "parts_in_holes", "valid", "min_gap")})
+                  assert r[k]["valid"], f"{d} {k}: a layout failed the validator"
+              assert r["post"]["sheet_equivalents"] <= r["prepass"]["sheet_equivalents"], f"{d}: the post-pass made it worse"
+          assert json.load(open("out/compare.json"))["prepass"]["parts_in_holes"] > 0, "the pre-pass put nothing into the holes"
           EOF
 
       - uses: actions/upload-artifact@v4
@@ -52,5 +56,5 @@ jobs:
           name: packingsolver-linux
           path: |
             nesting/packingsolver/build/src/irregular/packingsolver_irregular
-            nesting/nestprep/out/*.png
-            nesting/nestprep/out/compare.json
+            nesting/nestprep/out*/*.png
+            nesting/nestprep/out*/compare.json

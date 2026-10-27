@@ -1,0 +1,487 @@
+{
+ "objective": "variable-sized-bin-packing",
+ "parameters": {
+  "item_item_minimum_spacing": 5
+ },
+ "bin_types": [
+  {
+   "type": "general",
+   "elements": [
+    {
+     "type": "LineSegment",
+     "start": {
+      "x": 0,
+      "y": 0
+     },
+     "end": {
+      "x": 1000,
+      "y": 0
+     }
+    },
+    {
+     "type": "LineSegment",
+     "start": {
+      "x": 1000,
+      "y": 0
+     },
+     "end": {
+      "x": 1000,
+      "y": 600
+     }
+    },
+    {
+     "type": "LineSegment",
+     "start": {
+      "x": 1000,
+      "y": 600
+     },
+     "end": {
+      "x": 0,
+      "y": 600
+     }
+    },
+    {
+     "type": "LineSegment",
+     "start": {
+      "x": 0,
+      "y": 600
+     },
+     "end": {
+      "x": 0,
+      "y": 0
+     }
+    }
+   ],
+   "copies": -1
+  }
+ ],
+ "item_types": [
+  {
+   "shapes": [
+    {
+     "type": "general",
+     "elements": [
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 0,
+        "y": 0
+       },
+       "end": {
+        "x": 400,
+        "y": 0
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 400,
+        "y": 0
+       },
+       "end": {
+        "x": 400,
+        "y": 300
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 400,
+        "y": 300
+       },
+       "end": {
+        "x": 0,
+        "y": 300
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 0,
+        "y": 300
+       },
+       "end": {
+        "x": 0,
+        "y": 0
+       }
+      }
+     ],
+     "holes": [
+      {
+       "type": "general",
+       "elements": [
+        {
+         "type": "LineSegment",
+         "start": {
+          "x": 50,
+          "y": 50
+         },
+         "end": {
+          "x": 350,
+          "y": 50
+         }
+        },
+        {
+         "type": "LineSegment",
+         "start": {
+          "x": 350,
+          "y": 50
+         },
+         "end": {
+          "x": 350,
+          "y": 250
+         }
+        },
+        {
+         "type": "LineSegment",
+         "start": {
+          "x": 350,
+          "y": 250
+         },
+         "end": {
+          "x": 50,
+          "y": 250
+         }
+        },
+        {
+         "type": "LineSegment",
+         "start": {
+          "x": 50,
+          "y": 250
+         },
+         "end": {
+          "x": 50,
+          "y": 50
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "copies": 8,
+   "allowed_rotations": [
+    {
+     "start": 0,
+     "end": 0
+    },
+    {
+     "start": 90,
+     "end": 90
+    },
+    {
+     "start": 180,
+     "end": 180
+    },
+    {
+     "start": 270,
+     "end": 270
+    }
+   ],
+   "allow_mirroring": false
+  },
+  {
+   "shapes": [
+    {
+     "type": "general",
+     "elements": [
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 0,
+        "y": 0
+       },
+       "end": {
+        "x": 80,
+        "y": 0
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 80,
+        "y": 0
+       },
+       "end": {
+        "x": 80,
+        "y": 50
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 80,
+        "y": 50
+       },
+       "end": {
+        "x": 0,
+        "y": 50
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 0,
+        "y": 50
+       },
+       "end": {
+        "x": 0,
+        "y": 0
+       }
+      }
+     ]
+    }
+   ],
+   "copies": 60,
+   "allowed_rotations": [
+    {
+     "start": 0,
+     "end": 0
+    },
+    {
+     "start": 90,
+     "end": 90
+    },
+    {
+     "start": 180,
+     "end": 180
+    },
+    {
+     "start": 270,
+     "end": 270
+    }
+   ],
+   "allow_mirroring": false
+  },
+  {
+   "shapes": [
+    {
+     "type": "general",
+     "elements": [
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 0,
+        "y": 0
+       },
+       "end": {
+        "x": 160,
+        "y": 0
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 160,
+        "y": 0
+       },
+       "end": {
+        "x": 0,
+        "y": 120
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 0,
+        "y": 120
+       },
+       "end": {
+        "x": 0,
+        "y": 0
+       }
+      }
+     ]
+    }
+   ],
+   "copies": 20,
+   "allowed_rotations": [
+    {
+     "start": 0,
+     "end": 0
+    },
+    {
+     "start": 90,
+     "end": 90
+    },
+    {
+     "start": 180,
+     "end": 180
+    },
+    {
+     "start": 270,
+     "end": 270
+    }
+   ],
+   "allow_mirroring": false
+  },
+  {
+   "shapes": [
+    {
+     "type": "general",
+     "elements": [
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 0,
+        "y": 0
+       },
+       "end": {
+        "x": 300,
+        "y": 0
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 300,
+        "y": 0
+       },
+       "end": {
+        "x": 300,
+        "y": 80
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 300,
+        "y": 80
+       },
+       "end": {
+        "x": 80,
+        "y": 80
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 80,
+        "y": 80
+       },
+       "end": {
+        "x": 80,
+        "y": 250
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 80,
+        "y": 250
+       },
+       "end": {
+        "x": 0,
+        "y": 250
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 0,
+        "y": 250
+       },
+       "end": {
+        "x": 0,
+        "y": 0
+       }
+      }
+     ]
+    }
+   ],
+   "copies": 10,
+   "allowed_rotations": [
+    {
+     "start": 0,
+     "end": 0
+    },
+    {
+     "start": 90,
+     "end": 90
+    },
+    {
+     "start": 180,
+     "end": 180
+    },
+    {
+     "start": 270,
+     "end": 270
+    }
+   ],
+   "allow_mirroring": false
+  },
+  {
+   "shapes": [
+    {
+     "type": "general",
+     "elements": [
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 0,
+        "y": 0
+       },
+       "end": {
+        "x": 220,
+        "y": 0
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 220,
+        "y": 0
+       },
+       "end": {
+        "x": 220,
+        "y": 40
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 220,
+        "y": 40
+       },
+       "end": {
+        "x": 0,
+        "y": 40
+       }
+      },
+      {
+       "type": "LineSegment",
+       "start": {
+        "x": 0,
+        "y": 40
+       },
+       "end": {
+        "x": 0,
+        "y": 0
+       }
+      }
+     ]
+    }
+   ],
+   "copies": 16,
+   "allowed_rotations": [
+    {
+     "start": 0,
+     "end": 0
+    },
+    {
+     "start": 90,
+     "end": 90
+    },
+    {
+     "start": 180,
+     "end": 180
+    },
+    {
+     "start": 270,
+     "end": 270
+    }
+   ],
+   "allow_mirroring": false
+  }
+ ]
+}
