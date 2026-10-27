@@ -7,6 +7,8 @@ Commands
   validate  original instance + solution (+ composites) -> overlap/spacing/count check
   render    original instance + solution (+ composites) -> sheets.png
   compare   run baseline and pre-processed solves with the same settings, report
+            (--post quick|thorough adds the post-pass: gap filling, chain, sheet pairs)
+  post      move parts of a finished nest forward into gaps, shorten the last sheet
 
 Examples
   python nestprep_cli.py prepass job.json -o job_pre.json -m job_composites.json
@@ -24,7 +26,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from nestprep import psrun  # noqa: E402
 from nestprep.holefill import Options, PrePass  # noqa: E402
+from nestprep.postpass import PostOptions, PostPass  # noqa: E402
 from nestprep.solution import expand, metrics, validate  # noqa: E402
+
+
+def post_options(level: str, quiet: bool = False) -> PostOptions:
+    """quick: gap filling + chain + last sheet compaction; thorough: also re-nests sheet pairs."""
+    if level == "quick":
+        return PostOptions(pairs=False, gap_time=2, chain_time=2, compact_time=10, budget=60, quiet=quiet)
+    if level == "thorough":
+        return PostOptions(gap_time=3, chain_time=3, pair_time=10, compact_time=15, budget=240, quiet=quiet)
+    raise SystemExit(f"--post must be quick or thorough, not {level}")
 
 
 def load(p):
@@ -125,7 +137,41 @@ def cmd_compare(a):
     print(f"pre-pass {pre_t:.1f} s, {mapping['stats']}")
     run("prepass", pre, mapping)
     res["prepass"]["prepass_seconds"] = round(pre_t, 1)
+    if a.post != "off":
+        sol = load(os.path.join(a.outdir, "prepass", "solution.json"))
+        t0 = time.perf_counter()
+        pp = PostPass(pre, sol, binary, post_options(a.post, a.quiet))
+        new = pp.run()
+        post_t = time.perf_counter() - t0
+        os.makedirs(os.path.join(a.outdir, "post"), exist_ok=True)
+        dump(new, os.path.join(a.outdir, "post", "solution.json"))
+        sheets = expand(new, mapping)
+        v = validate(inst, sheets)
+        m = metrics(inst, sheets)
+        m.update(valid=v["ok"], errors=len(v["errors"]), min_gap=round(v["min_gap"], 2),
+                 post_seconds=round(post_t, 1), level=a.post, steps=pp.log)
+        render_sheets(inst, sheets, os.path.join(a.outdir, "post.png"),
+                      f"post ({a.post}): {m['sheets']} sheets, {m['sheet_equivalents']} sheet-equivalents")
+        res["post"] = m
+        print("post", json.dumps({k: v2 for k, v2 in m.items() if k != "steps"}))
+        for e in v["errors"][:20]:
+            print("   ", e)
     dump(res, os.path.join(a.outdir, "compare.json"))
+
+
+def cmd_post(a):
+    inst = load(a.instance)
+    nested = load(a.nested) if a.nested else inst
+    mp = load(a.mapping) if a.mapping else None
+    pp = PostPass(nested, load(a.solution), psrun.find_binary(a.solver), post_options(a.level, a.quiet))
+    new = pp.run()
+    dump(new, a.output)
+    sheets = expand(new, mp)
+    v = validate(inst, sheets)
+    print(json.dumps({"valid": v["ok"], **metrics(inst, sheets)}))
+    for e in v["errors"][:20]:
+        print("   ", e)
+    sys.exit(0 if v["ok"] else 1)
 
 
 def main():
@@ -166,8 +212,21 @@ def main():
     p.add_argument("-f", "--objective", help="override objective")
     p.add_argument("--outdir", default="compare_out")
     p.add_argument("--skip-baseline", action="store_true")
+    p.add_argument("--post", default="off", choices=["off", "quick", "thorough"],
+                   help="post-pass after the pre-pass nest")
     common_pre(p)
     p.set_defaults(fn=cmd_compare)
+
+    p = sub.add_parser("post")
+    p.add_argument("instance", help="ORIGINAL instance json")
+    p.add_argument("solution", help="solution of the nested instance")
+    p.add_argument("-n", "--nested", help="the instance that was nested (instance_pre.json); default: the original")
+    p.add_argument("-m", "--mapping", help="composites.json when the pre-pass ran")
+    p.add_argument("-o", "--output", default="solution_post.json")
+    p.add_argument("--level", default="quick", choices=["quick", "thorough"])
+    p.add_argument("--solver", help="path to packingsolver_irregular binary")
+    p.add_argument("-q", "--quiet", action="store_true")
+    p.set_defaults(fn=cmd_post)
 
     a = ap.parse_args()
     a.fn(a)

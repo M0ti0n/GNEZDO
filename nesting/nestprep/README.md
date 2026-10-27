@@ -102,9 +102,16 @@ should be reported upstream (fontanf/packingsolver). Until it's fixed there, use
   thread cap; cache hole results by (normalised hole contour, candidate caps).
 - Keep the validator as a separate component that runs after every solve.
 
-## Not done yet
+## Post-pass (`nestprep/postpass.py`)
 
-- Last-sheet consolidation (step 3 of the plan): sheet 8 is already a clean strip
-  here, but a leftovers pass would compact it further.
+Gap filling, chain, sheet pairs and last-sheet compaction after the nest: see
+[../README.md](../README.md#post-pass-gap-filling-after-the-nest).
+
+```bash
+python nestprep_cli.py compare job.json -t 30 --post quick        # or thorough
+python nestprep_cli.py post job.json solution.json -n job_pre.json -m job_composites.json --level quick
+```
+
+## Not done yet
 - Hole filling of concave bays (L-shapes #13, #25): only true holes are used now.
 - Cut order is exported as `depth` (inner first); lead-ins are not considered.
