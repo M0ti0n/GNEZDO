@@ -5,14 +5,16 @@ in its holes, or a pair) moves as one piece. PackingSolver does all the geometry
 on a sheet are given to it as obstacles ("defects", kept `spacing` away), so a gap can be a hole,
 a bay, a pocket between neighbouring parts or a strip along the edge.
 
-Steps (each optional, each with its own time limit):
+Steps (each optional, each with its own time limit; the time for the compaction is kept aside):
 
-1. gap      Parts of the last sheet go into the gaps of the earlier sheets.
+1. gap      Parts of the last sheet go into the gaps of the earlier sheets. Off by default: the
+            chain's first round does the same; kept for adding parts to a finished nest.
 2. chain    From the back to the front: the gaps of sheet k get parts from any later sheet
             (taken from the latest sheet first). Space freed on a sheet is used in the next
             round; rounds repeat until nothing moves.
 3. pairs    Two neighbouring sheets are nested again together: as much as possible on the first,
-            the rest must fit on the second. Kept only when it is better.
+            the rest must fit on the second. Kept only when it is better. Runs before the chain,
+            from the last pair forward.
 Last, the last sheet is compacted to the left, so what is left of it is one clean remnant.
 
 Every result comes from PackingSolver; the caller validates the final layout independently.
@@ -30,7 +32,7 @@ from .geom import Xf
 
 @dataclass
 class PostOptions:
-    gap: bool = True
+    gap: bool = False            # step 1; the chain's first round does the same (kept for adding parts)
     chain: bool = True
     pairs: bool = True
     compact: bool = True
@@ -78,6 +80,11 @@ class PostPass:
             print(f"  [post {time.perf_counter() - self.t0:5.1f}s] {msg}", flush=True)
 
     def left(self) -> float:
+        """Time left for the steps before the compaction (its time is kept aside)."""
+        reserve = self.opt.compact_time if self.opt.compact else 0.0
+        return self.opt.budget - reserve - (time.perf_counter() - self.t0)
+
+    def left_total(self) -> float:
         return self.opt.budget - (time.perf_counter() - self.t0)
 
     def area(self, tid: int) -> float:
@@ -176,7 +183,7 @@ class PostPass:
 
     # -- steps ---------------------------------------------------------------
     def fill(self, k: int, cands: Counter, t: float) -> int:
-        if not cands or self.left() <= 0:
+        if not cands or self.left() < 0.5:
             return 0
         sh = self.sheets[k]
         placed = self.solve("knapsack", sh.bin_type, sh.items, cands, min(t, self.left()))
@@ -215,14 +222,15 @@ class PostPass:
         t = time.perf_counter()
         changed = 0
         for k in range(len(self.sheets) - 2, -1, -1):
-            if self.left() <= 2 * self.opt.pair_time or k >= len(self.sheets) - 1:
+            if self.left() <= 2 * min(self.opt.pair_time, 3.0) or k >= len(self.sheets) - 1:
                 break
             a, b = self.sheets[k], self.sheets[k + 1]
             if a.bin_type != b.bin_type:
                 continue
             last = k + 1 == len(self.sheets) - 1
             both = Counter(p.id for p in a.items + b.items)
-            first = self.solve("knapsack", a.bin_type, [], both, self.opt.pair_time)
+            pt = min(self.opt.pair_time, self.left() / 2)
+            first = self.solve("knapsack", a.bin_type, [], both, pt)
             rest = both - Counter(p.id for p in first)
             if not first:
                 continue
@@ -233,7 +241,7 @@ class PostPass:
                 changed += 1
                 continue
             objective = "open-dimension-x" if last else "knapsack"
-            second = self.solve(objective, a.bin_type, [], rest, self.opt.pair_time)
+            second = self.solve(objective, a.bin_type, [], rest, max(pt, min(self.opt.pair_time, self.left())))
             if Counter(p.id for p in second) != rest:
                 continue  # the rest does not fit on one sheet
             new_b = Sheet(b.bin_type, second)
@@ -250,7 +258,7 @@ class PostPass:
         t = time.perf_counter()
         last = self.sheets[-1]
         ids = Counter(p.id for p in last.items)
-        new = self.solve("open-dimension-x", last.bin_type, [], ids, min(self.opt.compact_time, max(self.left(), 1.0)))
+        new = self.solve("open-dimension-x", last.bin_type, [], ids, max(1.0, min(self.opt.compact_time, self.left_total())))
         done = 0
         if Counter(p.id for p in new) == ids and self.xmax(Sheet(last.bin_type, new)) < self.xmax(last) - 1.0:
             self.sheets[-1] = Sheet(last.bin_type, new)
@@ -261,12 +269,12 @@ class PostPass:
         self.note("start", 0.0, 0)
         if self.opt.gap and len(self.sheets) > 1:
             self.step_gap()
-        if self.opt.chain and len(self.sheets) > 1:
-            self.step_chain()
+        # sheet pairs first: on the test jobs they gave most of the gain, the chain after them
+        # uses the gaps they open; the chain alone rarely shortened the last sheet
         if self.opt.pairs and len(self.sheets) > 1:
             self.step_pairs()
-            if self.opt.chain and len(self.sheets) > 1 and self.left() > 0:
-                self.step_chain()  # the re-nested sheets may have opened new gaps
+        if self.opt.chain and len(self.sheets) > 1 and self.left() > 1.0:
+            self.step_chain()
         if self.opt.compact and self.sheets:
             self.step_compact()
         return self.solution()

@@ -7,7 +7,9 @@ Commands
   validate  original instance + solution (+ composites) -> overlap/spacing/count check
   render    original instance + solution (+ composites) -> sheets.png
   compare   run baseline and pre-processed solves with the same settings, report
-            (--post quick|thorough adds the post-pass: gap filling, chain, sheet pairs)
+            (--post quick|thorough also runs the whole job in that level's time)
+  nest      one job as GNEZDO would run it: pre-pass + nest + post-pass in the level's time
+            (--level quick = 30 s, thorough = 90 s)
   post      move parts of a finished nest forward into gaps, shorten the last sheet
 
 Examples
@@ -30,13 +32,43 @@ from nestprep.postpass import PostOptions, PostPass  # noqa: E402
 from nestprep.solution import expand, metrics, validate  # noqa: E402
 
 
-def post_options(level: str, quiet: bool = False) -> PostOptions:
-    """quick: gap filling + chain + last sheet compaction; thorough: also re-nests sheet pairs."""
-    if level == "quick":
-        return PostOptions(pairs=False, gap_time=2, chain_time=2, compact_time=10, budget=60, quiet=quiet)
-    if level == "thorough":
-        return PostOptions(gap_time=3, chain_time=3, pair_time=10, compact_time=15, budget=240, quiet=quiet)
-    raise SystemExit(f"--post must be quick or thorough, not {level}")
+# Whole-job time budgets (pre-pass + nest + post-pass), on the machine it runs on.
+LEVELS = {
+    # pre-pass, nest, then compaction of the last sheet; the chain only from leftover time
+    "quick": dict(total=30.0, post=5.0, min_nest=10.0, max_nest=30.0,
+                  post_opts=dict(pairs=False, chain_time=1.5, compact_time=5.0)),
+    # pre-pass, nest, then sheet pairs, chain and compaction. The nest is capped at 30 s: on the
+    # test jobs a longer nest gave the same layout, the time is worth more in the post-pass.
+    "thorough": dict(total=90.0, post=40.0, min_nest=20.0, max_nest=30.0,
+                     post_opts=dict(pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
+}
+
+
+def post_options(level: str, budget: float, quiet: bool = False) -> PostOptions:
+    if level not in LEVELS:
+        raise SystemExit(f"level must be quick or thorough, not {level}")
+    return PostOptions(budget=budget, quiet=quiet, **LEVELS[level]["post_opts"])
+
+
+def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str, quiet: bool = False) -> dict:
+    """The whole nesting job within the level's time budget: pre-pass, nest, post-pass."""
+    L = LEVELS[level]
+    t0 = time.perf_counter()
+    pre, mapping = PrePass(inst, binary, pre_opts).build()
+    pre_t = time.perf_counter() - t0
+    nest_t = min(L["max_nest"], max(L["min_nest"], L["total"] - pre_t - L["post"]))
+    r = psrun.solve(pre, binary, nest_t, "anytime", workdir=os.path.join(outdir, "nest"))
+    nest_done = time.perf_counter() - t0
+    post_budget = max(L["post"] * 0.5, L["total"] - nest_done)
+    pp = PostPass(pre, r["solution"], binary, post_options(level, post_budget, quiet))
+    sol = pp.run()
+    total = time.perf_counter() - t0
+    dump(pre, os.path.join(outdir, "instance_pre.json"))
+    dump(mapping, os.path.join(outdir, "composites.json"))
+    dump(sol, os.path.join(outdir, "solution.json"))
+    return {"solution": sol, "mapping": mapping, "steps": pp.log,
+            "seconds": {"prepass": round(pre_t, 1), "nest": round(r["time"], 1),
+                        "post": round(total - nest_done, 1), "total": round(total, 1)}}
 
 
 def load(p):
@@ -138,20 +170,17 @@ def cmd_compare(a):
     run("prepass", pre, mapping)
     res["prepass"]["prepass_seconds"] = round(pre_t, 1)
     if a.post != "off":
-        sol = load(os.path.join(a.outdir, "prepass", "solution.json"))
-        t0 = time.perf_counter()
-        pp = PostPass(pre, sol, binary, post_options(a.post, a.quiet))
-        new = pp.run()
-        post_t = time.perf_counter() - t0
-        os.makedirs(os.path.join(a.outdir, "post"), exist_ok=True)
-        dump(new, os.path.join(a.outdir, "post", "solution.json"))
-        sheets = expand(new, mapping)
+        # the whole job again, as GNEZDO would run it: pre-pass + nest + post-pass in the level's time
+        out = os.path.join(a.outdir, a.post)
+        os.makedirs(out, exist_ok=True)
+        job = run_job(inst, binary, a.post, opts_from(a), out, a.quiet)
+        sheets = expand(job["solution"], job["mapping"])
         v = validate(inst, sheets)
         m = metrics(inst, sheets)
         m.update(valid=v["ok"], errors=len(v["errors"]), min_gap=round(v["min_gap"], 2),
-                 post_seconds=round(post_t, 1), level=a.post, steps=pp.log)
-        render_sheets(inst, sheets, os.path.join(a.outdir, "post.png"),
-                      f"post ({a.post}): {m['sheets']} sheets, {m['sheet_equivalents']} sheet-equivalents")
+                 level=a.post, seconds=job["seconds"], steps=job["steps"])
+        render_sheets(inst, sheets, os.path.join(a.outdir, f"{a.post}.png"),
+                      f"{a.post} ({job['seconds']['total']} s): {m['sheets']} sheets, {m['sheet_equivalents']} sheet-equivalents")
         res["post"] = m
         print("post", json.dumps({k: v2 for k, v2 in m.items() if k != "steps"}))
         for e in v["errors"][:20]:
@@ -159,11 +188,28 @@ def cmd_compare(a):
     dump(res, os.path.join(a.outdir, "compare.json"))
 
 
+def cmd_nest(a):
+    """One nesting job as GNEZDO would run it."""
+    inst = load(a.instance)
+    os.makedirs(a.outdir, exist_ok=True)
+    job = run_job(inst, psrun.find_binary(a.solver), a.level, opts_from(a), a.outdir, a.quiet)
+    sheets = expand(job["solution"], job["mapping"])
+    v = validate(inst, sheets)
+    report = {"valid": v["ok"], **metrics(inst, sheets), "seconds": job["seconds"], "steps": job["steps"]}
+    dump(report, os.path.join(a.outdir, "report.json"))
+    print(json.dumps({k: x for k, x in report.items() if k != "steps"}))
+    for e in v["errors"][:20]:
+        print("   ", e)
+    sys.exit(0 if v["ok"] else 1)
+
+
 def cmd_post(a):
     inst = load(a.instance)
     nested = load(a.nested) if a.nested else inst
     mp = load(a.mapping) if a.mapping else None
-    pp = PostPass(nested, load(a.solution), psrun.find_binary(a.solver), post_options(a.level, a.quiet))
+    pp = PostPass(nested, load(a.solution), psrun.find_binary(a.solver),
+                  post_options(a.level, a.budget, a.quiet))
+    pp.opt.gap = a.gap
     new = pp.run()
     dump(new, a.output)
     sheets = expand(new, mp)
@@ -183,7 +229,8 @@ def main():
         p.add_argument("--min-hole", type=float, default=60.0, help="min hole short side [mm]")
         p.add_argument("--sub-time", type=float, default=0.3, help="time limit per hole solve [s]")
         p.add_argument("--pair-time", type=float, default=0.5, help="time limit per pairing solve [s]")
-        p.add_argument("--workers", type=int, default=4, help="parallel solver processes")
+        p.add_argument("--workers", type=int, default=max(4, min(8, os.cpu_count() or 4)),
+                       help="parallel solver processes for the pre-pass (the threads this job may use)")
         p.add_argument("--no-pairing", action="store_true")
         p.add_argument("-q", "--quiet", action="store_true")
 
@@ -213,9 +260,16 @@ def main():
     p.add_argument("--outdir", default="compare_out")
     p.add_argument("--skip-baseline", action="store_true")
     p.add_argument("--post", default="off", choices=["off", "quick", "thorough"],
-                   help="post-pass after the pre-pass nest")
+                   help="also run the whole job (pre-pass + nest + post-pass) in that level's time")
     common_pre(p)
     p.set_defaults(fn=cmd_compare)
+
+    p = sub.add_parser("nest", help="one job: pre-pass + nest + post-pass in the level's time (quick 30 s, thorough 90 s)")
+    p.add_argument("instance")
+    p.add_argument("--level", default="quick", choices=["quick", "thorough"])
+    p.add_argument("--outdir", default="nest_out")
+    common_pre(p)
+    p.set_defaults(fn=cmd_nest)
 
     p = sub.add_parser("post")
     p.add_argument("instance", help="ORIGINAL instance json")
@@ -224,6 +278,8 @@ def main():
     p.add_argument("-m", "--mapping", help="composites.json when the pre-pass ran")
     p.add_argument("-o", "--output", default="solution_post.json")
     p.add_argument("--level", default="quick", choices=["quick", "thorough"])
+    p.add_argument("--budget", type=float, default=30.0, help="post-pass time [s]")
+    p.add_argument("--gap", action="store_true", help="also step 1: last sheet into earlier gaps")
     p.add_argument("--solver", help="path to packingsolver_irregular binary")
     p.add_argument("-q", "--quiet", action="store_true")
     p.set_defaults(fn=cmd_post)

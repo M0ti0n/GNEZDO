@@ -54,35 +54,50 @@ With the newer PackingSolver the pre-pass job fits on **7 sheets, one fewer than
 older version on the same machine still gives 7.34, so the gain comes from the upgrade. The
 "anytime" and "deterministic" modes gave the same layouts here.
 
-## Post-pass: gap filling after the nest
+## Post-pass and time levels
 
-After the nest, `nestprep` can move parts forward into gaps (`compare --post quick|thorough`,
-or the `post` command on a finished nest). PackingSolver gets the parts already on a sheet as
-obstacles, so a gap can be a hole, a bay, a pocket between two parts or a strip along the edge.
+After the nest, `nestprep` can move parts forward into gaps. PackingSolver gets the parts already
+on a sheet as obstacles, so a gap can be a hole, a bay, a pocket between two parts or a strip
+along the edge.
 
-1. **Gap filling**: parts of the last sheet go into the gaps of the earlier sheets.
+1. **Gap filling**: parts of the last sheet go into the gaps of the earlier sheets. Off by
+   default (the chain's first round does the same); kept for adding parts to a finished nest
+   (`post --gap`).
 2. **Chain**: from the back to the front, the gaps of each sheet get parts from any later sheet
    (latest sheet first, its right-most parts first); repeated until nothing moves.
-3. **Sheet pairs** (thorough only): two neighbouring sheets nested again together, as much as
-   possible on the first; kept only when better.
+3. **Sheet pairs**: two neighbouring sheets nested again together, as much as possible on the
+   first; kept only when better. Runs before the chain, from the last pair forward.
 4. **Compaction**: the last sheet nested again as short as possible, leaving one clean remnant.
 
-`quick` = 1 + 2 + 4 (up to 60 s), `thorough` = all four (up to 240 s). Every final layout is
-checked by the validator against the original parts.
+A whole job (`nest` command, or `compare --post`) runs in the time of its level:
 
-Results on three test jobs (531–532 parts, same settings as above, 2-core machine):
+| Level | Total | What |
+|---|---|---|
+| `quick` | 30 s | pre-pass, nest (the time left), compaction (5 s); chain only from leftover time |
+| `thorough` | 90 s | pre-pass, nest (≤ 30 s), sheet pairs, chain, compaction (8 s) |
 
-| Job | After pre-pass | + quick | + thorough |
+```bash
+python nestprep_cli.py nest job.json --level quick --workers 8      # workers = threads for this job
+```
+
+Results on the three test jobs, measured on a **2-core** machine (sheets · sheet-equivalents ·
+used length of the last sheet). Every layout passed the validator.
+
+| | test 1 (Miha2787, 531 parts) | test 2 (532) | test 3 (532) |
 |---|---|---|---|
-| test 1 (Miha2787) | 7 sheets, 7.00 | 7.00 (42 s) | 7.00 (182 s) |
-| test 2 | 8 sheets, 7.93 (last 2784 mm) | 7.73, last 2175 mm (60 s) | **7.63**, last 1895 mm (243 s) |
-| test 3 | 8 sheets, 7.67 (last 2012 mm) | 7.57, last 1710 mm (60 s) | **7.51**, last 1542 mm (240 s) |
+| Libellula | 8 · ≈ 7.49 · 1475 mm | – | – |
+| PackingSolver alone (30 s) | 8 · 8.00 · 3000 mm | 9 · 8.76 · 2271 mm | 9 · 8.86 · 2585 mm |
+| **quick** (30 s total) | 8 · 7.43 · 1287 mm | 8 · 7.76 · 2287 mm | 8 · 7.57 · 1714 mm |
+| **thorough** (90 s total) | **7 · 7.00** · 2991 mm | **8 · 7.68** · 2033 mm | **8 · 7.54** · 1607 mm |
 
-What it does: it shortens the last sheet by 0.1–0.3 sheet (300–900 mm of a 3000 mm sheet) when
-that sheet is not already full. It did not save a whole sheet on these jobs: the earlier sheets
-are 80–85 % full and their gaps are smaller than the parts left over. Gap filling from the last
-sheet alone moved almost nothing; the chain, the sheet pairs and the compaction did the work.
-Thorough hit its 240 s limit on tests 2 and 3, so more time could gain a little more.
+On 2 cores the pre-pass takes 14 s, so `quick` leaves only 11 s for the nest; on test 1 that is
+too short to find the 7-sheet layout (20 s finds it). The pre-pass is 83 small independent solves
+and runs them side by side (`--workers`), so on an 8-thread server it should take about 4–6 s and
+leave the nest about 20 s: not measured yet. A nest longer than 30 s gave the same layouts.
+
+What the post-pass does: it shortens the last sheet by 0.1–0.3 sheet when that sheet is not
+already full; it did not save a whole sheet on these jobs (the earlier sheets are 80–85 % full).
+The sheet pairs and the compaction did most of it; gap filling alone moved almost nothing.
 
 ## Updating PackingSolver
 

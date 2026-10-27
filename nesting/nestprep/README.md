@@ -105,11 +105,11 @@ should be reported upstream (fontanf/packingsolver). Until it's fixed there, use
 ## Post-pass (`nestprep/postpass.py`)
 
 Gap filling, chain, sheet pairs and last-sheet compaction after the nest: see
-[../README.md](../README.md#post-pass-gap-filling-after-the-nest).
+[../README.md](../README.md#post-pass-and-time-levels).
 
 ```bash
-python nestprep_cli.py compare job.json -t 30 --post quick        # or thorough
-python nestprep_cli.py post job.json solution.json -n job_pre.json -m job_composites.json --level quick
+python nestprep_cli.py nest job.json --level quick                # whole job in 30 s (thorough: 90 s)
+python nestprep_cli.py post job.json solution.json -n job_pre.json -m job_composites.json --budget 30
 ```
 
 ## Not done yet
