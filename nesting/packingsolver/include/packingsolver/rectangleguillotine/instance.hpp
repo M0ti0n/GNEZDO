@@ -1,0 +1,817 @@
+#pragma once
+
+#include "packingsolver/algorithms/common.hpp"
+
+#include <functional>
+#include <limits>
+
+namespace packingsolver
+{
+namespace rectangleguillotine
+{
+
+enum class CutType { Roadef2018, NonExact, Exact, Homogenous };
+enum class CutOrientation { Horizontal, Vertical, Any };
+
+/**
+ * Trims are borders of a bin which are not used to pack item.
+ *
+ * If a trim is 'Hard', then the trimmed part is effectively cut. This implies
+ * that the minium waste constraint considers the new border (after the trim).
+ *
+ * On the other hand, if a trim is 'Soft', then the trimmed part is not cut
+ * even if no item can be packed there. However, the minimum waste constraint
+ * considers the real border of the plate and not the trim.
+ */
+enum class TrimType { Soft, Hard };
+
+std::istream& operator>>(
+        std::istream& in,
+        CutType& cut_type_2);
+
+std::istream& operator>>(
+        std::istream& in,
+        CutOrientation& o);
+
+std::istream& operator>>(
+        std::istream& in,
+        TrimType& trim_type);
+
+std::ostream& operator<<(
+        std::ostream& os,
+        CutType cut_type_2);
+
+std::ostream& operator<<(
+        std::ostream& os,
+        CutOrientation o);
+
+std::ostream& operator<<(
+        std::ostream& os,
+        TrimType trim_type);
+
+struct Coord
+{
+    /** x-coordinate. */
+    Length x;
+
+    /** y-coordinate. */
+    Length y;
+};
+
+std::ostream& operator<<(
+        std::ostream& os,
+        Coord xy);
+
+struct Rectangle
+{
+    /** Width. */
+    Length w;
+
+    /** Height. */
+    Length h;
+
+    /** Get the area of the rectangle. */
+    Area area() const { return w * h; }
+
+    /** Get the length of the largest side of the rectangle. */
+    Length max() const { return std::max(w, h); }
+};
+
+bool rect_intersection(
+        Coord c1,
+        Rectangle r1,
+        Coord c2,
+        Rectangle r2);
+
+std::ostream& operator<<(
+        std::ostream& os,
+        Rectangle r);
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////// Item type, Bin type, Defect //////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Cost of a cutting stage, for the 'BinPackingCuttingCost' objective.
+ *
+ * 'fixed' and 'variable' default to 0, so a stage that is never configured
+ * simply contributes no cost.
+ */
+struct CutCost
+{
+    /** Fixed cost, paid once per cut (or per bin, for stage 0). */
+    CuttingCost fixed = 0;
+
+    /**
+     * Variable cost, paid per unit of cut length (or per unit of bin area,
+     * for stage 0).
+     */
+    CuttingCost variable = 0;
+};
+
+struct Parameters
+{
+    /** Number of stages. */
+    Counter number_of_stages = 3;
+
+    /** Cut type. */
+    CutType cut_type = CutType::NonExact;
+
+    /** Orientation of the first stage. */
+    CutOrientation first_stage_orientation = CutOrientation::Vertical;
+
+    /** Minimum distance between two consecutive 1-cuts. */
+    Length minimum_distance_1_cuts = 0;
+
+    /** Maximum distance between two consecutive 1-cuts. */
+    Length maximum_distance_1_cuts = -1;
+
+    /**
+     * Minimum distance between two consecutive 2-cuts.
+     *
+     * Not allowed if number_of_stages == 2.
+     */
+    Length minimum_distance_2_cuts = 0;
+
+    /**
+     * Maximum distance between two consecutive 2-cuts.
+     *
+     * Not allowed if number_of_stages == 2.
+     */
+    Length maximum_distance_2_cuts = -1;
+
+    /** Minimum distance between two cuts. */
+    Length minimum_waste_length = 0;
+
+    /** Maximum number of 1-cuts in a bin. */
+    Counter maximum_number_1_cuts = -1;
+
+    /**
+     * Maximum number of 2-cuts in a first-level sub-plate.
+     *
+     * Not allowed if number_of_stages == 2.
+     */
+    Counter maximum_number_2_cuts = -1;
+
+    /** Boolean indicating whether it is allowed to cut through defects. */
+    bool cut_through_defects = false;
+
+    /** Cut thickness. */
+    Length cut_thickness = 0;
+
+    /**
+     * Costs for the 'BinPackingCuttingCost' objective, indexed by stage
+     * number: index 0 is the cost of a bin (fixed cost per bin, variable
+     * cost per unit of bin area); index s (1 <= s <= number_of_stages) is
+     * the cost of an s-cut (fixed cost per cut, variable cost per unit of
+     * cut length). If cut_type is NonExact or Roadef2018, one extra index
+     * (number_of_stages + 1) is required, for the optional extra cut some
+     * patterns of this cut type may need at their deepest level.
+     */
+    std::vector<CutCost> cutting_costs;
+
+    /**
+     * Cost per unit of waste area, for the 'BinPackingCuttingCost'
+     * objective. Defaults to 0, so waste is not charged unless configured.
+     */
+    CuttingCost waste_cost = 0;
+};
+
+/**
+ * Defect structure for a problem of type 'rectangleguillotine'.
+ */
+struct Defect
+{
+    /** Position of the defect. */
+    Coord pos;
+
+    /** Dimensions of the defect. */
+    Rectangle rect;
+
+    /*
+     * Computed attributes
+     */
+
+    /** Get the left coordinate of the defect. */
+    inline Length left() const { return pos.x; }
+
+    /** Get the right coordinate of the defect. */
+    inline Length right() const { return pos.x + rect.w; }
+
+    /** Get the bottom coordinate of the defect. */
+    inline Length bottom() const { return pos.y; }
+
+    /** Get the top coordinate of the defect. */
+    inline Length top() const { return pos.y + rect.h; }
+};
+
+std::ostream& operator<<(
+        std::ostream& os,
+        const Defect& defect);
+
+struct FixedItem
+{
+    /** Item type. */
+    ItemTypeId item_type_id;
+};
+
+/**
+ * Bin type structure for a problem of type 'rectangleguillotine'.
+ */
+struct BinType
+{
+    /** Cost of the bin type. */
+    Profit cost;
+
+    /** Maximum number of copies of the bin type. */
+    BinPos copies;
+
+    /** Minimum number of copies to use of the bin type. */
+    BinPos copies_min;
+
+    /** Dimensions of the bin type. */
+    Rectangle rect;
+
+    /** Defects of the bin type. */
+    std::vector<Defect> defects;
+
+    /** Fixed items pre-placed in every bin of this type. */
+    std::vector<FixedItem> fixed_items;
+
+    /** Bottom trim. */
+    Length bottom_trim = 0;
+
+    /** Top trim. */
+    Length top_trim = 0;
+
+    /** Left trim. */
+    Length left_trim = 0;
+
+    /** Right trim. */
+    Length right_trim = 0;
+
+    /** Type of the bottom trim. */
+    TrimType bottom_trim_type = TrimType::Hard;
+
+    /** Type of the top trim. */
+    TrimType top_trim_type = TrimType::Soft;
+
+    /** Type of the left trim. */
+    TrimType left_trim_type = TrimType::Hard;
+
+    /** Type of the right trim. */
+    TrimType right_trim_type = TrimType::Soft;
+
+    /** Resources of this bin type; a resource's id is its index in this vector. */
+    std::vector<Resource> resources;
+
+    /*
+     * Computed attributes
+     */
+
+    /** Get the area of the bin type. */
+    inline Area area() const { return (rect.h - top_trim - bottom_trim) * (rect.w - right_trim - left_trim); }
+
+    inline Area space() const { return area(); }
+
+    /** Return 'true' iff the bin type has a soft left trim. */
+    inline bool has_soft_left_trim() const { return left_trim_type == TrimType::Soft && left_trim > 0; }
+
+    /** Return 'true' iff the bin type has a soft bottom trim. */
+    inline bool has_soft_bottom_trim() const { return bottom_trim_type == TrimType::Soft && bottom_trim > 0; }
+
+    /** Get the number of resources of this bin type. */
+    inline ResourceId number_of_resources() const { return resources.size(); }
+
+    /** Get a resource of this bin type. */
+    inline const Resource& resource(ResourceId resource_id) const { return resources[resource_id]; }
+};
+
+std::ostream& operator<<(
+        std::ostream& os,
+        const BinType& bin_type);
+
+/**
+ * Item type structure for a problem of type 'rectangleguillotine'.
+ */
+struct ItemType
+{
+    /** Profit of the item type. */
+    Profit profit;
+
+    /** Number of copies of the item type. */
+    ItemPos copies;
+
+    /**
+     * Minimum number of copies of the item type to pack.
+     *
+     * Set to '-1' before 'InstanceBuilder::build()' resolves it: '0' for
+     * objective 'Knapsack' (packing an item type is optional), 'copies' for
+     * every other objective (every copy of every item type must be packed).
+     */
+    ItemPos copies_min = -1;
+
+    /** Dimensions of the item type. */
+    Rectangle rect;
+
+    /** Stack id to which the item type belongs. */
+    StackId stack_id;
+
+    /** Position of the item in the stack. */
+    ItemPos stack_pos;
+
+    /** Indicates if the item is oriented (i.e. cannot be rotated). */
+    bool oriented;
+
+    /*
+     * Computed attributes
+     */
+
+    /** Get the width of the item depending on its orientation. */
+    inline Length width(bool rotate) const { return (rotate)? rect.h: rect.w; }
+
+    /** Get the height of the item depending on its orientation. */
+    inline Length height(bool rotate) const { return (rotate)? rect.w: rect.h; }
+
+    /** Get the area of the item type. */
+    inline Area area() const { return rect.area(); }
+
+    inline Area space() const { return area(); }
+
+    /** Number of fixed copies of the item type (pre-placed in bin types). */
+    ItemPos copies_fixed = 0;
+
+    /**
+     * For each bin type (indexed by bin_type_id - a resource's id is only
+     * ever local to one bin type, see 'BinType::resources'), the bin
+     * type's resources this item type has a non-zero consumption for,
+     * together with the position of this item type's own entry in each
+     * resource's own 'Resource::item_consumptions' (see
+     * 'ItemResourceConsumption') - so a caller can jump straight to its
+     * schedule with no search. Lets algorithms that need every resource a
+     * given item type (in a given bin type) might affect skip the rest,
+     * instead of scanning every resource of the bin type for every item.
+     */
+    std::vector<std::vector<ItemResourceConsumption>> resources;
+};
+
+std::ostream& operator<<(
+        std::ostream& os,
+        const ItemType& item_type);
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////// Instance ///////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+class Solution;
+
+/**
+ * User-provided feasibility callback.
+ *
+ * Called on a fully-built Solution in addition to the built-in feasibility
+ * checks; see 'FeasibilityCallbackResult' for what it may return.
+ */
+using FeasibilityCallback = std::function<FeasibilityCallbackResult(const Solution&)>;
+
+/**
+ * Instance class for a problem of type "rectangleguillotine".
+ */
+class Instance
+{
+
+public:
+
+    /*
+     * Getters
+     */
+
+    /** Get the problem type. */
+    static inline ProblemType type() { return ProblemType::RectangleGuillotine; };
+
+    /** Get the objective of the problem. */
+    inline Objective objective() const { return objective_; }
+
+    /**
+     * Get the knapsack goal: for the 'Knapsack' objective, a solution whose
+     * profit reaches it is considered optimal, and the search stops (e.g. a
+     * pricing problem of a column generation, which only needs a column of
+     * negative reduced cost). Infinite by default.
+     */
+    inline Profit knapsack_goal() const { return knapsack_goal_; }
+
+    /*
+     * Getters: parameters
+     */
+
+    inline const Parameters& parameters() const { return parameters_; }
+
+    /** Get the feasibility callback. */
+    inline const FeasibilityCallback& feasibility_callback() const { return feasibility_callback_; }
+
+    /** Return true iff the number of stages is unlimited. */
+    bool number_of_stages_unlimited() const
+    {
+        Counter max_stages = 0;
+        for (BinTypeId bin_type_id = 0;
+                bin_type_id < number_of_bin_types();
+                ++bin_type_id) {
+            const BinType& bin_type = this->bin_type(bin_type_id);
+            max_stages = std::max(max_stages, bin_type.rect.w + bin_type.rect.h);
+        }
+        return parameters_.number_of_stages >= max_stages;
+    }
+
+    /*
+     * Getters: bin types
+     */
+
+    /** Get the number of bin types. */
+    inline BinTypeId number_of_bin_types() const { return bin_types_.size(); }
+
+    /** Get bin type i. */
+    inline const BinType& bin_type(BinTypeId bin_type_id) const { return bin_types_[bin_type_id]; }
+
+    /** Get the number of bins. */
+    inline BinPos number_of_bins() const { return bin_type_ids_.size(); }
+
+    /** Get the bin area. */
+    inline Area bin_area() const { return bins_area_sum_; }
+
+    /** Get the id of a bin at a given position. */
+    inline BinTypeId bin_type_id(BinPos bin_pos) const { return bin_type_ids_[bin_pos]; }
+
+    /** Get the number of defects. */
+    inline DefectId number_of_defects() const { return number_of_defects_; }
+
+    /** Get the total area of the bins before a given position. */
+    inline Area previous_bin_area(BinPos bin_pos) const { return previous_bins_area_[bin_pos]; }
+
+    /** Get the largest cost of the bins. */
+    inline Profit largest_bin_cost() const { return largest_bin_cost_; }
+
+    /*
+     * Getters: item types
+     */
+
+    /* Get the number of item types. */
+    inline ItemTypeId number_of_item_types() const { return item_types_.size(); }
+
+    /** Get item type j. */
+    inline const ItemType& item_type(ItemTypeId item_type_id) const { return item_types_[item_type_id]; }
+
+    /** Get the number of items. */
+    inline ItemPos number_of_items() const { return number_of_items_; }
+
+    /** Get the number of stacks. */
+    inline StackId number_of_stacks() const { return (StackId)stack_offsets_.size() - 1; }
+
+    /** Get the size of stack s. */
+    inline ItemPos stack_size(StackId s) const { return stack_offsets_[s + 1] - stack_offsets_[s]; }
+
+    /** Get the item_pos's item of stack s. */
+    inline ItemTypeId item(StackId s, ItemPos item_pos) const { return item_type_ids_[stack_offsets_[s] + item_pos]; }
+
+    /** Get the total area of the items. */
+    inline Area item_area() const { return item_area_; }
+
+    /** Get the mean area of the items. */
+    inline Area mean_area() const { return item_area_ / number_of_items(); }
+
+    /** Get the total profit of the items. */
+    inline Profit item_profit() const { return item_profit_; }
+
+    /** Get the largest profit of the items. */
+    inline Profit largest_item_profit() const { return largest_item_profit_; }
+
+    /** Get the id of the item type with largest efficiency. */
+    inline ItemTypeId largest_efficiency_item_type_id() const { return largest_efficiency_item_type_id_; }
+
+    /** Get the largest number of copies of the items. */
+    inline ItemPos largest_item_copies() const { return largest_item_copies_; }
+
+    /** Return true iff all items have infinite copies. */
+    inline bool unbounded_knapsack() const { return all_item_types_infinite_copies_; }
+
+    /** Return true iff all items types are oriented. */
+    inline bool all_item_types_oriented() const { return all_item_types_oriented_; }
+
+    /** Get the item types. */
+    inline const std::vector<ItemType>& item_types() const { return item_types_; }
+
+    /**
+     * Return 'true' iff item type 'item_type_id' fits (in either
+     * orientation, if allowed) in at least one bin type.
+     *
+     * Trims and defects are ignored: this is a cheap necessary condition.
+     */
+    bool fits_some_bin(ItemTypeId item_type_id) const;
+
+    /**
+     * Coordinate from which the items are packed after the left trim of a
+     * bin type.
+     *
+     * The waste of a soft trim isn't cut off with the trim, so it must
+     * satisfy the minimum waste length, after the cut thickness of its cut.
+     */
+    inline Length x_start(const BinType& bin_type) const { return trim_start(bin_type.left_trim, bin_type.left_trim_type); }
+
+    /** Coordinate from which the items are packed after the bottom trim of a bin type (see 'x_start'). */
+    inline Length y_start(const BinType& bin_type) const { return trim_start(bin_type.bottom_trim, bin_type.bottom_trim_type); }
+
+    /*
+     * Intersections
+     */
+
+    /**
+     * Return the id of a defect intersecting rectangle (l,r,b,t) in bin type i
+     * with orientation o.
+     *
+     * Return -1 if there is none.
+     */
+    inline DefectId rect_intersects_defect(
+            Length l,
+            Length r,
+            Length b,
+            Length t,
+            const BinType& bin_type) const;
+
+    /**
+     * Return the id of a defect intersecting an item type located at
+     * coordinates (l,b) depending on its orientation in bin type i with
+     * orientation o.
+     *
+     * Return -1 if there is none.
+     */
+    inline DefectId item_intersects_defect(
+            Length l,
+            Length b,
+            const ItemType& item,
+            bool rotate,
+            const BinType& bin_type) const;
+
+    /**
+     * Return the id of a defect intersecting an x-coordinate in bin type i
+     * with orientation o.
+     *
+     * Return -1 if there is none.
+     */
+    inline DefectId x_intersects_defect(
+            Length x,
+            const BinType& bin_type) const;
+
+    /**
+     * Return the id of a defect intersecting an x-coordinate in bin type i
+     * with orientation o.
+     *
+     * Return -1 if there is none.
+     */
+    inline DefectId x_intersects_defect(
+            Length x,
+            Length b,
+            Length t,
+            const BinType& bin_type) const;
+
+    /**
+     * Return the id of a defect intersecting an y-coordinate in bin type i
+     * with orientation o.
+     *
+     * Return -1 if there is none.
+     */
+    inline DefectId y_intersects_defect(
+            Length l,
+            Length r,
+            Length y,
+            const BinType& bin_type) const;
+
+    /*
+     * Export
+     */
+
+    /** Print the instance into a stream. */
+    std::ostream& format(
+            std::ostream& os,
+            int verbosity_level = 1) const;
+
+    /**
+     * Write the instance to a file, in the given format (default 'Csv',
+     * matching the previous behavior). See 'InstanceFormat'.
+     */
+    void write(
+            const std::string& instance_path,
+            InstanceFormat format = InstanceFormat::Csv) const;
+
+    /** Write the instance as CSV files; see 'InstanceFormat::Csv'. */
+    void write_csv(const std::string& instance_path) const;
+
+    /** Write the instance as a single JSON file; see 'InstanceFormat::Json'. */
+    void write_json(const std::string& instance_path) const;
+
+private:
+
+    /*
+     * Private methods
+     */
+
+    /** Create an instance manually. */
+    Instance() { }
+
+    /*
+     * Private attributes
+     */
+
+    /** Objective. */
+    Objective objective_ = Objective::BinPacking;
+
+    /** Knapsack goal. */
+    Profit knapsack_goal_ = std::numeric_limits<Profit>::infinity();
+
+    /** Parameters. */
+    Parameters parameters_;
+
+    /** User-provided feasibility callback. */
+    FeasibilityCallback feasibility_callback_ = [](const Solution&) { return FeasibilityCallbackResult(); };
+
+    /** Bin types. */
+    std::vector<BinType> bin_types_;
+
+    /** Item types. */
+    std::vector<ItemType> item_types_;
+
+    /*
+     * Private attributes computed by the 'build' method
+     */
+
+    /** For each bin position, the corresponding bin type. */
+    std::vector<BinTypeId> bin_type_ids_;
+
+    /** For each bin position, the area of the previous bins. */
+    std::vector<Area> previous_bins_area_;
+
+    /** Bins area sum. */
+    Area bins_area_sum_ = 0;
+
+    /** Largest bin cost. */
+    Profit largest_bin_cost_ = 0.0;
+
+    /** Number of defects. */
+    DefectId number_of_defects_ = 0;
+
+    /** Number of items. */
+    ItemPos number_of_items_ = 0;
+
+    /** Flat array of item type IDs (all stacks concatenated). */
+    std::vector<ItemTypeId> item_type_ids_;
+
+    /** stack_offsets_[s] = start of stack s in item_type_ids_;
+     *  stack_offsets_.size() = number_of_stacks() + 1 (sentinel at end). */
+    std::vector<ItemPos> stack_offsets_;
+
+    /** Total item area. */
+    Area item_area_ = 0;
+
+    /** Total item profit. */
+    Profit item_profit_ = 0;
+
+    /** Largest item profit. */
+    Profit largest_item_profit_ = 0.0;
+
+    /** Id of the item with largest efficiency. */
+    ItemTypeId largest_efficiency_item_type_id_ = -1;
+
+    /** Largest item copies. */
+    ItemPos largest_item_copies_ = 0;
+
+    /** True iff all item types have an infinite number of copies. */
+    bool all_item_types_infinite_copies_ = false;
+
+    /** True iff all item types are oriented. */
+    bool all_item_types_oriented_ = true;
+
+    friend class InstanceBuilder;
+
+    /** Coordinate from which the items are packed after a left or bottom trim (see 'x_start'). */
+    inline Length trim_start(
+            Length trim,
+            TrimType trim_type) const
+    {
+        if (trim_type == TrimType::Soft && trim > 0) {
+            return (std::max)(
+                    trim,
+                    parameters_.cut_thickness + (std::max)(parameters_.minimum_waste_length, Length(1)));
+        }
+        return trim;
+    }
+
+};
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////// Inlined methods ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+DefectId Instance::rect_intersects_defect(
+        Length l,
+        Length r,
+        Length b,
+        Length t,
+        const BinType& bin_type) const
+{
+    assert(l <= r);
+    assert(b <= t);
+    for (DefectId defect_id = 0;
+            defect_id < bin_type.defects.size();
+            ++defect_id) {
+        const Defect& defect = bin_type.defects[defect_id];
+
+        if (defect.left() >= r)
+            continue;
+        if (l >= defect.right())
+            continue;
+        if (defect.bottom() >= t)
+            continue;
+        if (b >= defect.top())
+            continue;
+        return defect_id;
+    }
+    return -1;
+}
+
+DefectId Instance::item_intersects_defect(
+        Length l,
+        Length b,
+        const ItemType& item_type,
+        bool rotate,
+        const BinType& bin_type) const
+{
+    return rect_intersects_defect(
+            l, l + item_type.width(rotate),
+            b, b + item_type.height(rotate),
+            bin_type);
+}
+
+DefectId Instance::y_intersects_defect(
+        Length l,
+        Length r,
+        Length y,
+        const BinType& bin_type) const
+{
+    DefectId defect_id_min = -1;
+    for (DefectId defect_id = 0;
+            defect_id < bin_type.defects.size();
+            ++defect_id) {
+        const Defect& defect = bin_type.defects[defect_id];
+
+        if (defect.right() <= l || defect.left() >= r)
+            continue;
+        if (defect.bottom() >= y || defect.top() <= y)
+            continue;
+
+        if (defect_id_min == -1
+                || defect.left() < bin_type.defects[defect_id_min].left()) {
+            defect_id_min = defect_id;
+        }
+    }
+    return defect_id_min;
+}
+
+DefectId Instance::x_intersects_defect(
+        Length x,
+        Length b,
+        Length t,
+        const BinType& bin_type) const
+{
+    DefectId defect_id_min = -1;
+    for (DefectId defect_id = 0;
+            defect_id < bin_type.defects.size();
+            ++defect_id) {
+        const Defect& defect = bin_type.defects[defect_id];
+
+        if (defect.top() <= b || defect.bottom() >= t)
+            continue;
+        if (defect.left() >= x || defect.right() <= x)
+            continue;
+
+        if (defect_id_min == -1
+                || defect.bottom() < bin_type.defects[defect_id_min].bottom()) {
+            defect_id_min = defect_id;
+        }
+    }
+    return defect_id_min;
+}
+
+DefectId Instance::x_intersects_defect(
+        Length x,
+        const BinType& bin_type) const
+{
+    for (DefectId defect_id = 0;
+            defect_id < bin_type.defects.size();
+            ++defect_id) {
+        const Defect& defect = bin_type.defects[defect_id];
+
+        if (defect.left() < x && defect.right() > x)
+            return defect_id;
+    }
+    return -1;
+}
+
+}
+}

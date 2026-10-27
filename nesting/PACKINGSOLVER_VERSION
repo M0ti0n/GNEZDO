@@ -1,0 +1,4 @@
+# PackingSolver copied into nesting/packingsolver/ by update-packingsolver.sh
+upstream https://github.com/fontanf/packingsolver.git
+commit 9fc5d6e06ad1d0704279ad6adb5d34556084b398
+date 2026-10-26

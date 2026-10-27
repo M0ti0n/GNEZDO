@@ -1,0 +1,467 @@
+#include "packingsolver/onedimensional/solution.hpp"
+
+#include "optimizationtools/utils/utils.hpp"
+
+#include <algorithm>
+#include <fstream>
+
+using namespace packingsolver;
+using namespace packingsolver::onedimensional;
+
+std::ostream& packingsolver::onedimensional::operator<<(
+        std::ostream& os,
+        const SolutionItem& item)
+{
+    os
+        << " item_type_id " << item.item_type_id
+        << " start " << item.start;
+    return os;
+}
+
+void Solution::update_indicators(
+        BinPos bin_pos)
+{
+    SolutionBin& bin = bins_[bin_pos];
+    const BinType& bin_type = instance().bin_type(bin.bin_type_id);
+
+    bin_copies_[bin.bin_type_id] += bin.copies;
+    bin_cost_ += bin.copies * bin_type.cost;
+    bin_length_ += bin.copies * bin_type.length;
+    number_of_bins_ += bin.copies;
+
+    bin.end = 0;
+    bin.resource_consumption.assign(bin_type.number_of_resources(), 0.0);
+    ItemPos number_of_items_in_bin = 0;
+    // Number of copies of each item type already placed in this bin, so
+    // far, at the point each item below is processed - needed to look up
+    // the correct entry of a per-copy resource consumption schedule.
+    std::vector<ItemPos> item_type_copies_in_bin(instance().number_of_item_types(), 0);
+    for (SolutionItem& item: bin.items) {
+        const ItemType& item_type = instance().item_type(item.item_type_id);
+
+        // The length occupied by the item: from the end of the previous
+        // item to its end.
+        Length previous_end = bin.end;
+        item.start = bin.end;
+        if (number_of_items_in_bin > 0)
+            item.start -= item_type.nesting_length;
+
+        bin.end = item.start + item_type.length;
+        if (bin.end > bin_type.length) {
+            capacity_feasible_ = false;
+        }
+
+        // Update bin.weight.
+        bin.weight += item_type.weight;
+        if (strictly_greater_weight(
+                    bin.weight,
+                    bin_type.maximum_weight,
+                    instance().weight_tolerance())) {
+            weight_feasible_ = false;
+        }
+
+        // Check eligibility.
+        if (item_type.eligibility_id != -1
+                && std::find(
+                    bin_type.eligibility_ids.begin(),
+                    bin_type.eligibility_ids.end(),
+                    item_type.eligibility_id)
+                == bin_type.eligibility_ids.end()) {
+            eligibility_feasible_ = false;
+        }
+
+        // Update bin.resource_consumption.
+        for (const ItemResourceConsumption& consumption: item_type.resources[bin.bin_type_id]) {
+            ResourceId resource_id = consumption.resource_id;
+            const Resource& resource = bin_type.resource(resource_id);
+            const std::vector<double>& schedule = resource.item_consumptions[consumption.consumption_pos].second;
+            double previous_consumption = bin.resource_consumption[resource_id];
+            bin.resource_consumption[resource_id]
+                += schedule_consumption(
+                        schedule,
+                        item_type_copies_in_bin[item.item_type_id]);
+            if (bin.resource_consumption[resource_id] > resource.capacity) {
+                if (resource.penalize) {
+                    // Charge the penalty only once per bin, the first time
+                    // consumption crosses the capacity (it never decreases
+                    // afterwards, so this check would otherwise keep firing
+                    // for every subsequent item added to the same bin).
+                    if (previous_consumption <= resource.capacity)
+                        item_profit_ -= resource.penalty;
+                } else {
+                    resource_feasible_ = false;
+                }
+            }
+        }
+        ++item_type_copies_in_bin[item.item_type_id];
+
+        ++number_of_items_in_bin;
+
+        // Update bin.maximum_number_of_items and bin.remaining_weight.
+        if (number_of_items_in_bin == 1) {
+            bin.maximum_number_of_items = item_type.maximum_stackability;
+            bin.remaining_weight = item_type.maximum_weight_after;
+        } else {
+            bin.maximum_number_of_items = std::min(
+                    bin.maximum_number_of_items,
+                    item_type.maximum_stackability);
+            bin.remaining_weight = std::min(
+                    bin.remaining_weight - item_type.weight,
+                    item_type.maximum_weight_after);
+        }
+        if (number_of_items_in_bin > bin.maximum_number_of_items) {
+            stackability_feasible_ = false;
+        }
+        if (strictly_lesser_weight(bin.remaining_weight, 0.0, instance().weight_tolerance())) {
+            maximum_weight_after_feasible_ = false;
+        }
+
+        number_of_items_ += bin.copies;
+        item_copies_[item.item_type_id] += bin.copies;
+        if (item_copies_[item.item_type_id] > item_type.copies) {
+            item_copies_feasible_ = false;
+        }
+        item_length_ += bin.copies * item_type.length;
+        item_nested_length_ += bin.copies * (bin.end - previous_end);
+        item_profit_ += bin.copies * item_type.profit;
+    }
+
+    // Update length_.
+    // Only update on non-empty bins, so that 'length_' tracks the end of the
+    // last non-empty bin processed so far: a trailing empty bin (e.g. one
+    // forced present by 'copies_min' but left unused) must not reset or
+    // otherwise affect it.
+    if (!bin.items.empty())
+        length_ = bin_length_ - bin_type.length + bin.end;
+
+    // Check bin type usage order ('BinPacking' objective only): every bin
+    // type used before the last used bin type must be used up entirely.
+    // Computed once all bins have been added, since it depends on the final
+    // per-type usage counts.
+    if (instance().objective() == Objective::BinPacking
+            && bin_pos == (BinPos)bins_.size() - 1) {
+        BinTypeId last_used_bin_type_id = -1;
+        for (BinTypeId check_bin_type_id = 0;
+                check_bin_type_id < instance().number_of_bin_types();
+                ++check_bin_type_id) {
+            if (bin_copies_[check_bin_type_id] > 0)
+                last_used_bin_type_id = check_bin_type_id;
+        }
+        for (BinTypeId check_bin_type_id = 0;
+                check_bin_type_id < last_used_bin_type_id;
+                ++check_bin_type_id) {
+            if (bin_copies_[check_bin_type_id] != instance().bin_type(check_bin_type_id).copies) {
+                bin_type_order_feasible_ = false;
+                break;
+            }
+        }
+    }
+
+    // Update number_of_infeasible_item_copies_min_.
+    this->number_of_infeasible_item_copies_min_ = 0;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance().number_of_item_types();
+            ++item_type_id) {
+        if (item_copies_[item_type_id] < instance().item_type(item_type_id).copies_min)
+            this->number_of_infeasible_item_copies_min_++;
+    }
+
+    // Feasibility callback.
+    FeasibilityCallbackResult callback_result = instance().feasibility_callback()(*this);
+    callback_feasible_ = callback_result.feasible;
+    callback_resources_ = std::move(callback_result.resources);
+    feasible_ = capacity_feasible_
+        && weight_feasible_
+        && stackability_feasible_
+        && maximum_weight_after_feasible_
+        && item_copies_feasible_
+        && resource_feasible_
+        && eligibility_feasible_
+        && callback_feasible_
+        && (number_of_infeasible_item_copies_min_ == 0);
+}
+
+void Solution::append_bin(
+        const Solution& solution,
+        BinPos bin_pos,
+        BinPos copies,
+        const std::vector<BinTypeId>& bin_type_ids,
+        const std::vector<ItemTypeId>& item_type_ids)
+{
+    const SolutionBin& bin = solution.bins_[bin_pos];
+
+    if (!bin_type_ids.empty()) {
+        if (bin.bin_type_id >= (BinPos)bin_type_ids.size()) {
+            throw std::runtime_error(
+                    FUNC_SIGNATURE + ": "
+                    "bin.bin_type_id: " + std::to_string(bin.bin_type_id) + "; "
+                    "bin_type_ids.size(): " + std::to_string(bin_type_ids.size()) + ".");
+        }
+    }
+
+    BinTypeId bin_type_id = (bin_type_ids.empty())?
+        solution.bins_[bin_pos].bin_type_id:
+        bin_type_ids[bin.bin_type_id];
+    SolutionBin new_bin;
+    new_bin.bin_type_id = bin_type_id;
+    new_bin.copies = copies;
+    for (SolutionItem item: bin.items) {
+        item.item_type_id = (item_type_ids.empty())?
+            item.item_type_id:
+            item_type_ids[item.item_type_id];
+        new_bin.items.push_back(item);
+    }
+    bins_.push_back(new_bin);
+    update_indicators(bins_.size() - 1);
+}
+
+void Solution::append_bins(
+        const Solution& solution,
+        const std::vector<BinTypeId>& bin_type_ids,
+        const std::vector<ItemTypeId>& item_type_ids)
+{
+    for (BinPos i_pos = 0; i_pos < (BinPos)solution.bins_.size(); ++i_pos) {
+        const SolutionBin& bin = solution.bins_[i_pos];
+        append_bin(solution, i_pos, bin.copies, bin_type_ids, item_type_ids);
+    }
+}
+
+void Solution::append_empty_bin(
+        BinTypeId bin_type_id,
+        BinPos copies)
+{
+    SolutionBin new_bin;
+    new_bin.bin_type_id = bin_type_id;
+    new_bin.copies = copies;
+    bins_.push_back(new_bin);
+    update_indicators(bins_.size() - 1);
+}
+
+bool Solution::operator<(const Solution& solution) const
+{
+    // Check feasibility.
+    if (!solution.feasible_)
+        return false;
+    if (!feasible_)
+        return true;
+
+    switch (instance().objective()) {
+    case Objective::BinPacking: {
+        return solution.number_of_bins() < number_of_bins();
+    } case Objective::BinPackingWithLeftovers: {
+        // The length used, minus the length of the items (not their nested
+        // length, which depends on the order of the items): the end of the
+        // last item of the last bin, all the items being packed.
+        return solution.length() - solution.item_length() < length() - item_length();
+    } case Objective::Knapsack: {
+        return strictly_greater_profit(solution.profit(), profit());
+    } case Objective::Feasibility: {
+        return strictly_greater_profit(solution.profit(), profit());
+    } case Objective::VariableSizedBinPacking: {
+        return strictly_lesser_cost(solution.cost(), cost());
+    } default: {
+        std::stringstream ss;
+        ss << FUNC_SIGNATURE << ": "
+            << "solution onedimensional::Solution does not support objective \""
+            << instance().objective() << "\"";
+        throw std::logic_error(ss.str());
+    }
+    }
+}
+
+void Solution::write(
+        const std::string& certificate_path) const
+{
+    if (certificate_path.empty())
+        return;
+    std::ofstream file(certificate_path);
+    if (!file.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + certificate_path + "\".");
+    }
+    write(file);
+}
+
+void Solution::write(
+        std::ostream& os) const
+{
+    os << "TYPE,ID,COPIES,BIN,X,LX" << std::endl;
+    for (BinPos bin_pos = 0; bin_pos < number_of_different_bins(); ++bin_pos) {
+        const SolutionBin& bin = bins_[bin_pos];
+        BinTypeId bin_type_id = bin.bin_type_id;
+        os
+            << "BIN,"
+            << bin_type_id << ","
+            << bin.copies << ","
+            << bin_pos << ","
+            << "0,"
+            << instance().bin_type(bin_type_id).length << std::endl;
+
+        for (const SolutionItem& item: bin.items) {
+            const ItemType& item_type = instance().item_type(item.item_type_id);
+            os
+                << "ITEM,"
+                << item.item_type_id << ","
+                << bin.copies << ","
+                << bin_pos << ","
+                << item.start << ","
+                << item_type.length << std::endl;
+        }
+
+    }
+}
+
+nlohmann::json Solution::to_json() const
+{
+    return nlohmann::json {
+        {"NumberOfItems", number_of_items()},
+        {"ItemLength", item_length()},
+        {"ItemNestedLength", item_nested_length()},
+        {"ItemProfit", profit()},
+        {"NumberOfBins", number_of_bins()},
+        {"BinLength", bin_length()},
+        {"BinCost", cost()},
+        {"Waste", waste()},
+        {"WastePercentage", waste_percentage()},
+        {"FullWaste", full_waste()},
+        {"FullWastePercentage", full_waste_percentage()},
+    };
+}
+
+void Solution::format(
+        std::ostream& os,
+        int verbosity_level) const
+{
+    if (verbosity_level >= 1) {
+        os
+            << "Number of items:  " << optimizationtools::Ratio<ItemPos>(number_of_items(), instance().number_of_items()) << std::endl
+            << "Item length:      " << optimizationtools::Ratio<Profit>(item_length(), instance().item_length()) << std::endl
+            << "Item profit:      " << optimizationtools::Ratio<Profit>(profit(), instance().item_profit()) << std::endl
+            << "Number of bins:   " << optimizationtools::Ratio<BinPos>(number_of_bins(), instance().number_of_bins()) << std::endl
+            << "Bin length:       " << optimizationtools::Ratio<BinPos>(bin_length(), instance().bin_length()) << std::endl
+            << "Bin cost:         " << cost() << std::endl
+            << "Waste:            " << waste() << std::endl
+            << "Waste (%):        " << 100 * waste_percentage() << std::endl
+            << "Full waste:       " << full_waste() << std::endl
+            << "Full waste (%):   " << 100 * full_waste_percentage() << std::endl
+            ;
+    }
+
+    if (verbosity_level >= 2) {
+        os
+            << std::right << std::endl
+            << std::setw(12) << "Bin"
+            << std::setw(12) << "Type"
+            << std::setw(12) << "Copies"
+            << std::setw(12) << "Length"
+            << std::setw(12) << "Weight"
+            << std::setw(12) << "# items"
+            << std::endl
+            << std::setw(12) << "---"
+            << std::setw(12) << "----"
+            << std::setw(12) << "------"
+            << std::setw(12) << "------"
+            << std::setw(12) << "------"
+            << std::setw(12) << "-------"
+            << std::endl;
+        for (BinPos bin_pos = 0;
+                bin_pos < number_of_different_bins();
+                ++bin_pos) {
+            os
+                << std::setw(12) << bin_pos
+                << std::setw(12) << bin(bin_pos).bin_type_id
+                << std::setw(12) << bin(bin_pos).copies
+                << std::setw(12) << bin(bin_pos).end
+                << std::setw(12) << bin(bin_pos).weight
+                << std::setw(12) << bin(bin_pos).items.size()
+                << std::endl;
+        }
+    }
+
+    if (verbosity_level >= 3) {
+        os
+            << std::right << std::endl
+            << std::setw(12) << "Bin"
+            << std::setw(12) << "Item"
+            << std::setw(12) << "X"
+            << std::setw(12) << "Length"
+            << std::setw(12) << "Weight"
+            << std::endl
+            << std::setw(12) << "---"
+            << std::setw(12) << "----"
+            << std::setw(12) << "-"
+            << std::setw(12) << "-------"
+            << std::setw(12) << "-------"
+            << std::endl;
+        for (BinPos bin_pos = 0;
+                bin_pos < number_of_different_bins();
+                ++bin_pos) {
+            const SolutionBin& solution_bin = bin(bin_pos);
+            for (const SolutionItem& solution_item: solution_bin.items) {
+                const ItemType& item_type = instance().item_type(solution_item.item_type_id);
+                os
+                    << std::setw(12) << bin_pos
+                    << std::setw(12) << solution_item.item_type_id
+                    << std::setw(12) << solution_item.start
+                    << std::setw(12) << item_type.length
+                    << std::setw(12) << item_type.weight
+                    << std::endl;
+            }
+        }
+    }
+
+    if (verbosity_level >= 3) {
+        os
+            << std::right << std::endl
+            << std::setw(12) << "Item type"
+            << std::setw(12) << "Length"
+            << std::setw(12) << "Copies"
+            << std::endl
+            << std::setw(12) << "---------"
+            << std::setw(12) << "------"
+            << std::setw(12) << "------"
+            << std::endl;
+        for (ItemTypeId item_type_id = 0;
+                item_type_id < instance().number_of_item_types();
+                ++item_type_id) {
+            const ItemType& item_type = instance().item_type(item_type_id);
+            os
+                << std::setw(12) << item_type_id
+                << std::setw(12) << item_type.length
+                << std::setw(12) << item_type.weight
+                << std::setw(12) << item_copies(item_type_id)
+                << std::endl;
+        }
+    }
+}
+
+bool packingsolver::onedimensional::operator==(
+        const SolutionItem& solution_item_1,
+        const SolutionItem& solution_item_2)
+{
+    return solution_item_1.item_type_id == solution_item_2.item_type_id
+        && solution_item_1.start == solution_item_2.start;
+}
+
+bool packingsolver::onedimensional::operator!=(
+        const SolutionItem& solution_item_1,
+        const SolutionItem& solution_item_2)
+{
+    return !(solution_item_1 == solution_item_2);
+}
+
+bool packingsolver::onedimensional::operator==(
+        const SolutionBin& solution_bin_1,
+        const SolutionBin& solution_bin_2)
+{
+    return solution_bin_1.bin_type_id == solution_bin_2.bin_type_id
+        && solution_bin_1.items == solution_bin_2.items;
+}
+
+bool packingsolver::onedimensional::operator!=(
+        const SolutionBin& solution_bin_1,
+        const SolutionBin& solution_bin_2)
+{
+    return !(solution_bin_1 == solution_bin_2);
+}

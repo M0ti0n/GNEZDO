@@ -1,0 +1,1387 @@
+#include "packingsolver/boxstacks/instance_builder.hpp"
+
+#include "optimizationtools/utils/utils.hpp"
+
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
+
+using namespace packingsolver;
+using namespace packingsolver::boxstacks;
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Parameters //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void InstanceBuilder::set_group_weight_constraints(
+        GroupId group_id,
+        bool check_weight_constraints)
+{
+    if (group_id < 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "'group_id' must be >= 0; "
+                "group_id: " + std::to_string(group_id) + ".");
+    }
+    while ((GroupId)instance_.parameters_.check_weight_constraints.size() <= group_id)
+        instance_.parameters_.check_weight_constraints.push_back(true);
+    instance_.parameters_.check_weight_constraints[group_id] = check_weight_constraints;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Bin types ///////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+BinTypeId InstanceBuilder::add_bin_type(
+        Length x,
+        Length y,
+        Length z)
+{
+    if (x <= 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "bin 'x' must be > 0; "
+                "x: " + std::to_string(x) + ".");
+    }
+    if (y <= 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "bin 'y' must be > 0; "
+                "y: " + std::to_string(y) + ".");
+    }
+    if (z <= 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "bin 'z' must be > 0; "
+                "z: " + std::to_string(z) + ".");
+    }
+
+    BinType bin_type;
+    bin_type.box.x = x;
+    bin_type.box.y = y;
+    bin_type.box.z = z;
+    bin_type.cost = x * y * z;
+    bin_type.copies = 1;
+    bin_type.copies_min = 0;
+    instance_.bin_types_.push_back(bin_type);
+    return instance_.bin_types_.size() - 1;
+}
+
+void InstanceBuilder::set_bin_type_cost(
+        BinTypeId bin_type_id,
+        Profit cost)
+{
+    if (bin_type_id < 0 || bin_type_id >= (BinTypeId)instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+    if (cost <= 0 && cost != -1) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "bin 'cost' must be > 0 (or == -1); "
+                "cost: " + std::to_string(cost) + ".");
+    }
+
+    BinType& bin_type = instance_.bin_types_[bin_type_id];
+    bin_type.cost = (cost == -1)? bin_type.box.volume(): cost;
+}
+
+void InstanceBuilder::set_bin_type_maximum_weight(
+        BinTypeId bin_type_id,
+        Weight maximum_weight)
+{
+    if (bin_type_id < 0 || bin_type_id >= instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+
+    instance_.bin_types_[bin_type_id].maximum_weight = maximum_weight;
+}
+
+void InstanceBuilder::set_bin_type_maximum_stack_density(
+        BinTypeId bin_type_id,
+        double maximum_stack_density)
+{
+    if (bin_type_id < 0 || bin_type_id >= instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+
+    instance_.bin_types_[bin_type_id].maximum_stack_density = maximum_stack_density;
+}
+
+void InstanceBuilder::set_bin_type_semi_trailer_truck_parameters(
+        BinTypeId bin_type_id,
+        const SemiTrailerTruckData& semi_trailer_truck_data)
+{
+    if (bin_type_id < 0 || bin_type_id >= instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+
+    instance_.bin_types_[bin_type_id].semi_trailer_truck_data = semi_trailer_truck_data;
+}
+
+DefectId InstanceBuilder::add_defect(
+        BinTypeId bin_type_id,
+        Length pos_x,
+        Length pos_y,
+        Length rect_x,
+        Length rect_y)
+{
+    if (bin_type_id < 0 || bin_type_id >= instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+
+    BinType& bin_type = instance_.bin_types_[bin_type_id];
+
+    rectangle::Defect defect;
+    defect.bin_type_id = bin_type_id;
+    defect.pos.x = pos_x;
+    defect.pos.y = pos_y;
+    defect.rect.x = rect_x;
+    defect.rect.y = rect_y;
+    bin_type.defects.push_back(defect);
+    return bin_type.defects.size() - 1;
+}
+
+BinTypeId InstanceBuilder::add_bin_type(
+        const Instance& original_instance,
+        BinTypeId original_bin_type_id)
+{
+    const BinType& bin_type = original_instance.bin_type(original_bin_type_id);
+    BinTypeId bin_type_id = add_bin_type(
+            bin_type.box.x,
+            bin_type.box.y,
+            bin_type.box.z);
+    if ((BinTypeId)orig_to_sub_bin_type_ids_.size() <= original_bin_type_id)
+        orig_to_sub_bin_type_ids_.resize(original_bin_type_id + 1, -1);
+    orig_to_sub_bin_type_ids_[original_bin_type_id] = bin_type_id;
+    set_bin_type_cost(bin_type_id, bin_type.cost);
+    set_bin_type_copies(bin_type_id, bin_type.copies);
+    set_bin_type_copies_min(bin_type_id, bin_type.copies_min);
+    set_bin_type_maximum_weight(
+            bin_type_id,
+            bin_type.maximum_weight);
+    set_bin_type_maximum_stack_density(
+            bin_type_id,
+            bin_type.maximum_stack_density);
+    set_bin_type_semi_trailer_truck_parameters(
+            bin_type_id,
+            bin_type.semi_trailer_truck_data);
+    for (const auto& defect: bin_type.defects) {
+        add_defect(
+                bin_type_id,
+                defect.pos.x,
+                defect.pos.y,
+                defect.rect.x,
+                defect.rect.y);
+    }
+    return bin_type_id;
+}
+
+void InstanceBuilder::set_bin_type_copies(
+        BinTypeId bin_type_id,
+        BinPos copies)
+{
+    if (bin_type_id < 0 || bin_type_id >= (BinTypeId)instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+    if (copies != -1) {
+        if (copies <= 0) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "bin 'copies' must be > 0 (or == -1); "
+                    "copies: " + std::to_string(copies) + ".");
+        }
+        if (instance_.bin_types_[bin_type_id].copies_min > copies) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "bin 'copies_min' must be <= 'copies'; "
+                    "copies: " + std::to_string(copies) + "; "
+                    "copies_min: " + std::to_string(instance_.bin_types_[bin_type_id].copies_min) + ".");
+        }
+    }
+
+    instance_.bin_types_[bin_type_id].copies = copies;
+}
+
+void InstanceBuilder::set_bin_type_copies_min(
+        BinTypeId bin_type_id,
+        BinPos copies_min)
+{
+    if (bin_type_id < 0 || bin_type_id >= (BinTypeId)instance_.bin_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'bin_type_id'; "
+                "bin_type_id: " + std::to_string(bin_type_id) + "; "
+                "instance_.bin_types_.size(): " + std::to_string(instance_.bin_types_.size()) + ".");
+    }
+    if (copies_min < 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "bin 'copies_min' must be >= 0; "
+                "copies_min: " + std::to_string(copies_min) + ".");
+    }
+    if (instance_.bin_types_[bin_type_id].copies != -1
+            && copies_min > instance_.bin_types_[bin_type_id].copies) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "bin 'copies_min' must be <= 'copies'; "
+                "copies: " + std::to_string(instance_.bin_types_[bin_type_id].copies) + "; "
+                "copies_min: " + std::to_string(copies_min) + ".");
+    }
+
+    instance_.bin_types_[bin_type_id].copies_min = copies_min;
+}
+
+Length InstanceBuilder::compute_item_types_max_length_sum() const
+{
+    Length length = 0;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance_.item_type(item_type_id);
+        length += item_type.copies * item_type.box.max();
+    }
+    return length;
+}
+
+void InstanceBuilder::set_bin_types_infinite_x()
+{
+    Length length = compute_item_types_max_length_sum();
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        instance_.bin_types_[bin_type_id].box.x = length;
+    }
+}
+
+void InstanceBuilder::set_bin_types_infinite_y()
+{
+    Length length = compute_item_types_max_length_sum();
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        instance_.bin_types_[bin_type_id].box.y = length;
+    }
+}
+
+void InstanceBuilder::set_bin_types_infinite_copies()
+{
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        instance_.bin_types_[bin_type_id].copies = -1;
+    }
+}
+
+void InstanceBuilder::set_bin_types_unweighted()
+{
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        instance_.bin_types_[bin_type_id].cost = instance_.bin_types_[bin_type_id].volume();
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Item types //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+ItemTypeId InstanceBuilder::add_item_type(
+        Length x,
+        Length y,
+        Length z)
+{
+    if (x <= 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "item 'x' must be > 0; "
+                "x: " + std::to_string(x) + ".");
+    }
+    if (y <= 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "item 'y' must be > 0; "
+                "y: " + std::to_string(y) + ".");
+    }
+    if (z <= 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "item 'z' must be > 0; "
+                "z: " + std::to_string(z) + ".");
+    }
+
+    ItemType item_type;
+    item_type.box.x = x;
+    item_type.box.y = y;
+    item_type.box.z = z;
+    item_type.profit = x * y * z;
+    item_type.copies = 1;
+    item_type.copies_min = -1;
+    item_type.group_id = 0;
+    instance_.item_types_.push_back(item_type);
+    return instance_.item_types_.size() - 1;
+}
+
+void InstanceBuilder::add_item_type_rotation(
+        ItemTypeId item_type_id,
+        Rotation rotation)
+{
+    if (item_type_id < 0 || item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + ".");
+    }
+    // Items are packed upright in stacks: only the rotations around the z
+    // axis are allowed.
+    if (rotation != Rotation::XYZ && rotation != Rotation::YXZ) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'rotation'; "
+                "only rotations 'XYZ' and 'YXZ' are allowed; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "rotation: " + to_string(rotation) + ".");
+    }
+    instance_.item_types_[item_type_id].rotations.push_back(rotation);
+}
+
+void InstanceBuilder::set_item_type_rotations(
+        ItemTypeId item_type_id,
+        const std::vector<Rotation>& rotations)
+{
+    if (item_type_id < 0 || item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + ".");
+    }
+    instance_.item_types_[item_type_id].rotations.clear();
+    for (Rotation rotation: rotations)
+        add_item_type_rotation(item_type_id, rotation);
+}
+
+void InstanceBuilder::set_item_type_box(
+        ItemTypeId item_type_id,
+        const Box& box)
+{
+    if (item_type_id < 0 || item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + ".");
+    }
+    if (box.x <= 0 || box.y <= 0 || box.z <= 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "item dimensions must be > 0; "
+                "box.x: " + std::to_string(box.x) + "; "
+                "box.y: " + std::to_string(box.y) + "; "
+                "box.z: " + std::to_string(box.z) + ".");
+    }
+    instance_.item_types_[item_type_id].box = box;
+}
+
+void InstanceBuilder::set_item_type_group(
+        ItemTypeId item_type_id,
+        GroupId group_id)
+{
+    if (group_id < 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "item 'group_id' must be >= 0; "
+                "group_id: " + std::to_string(group_id) + ".");
+    }
+
+    instance_.item_types_[item_type_id].group_id = group_id;
+}
+
+void InstanceBuilder::set_item_type_weight(
+        ItemTypeId item_type_id,
+        Weight weight)
+{
+    if (item_type_id < 0 || item_type_id >= instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+
+    instance_.item_types_[item_type_id].weight = weight;
+}
+
+void InstanceBuilder::set_item_type_stackability_id(
+        ItemTypeId item_type_id,
+        StackabilityId stackability_id)
+{
+    if (item_type_id < 0 || item_type_id >= instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+
+    instance_.item_types_[item_type_id].stackability_id = stackability_id;
+}
+
+void InstanceBuilder::set_item_type_nesting_height(
+        ItemTypeId item_type_id,
+        Length nesting_height)
+{
+    if (item_type_id < 0 || item_type_id >= instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+
+    instance_.item_types_[item_type_id].nesting_height = nesting_height;
+}
+
+void InstanceBuilder::set_item_type_maximum_stackability(
+        ItemTypeId item_type_id,
+        ItemPos maximum_stackability)
+{
+    if (item_type_id < 0 || item_type_id >= instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+
+    instance_.item_types_[item_type_id].maximum_stackability = maximum_stackability;
+}
+
+void InstanceBuilder::set_item_type_maximum_weight_above(
+        ItemTypeId item_type_id,
+        Weight maximum_weight_above)
+{
+    if (item_type_id < 0 || item_type_id >= instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+
+    instance_.item_types_[item_type_id].maximum_weight_above = maximum_weight_above;
+}
+
+ItemTypeId InstanceBuilder::add_item_type(
+        const Instance& original_instance,
+        ItemTypeId original_item_type_id)
+{
+    const ItemType& item_type = original_instance.item_type(original_item_type_id);
+    ItemTypeId item_type_id = this->add_item_type(
+            item_type.box.x,
+            item_type.box.y,
+            item_type.box.z);
+    for (Rotation rotation: item_type.rotations)
+        add_item_type_rotation(item_type_id, rotation);
+    if ((ItemTypeId)orig_to_sub_item_type_ids_.size() <= original_item_type_id)
+        orig_to_sub_item_type_ids_.resize(original_item_type_id + 1, -1);
+    orig_to_sub_item_type_ids_[original_item_type_id] = item_type_id;
+    this->set_item_type_profit(item_type_id, item_type.profit);
+    this->set_item_type_copies(item_type_id, item_type.copies);
+    this->set_item_type_group(
+            item_type_id,
+            item_type.group_id);
+    this->set_item_type_weight(
+            item_type_id,
+            item_type.weight);
+    this->set_item_type_stackability_id(
+            item_type_id,
+            item_type.stackability_id);
+    this->set_item_type_nesting_height(
+            item_type_id,
+            item_type.nesting_height);
+    this->set_item_type_maximum_stackability(
+            item_type_id,
+            item_type.maximum_stackability);
+    this->set_item_type_maximum_weight_above(
+            item_type_id,
+            item_type.maximum_weight_above);
+    return item_type_id;
+}
+
+void InstanceBuilder::set_item_type_profit(
+        ItemTypeId item_type_id,
+        Profit profit)
+{
+    if (item_type_id < 0 || item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+
+    instance_.item_types_[item_type_id].profit = profit;
+}
+
+void InstanceBuilder::set_item_type_copies(
+        ItemTypeId item_type_id,
+        ItemPos copies)
+{
+    if (item_type_id < 0 || item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+    if (copies != -1 && copies <= 0) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "item 'copies' must be > 0 (or == -1); "
+                "copies: " + std::to_string(copies) + ".");
+    }
+
+    instance_.item_types_[item_type_id].copies = copies;
+}
+
+void InstanceBuilder::set_item_type_copies_min(
+        ItemTypeId item_type_id,
+        ItemPos copies_min)
+{
+    if (item_type_id < 0 || item_type_id >= (ItemTypeId)instance_.item_types_.size()) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "invalid 'item_type_id'; "
+                "item_type_id: " + std::to_string(item_type_id) + "; "
+                "instance_.item_types_.size(): " + std::to_string(instance_.item_types_.size()) + ".");
+    }
+    if (copies_min < -1) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "item 'copies_min' must be >= -1; "
+                "copies_min: " + std::to_string(copies_min) + ".");
+    }
+
+    instance_.item_types_[item_type_id].copies_min = copies_min;
+}
+
+void InstanceBuilder::compute_bin_attributes()
+{
+    instance_.bin_volume_ = 0;
+    instance_.bin_weight_ = 0;
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = instance_.bin_type(bin_type_id);
+        instance_.bin_volume_ += bin_type.copies * bin_type.volume();
+        instance_.bin_weight_ += bin_type.copies * bin_type.maximum_weight;
+    }
+}
+
+void InstanceBuilder::set_item_types_profits_auto()
+{
+    compute_bin_attributes();
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance_.item_type(item_type_id);
+        Profit profit
+            = (double)instance_.item_volume() / instance_.bin_volume()
+            * (double)item_type.volume() / instance_.bin_volume()
+            + (double)instance_.item_weight() / instance_.bin_weight()
+            * (double)item_type.weight / instance_.bin_weight();
+        instance_.item_types_[item_type_id].profit = profit;
+    }
+}
+
+void InstanceBuilder::set_item_types_unweighted()
+{
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        instance_.item_types_[item_type_id].profit = instance_.item_types_[item_type_id].volume();
+    }
+}
+
+void InstanceBuilder::set_item_types_oriented()
+{
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        instance_.item_types_[item_type_id].rotations = {Rotation::XYZ};
+    }
+}
+
+Volume InstanceBuilder::compute_bin_types_volume_max() const
+{
+    Volume bin_types_volume_max = 0;
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        bin_types_volume_max = std::max(
+                bin_types_volume_max,
+                instance_.bin_type(bin_type_id).volume());
+    }
+    return bin_types_volume_max;
+}
+
+void InstanceBuilder::set_item_types_infinite_copies()
+{
+    Volume bin_types_volume_max = compute_bin_types_volume_max();
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        ItemType& item_type = instance_.item_types_[item_type_id];
+        ItemPos c = (bin_types_volume_max - 1) / item_type.volume() + 1;
+        item_type.copies = c;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////// Read from files ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void InstanceBuilder::read_parameters(
+        const std::string& parameters_path)
+{
+    if (parameters_path.empty())
+        return;
+
+    std::ifstream f(parameters_path);
+    if (parameters_path != "" && !f.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + parameters_path + "\".");
+    }
+
+    std::string tmp;
+    std::vector<std::string> line;
+    std::vector<std::string> labels;
+
+    getline(f, tmp);
+    labels = optimizationtools::split(tmp, ',');
+    while (getline(f, tmp)) {
+        line = optimizationtools::split(tmp, ',');
+        std::string name;
+        std::string value;
+        for (Counter c = 0; c < (Counter)line.size(); ++c) {
+            if (labels[c] == "NAME") {
+                name = line[c];
+            } else if (labels[c] == "VALUE") {
+                value = line[c];
+            }
+        }
+        //std::cout << "name " << name << std::endl;
+        if (name == "objective") {
+            Objective objective = read_enum<Objective>(value, name);
+            set_objective(objective);
+        } if (name == "unloading-constraint") {
+            rectangle::UnloadingConstraint unloading_constraint = read_enum<rectangle::UnloadingConstraint>(
+                    value,
+                    name);
+            set_unloading_constraint(unloading_constraint);
+        } if (name == "leftover-mode" || name == "leftover_mode") {
+            LeftoverMode leftover_mode = read_enum<LeftoverMode>(value, name);
+            set_leftover_mode(leftover_mode);
+        } if (name == "no-check-weight-constraints") {
+            GroupId group_id = (GroupId)std::stol(value);
+            set_group_weight_constraints(group_id, false);
+        }
+    }
+}
+
+void InstanceBuilder::read_bin_types(
+        const std::string& bins_path)
+{
+    std::ifstream f(bins_path);
+    if (!f.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + bins_path + "\".");
+    }
+
+    std::string tmp;
+    std::vector<std::string> line;
+    std::vector<std::string> labels;
+
+    // read bin file
+    getline(f, tmp);
+    labels = optimizationtools::split(tmp, ',');
+    while (getline(f, tmp)) {
+        line = optimizationtools::split(tmp, ',');
+
+        Length x = -1;
+        Length y = -1;
+        Length z = -1;
+        Profit cost = -1;
+        BinPos copies = 1;
+        BinPos copies_min = 0;
+        Weight maximum_weight = std::numeric_limits<Weight>::infinity();
+        double maximum_stack_density = std::numeric_limits<double>::max();
+
+        SemiTrailerTruckData semi_trailer_truck_data;
+
+        for (Counter i = 0; i < (Counter)line.size(); ++i) {
+            if (labels[i] == "X") {
+                x = (Length)std::stol(line[i]);
+            } else if (labels[i] == "Y") {
+                y = (Length)std::stol(line[i]);
+            } else if (labels[i] == "Z") {
+                z = (Length)std::stol(line[i]);
+            } else if (labels[i] == "COST") {
+                cost = (Profit)std::stod(line[i]);
+            } else if (labels[i] == "COPIES") {
+                copies = (BinPos)std::stol(line[i]);
+            } else if (labels[i] == "COPIES_MIN") {
+                copies_min = (BinPos)std::stol(line[i]);
+            } else if (labels[i] == "MAXIMUM_WEIGHT") {
+                maximum_weight = (Weight)std::stod(line[i]);
+            } else if (labels[i] == "MAXIMUM_STACK_DENSITY") {
+                maximum_stack_density = (double)std::stod(line[i]);
+            }
+            semi_trailer_truck_data.read(labels[i], line[i]);
+        }
+
+        if (x == -1) {
+            throw std::runtime_error(
+                    FUNC_SIGNATURE + ": "
+                    "missing \"X\" column in \"" + bins_path + "\".");
+        }
+        if (y == -1) {
+            throw std::runtime_error(
+                    FUNC_SIGNATURE + ": "
+                    "missing \"Y\" column in \"" + bins_path + "\".");
+        }
+        if (z == -1) {
+            throw std::runtime_error(
+                    FUNC_SIGNATURE + ": "
+                    "missing \"Z\" column in \"" + bins_path + "\".");
+        }
+
+        BinTypeId bin_type_id = add_bin_type(
+                x,
+                y,
+                z);
+        set_bin_type_cost(bin_type_id, cost);
+        set_bin_type_copies(bin_type_id, copies);
+        set_bin_type_copies_min(bin_type_id, copies_min);
+        set_bin_type_maximum_weight(
+                bin_type_id,
+                maximum_weight);
+        set_bin_type_maximum_stack_density(
+                bin_type_id,
+                maximum_stack_density);
+        set_bin_type_semi_trailer_truck_parameters(
+                bin_type_id,
+                semi_trailer_truck_data);
+    }
+}
+
+void InstanceBuilder::read_defects(
+        const std::string& defects_path)
+{
+    std::ifstream f(defects_path);
+    if (defects_path != "" && !f.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + defects_path + "\".");
+    }
+
+    std::string tmp;
+    std::vector<std::string> line;
+    std::vector<std::string> labels;
+
+    // read defects file
+    if (defects_path != "") {
+        getline(f, tmp);
+        labels = optimizationtools::split(tmp, ',');
+        while (getline(f, tmp)) {
+            line = optimizationtools::split(tmp, ',');
+
+            BinTypeId bin_type_id = -1;
+            Length pos_x = -1;
+            Length pos_y = -1;
+            Length rect_x = -1;
+            Length rect_y = -1;
+
+            for (Counter c = 0; c < (Counter)line.size(); ++c) {
+                if (labels[c] == "BIN") {
+                    bin_type_id = (BinTypeId)std::stol(line[c]);
+                } else if (labels[c] == "X") {
+                    pos_x = (Length)std::stol(line[c]);
+                } else if (labels[c] == "Y") {
+                    pos_y = (Length)std::stol(line[c]);
+                } else if (labels[c] == "LX") {
+                    rect_x = (Length)std::stol(line[c]);
+                } else if (labels[c] == "LY") {
+                    rect_y = (Length)std::stol(line[c]);
+                }
+            }
+
+            if (bin_type_id == -1) {
+                throw std::runtime_error(
+                        FUNC_SIGNATURE + ": "
+                        "missing \"BIN\" column in \"" + defects_path + "\".");
+            }
+            if (pos_x == -1) {
+                throw std::runtime_error(
+                        FUNC_SIGNATURE + ": "
+                        "missing \"X\" column in \"" + defects_path + "\".");
+            }
+            if (pos_y == -1) {
+                throw std::runtime_error(
+                        FUNC_SIGNATURE + ": "
+                        "missing \"Y\" column in \"" + defects_path + "\".");
+            }
+            if (rect_x == -1) {
+                throw std::runtime_error(
+                        FUNC_SIGNATURE + ": "
+                        "missing \"LX\" column in \"" + defects_path + "\".");
+            }
+            if (rect_y == -1) {
+                throw std::runtime_error(
+                        FUNC_SIGNATURE + ": "
+                        "missing \"LY\" column in \"" + defects_path + "\".");
+            }
+
+            add_defect(bin_type_id, pos_x, pos_y, rect_x, rect_y);
+        }
+    }
+
+}
+
+void InstanceBuilder::read_item_types(
+        const std::string& items_path)
+{
+    std::ifstream f(items_path);
+    if (!f.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + items_path + "\".");
+    }
+
+    std::string tmp;
+    std::vector<std::string> line;
+    std::vector<std::string> labels;
+
+    getline(f, tmp);
+    labels = optimizationtools::split(tmp, ',');
+    while (getline(f, tmp)) {
+        line = optimizationtools::split(tmp, ',');
+
+        Length x = -1;
+        Length y = -1;
+        Length z = -1;
+        Profit profit = -1;
+        Weight weight = 0;
+        ItemPos copies = 1;
+        ItemPos copies_min = -1;
+        std::vector<Rotation> rotations;
+        GroupId group_id = 0;
+        StackabilityId stackability_id = 0;
+        Length nesting_height = 0;
+        ItemPos maximum_stackability = std::numeric_limits<ItemPos>::max();
+        Weight maximum_weight_above = std::numeric_limits<Weight>::max();
+
+        for (Counter i = 0; i < (Counter)line.size(); ++i) {
+            if (labels[i] == "X") {
+                x = (Length)std::stol(line[i]);
+            } else if (labels[i] == "Y") {
+                y = (Length)std::stol(line[i]);
+            } else if (labels[i] == "Z") {
+                z = (Length)std::stol(line[i]);
+            } else if (labels[i] == "PROFIT") {
+                profit = (Profit)std::stod(line[i]);
+            } else if (labels[i] == "WEIGHT") {
+                weight = (Weight)std::stod(line[i]);
+            } else if (labels[i] == "COPIES") {
+                copies = (ItemPos)std::stol(line[i]);
+            } else if (labels[i] == "COPIES_MIN") {
+                copies_min = (ItemPos)std::stol(line[i]);
+            } else if (labels[i] == "ROTATION_XYZ" && std::stol(line[i])) {
+                rotations.push_back(Rotation::XYZ);
+            } else if (labels[i] == "ROTATION_YXZ" && std::stol(line[i])) {
+                rotations.push_back(Rotation::YXZ);
+            } else if (labels[i] == "ROTATION_ZYX" && std::stol(line[i])) {
+                rotations.push_back(Rotation::ZYX);
+            } else if (labels[i] == "ROTATION_YZX" && std::stol(line[i])) {
+                rotations.push_back(Rotation::YZX);
+            } else if (labels[i] == "ROTATION_XZY" && std::stol(line[i])) {
+                rotations.push_back(Rotation::XZY);
+            } else if (labels[i] == "ROTATION_ZXY" && std::stol(line[i])) {
+                rotations.push_back(Rotation::ZXY);
+            } else if (labels[i] == "GROUP_ID") {
+                group_id = (GroupId)std::stol(line[i]);
+            } else if (labels[i] == "STACKABILITY_ID") {
+                stackability_id = (StackabilityId)std::stol(line[i]);
+            } else if (labels[i] == "NESTING_HEIGHT") {
+                nesting_height = (Length)std::stol(line[i]);
+            } else if (labels[i] == "MAXIMUM_STACKABILITY") {
+                maximum_stackability = (ItemPos)std::stol(line[i]);
+            } else if (labels[i] == "MAXIMUM_WEIGHT_ABOVE") {
+                maximum_weight_above = (Weight)std::stod(line[i]);
+            }
+        }
+
+        if (x == -1) {
+            throw std::runtime_error(
+                    FUNC_SIGNATURE + ": "
+                    "missing \"X\" column in \"" + items_path + "\".");
+        }
+        if (y == -1) {
+            throw std::runtime_error(
+                    FUNC_SIGNATURE + ": "
+                    "missing \"Y\" column in \"" + items_path + "\".");
+        }
+        if (z == -1) {
+            throw std::runtime_error(
+                    FUNC_SIGNATURE + ": "
+                    "missing \"Z\" column in \"" + items_path + "\".");
+        }
+
+        if (profit == -1)
+            profit = x * y * z;
+
+        ItemTypeId item_type_id = this->add_item_type(
+                x,
+                y,
+                z);
+        this->set_item_type_profit(item_type_id, profit);
+        this->set_item_type_copies(item_type_id, copies);
+        this->set_item_type_copies_min(item_type_id, copies_min);
+        for (Rotation rotation: rotations)
+            add_item_type_rotation(item_type_id, rotation);
+        this->set_item_type_group(
+                item_type_id,
+                group_id);
+        this->set_item_type_stackability_id(
+                item_type_id,
+                stackability_id);
+        this->set_item_type_weight(
+                item_type_id,
+                weight);
+        this->set_item_type_nesting_height(
+                item_type_id,
+                nesting_height);
+        this->set_item_type_maximum_stackability(
+                item_type_id,
+                maximum_stackability);
+        this->set_item_type_maximum_weight_above(
+                item_type_id,
+                maximum_weight_above);
+    }
+}
+
+void InstanceBuilder::read(
+        const std::string& instance_path)
+{
+    std::ifstream file(instance_path);
+    if (!file.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + instance_path + "\".");
+    }
+    read(file);
+}
+
+void InstanceBuilder::read(
+        std::istream& is)
+{
+    nlohmann::json j;
+    is >> j;
+
+    if (!j.contains("objective")) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "missing \"objective\" field.");
+    }
+    {
+        std::string objective_string = j["objective"];
+        std::stringstream objective_ss(objective_string);
+        Objective objective;
+        objective_ss >> objective;
+        if (objective_ss.fail()) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "unrecognized \"objective\" value \""
+                    + objective_string + "\".");
+        }
+        set_objective(objective);
+    }
+
+    if (j.contains("leftover_mode")) {
+        std::string leftover_mode_string = j["leftover_mode"];
+        LeftoverMode leftover_mode = read_enum<LeftoverMode>(
+                leftover_mode_string,
+                "leftover_mode");
+        set_leftover_mode(leftover_mode);
+    }
+    if (j.contains("unloading_constraint")) {
+        std::string unloading_constraint_string = j["unloading_constraint"];
+        std::stringstream ss(unloading_constraint_string);
+        rectangle::UnloadingConstraint unloading_constraint;
+        ss >> unloading_constraint;
+        if (ss.fail()) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "unrecognized \"unloading_constraint\" value \""
+                    + unloading_constraint_string + "\".");
+        }
+        set_unloading_constraint(unloading_constraint);
+    }
+
+    // Groups whose weight constraints are not checked.
+    if (j.contains("no_check_weight_constraints")) {
+        for (const auto& json_group_id: j["no_check_weight_constraints"]) {
+            GroupId group_id = json_group_id;
+            if (group_id < 0) {
+                throw std::invalid_argument(
+                        FUNC_SIGNATURE + ": "
+                        "negative group id in \"no_check_weight_constraints\": "
+                        + std::to_string(group_id) + ".");
+            }
+            set_group_weight_constraints(group_id, false);
+        }
+    }
+
+    // Read bin types.
+    for (const auto& json_bin_type: j["bin_types"]) {
+        Length x = json_bin_type["x"];
+        Length y = json_bin_type["y"];
+        Length z = json_bin_type["z"];
+        BinTypeId bin_type_id = add_bin_type(x, y, z);
+        if (json_bin_type.contains("cost"))
+            set_bin_type_cost(bin_type_id, json_bin_type["cost"]);
+        if (json_bin_type.contains("copies"))
+            set_bin_type_copies(bin_type_id, json_bin_type["copies"]);
+        if (json_bin_type.contains("copies_min"))
+            set_bin_type_copies_min(bin_type_id, json_bin_type["copies_min"]);
+        // A JSON 'null' means the same as the field being absent: no maximum
+        // weight (see 'Instance::write_json').
+        if (json_bin_type.contains("maximum_weight") && !json_bin_type["maximum_weight"].is_null())
+            set_bin_type_maximum_weight(bin_type_id, json_bin_type["maximum_weight"]);
+        if (json_bin_type.contains("maximum_stack_density") && !json_bin_type["maximum_stack_density"].is_null())
+            set_bin_type_maximum_stack_density(bin_type_id, json_bin_type["maximum_stack_density"]);
+        if (json_bin_type.contains("semi_trailer_truck")) {
+            SemiTrailerTruckData semi_trailer_truck_data;
+            semi_trailer_truck_data.read_json(json_bin_type["semi_trailer_truck"]);
+            set_bin_type_semi_trailer_truck_parameters(bin_type_id, semi_trailer_truck_data);
+        }
+        // Read defects.
+        if (json_bin_type.contains("defects")) {
+            for (const auto& json_defect: json_bin_type["defects"]) {
+                add_defect(
+                        bin_type_id,
+                        json_defect["x"],
+                        json_defect["y"],
+                        json_defect["width"],
+                        json_defect["height"]);
+            }
+        }
+    }
+
+    // Read item types.
+    for (const auto& json_item_type: j["item_types"]) {
+        Length x = json_item_type["x"];
+        Length y = json_item_type["y"];
+        Length z = json_item_type["z"];
+        ItemTypeId item_type_id = add_item_type(x, y, z);
+        if (json_item_type.contains("profit"))
+            set_item_type_profit(item_type_id, json_item_type["profit"]);
+        if (json_item_type.contains("copies"))
+            set_item_type_copies(item_type_id, json_item_type["copies"]);
+        if (json_item_type.contains("copies_min"))
+            set_item_type_copies_min(item_type_id, json_item_type["copies_min"]);
+        if (json_item_type.contains("group_id"))
+            set_item_type_group(item_type_id, json_item_type["group_id"]);
+        if (json_item_type.contains("weight"))
+            set_item_type_weight(item_type_id, json_item_type["weight"]);
+        if (json_item_type.contains("stackability_id"))
+            set_item_type_stackability_id(item_type_id, json_item_type["stackability_id"]);
+        if (json_item_type.contains("nesting_height"))
+            set_item_type_nesting_height(item_type_id, json_item_type["nesting_height"]);
+        if (json_item_type.contains("maximum_stackability"))
+            set_item_type_maximum_stackability(item_type_id, json_item_type["maximum_stackability"]);
+        if (json_item_type.contains("maximum_weight_above") && !json_item_type["maximum_weight_above"].is_null())
+            set_item_type_maximum_weight_above(item_type_id, json_item_type["maximum_weight_above"]);
+        if (json_item_type.contains("rotations")) {
+            for (const auto& json_rotation: json_item_type["rotations"]) {
+                std::string rotation_string = json_rotation;
+                add_item_type_rotation(item_type_id, rotation_from_string(rotation_string));
+            }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////// Build /////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void InstanceBuilder::resolve_item_types_unlimited_copies()
+{
+    // Total volume of the bins, computed for the first item type with
+    // unlimited copies.
+    Volume bins_volume = -1;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        ItemType& item_type = instance_.item_types_[item_type_id];
+        if (item_type.copies != -1)
+            continue;
+        if (instance_.objective() != Objective::Knapsack) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "item type " + std::to_string(item_type_id) + " has "
+                    "unlimited copies ('copies' == -1), "
+                    "which is only allowed with the 'Knapsack' objective.");
+        }
+        if (item_type.volume() <= 0) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "item type " + std::to_string(item_type_id) + " has "
+                    "unlimited copies ('copies' == -1) and an volume of 0.");
+        }
+        if (bins_volume == -1) {
+            bins_volume = 0;
+            for (BinTypeId bin_type_id = 0;
+                    bin_type_id < instance_.number_of_bin_types();
+                    ++bin_type_id) {
+                const BinType& bin_type = instance_.bin_type(bin_type_id);
+                if (bin_type.copies == -1) {
+                    throw std::invalid_argument(
+                            FUNC_SIGNATURE + ": "
+                            "item type " + std::to_string(item_type_id) + " has "
+                            "unlimited copies ('copies' == -1), "
+                            "which is not allowed if bin type "
+                            + std::to_string(bin_type_id) + " has unlimited copies too.");
+                }
+                bins_volume += bin_type.copies * bin_type.volume();
+            }
+        }
+        // As many copies as the volume of all the bins allows.
+        item_type.copies = (bins_volume - 1) / item_type.volume() + 1;
+    }
+}
+
+Instance InstanceBuilder::build()
+{
+    // Unlimited copies of the item types.
+    resolve_item_types_unlimited_copies();
+
+    // Default rotations to {XYZ} for item types with no rotation specified.
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        if (instance_.item_types_[item_type_id].rotations.empty())
+            instance_.item_types_[item_type_id].rotations = {Rotation::XYZ};
+    }
+
+    // Compute item type attributes.
+    Volume bin_types_volume_max = compute_bin_types_volume_max();
+    instance_.all_item_types_infinite_copies_ = true;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        ItemType& item_type = instance_.item_types_[item_type_id];
+        // Resolve copies_min.
+        if (item_type.copies_min == -1) {
+            item_type.copies_min = (instance_.objective() == Objective::Knapsack)?
+                0: item_type.copies;
+        }
+        if (item_type.copies_min > item_type.copies) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "item type " + std::to_string(item_type_id) + " has "
+                    "'copies_min' (" + std::to_string(item_type.copies_min) + ") "
+                    "> 'copies' (" + std::to_string(item_type.copies) + ").");
+        }
+        // Every item must be packed, except with the 'Knapsack' objective.
+        if (instance_.objective() != Objective::Knapsack
+                && item_type.copies_min != item_type.copies) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "item type " + std::to_string(item_type_id) + " has "
+                    "'copies_min' (" + std::to_string(item_type.copies_min) + ") "
+                    "!= 'copies' (" + std::to_string(item_type.copies) + "), "
+                    "which is only allowed with the 'Knapsack' objective.");
+        }
+        // Update number_of_items_.
+        instance_.number_of_items_ += item_type.copies;
+        // Update item_profit_.
+        instance_.item_profit_ += item_type.copies * item_type.profit;
+        // Update item_volume_.
+        instance_.item_volume_ += item_type.copies * item_type.volume();
+        // Update item_weight_.
+        instance_.item_weight_ += item_type.copies * item_type.weight;
+        // Update largest_efficiency_item_type_.
+        if (instance_.largest_efficiency_item_type_id_ == -1
+                || instance_.item_type(instance_.largest_efficiency_item_type_id_).profit
+                / instance_.item_type(instance_.largest_efficiency_item_type_id_).volume()
+                < instance_.item_type(item_type_id).profit
+                / instance_.item_type(item_type_id).volume()) {
+            instance_.largest_efficiency_item_type_id_ = item_type_id;
+        }
+        // Update all_item_types_infinite_copies_.
+        ItemPos c = (bin_types_volume_max - 1) / item_type.volume() + 1;
+        if (item_type.copies < c)
+            instance_.all_item_types_infinite_copies_ = false;
+    }
+
+    // Compute bin type attributes.
+    instance_.bin_volume_ = 0;
+    instance_.bin_area_ = 0;
+    instance_.bin_weight_ = 0;
+    Volume previous_bins_volume = 0;
+    Weight highest_bin_weight = 0.0;
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = instance_.bin_type(bin_type_id);
+        // Check truck data consistency.
+        bin_type.semi_trailer_truck_data.check();
+        // Update bin_type.copies.
+        if (bin_type.copies == -1)
+            instance_.bin_types_[bin_type_id].copies = instance_.number_of_items();
+        // Update bins_volume_.
+        instance_.bin_volume_ += bin_type.copies * bin_type.volume();
+        // Update bins_area_.
+        instance_.bin_area_ += bin_type.copies * bin_type.area();
+        // Update bin_weight_..
+        instance_.bin_weight_ += bin_type.copies * bin_type.maximum_weight;
+        // Update previous_bins_volume_ and bin_type_ids_.
+        for (BinPos copy = 0; copy < bin_type.copies; ++copy) {
+            instance_.bin_type_ids_.push_back(bin_type_id);
+            instance_.previous_bins_volume_.push_back(previous_bins_volume);
+            previous_bins_volume += bin_type.volume();
+        }
+        // Update number_of_defects_.
+        instance_.number_of_defects_ += bin_type.defects.size();
+        // Update highest_bin_weight.
+        if (std::isfinite(bin_type.maximum_weight)
+                && highest_bin_weight < bin_type.maximum_weight) {
+            highest_bin_weight = bin_type.maximum_weight;
+        }
+        if (bin_type.semi_trailer_truck_data.is) {
+            if (std::isfinite(bin_type.semi_trailer_truck_data.middle_axle_maximum_weight)
+                    && highest_bin_weight
+                        < bin_type.semi_trailer_truck_data.middle_axle_maximum_weight) {
+                highest_bin_weight
+                    = bin_type.semi_trailer_truck_data.middle_axle_maximum_weight;
+            }
+            if (std::isfinite(bin_type.semi_trailer_truck_data.rear_axle_maximum_weight)
+                    && highest_bin_weight
+                        < bin_type.semi_trailer_truck_data.rear_axle_maximum_weight) {
+                highest_bin_weight
+                    = bin_type.semi_trailer_truck_data.rear_axle_maximum_weight;
+            }
+        }
+    }
+    // Update parameters_.weight_tolerance, unless a non-zero value was
+    // already propagated from a parent instance via 'set_parameters()' (see
+    // 'Parameters::weight_tolerance' doc comment).
+    if (instance_.parameters_.weight_tolerance == 0.0) {
+        instance_.parameters_.weight_tolerance = (highest_bin_weight != 0.0)?
+            highest_bin_weight * 1e-9:
+            1e-9;
+    }
+
+    // Check that the item types of each stackability id have the same x and
+    // y dimensions: only such items can be stacked.
+    std::unordered_map<StackabilityId, ItemTypeId> stackability_id_item_type_ids;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance_.item_type(item_type_id);
+        auto it = stackability_id_item_type_ids.find(item_type.stackability_id);
+        if (it == stackability_id_item_type_ids.end()) {
+            stackability_id_item_type_ids.insert({item_type.stackability_id, item_type_id});
+            continue;
+        }
+        const ItemType& item_type_ref = instance_.item_type(it->second);
+        if (item_type.box.x != item_type_ref.box.x
+                || item_type.box.y != item_type_ref.box.y) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "item types " + std::to_string(it->second) + " and "
+                    + std::to_string(item_type_id) + " have the same "
+                    "stackability id (" + std::to_string(item_type.stackability_id) + ") "
+                    "but different x and y dimensions "
+                    "(" + std::to_string(item_type_ref.box.x)
+                    + "x" + std::to_string(item_type_ref.box.y) + " and "
+                    + std::to_string(item_type.box.x)
+                    + "x" + std::to_string(item_type.box.y) + "); "
+                    "item types with the same stackability id must have the "
+                    "same x and y dimensions.");
+        }
+    }
+
+    // Compute number_of_groups_.
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance_.number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance_.item_type(item_type_id);
+        while ((GroupId)instance_.groups_.size() <= item_type.group_id) {
+            Group group;
+            instance_.groups_.push_back(group);
+        }
+        Group& group = instance_.groups_[item_type.group_id];
+        group.item_types.push_back(item_type_id);
+        group.number_of_items += item_type.copies;
+    }
+
+    if (instance_.objective() == Objective::OpenDimensionX
+            && instance_.number_of_bins() != 1) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "the instance has objective OpenDimensionX and contains " + std::to_string(instance_.number_of_bins()) + " bins; "
+                "an instance with objective OpenDimensionX must contain exactly one bin.");
+    }
+    if (instance_.objective() == Objective::OpenDimensionY
+            && instance_.number_of_bins() != 1) {
+        throw std::invalid_argument(
+                FUNC_SIGNATURE + ": "
+                "the instance has objective OpenDimensionY and contains " + std::to_string(instance_.number_of_bins()) + " bins; "
+                "an instance with objective OpenDimensionY must contain exactly one bin.");
+    }
+
+    // Check and compute copies_fixed for each item type.
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance_.number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = instance_.bin_types_[bin_type_id];
+        if (!bin_type.fixed_items.empty()
+                && bin_type.copies_min != bin_type.copies) {
+            throw std::invalid_argument(
+                    FUNC_SIGNATURE + ": "
+                    "bin type " + std::to_string(bin_type_id) + " has fixed items "
+                    "but copies_min (" + std::to_string(bin_type.copies_min) + ") "
+                    "!= copies (" + std::to_string(bin_type.copies) + "); "
+                    "a bin type with fixed items must be mandatory (copies_min == copies).");
+        }
+        for (const FixedItem& fixed_item: bin_type.fixed_items)
+            instance_.item_types_[fixed_item.item_type_id].copies_fixed += bin_type.copies;
+    }
+
+    return std::move(instance_);
+}

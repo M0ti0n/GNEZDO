@@ -1,0 +1,263 @@
+#include "packingsolver/irregular/instance_builder.hpp"
+#include "packingsolver/irregular/optimize.hpp"
+#include "packingsolver/irregular/solution.hpp"
+#include "irregular/solution_builder.hpp"
+
+#include <gtest/gtest.h>
+#include <boost/filesystem.hpp>
+
+using namespace packingsolver::irregular;
+namespace fs = boost::filesystem;
+
+TEST(Irregular, BinCopies)
+{
+    Shape shape;
+    ShapeElement shape_element;
+    shape_element.type = ShapeElementType::LineSegment;
+    shape_element.start = {0, 0};
+    shape_element.end = {10, 0};
+    shape.elements.push_back(shape_element);
+    shape_element.start = {10, 0};
+    shape_element.end = {10, 10};
+    shape.elements.push_back(shape_element);
+    shape_element.start = {10, 10};
+    shape_element.end = {0, 10};
+    shape.elements.push_back(shape_element);
+    shape_element.start = {0, 10};
+    shape_element.end = {0, 0};
+    shape.elements.push_back(shape_element);
+
+    ItemShape item_shape;
+    item_shape.shape_orig.shape = shape;
+
+    InstanceBuilder instance_builder;
+    instance_builder.set_objective(packingsolver::Objective::VariableSizedBinPacking);
+    packingsolver::ItemTypeId item_type_id = instance_builder.add_item_type({item_shape});
+    instance_builder.set_item_type_copies(item_type_id, 10);
+    packingsolver::BinTypeId bin_type_id = instance_builder.add_bin_type(shape);
+    instance_builder.set_bin_type_copies(bin_type_id, 10);
+    const Instance instance = instance_builder.build();
+    SolutionBuilder solution_builder(instance);
+    solution_builder.add_bin(0, 2);
+    Solution solution = solution_builder.build();
+    EXPECT_EQ(solution.number_of_bins(), 2);
+    EXPECT_EQ(solution.bin_copies(0), 2);
+}
+
+struct IrregularOptimizeTestParams
+{
+    fs::path instance_path;
+    fs::path certificate_path;
+};
+
+inline std::ostream& operator<<(std::ostream& os, const IrregularOptimizeTestParams& test_params)
+{
+    os << test_params.instance_path;
+    return os;
+}
+
+class IrregularOptimizeTest: public testing::TestWithParam<IrregularOptimizeTestParams> { };
+
+TEST_P(IrregularOptimizeTest, IrregularOptimize)
+{
+    IrregularOptimizeTestParams test_params = GetParam();
+    InstanceBuilder instance_builder;
+    instance_builder.read(test_params.instance_path.string());
+    Instance instance = instance_builder.build();
+
+    OptimizeParameters optimize_parameters;
+    optimize_parameters.optimization_mode = packingsolver::OptimizationMode::NotAnytimeSequential;
+    Output output = optimize(instance, optimize_parameters);
+
+    SolutionBuilder solution_builder(instance);
+    solution_builder.read(test_params.certificate_path.string());
+    Solution solution = solution_builder.build();
+    std::cout << std::endl
+        << "Reference solution" << std::endl
+        << "------------------" << std::endl;
+    solution.format(std::cout);
+
+    EXPECT_EQ(!(output.solution_pool.best() < solution), true);
+    EXPECT_EQ(!(solution < output.solution_pool.best()), true);
+
+    // The bound must not exceed the value of the reference solution, which
+    // is feasible.
+    switch (instance.objective()) {
+    case packingsolver::Objective::BinPacking:
+        EXPECT_LE(output.bin_packing_bound, solution.number_of_bins());
+        break;
+    case packingsolver::Objective::VariableSizedBinPacking:
+        EXPECT_FALSE(packingsolver::strictly_lesser_cost(
+                    solution.cost(),
+                    output.variable_sized_bin_packing_bound));
+        break;
+    case packingsolver::Objective::Knapsack:
+        EXPECT_FALSE(packingsolver::strictly_greater_profit(
+                    solution.profit(),
+                    output.knapsack_bound));
+        break;
+    default:
+        break;
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        Irregular,
+        IrregularOptimizeTest,
+        testing::ValuesIn(std::vector<IrregularOptimizeTestParams>{
+            {
+                // The lower bound of 'VariableSizedBinPacking' (the
+                // one-dimensional trivial bound, which every problem type
+                // uses through its one-dimensional relaxation) used to
+                // require the optional bins alone to cover the items,
+                // ignoring that the mandatory bins of a bin type with a
+                // positive 'copies_min' hold items too. No two items fit in
+                // the same bin: the optimum uses three bins of type 1
+                // (cost 3), but the bound was 4.
+                fs::path("data") / "irregular" / "tests" / "variable_sized_bin_packing_mandatory_bins.json",
+                fs::path("data") / "irregular" / "tests" / "variable_sized_bin_packing_mandatory_bins_solution.json",
+            }, {
+                // Fixed items with several bins: the sub-instances of the
+                // algorithms for several bins, with fewer item types, used to
+                // check the ids of the item types of the fixed items before
+                // remapping them.
+                fs::path("data") / "irregular" / "tests" / "fixed_items_several_bins.json",
+                fs::path("data") / "irregular" / "tests" / "fixed_items_several_bins_solution.json",
+            }, {
+                // The endpoints of the circular arcs of this item, from a DXF
+                // file, are not exactly equidistant from their centers. The
+                // scaled shape used to be found self-intersecting.
+                fs::path("data") / "irregular" / "tests" / "inconsistent_arc_centers.json",
+                fs::path("data") / "irregular" / "tests" / "inconsistent_arc_centers_solution.json",
+            }}));
+
+// 'BinPackingWithLeftovers' in a not-anytime mode: the tree search
+// re-optimizes the last bin with guides {2, 3} in a post-process. It used to
+// rebuild the solution from all the bins but the last two (instead of the
+// last one), so with several bins the rebuilt solution missed the items of
+// the second-to-last bin and was never kept. Here, the re-optimized last bin
+// increases the leftover value from about 3238 to about 3543.
+TEST(Irregular, BinPackingWithLeftoversLastBinPostProcess)
+{
+    InstanceBuilder instance_builder;
+    instance_builder.read((fs::path("data") / "irregular" / "tests" / "bin_packing_with_leftovers_last_bin_post_process.json").string());
+    Instance instance = instance_builder.build();
+
+    OptimizeParameters optimize_parameters;
+    optimize_parameters.optimization_mode = packingsolver::OptimizationMode::NotAnytimeSequential;
+    optimize_parameters.use_tree_search = true;
+    Output output = optimize(instance, optimize_parameters);
+
+    SolutionBuilder solution_builder(instance);
+    solution_builder.read((fs::path("data") / "irregular" / "tests" / "bin_packing_with_leftovers_last_bin_post_process_solution.json").string());
+    Solution solution = solution_builder.build();
+    EXPECT_GE(solution.number_of_different_bins(), 2);
+    EXPECT_EQ(!(output.solution_pool.best() < solution), true);
+    EXPECT_EQ(!(solution < output.solution_pool.best()), true);
+}
+
+TEST(Irregular, QualityRules)
+{
+    ItemShape item_shape;
+    item_shape.shape_orig.shape = build_rectangle(0, 5, 0, 5);
+    item_shape.quality_rule = 1;
+
+    InstanceBuilder instance_builder;
+    instance_builder.set_objective(packingsolver::Objective::BinPacking);
+    // Quality rule 0 allows defects of type 1; quality rule 1, of type 0.
+    EXPECT_EQ(instance_builder.add_quality_rule({0, 1}), 0);
+    EXPECT_EQ(instance_builder.add_quality_rule({1, 0}), 1);
+    instance_builder.add_item_type({item_shape});
+    instance_builder.add_bin_type(build_rectangle(0, 10, 0, 10));
+    const Instance instance = instance_builder.build();
+
+    EXPECT_FALSE(instance.can_contain(0, 0));
+    EXPECT_TRUE(instance.can_contain(0, 1));
+    EXPECT_TRUE(instance.can_contain(1, 0));
+    EXPECT_FALSE(instance.can_contain(1, 1));
+    // Out of range defect types and quality rules.
+    EXPECT_FALSE(instance.can_contain(0, 2));
+    EXPECT_FALSE(instance.can_contain(0, -1));
+    EXPECT_FALSE(instance.can_contain(2, 0));
+    EXPECT_FALSE(instance.can_contain(-1, 0));
+}
+
+TEST(Irregular, AddFixedItemInvalidIds)
+{
+    ItemShape item_shape;
+    item_shape.shape_orig.shape = build_rectangle(0, 5, 0, 5);
+
+    InstanceBuilder instance_builder;
+    instance_builder.set_objective(packingsolver::Objective::BinPacking);
+    packingsolver::ItemTypeId item_type_id = instance_builder.add_item_type({item_shape});
+    packingsolver::BinTypeId bin_type_id = instance_builder.add_bin_type(build_rectangle(0, 10, 0, 10));
+    EXPECT_THROW(
+            instance_builder.add_fixed_item(bin_type_id + 1, item_type_id, {0, 0}, 0, false),
+            std::invalid_argument);
+    EXPECT_THROW(
+            instance_builder.add_fixed_item(-1, item_type_id, {0, 0}, 0, false),
+            std::invalid_argument);
+    EXPECT_THROW(
+            instance_builder.add_fixed_item(bin_type_id, -1, {0, 0}, 0, false),
+            std::invalid_argument);
+    // The item type of a fixed item may be added after it, but must exist
+    // when the instance is built.
+    instance_builder.add_fixed_item(bin_type_id, item_type_id + 1, {0, 0}, 0, false);
+    EXPECT_THROW(instance_builder.build(), std::invalid_argument);
+}
+
+TEST(Irregular, ReadUnknownLeftoverMode)
+{
+    // An unrecognized value is rejected instead of being ignored.
+    std::stringstream ss(R"({
+            "objective": "bin-packing-with-leftovers",
+            "parameters": {"leftover_mode": "middle"},
+            "bin_types": [{"type": "rectangle", "width": 100, "height": 50}],
+            "item_types": [{"type": "rectangle", "width": 10, "height": 10}]})");
+    InstanceBuilder instance_builder;
+    EXPECT_THROW(instance_builder.read(ss), std::invalid_argument);
+}
+
+TEST(Irregular, UnlimitedItemCopies)
+{
+    // Item copies -1: as many copies as the total area of the bins allows,
+    // ceil(2 * 100 * 50 / (30 * 30)) = 12.
+    std::stringstream ss(R"({
+            "objective": "knapsack",
+            "bin_types": [{"type": "rectangle", "width": 100, "height": 50, "copies": 2}],
+            "item_types": [{"type": "rectangle", "width": 30, "height": 30, "copies": -1}]})");
+    InstanceBuilder instance_builder;
+    instance_builder.read(ss);
+    const Instance instance = instance_builder.build();
+    EXPECT_EQ(instance.item_type(0).copies, 12);
+}
+
+TEST(Irregular, OpenDimensionXYWithoutAspectRatio)
+{
+    // Not supported yet.
+    std::stringstream ss(R"({
+            "objective": "open-dimension-xy",
+            "bin_types": [{"type": "rectangle", "width": 1000, "height": 1000}],
+            "item_types": [{"type": "rectangle", "width": 20, "height": 10, "copies": 10}]})");
+    InstanceBuilder instance_builder;
+    instance_builder.read(ss);
+    EXPECT_THROW(instance_builder.build(), std::invalid_argument);
+}
+
+TEST(Irregular, OpenDimensionXYMixedShapes)
+{
+    // The initial bin of the sequential feasibility, from the area of the
+    // items, used to be too small for these items, which fill their bounding
+    // boxes well: no solution was found. (The value of the solution found
+    // depends on the platform.)
+    InstanceBuilder instance_builder;
+    instance_builder.read((fs::path("data") / "irregular" / "tests" / "open_dimension_xy_mixed_shapes.json").string());
+    Instance instance = instance_builder.build();
+
+    OptimizeParameters optimize_parameters;
+    optimize_parameters.optimization_mode = packingsolver::OptimizationMode::NotAnytimeSequential;
+    Output output = optimize(instance, optimize_parameters);
+    const Solution& solution = output.solution_pool.best();
+    EXPECT_TRUE(solution.feasible());
+    EXPECT_EQ(solution.number_of_items(), instance.number_of_items());
+}

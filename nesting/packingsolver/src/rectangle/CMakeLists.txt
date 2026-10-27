@@ -1,0 +1,54 @@
+find_package(Threads)
+add_library(PackingSolver_rectangle)
+target_sources(PackingSolver_rectangle PRIVATE
+    instance.cpp
+    instance_builder.cpp
+    solution.cpp
+    solution_builder.cpp
+    instance_flipper.cpp
+    algorithm_formatter.cpp
+    optimize.cpp
+    post_process.cpp
+    tree_search.cpp
+    benders_decomposition.cpp
+    benders_decomposition_contiguity.cpp
+    item_subset_incompatibility.cpp
+    onedimentional_contiguity/milp.cpp
+    onedimentional_contiguity/tree_search.cpp
+    dual_feasible_functions.cpp
+    conservative_scales.cpp
+    bar_relaxation.cpp
+    reduction.cpp
+    block.cpp
+    tree_search_maximal_spaces.cpp)
+target_include_directories(PackingSolver_rectangle PUBLIC
+    ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(PackingSolver_rectangle PRIVATE
+    ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(PackingSolver_rectangle PUBLIC
+    PackingSolver_algorithms
+    PackingSolver_onedimensional
+    TreeSearchSolver::treesearchsolver
+    Shape::shape
+    MathOptSolversCMake::mathopt
+    MultipleChoiceSubsetSumSolver::dynamic_programming_bellman
+    Threads::Threads)
+# Resource limits: the portable RSS reader in
+# include/packingsolver/algorithms/thread_pool.hpp uses GetProcessMemoryInfo on
+# Windows, which lives in psapi.
+if (WIN32)
+    target_link_libraries(PackingSolver_rectangle PUBLIC psapi)
+endif()
+add_library(PackingSolver::rectangle ALIAS PackingSolver_rectangle)
+
+if(PACKINGSOLVER_BUILD_MAIN)
+  add_executable(PackingSolver_rectangle_main)
+  target_sources(PackingSolver_rectangle_main PRIVATE
+      main.cpp)
+  target_link_libraries(PackingSolver_rectangle_main PUBLIC
+      PackingSolver_rectangle
+      Boost::program_options
+      Boost::filesystem)
+  set_target_properties(PackingSolver_rectangle_main PROPERTIES OUTPUT_NAME "packingsolver_rectangle")
+  install(TARGETS PackingSolver_rectangle_main)
+endif()

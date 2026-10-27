@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PackingSolver</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- 'crossorigin': under 'Cross-Origin-Embedder-Policy: require-corp',
+         cross-origin scripts must be loaded in CORS mode. -->
+    <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@4.1.1/plotly.min.js"
+            crossorigin="anonymous"></script>
+    <!-- The zip files of the exported projects. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+            integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script type="module" src="app.js"></script>
+</head>
+<body>
+    <header>
+        <div class="page-title">
+            <h1>PackingSolver</h1>
+            <!-- The documentation, the project, and its discussions to ask questions (icons:
+                 GitHub Octicons, MIT license). In a new tab, not to leave the
+                 page (e.g. during an optimization). -->
+            <nav class="project-links" aria-label="PackingSolver documentation and project">
+                <a class="link-button" href="https://fontanf.github.io/packingsolver/" target="_blank" rel="noopener">
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"></path></svg>
+                    Documentation
+                </a>
+                <a class="link-button" href="https://github.com/fontanf/packingsolver" target="_blank" rel="noopener">
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path></svg>
+                    GitHub
+                </a>
+                <a class="link-button" href="https://github.com/fontanf/packingsolver/discussions" target="_blank" rel="noopener">
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.75 1h8.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 10.25 10H7.061l-2.574 2.573A1.458 1.458 0 0 1 2 11.543V10h-.25A1.75 1.75 0 0 1 0 8.25v-5.5C0 1.784.784 1 1.75 1ZM1.5 2.75v5.5c0 .138.112.25.25.25h1a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h3.5a.25.25 0 0 0 .25-.25v-5.5a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25Zm13 2a.25.25 0 0 0-.25-.25h-.5a.75.75 0 0 1 0-1.5h.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 14.25 12H14v1.543a1.458 1.458 0 0 1-2.487 1.03L9.22 12.28a.749.749 0 0 1 .326-1.275.749.749 0 0 1 .734.215l2.22 2.22v-2.19a.75.75 0 0 1 .75-.75h1a.25.25 0 0 0 .25-.25Z"></path></svg>
+                    Ask a question
+                </a>
+            </nav>
+        </div>
+        <p>
+            Solve cutting and packing problems in your browser.
+            The computation runs on your machine: nothing is sent to a server.
+        </p>
+        <!-- Examples of solutions: clicking one selects its problem type. -->
+        <div id="gallery">
+            <button type="button" data-problem-type="rectangleguillotine">
+                <img src="img/rectangleguillotine.png" alt="Rectangles cut with guillotine cuts" loading="lazy">
+                <strong>Rectangles, guillotine cuts</strong>
+                <span>Two-dimensional rectangles, only edge-to-edge cuts</span>
+            </button>
+            <button type="button" data-problem-type="rectangle">
+                <img src="img/rectangle.png" alt="Rectangles packed in bins" loading="lazy">
+                <strong>Rectangles</strong>
+                <span>Two-dimensional rectangles</span>
+            </button>
+            <button type="button" data-problem-type="box">
+                <img src="img/box.png" alt="Boxes packed in a container" loading="lazy">
+                <strong>Boxes</strong>
+                <span>Three-dimensional boxes</span>
+            </button>
+            <button type="button" data-problem-type="boxstacks">
+                <img src="img/boxstacks.png" alt="Stacks of boxes in a truck" loading="lazy">
+                <strong>Box stacks</strong>
+                <span>Boxes stacked on the floor of a container</span>
+            </button>
+            <button type="button" data-problem-type="onedimensional">
+                <img src="img/onedimensional.png" alt="One-dimensional items cut from bars" loading="lazy">
+                <strong>One-dimensional</strong>
+                <span>Items cut from bars or rolls</span>
+            </button>
+            <button type="button" data-problem-type="irregular">
+                <img src="img/irregular.png" alt="Irregular shapes nested in a sheet" loading="lazy">
+                <strong>Irregular shapes</strong>
+                <span>Polygons and shapes with arcs and holes</span>
+            </button>
+        </div>
+    </header>
+
+    <div id="isolation-error" class="error" hidden>
+        This page needs <code>SharedArrayBuffer</code>, which requires the
+        <code>Cross-Origin-Opener-Policy: same-origin</code> and
+        <code>Cross-Origin-Embedder-Policy: require-corp</code> headers.
+        Serve it with <code>python3 wasm/web/serve.py</code>.
+    </div>
+
+    <div id="layout">
+        <!-- The projects of the selected problem type. -->
+        <aside id="sidebar">
+            <label for="problem-type">Problem type</label>
+            <select id="problem-type">
+                <option value="rectangleguillotine">Rectangles, guillotine cuts</option>
+                <option value="rectangle" selected>Rectangles</option>
+                <option value="box">Boxes</option>
+                <option value="boxstacks">Box stacks</option>
+                <option value="onedimensional">One-dimensional</option>
+                <option value="irregular">Irregular shapes</option>
+            </select>
+            <!-- The examples of the documentation, which it links to
+                 ('?example=<problem type>/<name>'). -->
+            <details id="examples" open>
+                <summary>Examples <span id="examples-count" class="note"></span></summary>
+                <ul id="example-list" class="project-list"></ul>
+            </details>
+            <p id="example-link-error" class="note error-text" role="status"></p>
+            <h2>Projects</h2>
+            <div class="sidebar-buttons">
+                <button type="button" id="new-project">New project</button>
+                <button type="button" id="load-json"
+                        title="An instance of the problem type in the JSON format of PackingSolver (InstanceBuilder.read)">Load a JSON file</button>
+                <input type="file" id="json-file" accept=".json,application/json" hidden>
+            </div>
+            <p id="load-json-error" class="note error-text" role="status"></p>
+            <ul id="project-list" class="project-list"></ul>
+            <p id="no-projects" class="note">No projects yet: create one, or duplicate an example.</p>
+            <p id="storage-note" class="note">The projects are saved in this browser.</p>
+            <!-- A zip file with the projects of the problem type (except the
+                 example), to keep them or to move them to another browser. -->
+            <div class="sidebar-buttons">
+                <button type="button" id="export-projects"
+                        title="Save the projects of this problem type (except the examples) in a zip file, with their instances and their solutions">Export the projects</button>
+                <button type="button" id="import-projects"
+                        title="Add the projects of an exported zip file">Import projects</button>
+                <input type="file" id="import-projects-file" accept=".zip,application/zip" hidden>
+            </div>
+            <p id="import-projects-status" class="note" role="status"></p>
+        </aside>
+
+        <main>
+            <section id="problem">
+                <div id="project-header">
+                    <h2 id="project-name"></h2>
+                    <input type="text" id="project-name-input" aria-label="Name of the project" hidden>
+                    <div class="buttons">
+                        <button type="button" id="rename-project">Rename</button>
+                        <button type="button" id="duplicate-project">Duplicate</button>
+                        <button type="button" id="delete-project">Delete</button>
+                        <!-- For the solvers of PackingSolver: '--input' of the
+                             executables, 'InstanceBuilder.read'. -->
+                        <button type="button" id="download-instance"
+                                title="Download the instance in the JSON format of PackingSolver">Download</button>
+                        <!-- The modifications of the form (Ctrl+Z, Ctrl+Shift+Z). -->
+                        <button type="button" id="undo-button" title="Undo the last modification of the form (Ctrl+Z)">Undo</button>
+                        <button type="button" id="redo-button" title="Redo the modification undone (Ctrl+Shift+Z)">Redo</button>
+                    </div>
+                    <span id="download-instance-error" class="note error-text" role="status"></span>
+                </div>
+                <p id="example-note" class="note" hidden>
+                    This example can't be modified. Duplicate it to modify it.
+                </p>
+
+                <!-- Disabled for the examples, except the "More" buttons (see 'lockForm'). -->
+                <fieldset id="form-fields">
+                    <p id="form-ignored" class="note" role="status" hidden></p>
+                    <!-- The parameters of the instance are added in the same grid. -->
+                    <div class="fields form-group">
+                        <label for="objective">Objective</label>
+                        <select id="objective"></select>
+                        <div id="instance-parameters" hidden></div>
+                    </div>
+                    <div class="form-group">
+                        <h3>Bin types</h3>
+                        <div class="table-scroll"><table id="bin-types" class="types"></table></div>
+                        <button type="button" id="add-bin-type">Add a bin type</button>
+                        <p class="note paste-hint">Tip: paste rows copied from a spreadsheet or a CSV file
+                            (Ctrl+V in a cell of the table; with a header row, the columns are found by their names).</p>
+                    </div>
+                    <div class="form-group">
+                        <h3>Item types</h3>
+                        <div class="table-scroll"><table id="item-types" class="types"></table></div>
+                        <button type="button" id="add-item-type">Add an item type</button>
+                        <span id="file-items" hidden>
+                            <button type="button" id="load-file-items">Load item types from a file (DXF, SVG)</button>
+                            <input type="file" id="file-items-file" accept=".dxf,.svg" hidden>
+                            <span id="file-items-status" class="note" role="status"></span>
+                        </span>
+                        <p class="note paste-hint">Tip: paste rows copied from a spreadsheet or a CSV file
+                            (Ctrl+V in a cell of the table; with a header row, the columns are found by their names).</p>
+                    </div>
+                    <!-- What was pasted in a table. -->
+                    <p id="paste-status" class="note" role="status"></p>
+                    <p id="form-error" class="note error-text" role="status"></p>
+                </fieldset>
+            </section>
+
+            <section id="parameters">
+                <h2>Parameters</h2>
+                <div class="fields">
+                    <label for="optimization-mode">Optimization mode</label>
+                    <select id="optimization-mode">
+                        <option value="anytime" selected>Anytime: improve until the time limit or stopped</option>
+                        <option value="not-anytime">Not anytime</option>
+                        <option value="not-anytime-deterministic">Not anytime, deterministic</option>
+                        <option value="not-anytime-sequential">Not anytime, single-threaded</option>
+                    </select>
+                    <label for="time-limit">Time limit (s)</label>
+                    <input type="number" id="time-limit" min="0" step="any" value="30"
+                           placeholder="none">
+                </div>
+            </section>
+
+            <div id="actions">
+                <button type="button" id="solve" disabled>Solve</button>
+                <button type="button" id="stop" disabled>Stop</button>
+                <span id="status" role="status">Loading the solver...</span>
+            </div>
+
+            <section id="results" hidden>
+                <h2>Solution</h2>
+                <!-- The key numbers of the solution: a tile each. -->
+                <div id="summary" class="stat-tiles"></div>
+                <div class="buttons">
+                    <button type="button" id="download-certificate">Download the certificate (CSV)</button>
+                    <button type="button" id="download-output">Download the output (JSON)</button>
+                </div>
+                <div id="plot"></div>
+                <h3>Progress</h3>
+                <!-- The value of the solution and the bound over time; the
+                     table below has the same values. -->
+                <div id="progress-chart"></div>
+                <details id="progress-details">
+                    <summary>Progress table</summary>
+                    <table id="progress">
+                        <thead>
+                            <tr><th>Time (s)</th><th>Solution</th><th>Bound</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </details>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

@@ -1,0 +1,596 @@
+#include "packingsolver/boxstacks/optimize.hpp"
+
+#include "packingsolver/boxstacks/algorithm_formatter.hpp"
+#include "packingsolver/boxstacks/instance_builder.hpp"
+#include "boxstacks/tree_search.hpp"
+#include "boxstacks/sequential_onedimensional_rectangle.hpp"
+#include "packingsolver/box/instance_builder.hpp"
+#include "box/trivial.hpp"
+#include "box/dual_feasible_functions.hpp"
+#include "packingsolver/onedimensional/instance_builder.hpp"
+#include "packingsolver/onedimensional/optimize.hpp"
+
+#include "algorithms/dichotomic_search.hpp"
+#include "algorithms/sequential_value_correction.hpp"
+
+using namespace packingsolver;
+using namespace packingsolver::boxstacks;
+
+namespace
+{
+
+void optimize_onedimensional_bound(
+        const box::Instance& box_instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    // Relax the 'box' relaxation further down to 1D, keeping only bin/item
+    // volumes: any solution of 'box_instance' is also a solution of this
+    // relaxation (with the same cost), so the bound the onedimensional
+    // solver finds for it is a valid bound here too. Unlike the full
+    // geometric 'box' relaxation, 1D bin packing is solved exactly and
+    // cheaply (dichotomic search), so this stays fast regardless of how
+    // hard the geometric relaxation would be to search.
+    onedimensional::InstanceBuilder onedim_instance_builder;
+    onedim_instance_builder.set_objective(box_instance.objective());
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < box_instance.number_of_bin_types();
+            ++bin_type_id) {
+        const box::BinType& bin_type = box_instance.bin_type(bin_type_id);
+        BinTypeId onedim_bin_type_id = onedim_instance_builder.add_bin_type(bin_type.volume());
+        onedim_instance_builder.set_bin_type_cost(onedim_bin_type_id, bin_type.cost);
+        onedim_instance_builder.set_bin_type_copies(onedim_bin_type_id, bin_type.copies);
+        onedim_instance_builder.set_bin_type_copies_min(onedim_bin_type_id, bin_type.copies_min);
+    }
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < box_instance.number_of_item_types();
+            ++item_type_id) {
+        const box::ItemType& item_type = box_instance.item_type(item_type_id);
+        if (item_type.volume() <= 0)
+            continue;
+        ItemTypeId onedim_item_type_id = onedim_instance_builder.add_item_type(item_type.volume());
+        onedim_instance_builder.set_item_type_profit(onedim_item_type_id, item_type.profit);
+        onedim_instance_builder.set_item_type_copies(onedim_item_type_id, item_type.copies);
+    }
+    onedimensional::Instance onedim_instance = onedim_instance_builder.build();
+
+    onedimensional::OptimizeParameters onedim_parameters;
+    onedim_parameters.verbosity_level = 0;
+    onedim_parameters.timer = parameters.timer;
+    onedim_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    onedim_parameters.optimization_mode
+        = (parameters.optimization_mode == OptimizationMode::NotAnytimeSequential)?
+        OptimizationMode::NotAnytimeSequential:
+        OptimizationMode::NotAnytime;
+    onedim_parameters.linear_programming_solver_name = parameters.linear_programming_solver_name;
+    auto onedim_output = onedimensional::optimize(onedim_instance, onedim_parameters);
+
+    // The one-dimensional instance is a relaxation: if it is infeasible, so
+    // is the instance.
+    if (onedim_output.is_proven_infeasible)
+        algorithm_formatter.update_is_proven_infeasible();
+
+    switch (box_instance.objective()) {
+    case Objective::Knapsack:
+        algorithm_formatter.update_knapsack_bound(onedim_output.knapsack_bound);
+        break;
+    case Objective::BinPacking:
+        algorithm_formatter.update_bin_packing_bound(onedim_output.bin_packing_bound);
+        break;
+    case Objective::VariableSizedBinPacking:
+        algorithm_formatter.update_variable_sized_bin_packing_bound(onedim_output.variable_sized_bin_packing_bound);
+        break;
+    default:
+        break;
+    }
+}
+
+void optimize_box_bound(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    // Relax the instance to a plain 'box' instance: drop the stacking,
+    // axle weight, stack density and unloading constraints, keep only the
+    // dimensions, cost, weight, profit and rotations. Any boxstacks-feasible
+    // solution is also feasible for this relaxation, so a bound computed on
+    // it remains a valid bound for the original instance.
+    box::InstanceBuilder box_instance_builder;
+    box_instance_builder.set_objective(instance.objective());
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance.number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = instance.bin_type(bin_type_id);
+        BinTypeId box_bin_type_id = box_instance_builder.add_bin_type(
+                bin_type.box.x,
+                bin_type.box.y,
+                bin_type.box.z);
+        box_instance_builder.set_bin_type_cost(box_bin_type_id, bin_type.cost);
+        box_instance_builder.set_bin_type_copies(box_bin_type_id, bin_type.copies);
+        box_instance_builder.set_bin_type_copies_min(box_bin_type_id, bin_type.copies_min);
+        box_instance_builder.set_bin_type_maximum_weight(box_bin_type_id, bin_type.maximum_weight);
+    }
+    // Propagate 'instance's own weight tolerance rather than letting it be
+    // recomputed from this relaxation's bin types alone: axle weight limits
+    // (dropped here) can be what actually drives 'instance.weight_tolerance()'
+    // when 'bin_type.maximum_weight' itself is left infinite, in which case
+    // self-computing from only the (infinite) 'maximum_weight' above would
+    // wrongly collapse to the tiny absolute fallback tolerance.
+    box_instance_builder.set_weight_tolerance(instance.weight_tolerance());
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance.number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance.item_type(item_type_id);
+        // Items with a positive nesting height take up less vertical space
+        // than their full height once stacked, so that reduced height is
+        // used instead (matches how effective item heights are computed
+        // throughout boxstacks, e.g. in tree_search.cpp).
+        Length item_z = item_type.box.z - std::max(item_type.nesting_height, (Length)0);
+        ItemTypeId box_item_type_id = box_instance_builder.add_item_type(
+                item_type.box.x,
+                item_type.box.y,
+                item_z);
+        box_instance_builder.set_item_type_profit(box_item_type_id, item_type.profit);
+        box_instance_builder.set_item_type_copies(box_item_type_id, item_type.copies);
+        box_instance_builder.set_item_type_weight(box_item_type_id, item_type.weight);
+        for (Rotation rotation: item_type.rotations) {
+            box_instance_builder.add_item_type_rotation(
+                    box_item_type_id,
+                    static_cast<box::Rotation>(rotation));
+        }
+    }
+    box::Instance box_instance = box_instance_builder.build();
+
+    // Trivial (closed-form, no search) bound on the 'box' relaxation.
+    box::TrivialBoundsParameters trivial_bounds_parameters;
+    trivial_bounds_parameters.verbosity_level = 0;
+    box::TrivialBoundsOutput trivial_bounds_output = box::trivial_bounds(
+            box_instance,
+            trivial_bounds_parameters);
+    switch (instance.objective()) {
+    case Objective::Knapsack:
+        algorithm_formatter.update_knapsack_bound(trivial_bounds_output.knapsack_bound);
+        break;
+    case Objective::BinPacking:
+        algorithm_formatter.update_bin_packing_bound(trivial_bounds_output.bin_packing_bound);
+        break;
+    default:
+        break;
+    }
+
+    // 1D relaxation bound: solved exactly, so tighter than the trivial bound
+    // above whenever bin/item volumes don't fill up evenly, and still cheap.
+    optimize_onedimensional_bound(box_instance, parameters, algorithm_formatter);
+
+    // Dual feasible functions bound: a fast (polynomial-time), no-search
+    // geometric bound, tighter than the volume-only bounds above since it
+    // accounts for the shapes not tiling the bin perfectly. Only valid for a
+    // single bin type, and only computed by default up to a certain instance
+    // size since it is cubic in the number of item types.
+    if ((instance.objective() == Objective::Knapsack
+                || instance.objective() == Objective::BinPacking)
+            && box_instance.number_of_bin_types() == 1
+            && box_instance.number_of_items() <= 50) {
+        box::DualFeasibleFunctionsParameters dff_parameters;
+        dff_parameters.verbosity_level = 0;
+        box::DualFeasibleFunctionsOutput dff_output = box::dual_feasible_functions(
+                box_instance,
+                dff_parameters);
+        switch (instance.objective()) {
+        case Objective::Knapsack:
+            algorithm_formatter.update_knapsack_bound(dff_output.knapsack_bound);
+            break;
+        case Objective::BinPacking:
+            algorithm_formatter.update_bin_packing_bound(dff_output.bin_packing_bound);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+void optimize_sequential_onedimensional_rectangle(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter,
+        boxstacks::Output& output)
+{
+    auto sor_begin = std::chrono::steady_clock::now();
+
+    SequentialOneDimensionalRectangleParameters sor_parameters;
+    sor_parameters.verbosity_level = 0;
+    sor_parameters.logger = parameters.get_logger();
+    sor_parameters.timer = parameters.timer;
+    sor_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    sor_parameters.optimization_mode = parameters.optimization_mode;
+    sor_parameters.anytime_rectangle_initial_queue_size
+        = parameters.anytime_sequential_onedimensional_rectangle_rectangle_initial_queue_size;
+    sor_parameters.anytime_tree_search_initial_queue_size
+        = parameters.anytime_tree_search_initial_queue_size;
+    sor_parameters.not_anytime_rectangle_queue_size
+        = parameters.not_anytime_sequential_onedimensional_rectangle_rectangle_tree_search_queue_size;
+    sor_parameters.not_anytime_tree_search_queue_size
+        = parameters.not_anytime_tree_search_queue_size;
+    sor_parameters.tree_search_guides = parameters.tree_search_guides;
+    sor_parameters.onedimensional_parameters.linear_programming_solver_name = parameters.linear_programming_solver_name;
+    sor_parameters.new_solution_callback = [&algorithm_formatter](
+            const boxstacks::Output& sor_output)
+        {
+            algorithm_formatter.update_solution(
+                    sor_output.solution_pool.best(),
+                    "SOR " + sor_output.solution_pool.best_label());
+            algorithm_formatter.update_bounds(sor_output);
+        };
+    auto sor_output = sequential_onedimensional_rectangle(instance, sor_parameters);
+
+    auto sor_end = std::chrono::steady_clock::now();
+    output.sequential_onedimensional_rectangle_number_of_items = std::max(
+            output.sequential_onedimensional_rectangle_number_of_items,
+            sor_output.maximum_number_of_items);
+    output.sequential_onedimensional_rectangle_profit = sor_output.solution_pool.best().profit();
+    output.sequential_onedimensional_rectangle_time += std::chrono::duration_cast<
+        std::chrono::duration<double>>(sor_end - sor_begin).count()
+        - sor_output.tree_search_time;
+    output.sequential_onedimensional_rectangle_onedimensional_time += sor_output.onedimensional_time;
+    output.sequential_onedimensional_rectangle_rectangle_time += sor_output.rectangle_time;
+    output.number_of_sequential_onedimensional_rectangle_calls += sor_output.number_of_passes;
+    if (!sor_output.solution_pool.best().full())
+        output.sequential_onedimensional_rectangle_failed = sor_output.failed;
+    if (!sor_output.first_pass_failed)
+        output.number_of_sequential_onedimensional_rectangle_good++;
+    if (sor_output.first_pass_full)
+        output.number_of_sequential_onedimensional_rectangle_perfect++;
+    output.tree_search_time += sor_output.tree_search_time;
+    output.number_of_tree_search_calls += sor_output.number_of_tree_search_calls;
+    output.number_of_tree_search_perfect += sor_output.number_of_tree_search_perfect;
+    output.number_of_tree_search_better += sor_output.number_of_tree_search_better;
+}
+
+// Multi-bin 'BinPacking' fallback for when the sequential value correction
+// algorithm below takes too long to reach a first feasible solution: solves
+// a sequence of single-bin knapsack subproblems (one bin filled at a time,
+// like sequential value correction, but with a single, unadjusted pass -
+// see 'SequentialValueCorrectionParameters::maximum_number_of_iterations'
+// and 'initial_profit_exponent' below) at a queue size that grows in
+// 'Anytime' mode, the same shape as every other problem type's own
+// 'optimize_sequential_single_knapsack'.
+void optimize_sequential_single_knapsack(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter,
+        boxstacks::Output& output)
+{
+    for (Counter iteration = 0, growth_factor = 1;; ++iteration) {
+        // Each subproblem call recurses into a single-bin 'optimize()',
+        // which goes through 'optimize_sequential_onedimensional_rectangle()'
+        // - so, like that function's own loop, this grows both the
+        // subproblem's rectangle and tree search queue sizes together, from
+        // their own 'anytime_*_initial_queue_size', rather than from a
+        // shared '1'.
+        NodeId rectangle_queue_size
+            = parameters.anytime_sequential_onedimensional_rectangle_rectangle_initial_queue_size
+            * growth_factor;
+        NodeId tree_search_queue_size
+            = parameters.anytime_tree_search_initial_queue_size
+            * growth_factor;
+        if (parameters.optimization_mode != OptimizationMode::Anytime) {
+            rectangle_queue_size = parameters
+                .not_anytime_sequential_single_knapsack_subproblem_rectangle_tree_search_queue_size;
+            tree_search_queue_size = parameters
+                .not_anytime_sequential_single_knapsack_subproblem_tree_search_queue_size;
+        }
+
+        SequentialValueCorrectionFunction<Instance, Solution> kp_solve
+            = [&algorithm_formatter, &parameters, &output, &rectangle_queue_size, &tree_search_queue_size](
+                    const Instance& kp_instance)
+            {
+                OptimizeParameters kp_parameters;
+                kp_parameters.verbosity_level = 0;
+                kp_parameters.timer = parameters.timer;
+                kp_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+                kp_parameters.optimization_mode
+                    = (parameters.optimization_mode == OptimizationMode::NotAnytimeSequential)?
+                    OptimizationMode::NotAnytimeSequential:
+                    OptimizationMode::NotAnytimeDeterministic;
+                kp_parameters.not_anytime_sequential_onedimensional_rectangle_rectangle_tree_search_queue_size
+                    = rectangle_queue_size;
+                kp_parameters.not_anytime_tree_search_queue_size = tree_search_queue_size;
+                kp_parameters.linear_programming_solver_name = parameters.linear_programming_solver_name;
+                auto kp_output = optimize(kp_instance, kp_parameters);
+
+                // Update output.
+                output.sequential_onedimensional_rectangle_time += kp_output.sequential_onedimensional_rectangle_time;
+                output.sequential_onedimensional_rectangle_rectangle_time += kp_output.sequential_onedimensional_rectangle_rectangle_time;
+                output.sequential_onedimensional_rectangle_onedimensional_time += kp_output.sequential_onedimensional_rectangle_onedimensional_time;
+                output.tree_search_time += kp_output.tree_search_time;
+                output.number_of_sequential_onedimensional_rectangle_calls += kp_output.number_of_sequential_onedimensional_rectangle_calls;
+                output.number_of_sequential_onedimensional_rectangle_perfect += kp_output.number_of_sequential_onedimensional_rectangle_perfect;
+                output.number_of_sequential_onedimensional_rectangle_good += kp_output.number_of_sequential_onedimensional_rectangle_good;
+                output.number_of_tree_search_calls += kp_output.number_of_tree_search_calls;
+                output.number_of_tree_search_perfect += kp_output.number_of_tree_search_perfect;
+                output.number_of_tree_search_better += kp_output.number_of_tree_search_better;
+                return kp_output.solution_pool;
+            };
+        SequentialValueCorrectionParameters<Instance, Solution, boxstacks::Output> svc_parameters;
+        svc_parameters.verbosity_level = 0;
+        svc_parameters.timer = parameters.timer;
+        svc_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+        svc_parameters.maximum_number_of_iterations = 1;
+        // No later iteration to adjust profits away from this initial
+        // value - see 'SequentialValueCorrectionParameters::
+        // initial_profit_exponent''s own doc comment.
+        svc_parameters.initial_profit_exponent = 1.0;
+        svc_parameters.new_solution_callback = [&algorithm_formatter, iteration](
+                const boxstacks::Output& ps_output)
+            {
+                const SequentialValueCorrectionOutput<Instance, Solution, boxstacks::Output>& pssvc_output
+                    = static_cast<const SequentialValueCorrectionOutput<Instance, Solution, boxstacks::Output>&>(ps_output);
+                std::stringstream ss;
+                ss << "SSK it " << iteration;
+                algorithm_formatter.update_solution(pssvc_output.solution_pool.best(), ss.str());
+            };
+        sequential_value_correction<Instance, InstanceBuilder, Solution, AlgorithmFormatter, boxstacks::Output>(
+                instance, kp_solve, svc_parameters);
+
+        // Check end.
+        if (algorithm_formatter.end_boolean())
+            break;
+        if (parameters.timer.needs_to_end())
+            break;
+        if (parameters.optimization_mode != OptimizationMode::Anytime)
+            break;
+
+        growth_factor = std::max(
+                growth_factor + 1,
+                (Counter)(growth_factor * 2));
+    }
+}
+
+void optimize_sequential_value_correction(
+        const Instance& instance,
+        const OptimizeParameters& parameters,
+        AlgorithmFormatter& algorithm_formatter,
+        boxstacks::Output& output)
+{
+    SequentialValueCorrectionFunction<Instance, Solution> kp_solve
+        = [&algorithm_formatter, &parameters, &output](const Instance& kp_instance)
+        {
+            OptimizeParameters kp_parameters;
+            kp_parameters.verbosity_level = 0;
+            kp_parameters.timer = parameters.timer;
+            kp_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+            kp_parameters.optimization_mode
+                = (parameters.optimization_mode == OptimizationMode::NotAnytimeSequential)?
+                OptimizationMode::NotAnytimeSequential:
+                OptimizationMode::NotAnytimeDeterministic;
+            kp_parameters.linear_programming_solver_name = parameters.linear_programming_solver_name;
+            kp_parameters.not_anytime_tree_search_queue_size
+                = parameters.sequential_value_correction_subproblem_tree_search_queue_size;
+            auto kp_output = optimize(kp_instance, kp_parameters);
+
+            // Update output.
+            output.sequential_onedimensional_rectangle_time += kp_output.sequential_onedimensional_rectangle_time;
+            output.sequential_onedimensional_rectangle_rectangle_time += kp_output.sequential_onedimensional_rectangle_rectangle_time;
+            output.sequential_onedimensional_rectangle_onedimensional_time += kp_output.sequential_onedimensional_rectangle_onedimensional_time;
+            output.tree_search_time += kp_output.tree_search_time;
+            output.number_of_sequential_onedimensional_rectangle_calls += kp_output.number_of_sequential_onedimensional_rectangle_calls;
+            output.number_of_sequential_onedimensional_rectangle_perfect += kp_output.number_of_sequential_onedimensional_rectangle_perfect;
+            output.number_of_sequential_onedimensional_rectangle_good += kp_output.number_of_sequential_onedimensional_rectangle_good;
+            output.number_of_tree_search_calls += kp_output.number_of_tree_search_calls;
+            output.number_of_tree_search_perfect += kp_output.number_of_tree_search_perfect;
+            output.number_of_tree_search_better += kp_output.number_of_tree_search_better;
+            return kp_output.solution_pool;
+        };
+    SequentialValueCorrectionParameters<Instance, Solution, boxstacks::Output> svc_parameters;
+    svc_parameters.verbosity_level = 0;
+    svc_parameters.timer = parameters.timer;
+    svc_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+    if (parameters.optimization_mode != OptimizationMode::Anytime) {
+        svc_parameters.maximum_number_of_iterations
+            = parameters.not_anytime_sequential_value_correction_number_of_iterations;
+    }
+    svc_parameters.new_solution_callback = [&algorithm_formatter](
+            const boxstacks::Output& ps_output)
+        {
+            const SequentialValueCorrectionOutput<Instance, Solution, boxstacks::Output>& pssvc_output
+                = static_cast<const SequentialValueCorrectionOutput<Instance, Solution, boxstacks::Output>&>(ps_output);
+            std::stringstream ss;
+            ss << "SVC it " << pssvc_output.number_of_iterations;
+            algorithm_formatter.update_solution(pssvc_output.solution_pool.best(), ss.str());
+        };
+    sequential_value_correction<Instance, InstanceBuilder, Solution, AlgorithmFormatter, boxstacks::Output>(
+            instance, kp_solve, svc_parameters);
+}
+
+/**
+ * Prove the instance infeasible if an item type doesn't fit in any bin type:
+ * with every objective but 'Knapsack', every item must be packed.
+ *
+ * Only uses 'Instance::fits_some_bin', which is a cheap necessary condition.
+ */
+void optimize_item_types_fit(
+        const Instance& instance,
+        AlgorithmFormatter& algorithm_formatter)
+{
+    if (instance.objective() == Objective::Knapsack)
+        return;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance.number_of_item_types();
+            ++item_type_id) {
+        if (instance.item_type(item_type_id).copies == 0)
+            continue;
+        if (!instance.fits_some_bin(item_type_id)) {
+            algorithm_formatter.update_is_proven_infeasible();
+            return;
+        }
+    }
+}
+
+}
+
+packingsolver::boxstacks::Output packingsolver::boxstacks::optimize(
+        const Instance& instance,
+        const OptimizeParameters& parameters)
+{
+    Output output(instance);
+    AlgorithmFormatter algorithm_formatter(instance, parameters, output);
+    algorithm_formatter.start();
+    algorithm_formatter.print_header();
+
+    optimize_item_types_fit(instance, algorithm_formatter);
+    if (output.is_proven_infeasible) {
+        algorithm_formatter.end();
+        return output;
+    }
+
+    // Instance reduction (see 'Reduction'): applied once, upfront, wrapping
+    // the whole dispatch logic below uniformly for every algorithm -
+    // mirrors 'rectangle::optimize''s own wrapping of its own 'Reduction'.
+    // 'reduced_parameters.reduction_parameters.reduce' is set to 'false'
+    // below to avoid re-running the reduction recursively on the
+    // already-reduced instance.
+    if (parameters.reduction_parameters.reduce) {
+        ReductionParameters reduction_parameters = parameters.reduction_parameters;
+        reduction_parameters.timer = parameters.timer;
+        Reduction reduction(instance, reduction_parameters);
+
+        // Forwards a solution/bound found for the reduced instance to the
+        // original 'algorithm_formatter', in original-instance coordinates.
+        // Neither reduction operation this class performs can ever hide an
+        // item in a dedicated bin or prove the instance infeasible by
+        // itself (unlike 'rectangle::Reduction'), so no bound needs any
+        // reduction-specific translation: 'reduced_output's bounds already
+        // are the original instance's bounds directly.
+        auto report_reduced_output = [&reduction, &algorithm_formatter](
+                const boxstacks::Output& reduced_output)
+            {
+                algorithm_formatter.update_solution(
+                        reduction.unreduce_solution(reduced_output.solution_pool.best()),
+                        reduced_output.solution_pool.best_label());
+                algorithm_formatter.update_bounds(reduced_output);
+            };
+
+        OptimizeParameters reduced_parameters = parameters;
+        reduced_parameters.verbosity_level = 0;
+        reduced_parameters.reduction_parameters.reduce = false;
+        // Forward every solution/bound the recursive solve finds to the
+        // original 'algorithm_formatter' as soon as it is found, rather
+        // than only once at the very end.
+        reduced_parameters.new_solution_callback = report_reduced_output;
+        Output reduced_output = optimize(reduction.instance(), reduced_parameters);
+        // Also report the final result explicitly: some sub-solves never
+        // call 'new_solution_callback' at all - this guarantees the answer
+        // is still reported once regardless. Harmless to call again since
+        // 'update_solution'/'update_bounds' are themselves no-ops for
+        // anything that doesn't improve on what is already recorded.
+        report_reduced_output(reduced_output);
+
+        // Copy the statistics of the algorithms, which all ran on the
+        // reduced instance.
+        output.sequential_onedimensional_rectangle_number_of_items
+            = reduced_output.sequential_onedimensional_rectangle_number_of_items;
+        output.sequential_onedimensional_rectangle_profit
+            = reduced_output.sequential_onedimensional_rectangle_profit;
+        output.sequential_onedimensional_rectangle_time
+            = reduced_output.sequential_onedimensional_rectangle_time;
+        output.sequential_onedimensional_rectangle_onedimensional_time
+            = reduced_output.sequential_onedimensional_rectangle_onedimensional_time;
+        output.sequential_onedimensional_rectangle_rectangle_time
+            = reduced_output.sequential_onedimensional_rectangle_rectangle_time;
+        output.sequential_onedimensional_rectangle_failed
+            = reduced_output.sequential_onedimensional_rectangle_failed;
+        output.tree_search_time = reduced_output.tree_search_time;
+        output.number_of_sequential_onedimensional_rectangle_calls
+            = reduced_output.number_of_sequential_onedimensional_rectangle_calls;
+        output.number_of_sequential_onedimensional_rectangle_perfect
+            = reduced_output.number_of_sequential_onedimensional_rectangle_perfect;
+        output.number_of_sequential_onedimensional_rectangle_good
+            = reduced_output.number_of_sequential_onedimensional_rectangle_good;
+        output.number_of_tree_search_calls = reduced_output.number_of_tree_search_calls;
+        output.number_of_tree_search_perfect = reduced_output.number_of_tree_search_perfect;
+        output.number_of_tree_search_better = reduced_output.number_of_tree_search_better;
+
+        algorithm_formatter.end();
+        return output;
+    }
+
+    if (parameters.use_box_bounds
+            && (instance.objective() == Objective::Knapsack
+                || instance.objective() == Objective::BinPacking
+                || instance.objective() == Objective::BinPackingWithLeftovers
+                || instance.objective() == Objective::VariableSizedBinPacking
+                || instance.objective() == Objective::Feasibility)) {
+        optimize_box_bound(instance, parameters, algorithm_formatter);
+    }
+
+    if (algorithm_formatter.end_boolean()) {
+        algorithm_formatter.end();
+        return output;
+    }
+    if (parameters.timer.needs_to_end()) {
+        algorithm_formatter.end();
+        return output;
+    }
+
+    if (instance.number_of_bins() == 1) {
+
+        optimize_sequential_onedimensional_rectangle(
+                instance,
+                parameters,
+                algorithm_formatter,
+                output);
+
+    } else {
+
+        // Select algorithms to run. Only automated for 'BinPacking' for now
+        // - variable-sized bin packing and multi-bin knapsack keep their
+        // previous, sequential-value-correction-only behavior.
+        bool use_sequential_single_knapsack = parameters.use_sequential_single_knapsack;
+        bool use_sequential_value_correction = parameters.use_sequential_value_correction;
+        if (instance.objective() != Objective::BinPacking) {
+            use_sequential_value_correction = true;
+        } else if (!use_sequential_single_knapsack
+                && !use_sequential_value_correction) {
+            // Same criterion as every other problem type's own automatic
+            // selection (e.g. 'box::optimize()'): an instance with "many"
+            // copies of "few" item types relative to how many items fit per
+            // bin looks knapsack-heavy, so prefer filling one bin at a time
+            // (sequential single knapsack) once bins are additionally
+            // "large" enough for that per-bin search to be worthwhile;
+            // otherwise sequential value correction's incremental profit
+            // adjustment is cheaper per iteration.
+            ItemPos mean_number_of_items_in_bins
+                = largest_bin_space(instance) / mean_item_space(instance);
+            Counter threshold
+                = (mean_item_type_copies(instance)
+                        > parameters.many_item_type_copies_factor
+                        * mean_number_of_items_in_bins)?
+                parameters.many_items_in_bins_threshold:
+                parameters.many_items_in_bins_threshold_2;
+            if (mean_number_of_items_in_bins > threshold) {
+                use_sequential_single_knapsack = true;
+            } else {
+                use_sequential_value_correction = true;
+            }
+        }
+
+        if (use_sequential_single_knapsack) {
+            optimize_sequential_single_knapsack(
+                    instance,
+                    parameters,
+                    algorithm_formatter,
+                    output);
+        }
+        if (use_sequential_value_correction) {
+            optimize_sequential_value_correction(
+                    instance,
+                    parameters,
+                    algorithm_formatter,
+                    output);
+        }
+
+    }
+
+    algorithm_formatter.end();
+    return output;
+}

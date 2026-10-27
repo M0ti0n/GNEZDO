@@ -1,0 +1,859 @@
+#pragma once
+
+#define _USE_MATH_DEFINES
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#include "optimizationtools/utils/common.hpp"
+#include "optimizationtools/utils/output.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <set>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <iomanip>
+#include <cmath>
+
+namespace packingsolver
+{
+
+const double PSTOL = 1 + 1e-9;
+
+using Seed = int64_t;
+using Counter = int64_t;
+using Megabytes = int64_t;
+
+using ItemTypeId = int32_t;
+using ItemPos = int32_t;
+using GroupId = int32_t;
+using StackabilityId = int64_t;
+using StackId = int32_t;
+using Length = int64_t;
+using Area = int64_t;
+using Volume = int64_t;
+using Weight = double;
+using Angle = double;
+using AnglePos = int64_t;
+using Profit = double;
+using CuttingCost = int64_t;
+using BinTypeId = int32_t;
+using BinPos = int64_t;
+using DefectId = int32_t;
+using DefectTypeId = int64_t;
+using QualityRule = int64_t;
+using EligibilityId = int64_t;
+using ResourceId = int64_t;
+using PrecedenceId = int64_t;
+
+using NodeId = int64_t;
+using Depth = int16_t;
+using GuideId = int16_t;
+
+inline bool strictly_lesser(double v1, double v2)
+{
+    return v2 - v1 > 1e-6;
+}
+
+inline bool strictly_greater(double v1, double v2)
+{
+    return v1 - v2 > 1e-6;
+}
+
+inline bool equal(double v1, double v2)
+{
+    return std::abs(v1 - v2) <= 1e-6;
+}
+
+/**
+ * Relative-gap comparisons for profit and cost.
+ *
+ * strictly_greater/strictly_lesser/equal above use an absolute 1e-6
+ * tolerance, which is only meaningful for values whose magnitude is itself
+ * close to 1. Profit and cost can be sums over thousands of items (e.g. a
+ * knapsack solution's total profit in the tens of millions): summing the
+ * same complete set of items in a different order between two otherwise
+ * equally good solutions can shift the double-precision result by far more
+ * than 1e-6 in absolute terms while being relatively identical, which an
+ * absolute-tolerance (or worse, exact) comparison would wrongly treat as
+ * one solution being strictly better than the other.
+ *
+ * The *_profit functions compare a maximized quantity via
+ * (v1 - v2) / max(v1, v2); the *_cost functions compare a minimized
+ * quantity via (v1 - v2) / min(v1, v2). Falls back to a plain (absolute)
+ * comparison when the relevant denominator is 0 or not finite (relative gap
+ * is undefined there, and would otherwise silently produce a NaN from an
+ * inf/inf division -- since a NaN compares false against +/-1e-6 either
+ * way, that NaN would make an unset bound, which defaults to
+ * +infinity/-infinity, compare as "equal" to any finite value instead of
+ * "not yet meaningfully comparable").
+ */
+inline bool strictly_greater_profit(double v1, double v2)
+{
+    if (v1 == v2)
+        return false;
+    double denominator = std::max(v1, v2);
+    return (denominator != 0.0 && std::isfinite(denominator))?
+        (v1 - v2) / denominator > 1e-6:
+        v1 - v2 > 1e-6;
+}
+
+inline bool strictly_lesser_profit(double v1, double v2)
+{
+    return strictly_greater_profit(v2, v1);
+}
+
+inline bool equal_profit(double v1, double v2)
+{
+    return !strictly_greater_profit(v1, v2) && !strictly_greater_profit(v2, v1);
+}
+
+inline bool strictly_greater_cost(double v1, double v2)
+{
+    if (v1 == v2)
+        return false;
+    double denominator = std::min(v1, v2);
+    return (denominator != 0.0 && std::isfinite(denominator))?
+        (v1 - v2) / denominator > 1e-6:
+        v1 - v2 > 1e-6;
+}
+
+inline bool strictly_lesser_cost(double v1, double v2)
+{
+    return strictly_greater_cost(v2, v1);
+}
+
+inline bool equal_cost(double v1, double v2)
+{
+    return !strictly_greater_cost(v1, v2) && !strictly_greater_cost(v2, v1);
+}
+
+/**
+ * Absolute-tolerance comparisons for weight.
+ *
+ * Unlike '*_profit' / '*_cost' above, a weight comparison is typically
+ * against a fixed bin capacity (or 0, e.g. a remaining capacity going
+ * negative), not two computed solution values against each other - so there
+ * is no meaningful "larger/smaller of the two" to self-derive a relative
+ * gap's denominator from the way '*_profit' / '*_cost' do (a near-zero
+ * remaining capacity would make that denominator spuriously tiny or zero,
+ * rejecting any tolerance right when it is needed most). Instead,
+ * 'weight_tolerance' is passed in explicitly - see 'Parameters::weight_tolerance'
+ * (in each problem type that has a bin weight concept): an absolute tolerance
+ * precomputed once by 'InstanceBuilder::build()' as 1e-9 relative to the
+ * highest non-infinite maximum weight among the instance's bin types (or a
+ * plain 1e-9 if there is none), so the same tolerance applies consistently
+ * across every bin/resource comparison in a solve, rather than varying with
+ * whichever specific capacity happens to be checked or being recomputed (and
+ * potentially drifting) for every sub-instance of a decomposition.
+ */
+inline bool strictly_greater_weight(double v1, double v2, double weight_tolerance)
+{
+    return v1 - v2 > weight_tolerance;
+}
+
+inline bool strictly_lesser_weight(double v1, double v2, double weight_tolerance)
+{
+    return strictly_greater_weight(v2, v1, weight_tolerance);
+}
+
+inline bool equal_weight(double v1, double v2, double weight_tolerance)
+{
+    return !strictly_greater_weight(v1, v2, weight_tolerance)
+        && !strictly_greater_weight(v2, v1, weight_tolerance);
+}
+
+/**
+ * Largest power of two lesser than or equal to 'value'.
+ *
+ * The helpers are used to compute scaling factors: there is no power of two
+ * lesser than or equal to a value lower than or equal to 0, so they return
+ * 1, a neutral factor, instead (the loops below would never end, or end
+ * with 0).
+ */
+template<typename T>
+double largest_power_of_two_lesser_or_equal(T value)
+{
+    if (!(value > 0))
+        return 1;
+    double res = 1;
+    if (res > value) {
+        while (res > value)
+            res /= 2;
+    } else {
+        while (res * 2 <= value)
+            res *= 2;
+    }
+    return res;
+}
+
+/**
+ * Smallest power of two greater than or equal to 'value'; 1 if 'value' is
+ * lower than or equal to 0 (see 'largest_power_of_two_lesser_or_equal').
+ */
+template<typename T>
+double smallest_power_of_two_greater_or_equal(T value)
+{
+    if (!(value > 0))
+        return 1;
+    double res = 1;
+    if (res < value) {
+        while (res < value)
+            res *= 2;
+    } else {
+        while (res / 2 >= value)
+            res /= 2;
+    }
+    return res;
+}
+
+
+enum class OptimizationMode
+{
+    Anytime,
+    NotAnytime,
+    NotAnytimeDeterministic,
+    NotAnytimeSequential,
+    // AnytimeSequential doesn't exist.
+};
+
+std::istream& operator>>(
+        std::istream& in,
+        OptimizationMode& optimization_mode);
+
+std::ostream& operator<<(
+        std::ostream& os,
+        OptimizationMode optimization_mode);
+
+
+enum class ProblemType
+{
+    RectangleGuillotine,
+    Rectangle,
+    OneDimensional,
+    Box,
+    BoxStacks,
+    Irregular,
+};
+
+std::istream& operator>>(
+        std::istream& in,
+        ProblemType& problem_type);
+
+std::ostream& operator<<(
+        std::ostream& os,
+        ProblemType problem_type);
+
+
+/**
+ * File format for an 'Instance::write'/'InstanceBuilder::read' pair.
+ *
+ * 'Csv' is a set of domain-specific CSV files (items, bins, [defects],
+ * parameters); it cannot represent every instance feature (e.g. resources,
+ * eligibility, item type precedences depending on the domain), so 'write'
+ * throws if the instance has any feature the CSV format can't represent.
+ *
+ * 'Json' is a single JSON file that can represent every feature of the
+ * instance.
+ */
+enum class InstanceFormat
+{
+    Csv,
+    Json,
+};
+
+
+enum class Objective
+{
+    BinPacking,
+    BinPackingWithLeftovers,
+    OpenDimensionX,
+    OpenDimensionY,
+    OpenDimensionZ,
+    OpenDimensionXY,
+    Knapsack,
+    VariableSizedBinPacking,
+    SequentialOneDimensionalRectangleSubproblem,
+    Feasibility,
+    BinPackingCuttingCost,
+};
+
+std::istream& operator>>(
+        std::istream& in,
+        Objective& objective);
+
+std::ostream& operator<<(
+        std::ostream& os,
+        Objective objective);
+
+/**
+ * Read the value of an enum (with its 'operator>>') from the string 'value'
+ * of the field 'name' of an instance file.
+ *
+ * Throw if the value is not recognized.
+ */
+template <typename Enum>
+Enum read_enum(
+        const std::string& value,
+        const std::string& name)
+{
+    std::stringstream ss(value);
+    Enum e;
+    ss >> e;
+    if (ss.fail()) {
+        throw std::invalid_argument(
+                "unrecognized \"" + name + "\" value \"" + value + "\".");
+    }
+    return e;
+}
+
+
+struct AbstractBinType
+{
+    BinTypeId id;
+    Profit cost;
+    BinPos copies;
+};
+
+/**
+ * A resource of a bin type: a capacity, together with each item type's
+ * consumption of it. Shared across every problem type so that a resource
+ * (and, in particular, a combinatorial cut expressed as one - see below)
+ * means the same thing everywhere; see e.g. 'onedimensional::BinType::resources'
+ * / 'InstanceBuilder::add_bin_type_resource' /
+ * 'InstanceBuilder::add_resource_consumption' for one domain's wiring of it.
+ * Support for actually consuming a resource (let alone a 'penalize' one)
+ * varies by domain and by algorithm within a domain - check the domain's own
+ * 'BinType'/'Solution'/algorithms before assuming it is handled everywhere.
+ *
+ * By default ('penalize == false'), the capacity is a hard constraint: a bin
+ * whose consumption exceeds it is infeasible. This is what lets
+ * combinatorial cuts (e.g. the rectangle Benders decomposition's no-good
+ * cuts and pairwise-incompatibility cuts) be expressed exactly as
+ * resources, via 'item_consumptions''s per-copy schedule - see its own doc
+ * comment.
+ *
+ * When 'penalize' is 'true' instead, exceeding the capacity does not make
+ * the bin infeasible: 'penalty' is subtracted from the solution's profit the
+ * first time (per bin) consumption crosses 'capacity', matching a
+ * subset-row-cut-style soft penalty (e.g. a triplet cut: packing at least
+ * two of three given item types together in the same bin costs 'penalty').
+ */
+struct Resource
+{
+    /** Capacity of the resource. */
+    double capacity = 0.0;
+
+    /**
+     * Resource consumption schedule of each item type that has one - each
+     * entry's 'std::vector<double>' gives the consumption charged for the
+     * 'copy'-th (0-indexed) unit of that item type packed in a bin with
+     * this resource. A 'copy' past the end of the schedule repeats its
+     * last entry (so a length-1 schedule means "the same consumption
+     * regardless of how many copies are already packed" - the common
+     * case); an 'item_type_id' absent from this list implicitly consumes 0
+     * regardless of 'copy'.
+     *
+     * A non-uniform schedule lets a resource express "at least N copies of
+     * this item type" as a plain capacity/consumption row: an all-ones
+     * schedule of length N followed by a single trailing 0 makes the total
+     * consumption equal to 'min(count, N)', which only keeps growing while
+     * count < N.
+     *
+     * Sparse rather than a plain [item_type_id]-indexed vector because a
+     * resource generated as a combinatorial cut (see e.g. the rectangle
+     * Benders decomposition's no-good and triplet-incompatibility cuts)
+     * typically only involves a handful of item types, yet every consumer
+     * that used to index a dense vector by 'item_type_id' had to be sized
+     * (and, worse, scanned - see 'onedimensional::milp_assignment.cpp's
+     * constraint builder before this) up to the highest item type id
+     * referenced anywhere in the instance, however large that is.
+     *
+     * At most one entry per 'item_type_id' - 'InstanceBuilder::build'
+     * throws otherwise (see its own doc comment); 'InstanceBuilder::
+     * add_resource_consumption' may therefore be called at most once per
+     * (item type, resource) pair, and simply appends here, no search
+     * needed. No per-item-type lookup method is offered here on purpose -
+     * a one-off search (linear or otherwise) through this list is not
+     * O(1), so a caller that already knows which item type it wants would
+     * pay for one on every query. Look the position up once instead, via
+     * 'ItemType::resources', and index this list directly with it.
+     */
+    std::vector<std::pair<ItemTypeId, std::vector<double>>> item_consumptions;
+
+    /**
+     * If 'true', exceeding 'capacity' does not make a bin infeasible;
+     * instead, 'penalty' is subtracted from the solution's profit. See this
+     * struct's own doc comment.
+     */
+    bool penalize = false;
+
+    /** Penalty subtracted from the solution's profit; only used when 'penalize' is 'true'. */
+    double penalty = 0.0;
+};
+
+/**
+ * Result of a domain's 'FeasibilityCallback' invocation (see each domain's
+ * own 'instance.hpp' for the callback itself).
+ *
+ * 'resources' lets the callback hand back its own reason for an infeasible
+ * verdict, expressed as one or more combinatorial cuts (see 'Resource'),
+ * instead of only a bare 'true'/'false' - so that whichever algorithm owns
+ * the callback (e.g. a caller re-solving the same instance repeatedly, one
+ * cut at a time) can accumulate and reuse them itself, rather than
+ * re-deriving the same infeasibility from scratch on a later call. Empty
+ * when 'feasible' is 'true', or when the callback has no cut to offer for
+ * an infeasible verdict (a plain 'false', same as before this field
+ * existed, is still a completely valid result).
+ */
+struct FeasibilityCallbackResult
+{
+    /** 'false' marks the solution the callback was given as infeasible. */
+    bool feasible = true;
+
+    /** Cuts the callback derived while proving 'feasible == false', if any. */
+    std::vector<Resource> resources;
+};
+
+/**
+ * One of a bin type's resources a given item type has a non-zero
+ * consumption for, together with the position of that item type's own
+ * entry in the resource's own (sparse) 'Resource::item_consumptions' list
+ * - see 'ItemType::resources' - so that a caller already holding one of
+ * these can jump straight to 'bin_type.resource(resource_id).item_consumptions[consumption_pos].second'
+ * for the schedule, with no search at all.
+ */
+struct ItemResourceConsumption
+{
+    ResourceId resource_id;
+    std::size_t consumption_pos;
+};
+
+/**
+ * Get the consumption of the 'copy'-th (0-indexed) unit of an item type,
+ * given its schedule (see 'Resource::item_consumptions') - O(1), unlike a
+ * per-item-type lookup would be. 'schedule' is typically obtained via
+ * 'ItemType::resources' (see 'ItemResourceConsumption').
+ */
+inline double schedule_consumption(
+        const std::vector<double>& schedule,
+        ItemPos copy)
+{
+    if (schedule.empty())
+        return 0.0;
+    return (copy < (ItemPos)schedule.size())?
+        schedule[copy]:
+        schedule.back();
+}
+
+/**
+ * Prefix sums of 'schedule' (an item type's consumption schedule for some
+ * resource - see 'Resource::item_consumptions', typically obtained in O(1)
+ * via 'ItemType::resources'): result[k] = sum of 'schedule[copy]' (or
+ * 'schedule.back()' past its end) for 'copy' in [0, k), for k in
+ * [0, schedule.size()] - always has at least one entry (result[0] == 0),
+ * even for an empty schedule.
+ *
+ * Not stored on 'Resource' itself: only a consumer that bundles several
+ * copies of an item at once (e.g. rectangle::block.cpp's guillotine blocks)
+ * ever needs a *range* sum - every other domain's tree search looks up one
+ * copy at a time via 'schedule_consumption' directly, so precomputing this
+ * unconditionally in every domain's 'InstanceBuilder::build' would pay for
+ * something most of them never read. Call this once per (bin type, item
+ * type, resource) a block-bundling consumer actually cares about, and pass
+ * the result to 'sum_item_consumption' for an O(1) range sum instead of an
+ * O(schedule.size()) one - worthwhile whenever the same triple gets queried
+ * many times (e.g. once per generated block).
+ */
+inline std::vector<double> compute_resource_consumption_prefix_sums(
+        const std::vector<double>& schedule)
+{
+    std::vector<double> prefix_sums(schedule.size() + 1, 0.0);
+    for (std::size_t k = 0; k < schedule.size(); ++k)
+        prefix_sums[k + 1] = prefix_sums[k] + schedule[k];
+    return prefix_sums;
+}
+
+/**
+ * Sum of 'schedule_consumption(schedule, copy)' for 'copy' in '[0, count)',
+ * in O(1) given 'prefix_sums' (see 'compute_resource_consumption_prefix_sums',
+ * called against that same 'schedule').
+ */
+inline double sum_item_consumption(
+        const std::vector<double>& prefix_sums,
+        ItemPos count)
+{
+    ItemPos schedule_length = (ItemPos)prefix_sums.size() - 1;
+    if (schedule_length <= 0 || count <= 0)
+        return 0.0;
+    ItemPos head_count = (std::min)(count, schedule_length);
+    double sum = prefix_sums[head_count];
+    ItemPos tail_count = count - head_count;
+    if (tail_count > 0) {
+        double last_schedule_value = prefix_sums[schedule_length] - prefix_sums[schedule_length - 1];
+        sum += (double)tail_count * last_schedule_value;
+    }
+    return sum;
+}
+
+/**
+ * Sum, over all 'penalize' resources with a negative 'penalty', of
+ * '-resource.penalty' (i.e. the magnitude of the profit gain each one could
+ * contribute if triggered).
+ *
+ * A negative penalty *increases* the reported profit when its resource's
+ * capacity is exceeded (see 'Resource'). A Knapsack bound computed without
+ * modeling resources at all (e.g. a closed-form area/weight relaxation) is
+ * only a valid upper bound on the profit actually reported once resources
+ * are taken into account if this worst-case gain - every negative-penalty
+ * resource triggering at once - is added back to it.
+ */
+inline Profit negative_penalty_sum(const std::vector<Resource>& resources)
+{
+    Profit sum = 0.0;
+    for (const Resource& resource: resources)
+        if (resource.penalize && resource.penalty < 0.0)
+            sum -= resource.penalty;
+    return sum;
+}
+
+/**
+ * Same as 'negative_penalty_sum(const std::vector<Resource>&)', summed over
+ * every bin type of 'instance', each weighted by its number of copies: since
+ * a 'penalize' resource is tracked per bin (see 'Resource'), each copy of a
+ * bin type can trigger it independently, so the worst case scales with the
+ * number of available copies.
+ */
+template <typename Instance>
+inline Profit negative_penalty_sum(const Instance& instance)
+{
+    Profit sum = 0.0;
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance.number_of_bin_types();
+            ++bin_type_id) {
+        const auto& bin_type = instance.bin_type(bin_type_id);
+        sum += bin_type.copies * negative_penalty_sum(bin_type.resources);
+    }
+    return sum;
+}
+
+template <typename Instance, typename Solution>
+class SolutionPool
+{
+
+public:
+
+    struct Entry {
+        Solution solution;
+        std::string label;
+    };
+
+private:
+
+    struct EntryComparator {
+        bool operator()(const Entry& e1, const Entry& e2) const {
+            if (e1.solution < e2.solution)
+                return false;
+            if (e2.solution < e1.solution)
+                return true;
+            for (ItemTypeId item_type_id = 0;
+                    item_type_id < e1.solution.instance().number_of_item_types();
+                    ++item_type_id)
+                if (e1.solution.item_copies(item_type_id)
+                        != e2.solution.item_copies(item_type_id))
+                    return e1.solution.item_copies(item_type_id)
+                        < e2.solution.item_copies(item_type_id);
+            return false;
+        }
+    };
+
+public:
+
+    SolutionPool(const Instance& instance, Counter size_max):
+        size_max_(size_max),
+        best_{Solution(instance), ""},
+        worst_{Solution(instance), ""}
+    {
+        solutions_.insert({Solution(instance), ""});
+    }
+
+    virtual ~SolutionPool() { }
+
+    const std::set<Entry, EntryComparator>& solutions() const { return solutions_; };
+
+    const Solution& best() const { return best_.solution; }
+    const std::string& best_label() const { return best_.label; }
+    const Solution& worst() const { return worst_.solution; }
+
+    /**
+     * Add a solution to the solution pool.
+     *
+     * Return -1 if the solution is not added
+     *        +1 if the solution is the new best solution
+     *         0 if the solution is added but is not the new best solution.
+     */
+    int add(
+            const Solution& solution,
+            const std::string& label = "")
+    {
+        // If the solution is worse than the worst solution of the pool, stop.
+        if ((Counter)solutions_.size() >= size_max_)
+            if (!(worst_.solution < solution))
+                return -1;
+
+        // Check again after mutex lock.
+        if ((Counter)solutions_.size() >= size_max_) {
+            if (!(worst_.solution < solution)) {
+                return -1;
+            }
+        }
+
+        // Add new solution to solution pool.
+        auto res = solutions_.insert({solution, label});
+        if (!res.second)
+            return -1;
+
+        bool new_best = res.first == solutions_.begin();
+
+        // If the pool size is now above its maximum allowed size, remove worst
+        // solutions from it.
+        if ((Counter)solutions_.size() > size_max_)
+            solutions_.erase(std::prev(solutions_.end()));
+
+        // Update best_ and worst_.
+        best_ = *solutions_.begin();
+        worst_ = *std::prev(solutions_.end());
+
+        return (new_best)? 1: 0;
+    }
+
+private:
+
+    Counter size_max_;
+    std::set<Entry, EntryComparator> solutions_;
+    Entry best_;
+    Entry worst_;
+
+};
+
+/**
+ * Print a "Primal bound" / "Dual bound" / "Gap" block for a pair of bound
+ * values on the same scale (which one is the primal and which is the dual
+ * doesn't matter here: only their difference relative to the primal value is
+ * used).
+ */
+template <typename T>
+void write_bound(
+        std::ostream& os,
+        int width,
+        T primal_bound,
+        T dual_bound)
+{
+    os << std::setw(width) << std::left << "Primal bound: " << primal_bound << std::endl;
+    os << std::setw(width) << std::left << "Dual bound: " << dual_bound << std::endl;
+    double gap = (primal_bound != 0)?
+        100.0 * std::abs((double)primal_bound - (double)dual_bound) / std::abs((double)primal_bound):
+        ((dual_bound != 0)? 100.0: 0.0);
+    os << std::setw(width) << std::left << "Gap: " << gap << "%" << std::endl;
+}
+
+/**
+ * Output stucture for packing optimization algorithms.
+ */
+template <typename Instance, typename Solution>
+struct Output: optimizationtools::Output
+{
+    Output(const Instance& instance):
+        solution_pool(instance, 1) { }
+
+
+    /** Solution pool. */
+    SolutionPool<Instance, Solution> solution_pool;
+
+    /** Elapsed time. */
+    double time = 0.0;
+
+
+    virtual nlohmann::json to_json() const
+    {
+        return nlohmann::json {
+            {"Solution", solution_pool.best().to_json()},
+            {"Time", time}
+        };
+    }
+
+    virtual int format_width() const
+    {
+        // Fits "Is proven infeasible: ", now printed for every objective
+        // (not just 'Feasibility'), and "Primal bound: ", the longest of
+        // the "Primal bound" / "Dual bound" / "Gap" lines printed for every
+        // other objective.
+        return 23;
+    }
+
+    virtual void format(std::ostream& os) const
+    {
+        int width = format_width();
+        os
+            << std::setw(width) << std::left << "Time (s): " << time << std::endl
+            ;
+    }
+};
+
+template <typename Instance, typename Solution, typename Output = packingsolver::Output<Instance, Solution>>
+using NewSolutionCallback = std::function<void(const Output&)>;
+
+template <typename Instance, typename Solution, typename Output = packingsolver::Output<Instance, Solution>>
+struct Parameters: optimizationtools::Parameters
+{
+    /** Maximum size of the solution pool. */
+    Counter maximum_size_of_the_solution_pool = 1;
+
+    /** New solution callback. */
+    NewSolutionCallback<Instance, Solution, Output> new_solution_callback = [](const Output&) { };
+
+    /** JSON search tree path. */
+    std::string json_search_tree_path;
+
+    /**
+     * Prefix of the MPS file(s) to export the model(s) of every MILP
+     * solved during the search to, before solving each one (left empty,
+     * the default, to not export anything).
+     *
+     * An algorithm that solves a MILP appends its own suffix to this
+     * prefix - at least its own name, and, where it solves more than one
+     * MILP itself (e.g. a sequential scheme trying successive candidate
+     * bin counts), whatever distinguishes each one - then writes to
+     * '<prefix><its own suffix>.mps'. An algorithm that calls into another
+     * MILP-solving algorithm forwards this prefix, extended with its own
+     * suffix, into that algorithm's own parameters, so the full chain ends
+     * up encoded in the final file name.
+     */
+    std::string mps_prefix;
+};
+
+template <typename Instance>
+double largest_bin_space(const Instance& instance)
+{
+    double space_max = 0;
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance.number_of_bin_types();
+            ++bin_type_id)
+        if (space_max < instance.bin_type(bin_type_id).space())
+            space_max = instance.bin_type(bin_type_id).space();
+    return space_max;
+}
+
+/**
+ * Return a copy of the solution with identical bins grouped together.
+ *
+ * Bins with the same bin type and the same content (items / stacks / nodes at
+ * the same positions) are merged into a single SolutionBin with the combined
+ * copy count.  The domain-specific Solution must provide operator== on
+ * SolutionBin.
+ */
+template <typename Solution>
+Solution group_identical_bins(const Solution& solution)
+{
+    struct BinGroup
+    {
+        BinPos original_bin_pos;
+        BinPos total_copies;
+    };
+    std::vector<BinGroup> groups;
+
+    for (BinPos bin_pos = 0;
+            bin_pos < solution.number_of_different_bins();
+            ++bin_pos) {
+        const auto& bin = solution.bin(bin_pos);
+        bool found = false;
+        for (BinGroup& group: groups) {
+            if (solution.bin(group.original_bin_pos) == bin) {
+                group.total_copies += bin.copies;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            groups.push_back({bin_pos, bin.copies});
+    }
+
+    Solution grouped_solution(solution.instance());
+    for (const BinGroup& group: groups)
+        grouped_solution.append_bin(solution, group.original_bin_pos, group.total_copies);
+    return grouped_solution;
+}
+
+/**
+ * Given a solution that may violate the "bin usage order" constraint (every
+ * bin type used before the last one actually used must be used up entirely -
+ * see e.g. 'onedimensional::Solution::bin_type_order_feasible'), return an
+ * equivalent solution that satisfies it: every bin type used before the last
+ * one actually used in 'solution' gets all of its 'copies' included (even
+ * the empty ones).
+ *
+ * Bin instances of the same type are interchangeable (identical capacity),
+ * so 'solution's own non-empty bins of a given type are simply carried
+ * over, in order, into that many of the type's slots; any remaining slots
+ * (for types before the last used one) are left empty. The domain-specific
+ * Solution must provide 'append_bin' (see 'group_identical_bins') and
+ * 'append_empty_bin(bin_type_id, copies)'.
+ *
+ * Useful when assembling a solution from a source that has no reason to
+ * respect this order on its own - e.g. 'onedimensional::milp_assignment's
+ * sequential feasibility scheme, whose recursive 'Feasibility' sub-MILP
+ * calls create no 'y' variable and so silently drop any bin instance that
+ * ends up empty, which could otherwise make a candidate look satisfiable by
+ * skipping mandatory earlier bin types.
+ */
+template <typename Solution>
+Solution enforce_bin_type_order(const Solution& solution)
+{
+    const auto& instance = solution.instance();
+
+    BinTypeId last_used_bin_type_id = -1;
+    for (BinPos bin_pos = 0;
+            bin_pos < solution.number_of_different_bins();
+            ++bin_pos) {
+        last_used_bin_type_id = std::max(
+                last_used_bin_type_id,
+                solution.bin(bin_pos).bin_type_id);
+    }
+    if (last_used_bin_type_id == -1)
+        return solution;
+
+    // Flatten 'solution's non-empty bins into one entry per physical bin
+    // instance (a bin with 'copies' > 1 stands for that many identical
+    // physical bins), grouped by bin type.
+    std::vector<std::vector<BinPos>> solution_bin_positions(instance.number_of_bin_types());
+    for (BinPos bin_pos = 0;
+            bin_pos < solution.number_of_different_bins();
+            ++bin_pos) {
+        const auto& bin = solution.bin(bin_pos);
+        for (BinPos copy = 0; copy < bin.copies; ++copy)
+            solution_bin_positions[bin.bin_type_id].push_back(bin_pos);
+    }
+
+    Solution new_solution(instance);
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id <= last_used_bin_type_id;
+            ++bin_type_id) {
+        const std::vector<BinPos>& positions = solution_bin_positions[bin_type_id];
+        // Every bin type strictly before the last used one must have all of
+        // its copies present (even empty ones); the last used type itself
+        // only needs however many 'solution' actually placed.
+        BinPos target_copies = (bin_type_id < last_used_bin_type_id)?
+            instance.bin_type(bin_type_id).copies:
+            (BinPos)positions.size();
+        for (BinPos copy = 0; copy < (BinPos)positions.size() && copy < target_copies; ++copy)
+            new_solution.append_bin(solution, positions[copy], 1);
+        if (target_copies > (BinPos)positions.size())
+            new_solution.append_empty_bin(bin_type_id, target_copies - (BinPos)positions.size());
+    }
+    return new_solution;
+}
+
+}

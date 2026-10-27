@@ -1,0 +1,332 @@
+#pragma once
+
+#include "packingsolver/onedimensional/instance.hpp"
+
+namespace packingsolver
+{
+namespace onedimensional
+{
+
+struct SolutionItem
+{
+    /** Item type. */
+    ItemTypeId item_type_id;
+
+    /** Initial z-coordinate of the item. */
+    Length start;
+};
+
+bool operator==(const SolutionItem& solution_item_1, const SolutionItem& solution_item_2);
+bool operator!=(const SolutionItem& solution_item_1, const SolutionItem& solution_item_2);
+
+struct SolutionBin
+{
+    /** Bin type. */
+    BinTypeId bin_type_id;
+
+    /** Number of copies. */
+    BinPos copies;
+
+    /** End. */
+    Length end = 0;
+
+    /** Weight. */
+    Weight weight = 0;
+
+    /** Stacks. */
+    std::vector<SolutionItem> items;
+
+    /** Maximum number of items allowed in the bin. */
+    ItemPos maximum_number_of_items = -1;
+
+    /**
+     * Remaining weight allowed in the bin to satisfy the maximum
+     * weight after constraint.
+     */
+    Weight remaining_weight = -1;
+
+    /** Resource consumption, indexed by resource_id. */
+    std::vector<double> resource_consumption;
+};
+
+bool operator==(const SolutionBin& solution_bin_1, const SolutionBin& solution_bin_2);
+bool operator!=(const SolutionBin& solution_bin_1, const SolutionBin& solution_bin_2);
+
+/**
+ * Solution class for a problem of type "onedimensional".
+ */
+class Solution
+{
+
+public:
+
+    /*
+     * Constructors and destructor
+     */
+
+    /** Standard constructor. */
+    Solution(const Instance& instance):
+        instance_(&instance),
+        bin_copies_(instance.number_of_bin_types(), 0),
+        item_copies_(instance.number_of_item_types(), 0)
+    {
+        for (ItemTypeId item_type_id = 0;
+                item_type_id < instance.number_of_item_types();
+                ++item_type_id) {
+            if (instance.item_type(item_type_id).copies_min > 0)
+                number_of_infeasible_item_copies_min_++;
+        }
+        feasible_ = (number_of_infeasible_item_copies_min_ == 0);
+    }
+
+    /** Append a single bin of 'solution' (at 'bin_pos') to this solution. */
+    void append_bin(
+            const Solution& solution,
+            BinPos bin_pos,
+            BinPos copies,
+            const std::vector<BinTypeId>& bin_type_ids = {},
+            const std::vector<ItemTypeId>& item_type_ids = {});
+
+    /** Append every bin of 'solution' to this solution. */
+    void append_bins(
+            const Solution& solution,
+            const std::vector<BinTypeId>& bin_type_ids,
+            const std::vector<ItemTypeId>& item_type_ids);
+
+    /** Append 'copies' empty (no items) bins of bin type 'bin_type_id' to this solution. */
+    void append_empty_bin(
+            BinTypeId bin_type_id,
+            BinPos copies);
+
+    /*
+     * Getters
+     */
+
+    /** Get the instance. */
+    inline const Instance& instance() const { return *instance_; }
+
+    /*
+     * Getters: feasibility
+     */
+
+    /** Feasibility according to the user feasibility callback. */
+    inline bool callback_feasible() const { return callback_feasible_; }
+
+    /** Cuts the feasibility callback returned, if any - see 'FeasibilityCallbackResult'. */
+    inline const std::vector<Resource>& callback_resources() const { return callback_resources_; }
+
+    /** Return 'true' iff the solution satisfies the bin length capacity constraint. */
+    inline bool capacity_feasible() const { return capacity_feasible_; }
+
+    /** Return 'true' iff the solution satisfies the bin weight capacity constraint. */
+    inline bool weight_feasible() const { return weight_feasible_; }
+
+    /** Return 'true' iff the solution satisfies the maximum stackability constraint. */
+    inline bool stackability_feasible() const { return stackability_feasible_; }
+
+    /** Return 'true' iff the solution satisfies the maximum weight after constraint. */
+    inline bool maximum_weight_after_feasible() const { return maximum_weight_after_feasible_; }
+
+    /** Return 'true' iff the solution satisfies the item copies constraint. */
+    inline bool item_copies_feasible() const { return item_copies_feasible_; }
+
+    /**
+     * Return 'true' iff bin types are used in the order they are provided
+     * (every bin type used before the last used bin type is used up
+     * entirely). Only relevant for the 'BinPacking' objective; always 'true'
+     * for the other objectives, which do not require this.
+     */
+    inline bool bin_type_order_feasible() const { return bin_type_order_feasible_; }
+
+    /** Return 'true' iff the solution satisfies the resource capacity constraints. */
+    inline bool resource_feasible() const { return resource_feasible_; }
+
+    /** Return 'true' iff every item is packed in a bin type it is eligible for. */
+    inline bool eligibility_feasible() const { return eligibility_feasible_; }
+
+    /** Get the number of items in the solution. */
+    inline ItemPos number_of_items() const { return number_of_items_; }
+
+    /** Return 'true' iff the solution contains all items. */
+    inline bool full() const { return number_of_items() == instance().number_of_items(); }
+
+    /** Get the number of bins in the solution. */
+    inline BinPos number_of_bins() const { return number_of_bins_; }
+
+    /** Get the number of different bins in the solution. */
+    inline BinPos number_of_different_bins() const { return bins_.size(); }
+
+    /** Get the profit of the solution. */
+    inline Profit profit() const { return item_profit_; }
+
+    /** Get the cost of the solution. */
+    inline Profit cost() const { return bin_cost_; }
+
+    /** Get the length of the solution. */
+    inline Volume length() const { return length_; }
+
+    /** Get the total length of the items of the solution. */
+    inline Area item_length() const { return item_length_; }
+
+    /**
+     * Get the total length occupied by the items of the solution: their
+     * length minus their nesting length, except for the first item of each
+     * bin.
+     */
+    inline Area item_nested_length() const { return item_nested_length_; }
+
+    /** Get the total length of the bins of the solution. */
+    inline Area bin_length() const { return bin_length_; }
+
+    /** Get the waste of the solution. */
+    inline Area waste() const { return length_ - item_nested_length_; }
+
+    /** Get the fraction of waste of the solution. */
+    inline double waste_percentage() const { return (length() == 0)? 0: (double)waste() / length(); }
+
+    /** Get the waste of the solution including the residual. */
+    inline Area full_waste() const { return bin_length() - item_nested_length(); }
+
+    /** Get the fraction of waste of the solution including the residual. */
+    inline double full_waste_percentage() const { return (bin_length() == 0)? 0.0: (double)full_waste() / bin_length(); }
+
+    /** Return 'true' iff the solution satisfies the packing constraints. */
+    inline bool feasible() const { return feasible_; }
+
+    /** Get the number of copies of an item type in the solution. */
+    inline ItemPos item_copies(ItemTypeId item_type_id) const { return item_copies_[item_type_id]; }
+
+    /**
+     * Get the number of item types for which fewer than 'copies_min' copies
+     * have been packed.
+     */
+    inline ItemPos number_of_infeasible_item_copies_min() const { return number_of_infeasible_item_copies_min_; }
+
+    /** Get a bin. */
+    inline const SolutionBin& bin(BinPos bin_pos) const { return bins_[bin_pos]; }
+
+    /** Get the number of copies of a bin type. */
+    inline BinPos bin_copies(BinTypeId bin_type_id) const { return bin_copies_[bin_type_id]; }
+
+    bool operator<(const Solution& solution) const;
+
+    /*
+     * Export
+     */
+
+    /** Write the solution to a file. */
+    void write(const std::string& certificate_path) const;
+
+    /** Write the solution to a stream, in the same format as 'write(certificate_path)'. */
+    void write(std::ostream& os) const;
+
+    /** Export solution characteristics to a JSON structure. */
+    nlohmann::json to_json() const;
+
+    /** Write a formatted output of the instance to a stream. */
+    void format(
+            std::ostream& os,
+            int verbosity_level = 1) const;
+
+private:
+
+    /*
+     * Private methods.
+     */
+
+    void update_indicators(
+            BinPos bin_pos);
+
+    /*
+     * Private attributes.
+     */
+
+    /** Instance. */
+    const Instance* instance_;
+
+    /** Bins. */
+    std::vector<SolutionBin> bins_;
+
+    /** Number of bins. */
+    BinPos number_of_bins_ = 0;
+
+    /** Number of items. */
+    BinPos number_of_items_ = 0;
+
+    /** Total length of the solution. */
+    Volume length_ = 0;
+
+    /** Total length of the bins of the solution. */
+    Volume bin_length_ = 0;
+
+    /** Total length of the items of the solution. */
+    Volume item_length_ = 0;
+
+    /** Total length occupied by the items of the solution. */
+    Volume item_nested_length_ = 0;
+
+    /** Profit of the solution. */
+    Profit item_profit_ = 0;
+
+    /** Cost of the solution. */
+    Profit bin_cost_ = 0;
+
+    /** Number of copies of each bin type in the solution. */
+    std::vector<BinPos> bin_copies_;
+
+    /** Number of copies of each item type in the solution. */
+    std::vector<ItemPos> item_copies_;
+
+    /**
+     * Number of item types for which fewer than 'copies_min' copies have
+     * been packed.
+     */
+    ItemPos number_of_infeasible_item_copies_min_ = 0;
+
+    /** 'true' iff the solution satisfies the bin length capacity constraint. */
+    bool capacity_feasible_ = true;
+
+    /** 'true' iff the solution satisfies the bin weight capacity constraint. */
+    bool weight_feasible_ = true;
+
+    /** 'true' iff the solution satisfies the maximum stackability constraint. */
+    bool stackability_feasible_ = true;
+
+    /** 'true' iff the solution satisfies the maximum weight after constraint. */
+    bool maximum_weight_after_feasible_ = true;
+
+    /** 'true' iff the solution satisfies the item copies constraint. */
+    bool item_copies_feasible_ = true;
+
+    /** 'true' iff bin types are used in the order they are provided ('BinPacking' objective only). */
+    bool bin_type_order_feasible_ = true;
+
+    /** 'true' iff the solution satisfies the resource capacity constraints. */
+    bool resource_feasible_ = true;
+
+    /** 'true' iff every item is packed in a bin type it is eligible for. */
+    bool eligibility_feasible_ = true;
+
+    /** Feasibility according to the user feasibility callback. */
+    bool callback_feasible_ = true;
+
+    /** Cuts the feasibility callback returned, if any - see 'FeasibilityCallbackResult'. */
+    std::vector<Resource> callback_resources_;
+
+    /** 'true' iff the solution is feasible regarding the packing constraints. */
+    bool feasible_ = true;
+
+    friend class SolutionBuilder;
+
+};
+
+std::ostream& operator<<(
+        std::ostream& os,
+        const SolutionItem& item);
+
+std::ostream& operator<<(
+        std::ostream& os,
+        const Solution& solution);
+
+}
+}

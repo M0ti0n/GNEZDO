@@ -1,0 +1,616 @@
+#include "irregular/milp_raster.hpp"
+
+#include "irregular/rotations.hpp"
+#include "irregular/solution_builder.hpp"
+#include "packingsolver/irregular/algorithm_formatter.hpp"
+
+#include "shape/rasterization.hpp"
+#include "shape/offset.hpp"
+//#include "shape/writer.hpp"
+
+#ifdef CBC_FOUND
+#include "mathoptsolverscmake/mathopt_cbc.hpp"
+#endif
+#ifdef HIGHS_FOUND
+#include "mathoptsolverscmake/mathopt_highs.hpp"
+#endif
+#ifdef XPRESS_FOUND
+#include "mathoptsolverscmake/mathopt_xpress.hpp"
+#endif
+
+#include <algorithm>
+#include <cmath>
+
+using namespace packingsolver;
+using namespace packingsolver::irregular;
+
+namespace
+{
+
+LengthDbl compute_gcd(LengthDbl a, LengthDbl b)
+{
+    if (shape::equal(b, 0.0))
+        return a;
+    if (a == -1)
+        return b;
+    while (!shape::equal(b, 0.0)) {
+        double temp = b;
+        b = std::fmod(a, b);
+        a = temp;
+    }
+    return a;
+}
+
+using PlacementId = int64_t;
+
+struct BasePlacement
+{
+    ItemTypeId item_type_id;
+    Angle angle;
+    bool mirror;
+    shape::ColumnId col;
+    shape::RowId row;
+    LengthDbl aabb_x_min;
+    LengthDbl aabb_y_min;
+};
+
+struct BinTypeData
+{
+    shape::ColumnId col_shift;
+    shape::ColumnId col_max;
+    shape::RowId row_shift;
+    shape::RowId row_max;
+    shape::ColumnId num_cols;
+    shape::RowId num_rows;
+    std::vector<std::vector<bool>> available;
+    /** Grid cells blocked by fixed items of this bin type. */
+    std::vector<std::vector<bool>> fixed_items;
+    std::vector<BasePlacement> base_placements;
+    std::vector<std::vector<std::vector<PlacementId>>> base_cell_placements;
+    std::vector<std::vector<PlacementId>> base_item_placements;
+};
+
+Solution solve_milp_raster_for_cell_size(
+        const Instance& instance,
+        const std::vector<std::vector<std::vector<ItemTypeRotation>>>& item_type_rotations,
+        const MilpRasterParameters& parameters,
+        MilpRasterOutput& output,
+        AlgorithmFormatter& algorithm_formatter,
+        LengthDbl cell_size,
+        BinPos number_of_bins)
+{
+    //std::cout << "solve_milp_raster_for_cell_size"
+    //    << " cell_size " << cell_size
+    //    << " number_of_bins " << number_of_bins
+    //    << std::endl;
+    const LengthDbl scale = instance.parameters().scale_value;
+
+    std::vector<BinTypeData> bin_type_data(instance.number_of_bin_types());
+
+    //shape::Writer writer;
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance.number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = instance.bin_type(bin_type_id);
+        BinTypeData& data = bin_type_data[bin_type_id];
+
+        data.col_shift = (shape::ColumnId)std::floor(bin_type.aabb_scaled.x_min / cell_size);
+        if (shape::strictly_greater(bin_type.aabb_scaled.x_min, data.col_shift * cell_size))
+            data.col_shift++;
+        data.col_max = (shape::ColumnId)std::floor(bin_type.aabb_scaled.x_max / cell_size);
+        if (shape::strictly_lesser(bin_type.aabb_scaled.x_max, (data.col_max + 1) * cell_size))
+            data.col_max--;
+        data.row_shift = (shape::RowId)std::floor(bin_type.aabb_scaled.y_min / cell_size);
+        if (shape::strictly_greater(bin_type.aabb_scaled.y_min, data.row_shift * cell_size))
+            data.row_shift++;
+        data.row_max = (shape::RowId)std::floor(bin_type.aabb_scaled.y_max / cell_size);
+        if (shape::strictly_lesser(bin_type.aabb_scaled.y_max, (data.row_max + 1) * cell_size))
+            data.row_max--;
+        data.num_cols = data.col_max - data.col_shift + 1;
+        data.num_rows = data.row_max - data.row_shift + 1;
+
+        data.available.assign(data.num_cols, std::vector<bool>(data.num_rows, true));
+        // Item-bin spacing along the sides of the bounding box of the bin (the
+        // borders only cover the parts of the bounding box outside the bin).
+        LengthDbl bin_spacing = instance.bin_spacing_scaled(bin_type_id);
+        if (bin_spacing > 0) {
+            for (shape::ColumnId c = 0; c < data.num_cols; ++c) {
+                for (shape::RowId r = 0; r < data.num_rows; ++r) {
+                    LengthDbl x_start = (c + data.col_shift) * cell_size;
+                    LengthDbl y_start = (r + data.row_shift) * cell_size;
+                    if (shape::strictly_lesser(x_start, bin_type.aabb_scaled.x_min + bin_spacing)
+                            || shape::strictly_greater(x_start + cell_size, bin_type.aabb_scaled.x_max - bin_spacing)
+                            || shape::strictly_lesser(y_start, bin_type.aabb_scaled.y_min + bin_spacing)
+                            || shape::strictly_greater(y_start + cell_size, bin_type.aabb_scaled.y_max - bin_spacing)) {
+                        data.available[c][r] = false;
+                    }
+                }
+            }
+        }
+
+        for (Counter border_pos = 0;
+                border_pos < (Counter)bin_type.borders.size();
+                ++border_pos) {
+            // Inflated by the item-bin spacing.
+            const ShapeWithHoles& border_shape = bin_type.borders[border_pos].shape_inflated;
+            shape::RasterizedGrid border_grid = shape::rasterization(border_shape, cell_size, cell_size);
+            //writer.add_shape_with_holes(border_shape, "Border " + std::to_string(border_pos));
+            for (shape::ColumnId column = border_grid.column_offset;
+                    column < border_grid.column_offset + border_grid.number_of_columns;
+                    ++column) {
+                for (shape::RowId row = border_grid.row_offset;
+                        row < border_grid.row_offset + border_grid.number_of_rows;
+                        ++row) {
+                    if (!shape::strictly_greater(border_grid.at(column, row).coverage, 0.0))
+                        continue;
+                    shape::ColumnId c = column - data.col_shift;
+                    shape::RowId r = row - data.row_shift;
+                    if (c >= 0 && c < data.num_cols && r >= 0 && r < data.num_rows)
+                        data.available[c][r] = false;
+                }
+            }
+        }
+
+        for (Counter defect_pos = 0;
+                defect_pos < (Counter)bin_type.defects.size();
+                ++defect_pos) {
+            // Inflated by the item-defect spacing.
+            const ShapeWithHoles& defect_shape = bin_type.defects[defect_pos].shape_inflated;
+            shape::RasterizedGrid defect_grid = shape::rasterization(defect_shape, cell_size, cell_size);
+            //writer.add_shape_with_holes(defect_shape, "Defect " + std::to_string(defect_pos));
+            for (shape::ColumnId column = defect_grid.column_offset;
+                    column < defect_grid.column_offset + defect_grid.number_of_columns;
+                    ++column) {
+                for (shape::RowId row = defect_grid.row_offset;
+                        row < defect_grid.row_offset + defect_grid.number_of_rows;
+                        ++row) {
+                    if (!shape::strictly_greater(defect_grid.at(column, row).coverage, 0.0))
+                        continue;
+                    shape::ColumnId c = column - data.col_shift;
+                    shape::RowId r = row - data.row_shift;
+                    if (c >= 0 && c < data.num_cols && r >= 0 && r < data.num_rows)
+                        data.available[c][r] = false;
+                }
+            }
+        }
+
+        // Mark cells occupied by fixed items of this bin type.
+        data.fixed_items.assign(data.num_cols, std::vector<bool>(data.num_rows, false));
+        for (const FixedItem& fixed_item: bin_type.fixed_items) {
+            const ItemType& item_type = instance.item_type(fixed_item.item_type_id);
+            for (ItemShapePos item_shape_pos = 0;
+                    item_shape_pos < (ItemShapePos)item_type.shapes.size();
+                    ++item_shape_pos) {
+                // Inflated by half the item-item spacing, as the placements
+                // (see below).
+                ShapeWithHoles transformed = shape::inflate(
+                        instance.item_shape_scaled(fixed_item.item_type_id, item_shape_pos, fixed_item.angle, fixed_item.mirror),
+                        instance.item_spacing_scaled() / 2);
+                transformed.shift(
+                        fixed_item.bl_corner.x * scale,
+                        fixed_item.bl_corner.y * scale);
+                shape::RasterizedGrid raster_grid = shape::rasterization(transformed, cell_size, cell_size);
+                for (shape::ColumnId column = raster_grid.column_offset;
+                        column < raster_grid.column_offset + raster_grid.number_of_columns;
+                        ++column) {
+                    for (shape::RowId row = raster_grid.row_offset;
+                            row < raster_grid.row_offset + raster_grid.number_of_rows;
+                            ++row) {
+                        if (!shape::strictly_greater(raster_grid.at(column, row).coverage, 0.0))
+                            continue;
+                        shape::ColumnId c = column - data.col_shift;
+                        shape::RowId r = row - data.row_shift;
+                        if (c >= 0 && c < data.num_cols && r >= 0 && r < data.num_rows)
+                            data.fixed_items[c][r] = true;
+                    }
+                }
+            }
+        }
+
+        data.base_cell_placements.assign(
+                data.num_cols,
+                std::vector<std::vector<PlacementId>>(data.num_rows));
+        data.base_item_placements.resize(instance.number_of_item_types());
+
+        for (ItemTypeId item_type_id = 0;
+                item_type_id < instance.number_of_item_types();
+                ++item_type_id) {
+            const ItemType& item_type = instance.item_type(item_type_id);
+
+            for (const ItemTypeRotation& rotation: item_type_rotations[bin_type_id][item_type_id]) {
+                // Compute AABB of all item shapes after applying mirror then
+                // rotation, matching the order used in convert_shape.
+                AxisAlignedBoundingBox combined_aabb;
+                for (ItemShapePos item_shape_pos = 0;
+                        item_shape_pos < (ItemShapePos)item_type.shapes.size();
+                        ++item_shape_pos) {
+                    ShapeWithHoles transformed = instance.item_shape_scaled(item_type_id, item_shape_pos, rotation.angle, rotation.mirror);
+                    AxisAlignedBoundingBox shape_aabb = transformed.compute_min_max();
+                    combined_aabb = merge(combined_aabb, shape_aabb);
+                }
+
+                // Rasterize each item shape (shifted to origin) and collect cells:
+                // - the cells of the item itself, which must be available
+                //   (outside of the borders and the defects, inflated by
+                //   their spacings);
+                // - the cells of the item inflated by half the item-item
+                //   spacing, which can't be covered by another placement
+                //   (whose cells are inflated the same way) or by a fixed
+                //   item (inflated the same way too), so that the items are
+                //   at least the item-item spacing apart.
+                LengthDbl half_item_spacing = instance.item_spacing_scaled() / 2;
+                std::vector<std::pair<shape::ColumnId, shape::RowId>> placement_cells;
+                std::vector<std::pair<shape::ColumnId, shape::RowId>> conflict_cells;
+                auto collect_cells = [cell_size](
+                        const ShapeWithHoles& shape,
+                        std::vector<std::pair<shape::ColumnId, shape::RowId>>& cells)
+                {
+                    shape::RasterizedGrid raster_grid = shape::rasterization(shape, cell_size, cell_size);
+                    for (shape::ColumnId column = raster_grid.column_offset;
+                            column < raster_grid.column_offset + raster_grid.number_of_columns;
+                            ++column) {
+                        for (shape::RowId row = raster_grid.row_offset;
+                                row < raster_grid.row_offset + raster_grid.number_of_rows;
+                                ++row) {
+                            if (shape::strictly_greater(raster_grid.at(column, row).coverage, 0.0))
+                                cells.push_back(std::make_pair(column, row));
+                        }
+                    }
+                };
+                for (ItemShapePos item_shape_pos = 0;
+                        item_shape_pos < (ItemShapePos)item_type.shapes.size();
+                        ++item_shape_pos) {
+                    ShapeWithHoles transformed = instance.item_shape_scaled(item_type_id, item_shape_pos, rotation.angle, rotation.mirror);
+                    transformed.shift(-combined_aabb.x_min, -combined_aabb.y_min);
+                    collect_cells(transformed, placement_cells);
+                    if (half_item_spacing > 0)
+                        collect_cells(shape::inflate(transformed, half_item_spacing), conflict_cells);
+                }
+
+                if (placement_cells.empty())
+                    continue;
+
+                std::sort(placement_cells.begin(), placement_cells.end());
+                placement_cells.erase(std::unique(placement_cells.begin(), placement_cells.end()), placement_cells.end());
+                if (half_item_spacing > 0) {
+                    std::sort(conflict_cells.begin(), conflict_cells.end());
+                    conflict_cells.erase(std::unique(conflict_cells.begin(), conflict_cells.end()), conflict_cells.end());
+                } else {
+                    conflict_cells = placement_cells;
+                }
+
+                shape::ColumnId item_min_col = placement_cells[0].first;
+                shape::ColumnId item_max_col = placement_cells[0].first;
+                shape::RowId item_min_row = placement_cells[0].second;
+                shape::RowId item_max_row = placement_cells[0].second;
+                for (const std::pair<shape::ColumnId, shape::RowId>& cr: placement_cells) {
+                    if (cr.first < item_min_col) item_min_col = cr.first;
+                    if (cr.first > item_max_col) item_max_col = cr.first;
+                    if (cr.second < item_min_row) item_min_row = cr.second;
+                    if (cr.second > item_max_row) item_max_row = cr.second;
+                }
+
+                shape::ColumnId col_start = data.col_shift - item_min_col;
+                shape::ColumnId col_end = data.col_max - item_max_col;
+                shape::RowId row_start = data.row_shift - item_min_row;
+                shape::RowId row_end = data.row_max - item_max_row;
+
+                for (shape::ColumnId col = col_start; col <= col_end; ++col) {
+                    for (shape::RowId row = row_start; row <= row_end; ++row) {
+                        bool valid = true;
+                        for (const std::pair<shape::ColumnId, shape::RowId>& cr: placement_cells) {
+                            shape::ColumnId bc = col + cr.first - data.col_shift;
+                            shape::RowId br = row + cr.second - data.row_shift;
+                            if (!data.available[bc][br]) {
+                                valid = false;
+                                break;
+                            }
+                        }
+                        if (!valid)
+                            continue;
+
+                        PlacementId placement_id = (PlacementId)data.base_placements.size();
+                        BasePlacement bp;
+                        bp.item_type_id = item_type_id;
+                        bp.angle = rotation.angle;
+                        bp.mirror = rotation.mirror;
+                        bp.col = col;
+                        bp.row = row;
+                        bp.aabb_x_min = combined_aabb.x_min;
+                        bp.aabb_y_min = combined_aabb.y_min;
+                        data.base_placements.push_back(bp);
+                        data.base_item_placements[item_type_id].push_back(placement_id);
+
+                        // The conflict cells outside of the grid are not
+                        // needed: if two items in the grid are closer than
+                        // the spacing, their inflated shapes overlap around
+                        // the middle of their closest points, which is in the
+                        // grid.
+                        for (const std::pair<shape::ColumnId, shape::RowId>& cr: conflict_cells) {
+                            shape::ColumnId bc = col + cr.first - data.col_shift;
+                            shape::RowId br = row + cr.second - data.row_shift;
+                            if (bc < 0 || bc >= data.num_cols || br < 0 || br >= data.num_rows)
+                                continue;
+                            data.base_cell_placements[bc][br].push_back(placement_id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    //writer.write_json("rasterization_" + std::to_string(number_of_bins) + "_" + std::to_string(cell_size) + ".json");
+
+    std::vector<PlacementId> global_offset(number_of_bins);
+    PlacementId total_placements = 0;
+    for (BinPos bin_pos = 0; bin_pos < number_of_bins; ++bin_pos) {
+        global_offset[bin_pos] = total_placements;
+        total_placements += (PlacementId)bin_type_data[instance.bin_type_id(bin_pos)].base_placements.size();
+    }
+
+    // Build MILP model.
+    mathoptsolverscmake::MathOptModel model;
+    model.objective_direction = mathoptsolverscmake::ObjectiveDirection::Maximize;
+
+    model.variables_lower_bounds.assign(total_placements, 0.0);
+    model.variables_upper_bounds.assign(total_placements, 1.0);
+    model.variables_types.assign(total_placements, mathoptsolverscmake::VariableType::Integer);
+    model.objective_coefficients.assign(total_placements, 0.0);
+
+    if (instance.objective() == Objective::Knapsack) {
+        for (BinPos bin_pos = 0; bin_pos < number_of_bins; ++bin_pos) {
+            BinTypeId bin_type_id = instance.bin_type_id(bin_pos);
+            const BinTypeData& data = bin_type_data[bin_type_id];
+            for (PlacementId placement_id = 0;
+                    placement_id < (PlacementId)data.base_placements.size();
+                    ++placement_id) {
+                const BasePlacement& bp = data.base_placements[placement_id];
+                const ItemType& item_type = instance.item_type(bp.item_type_id);
+                model.objective_coefficients[global_offset[bin_pos] + placement_id] = item_type.profit;
+            }
+        }
+    }
+
+    // Copy constraints: for each item type, remaining_copies_min - copies_fixed
+    // <= total placements across all bins <= copies - copies_fixed.
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance.number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance.item_type(item_type_id);
+        ItemPos remaining_copies = item_type.copies - item_type.copies_fixed;
+        ItemPos remaining_copies_min = (std::max)(
+                (ItemPos)0,
+                item_type.copies_min - item_type.copies_fixed);
+        model.constraints_starts.push_back(model.elements_variables.size());
+        model.constraints_lower_bounds.push_back((double)remaining_copies_min);
+        model.constraints_upper_bounds.push_back((double)remaining_copies);
+        for (BinPos bin_pos = 0; bin_pos < number_of_bins; ++bin_pos) {
+            BinTypeId bin_type_id = instance.bin_type_id(bin_pos);
+            const BinTypeData& data = bin_type_data[bin_type_id];
+            for (PlacementId placement_id: data.base_item_placements[item_type_id]) {
+                model.elements_variables.push_back(global_offset[bin_pos] + placement_id);
+                model.elements_coefficients.push_back(1.0);
+            }
+        }
+    }
+
+    // Cell conflict constraints: for each (bin_pos, col, row), at most one placement,
+    // or zero if the cell is occupied by a fixed item.
+    for (BinPos bin_pos = 0; bin_pos < number_of_bins; ++bin_pos) {
+        BinTypeId bin_type_id = instance.bin_type_id(bin_pos);
+        const BinTypeData& data = bin_type_data[bin_type_id];
+        for (shape::ColumnId col_idx = 0; col_idx < data.num_cols; ++col_idx) {
+            for (shape::RowId row_idx = 0; row_idx < data.num_rows; ++row_idx) {
+                const std::vector<PlacementId>& cell_placements = data.base_cell_placements[col_idx][row_idx];
+                if (cell_placements.empty())
+                    continue;
+                bool blocked = bin_type_data[bin_type_id].fixed_items[col_idx][row_idx];
+                double upper_bound = blocked ? 0.0 : 1.0;
+                if (cell_placements.size() <= 1 && !blocked)
+                    continue;
+                model.constraints_starts.push_back(model.elements_variables.size());
+                model.constraints_lower_bounds.push_back(0.0);
+                model.constraints_upper_bounds.push_back(upper_bound);
+                for (PlacementId placement_id: cell_placements) {
+                    model.elements_variables.push_back(global_offset[bin_pos] + placement_id);
+                    model.elements_coefficients.push_back(1.0);
+                }
+            }
+        }
+    }
+
+    auto retrieve_solution = [&](const std::vector<double>& milp_solution)
+    {
+        // Extract solution.
+        SolutionBuilder solution_builder(instance);
+        for (BinPos bin_pos = 0; bin_pos < number_of_bins; ++bin_pos) {
+            BinTypeId bin_type_id = instance.bin_type_id(bin_pos);
+            const BinTypeData& data = bin_type_data[bin_type_id];
+            BinPos solution_bin_pos = solution_builder.add_bin(bin_type_id, 1);
+            for (PlacementId placement_id = 0;
+                    placement_id < (PlacementId)data.base_placements.size();
+                    ++placement_id) {
+                if (milp_solution[global_offset[bin_pos] + placement_id] < 0.5)
+                    continue;
+                const BasePlacement& bp = data.base_placements[placement_id];
+                Point bl_corner;
+                bl_corner.x = (bp.col * cell_size - bp.aabb_x_min) / scale;
+                bl_corner.y = (bp.row * cell_size - bp.aabb_y_min) / scale;
+                solution_builder.add_item(solution_bin_pos, bp.item_type_id, bl_corner, bp.angle, bp.mirror);
+            }
+        }
+        // Add fixed items to each bin up to the last bin with fixed items.
+        // (The main loop above already created bins 0..number_of_bins-1.)
+        for (BinPos bin_pos = 0;
+                bin_pos <= instance.last_bin_with_fixed_items();
+                ++bin_pos) {
+            if (bin_pos >= number_of_bins) {
+                BinTypeId bin_type_id = instance.bin_type_id(bin_pos);
+                solution_builder.add_bin(bin_type_id, 1);
+            }
+            BinTypeId bin_type_id = instance.bin_type_id(bin_pos);
+            const BinType& bin_type = instance.bin_type(bin_type_id);
+            for (const FixedItem& fixed_item: bin_type.fixed_items) {
+                solution_builder.add_item(
+                        bin_pos,
+                        fixed_item.item_type_id,
+                        fixed_item.bl_corner,
+                        fixed_item.angle,
+                        fixed_item.mirror,
+                        true);
+            }
+        }
+        return solution_builder.build();
+    };
+
+    // Solve.
+    std::vector<double> milp_solution;
+    if (parameters.solver == mathoptsolverscmake::SolverName::Highs) {
+#ifdef HIGHS_FOUND
+        Highs highs;
+        mathoptsolverscmake::reduce_printout(highs);
+        mathoptsolverscmake::set_time_limit(highs, parameters.timer.remaining_time());
+        if (parameters.maximum_number_of_nodes >= 0)
+            mathoptsolverscmake::set_node_limit(highs, parameters.maximum_number_of_nodes);
+        mathoptsolverscmake::load(highs, model);
+        highs.setCallback([
+                &instance,
+                &parameters,
+                &output,
+                &algorithm_formatter,
+                &retrieve_solution](
+                    const int callback_type,
+                    const std::string& message,
+                    const HighsCallbackOutput* highs_output,
+                    HighsCallbackInput* highs_input,
+                    void*)
+                {
+                    // Check bound (Knapsack only).
+                    if (instance.objective() == Objective::Knapsack) {
+                        if (!highs_output->mip_solution.empty()) {
+                            // Retrieve solution.
+                            double milp_objective_value = highs_output->mip_primal_bound;
+                            if (shape::strictly_lesser(output.solution_pool.best().profit(), milp_objective_value)) {
+                                Solution solution = retrieve_solution(highs_output->mip_solution);
+                                algorithm_formatter.update_solution(solution, "node " + std::to_string(highs_output->mip_node_count));
+                            }
+                        }
+                    }
+
+                    // HiGHS only allows requesting an interrupt from the
+                    // dedicated 'kCallbackMipInterrupt' callback: it asserts
+                    // internally that 'user_interrupt' is never set from an
+                    // "informational" callback type such as this one's other
+                    // registration, 'kCallbackMipImprovingSolution' (see
+                    // 'HighsCallback::callbackAction' in HiGHS itself).
+                    if (callback_type != HighsCallbackType::kCallbackMipInterrupt)
+                        return;
+
+                    if (instance.objective() == Objective::Knapsack) {
+                        if (!shape::strictly_greater(highs_output->mip_dual_bound, output.solution_pool.best().profit()))
+                            highs_input->user_interrupt = 1;
+                    }
+
+                    // Check end.
+                    if (parameters.timer.needs_to_end())
+                        highs_input->user_interrupt = 1;
+                },
+                nullptr);
+        HighsStatus highs_status;
+        highs_status = highs.startCallback(HighsCallbackType::kCallbackMipImprovingSolution);
+        highs_status = highs.startCallback(HighsCallbackType::kCallbackMipInterrupt);
+        mathoptsolverscmake::solve(highs);
+        milp_solution = mathoptsolverscmake::get_solution(highs);
+#else
+        throw std::invalid_argument(FUNC_SIGNATURE);
+#endif
+    } else {
+        throw std::invalid_argument(FUNC_SIGNATURE);
+    }
+
+    return retrieve_solution(milp_solution);
+}
+
+}
+
+MilpRasterOutput packingsolver::irregular::milp_raster(
+        const Instance& instance,
+        const MilpRasterParameters& parameters)
+{
+    MilpRasterOutput output(instance);
+    AlgorithmFormatter algorithm_formatter(instance, parameters, output);
+    algorithm_formatter.start();
+    algorithm_formatter.print_header();
+
+    if (instance.objective() != Objective::Knapsack
+            && instance.objective() != Objective::Feasibility) {
+        throw std::invalid_argument(FUNC_SIGNATURE + ": unsupported objective.");
+    }
+
+    LengthDbl gcd = -1;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance.number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance.item_type(item_type_id);
+        for (const ItemShape& item_shape: item_type.shapes) {
+            for (const shape::ShapeElement& element: item_shape.shape_scaled.shape.elements) {
+                gcd = compute_gcd(gcd, std::abs(element.start.x));
+                if (equal(gcd, 0.0))
+                    break;
+                gcd = compute_gcd(gcd, std::abs(element.start.y));
+                if (equal(gcd, 0.0))
+                    break;
+            }
+            if (equal(gcd, 0.0))
+                break;
+            for (const Shape& hole: item_shape.shape_scaled.holes) {
+                for (const shape::ShapeElement& element: hole.elements) {
+                    gcd = compute_gcd(gcd, element.start.x);
+                    if (equal(gcd, 0.0))
+                        break;
+                    gcd = compute_gcd(gcd, element.start.y);
+                    if (equal(gcd, 0.0))
+                        break;
+                }
+                if (equal(gcd, 0.0))
+                    break;
+            }
+            if (equal(gcd, 0.0))
+                break;
+        }
+        if (equal(gcd, 0.0))
+            break;
+    }
+    //std::cout << "gcd " << gcd << std::endl;
+    LengthDbl cell_size = 100;
+    if (!equal(gcd, 0.0)) {
+        cell_size = gcd;
+        while (cell_size <= 100)
+            cell_size *= 2;
+    }
+
+    const std::vector<std::vector<std::vector<ItemTypeRotation>>> item_type_rotations = compute_item_type_rotations(instance);
+
+    for (Counter number_of_cell_sizes = 0; ; ++number_of_cell_sizes, cell_size /= 2) {
+        if (parameters.timer.needs_to_end())
+            break;
+        if (parameters.maximum_number_of_cell_sizes != -1
+                && number_of_cell_sizes >= parameters.maximum_number_of_cell_sizes) {
+            break;
+        }
+        Solution solution = solve_milp_raster_for_cell_size(
+                instance,
+                item_type_rotations,
+                parameters,
+                output,
+                algorithm_formatter,
+                cell_size,
+                instance.number_of_bins());
+        algorithm_formatter.update_solution(solution, "milp-raster cs=" + std::to_string(cell_size));
+        if (algorithm_formatter.end_boolean())
+            break;
+    }
+
+    algorithm_formatter.end();
+    return output;
+}

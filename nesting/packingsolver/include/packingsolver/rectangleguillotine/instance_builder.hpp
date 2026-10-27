@@ -1,0 +1,347 @@
+#pragma once
+
+#include "packingsolver/rectangleguillotine/instance.hpp"
+
+namespace packingsolver
+{
+namespace rectangleguillotine
+{
+
+class InstanceBuilder
+{
+
+public:
+
+    /** Constructor. */
+    InstanceBuilder() { }
+
+    /** Set the objective. */
+    void set_objective(Objective objective) { instance_.objective_ = objective; }
+
+    /** Set the knapsack goal (see 'Instance::knapsack_goal'). */
+    void set_knapsack_goal(Profit knapsack_goal) { instance_.knapsack_goal_ = knapsack_goal; }
+
+    /*
+     * Read from files
+     */
+
+    /** Read parameters from a file. */
+    void read_parameters(const std::string& parameters_path);
+
+    /** Read bin types from a file. */
+    void read_bin_types(const std::string& bins_path);
+
+    /** Read defects from a file. */
+    void read_defects(const std::string& defects_path);
+
+    /** Read item types from a file. */
+    void read_item_types(const std::string& items_path);
+
+    /**
+     * Read a full instance from a JSON file.
+     *
+     * Unlike the CSV readers above, this format supports every instance
+     * feature, including resources, and is meant for instances that need
+     * them; simple instances can keep using the CSV readers.
+     */
+    void read(const std::string& instance_path);
+
+    /** Read an instance in the JSON format from a stream. */
+    void read(std::istream& is);
+
+    /*
+     * Set parameters
+     */
+
+    /** Set parameters. */
+    void set_parameters(const Parameters& parameters) { instance_.parameters_ = parameters; }
+
+    /** Set the feasibility callback. */
+    void set_feasibility_callback(const FeasibilityCallback& feasibility_callback) { instance_.feasibility_callback_ = feasibility_callback; }
+
+    void set_number_of_stages(Counter number_of_stages);
+
+    /**
+     * Set the number of stages to an unlimited value.
+     *
+     * The bound used is max(bin_width + bin_height) over all bin types: each
+     * guillotine cut reduces at least one dimension by at least 1 unit, so no
+     * cut tree can ever be deeper than this. The number of stages is set to
+     * -1, and resolved in 'build', so this method can be called before
+     * adding the bin types. The cut type is then 'Exact' and the first stage
+     * orientation 'Any', whatever has been set.
+     */
+    void set_number_of_stages_unlimited();
+
+
+    void set_cut_type(CutType cut_type) { instance_.parameters_.cut_type = cut_type; }
+
+    void set_first_stage_orientation(CutOrientation first_stage_orientation) { instance_.parameters_.first_stage_orientation = first_stage_orientation; }
+
+    void set_minimum_distance_1_cuts(Length minimum_distance_1_cuts) { instance_.parameters_.minimum_distance_1_cuts = minimum_distance_1_cuts; }
+
+    void set_maximum_distance_1_cuts(Length maximum_distance_1_cuts) { instance_.parameters_.maximum_distance_1_cuts = maximum_distance_1_cuts; }
+
+    void set_minimum_distance_2_cuts(Length minimum_distance_2_cuts) { instance_.parameters_.minimum_distance_2_cuts = minimum_distance_2_cuts; }
+
+    void set_maximum_distance_2_cuts(Length maximum_distance_2_cuts) { instance_.parameters_.maximum_distance_2_cuts = maximum_distance_2_cuts; }
+
+    void set_minimum_waste_length(Length minimum_waste_length) { instance_.parameters_.minimum_waste_length = minimum_waste_length; }
+
+    void set_maximum_number_1_cuts(Counter maximum_number_1_cuts) { instance_.parameters_.maximum_number_1_cuts = maximum_number_1_cuts; }
+
+    void set_maximum_number_2_cuts(Counter maximum_number_2_cuts) { instance_.parameters_.maximum_number_2_cuts = maximum_number_2_cuts; }
+
+    void set_cut_through_defects(bool cut_through_defects) { instance_.parameters_.cut_through_defects = cut_through_defects; }
+
+    /** Set cut thickness. */
+    void set_cut_thickness(Length cut_thickness) { instance_.parameters_.cut_thickness = cut_thickness; }
+
+    /**
+     * Set the fixed cost of stage 'stage_id' (0 for the bin, 1 to
+     * number_of_stages + 1 for cuts), for the 'BinPackingCuttingCost'
+     * objective. Grows 'cutting_costs' if needed.
+     */
+    void set_fixed_cutting_cost(
+            Counter stage_id,
+            CuttingCost fixed_cost);
+
+    /**
+     * Set the variable cost of stage 'stage_id' (0 for the bin, 1 to
+     * number_of_stages + 1 for cuts), for the 'BinPackingCuttingCost'
+     * objective. Grows 'cutting_costs' if needed.
+     */
+    void set_variable_cutting_cost(
+            Counter stage_id,
+            CuttingCost variable_cost);
+
+    /**
+     * Set the cost per unit of waste area, for the 'BinPackingCuttingCost'
+     * objective.
+     */
+    void set_waste_cost(CuttingCost waste_cost) { instance_.parameters_.waste_cost = waste_cost; }
+
+    void set_predefined(std::string str);
+
+    void set_roadef2018();
+
+    /*
+     * Set bin types
+     */
+
+    /** Add a bin type. */
+    BinTypeId add_bin_type(
+            Length width,
+            Length height);
+
+    /** Set the cost of a bin type. */
+    void set_bin_type_cost(
+            BinTypeId bin_type_id,
+            Profit cost);
+
+    /** Add trims to bin type 'i'. */
+    void add_trims(
+            BinTypeId bin_type_id,
+            Length left_trim,
+            TrimType left_trim_type,
+            Length right_trim,
+            TrimType right_trim_type,
+            Length bottom_trim,
+            TrimType bottom_trim_type,
+            Length top_trim,
+            TrimType top_trim_type);
+
+    /** Add a defect. */
+    void add_defect(
+            BinTypeId bin_type_id,
+            Length x,
+            Length y,
+            Length w,
+            Length h);
+
+    /**
+     * Add a resource to a bin type. Returns the resource's id (local to this
+     * bin type). See 'Resource' for the meaning of 'penalize'/'penalty'.
+     */
+    ResourceId add_bin_type_resource(
+            BinTypeId bin_type_id,
+            double capacity,
+            bool penalize = false,
+            double penalty = 0.0);
+
+    /**
+     * Set an item type's whole per-copy consumption schedule of a bin
+     * type's resource at once - see 'Resource::item_consumptions' for the
+     * exact semantics of a per-copy schedule. May be called at most once
+     * per (item type, resource) pair - 'InstanceBuilder::build' throws
+     * otherwise.
+     */
+    void add_resource_consumption(
+            BinTypeId bin_type_id,
+            ResourceId resource_id,
+            ItemTypeId item_type_id,
+            const std::vector<double>& schedule);
+
+    /**
+     * Add a bin type from another bin type.
+     *
+     * This method is used in the column generation procedure.
+     */
+    BinTypeId add_bin_type(
+            const Instance& original_instance,
+            BinTypeId original_bin_type_id);
+
+    /** Set the number of copies of a bin type. */
+    void set_bin_type_copies(
+            BinTypeId bin_type_id,
+            BinPos copies);
+
+    /** Set the minimum number of copies of a bin type. */
+    void set_bin_type_copies_min(
+            BinTypeId bin_type_id,
+            BinPos copies_min);
+
+    /**
+     * For each bin type, set an infinite x.
+     *
+     * This method is used to transform a problem into a Strip Packing problem.
+     */
+    void set_bin_types_infinite_x();
+
+    /**
+     * For each bin type, set an infinite y.
+     *
+     * This method is used to transform a problem into a Strip Packing problem.
+     */
+    void set_bin_types_infinite_y();
+
+    /**
+     * Foe each bin type, set an infinite number of copies.
+     *
+     * This method should be used after reading bin files of Bin Packing
+     * Problems where the number of bin types is not given. By default, the
+     * number of bins would be set to 1.
+     */
+    void set_bin_types_infinite_copies();
+
+    /**
+     * For each bin type, set its cost to its area.
+     *
+     * This method is used to transform a Variable-sized Bin Packing Problem
+     * into an Unweighted Variable-sized Bin Packing Problem.
+     */
+    void set_bin_types_unweighted();
+
+    /*
+     * Set item types
+     */
+
+    /** Add an item type. */
+    ItemTypeId add_item_type(
+            Length width,
+            Length height,
+            bool oriented = false,
+            StackId stack_id = -1);
+
+    /**
+     * Add an item type from another item type.
+     *
+     * This method is used in the column generation procedure.
+     */
+    ItemTypeId add_item_type(
+            const Instance& original_instance,
+            ItemTypeId original_item_type_id);
+
+    /** Set the profit of an item type. */
+    void set_item_type_profit(
+            ItemTypeId item_type_id,
+            Profit profit);
+
+    /** Set the number of copies of an item type. */
+    void set_item_type_copies(
+            ItemTypeId item_type_id,
+            ItemPos copies);
+
+    /** Set the minimum number of copies to pack of an item type. */
+    void set_item_type_copies_min(
+            ItemTypeId item_type_id,
+            ItemPos copies_min);
+
+    /**
+     * For each item type, set an infinite number of copies.
+     *
+     * This method is used to transform a Knapsack Problem into an Unbounded
+     * Knapsack Problem.
+     */
+    void set_item_types_infinite_copies();
+
+    void multiply_item_types_copies(ItemPos factor);
+
+    /**
+     * For each item type, set its profit to its area.
+     *
+     * This method is used to transform a Knapsack Problem into an Unweighted
+     * Knapsack Problem.
+     */
+    void set_item_types_unweighted();
+
+    /** For each item type, set its 'oriented' attribute. */
+    void set_item_types_oriented(bool oriented = true);
+
+    /*
+     * Build
+     */
+
+    /** Build. */
+    Instance build();
+
+private:
+
+    /*
+     * Private methods
+     */
+
+    /**
+     * Resolve the item types with unlimited copies ('copies' == -1): as many
+     * copies as the total area of the bins allows.
+     */
+    void resolve_item_types_unlimited_copies();
+
+    /** Compute item types max length sum. */
+    Length compute_item_types_max_length_sum() const;
+
+    /** Compute bin types area max. */
+    Area compute_bin_types_area_max() const;
+
+    /** Build stack_offsets_ and item_type_ids_ in the instance. */
+    void build_stacks();
+
+    /**
+     * Number of cutting costs of the instance: one for the bin, one per
+     * stage, and one for the extra cut of the non-exact cut types.
+     */
+    Counter number_of_required_cutting_costs() const;
+
+    /**
+     * Throw if more cutting costs have been set than the instance has, once
+     * the parameters of a file have been read.
+     */
+    void check_number_of_cutting_costs() const;
+
+    /*
+     * Private attributes
+     */
+
+    /** Instance. */
+    Instance instance_;
+
+    /** Mapping from original bin type IDs to sub-instance bin type IDs. */
+    std::vector<BinTypeId> orig_to_sub_bin_type_ids_;
+
+    /** Mapping from original item type IDs to sub-instance item type IDs. */
+    std::vector<ItemTypeId> orig_to_sub_item_type_ids_;
+
+};
+
+}
+}

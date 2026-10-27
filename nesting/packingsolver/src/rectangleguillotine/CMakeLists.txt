@@ -1,0 +1,50 @@
+find_package(Threads)
+add_library(PackingSolver_rectangleguillotine)
+target_sources(PackingSolver_rectangleguillotine PRIVATE
+    block.cpp
+    instance.cpp
+    instance_builder.cpp
+    solution.cpp
+    solution_builder.cpp
+    instance_flipper.cpp
+    algorithm_formatter.cpp
+    optimize.cpp
+    reduction.cpp
+    post_process.cpp
+    sequential_feasibility.cpp
+    tree_search.cpp
+    tree_search_maximal_spaces.cpp
+    column_generation_strips.cpp
+    sequential_strips_onedimensional.cpp
+    tree_search_hypergraph_infinite_copies.cpp
+    tree_search_hypergraph.cpp)
+target_include_directories(PackingSolver_rectangleguillotine PUBLIC
+    ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(PackingSolver_rectangleguillotine PRIVATE
+    ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(PackingSolver_rectangleguillotine PUBLIC
+    PackingSolver_algorithms
+    PackingSolver_onedimensional
+    PackingSolver_rectangle
+    TreeSearchSolver::treesearchsolver
+    Shape::shape
+    Threads::Threads)
+# Resource limits: the portable RSS reader in
+# include/packingsolver/algorithms/thread_pool.hpp uses GetProcessMemoryInfo on
+# Windows, which lives in psapi.
+if (WIN32)
+    target_link_libraries(PackingSolver_rectangleguillotine PUBLIC psapi)
+endif()
+add_library(PackingSolver::rectangleguillotine ALIAS PackingSolver_rectangleguillotine)
+
+if(PACKINGSOLVER_BUILD_MAIN)
+  add_executable(PackingSolver_rectangleguillotine_main)
+  target_sources(PackingSolver_rectangleguillotine_main PRIVATE
+      main.cpp)
+  target_link_libraries(PackingSolver_rectangleguillotine_main PUBLIC
+      PackingSolver_rectangleguillotine
+      Boost::program_options
+      Boost::filesystem)
+  set_target_properties(PackingSolver_rectangleguillotine_main PROPERTIES OUTPUT_NAME "packingsolver_rectangleguillotine")
+  install(TARGETS PackingSolver_rectangleguillotine_main)
+endif()

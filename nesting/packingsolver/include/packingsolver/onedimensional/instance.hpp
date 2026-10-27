@@ -1,0 +1,446 @@
+#pragma once
+
+#include "packingsolver/algorithms/common.hpp"
+
+#include <functional>
+
+namespace packingsolver
+{
+namespace onedimensional
+{
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////// Item type, Bin type, Defect //////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Item type precedence: no unit of 'dominated_item_type_id' may be used
+ * unless 'dominating_item_type_id' uses all of its own copies (used by
+ * 'milp_assignment'; see its "Constraints: item type precedence" for the
+ * exact semantics and soundness scope). Added via
+ * 'InstanceBuilder::add_item_type_precedence'.
+ */
+struct Precedence
+{
+    /** Dominated item type of this precedence. */
+    ItemTypeId dominated_item_type_id = -1;
+
+    /** Dominating item type of this precedence. */
+    ItemTypeId dominating_item_type_id = -1;
+};
+
+/**
+ * Item type structure for a problem of type 'onedimensional'.
+ */
+struct ItemType
+{
+    /** Dimension of the item type. */
+    Length length;
+
+    /** Profit of the item type. */
+    Profit profit;
+
+    /** Number of copies of the item type. */
+    ItemPos copies;
+
+    /**
+     * Minimum number of copies of the item type to pack.
+     *
+     * Set to '-1' before 'InstanceBuilder::build()' resolves it: '0' for
+     * objective 'Knapsack' (packing an item type is optional), 'copies' for
+     * every other objective (every copy of every item type must be packed).
+     */
+    ItemPos copies_min = -1;
+
+    /** Weight of the item type. */
+    Weight weight = 0;
+
+    /**
+     * Nesting length.
+     *
+     * Length to remove when the item is packed after another item in the same
+     * bin.
+     */
+    Length nesting_length = 0;
+
+    /**
+     * Maximum stackability.
+     *
+     * Maximum number of items in a bin containing this item type.
+     */
+    ItemPos maximum_stackability = std::numeric_limits<ItemPos>::max();
+
+    /** Maximum weight of the items packed after items of this type. */
+    Weight maximum_weight_after = std::numeric_limits<Weight>::infinity();
+
+    /**
+     * Eligibility.
+     *
+     * - 'eligibility_id == -1' means that the item type can be packed in any
+     *   bin type.
+     * - 'eligibility_id >= 0' means that the item type can only be packed in
+     *   bin type supporting eligibility id 'eligibility_id'.
+     */
+    EligibilityId eligibility_id = -1;
+
+    /**
+     * Ids of the precedences (see 'Instance::precedences') in which this
+     * item type is the dominated party.
+     */
+    std::vector<PrecedenceId> dominated_precedence_ids;
+
+    /**
+     * Ids of the precedences (see 'Instance::precedences') in which this
+     * item type is the dominating party.
+     */
+    std::vector<PrecedenceId> dominating_precedence_ids;
+
+    Length space() const { return length; }
+
+    /*
+     * Computed attributes.
+     */
+
+    /** Number of fixed copies of the item type (pre-placed in bin types). */
+    ItemPos copies_fixed = 0;
+
+    /**
+     * For each bin type (indexed by bin_type_id - a resource's id is only
+     * ever local to one bin type, see 'BinType::resources'), the bin
+     * type's resources this item type has a non-zero consumption for,
+     * together with the position of this item type's own entry in each
+     * resource's own 'Resource::item_consumptions' (see
+     * 'ItemResourceConsumption') - so a caller can jump straight to its
+     * schedule with no search. Lets algorithms that need every resource a
+     * given item type (in a given bin type) might affect skip the rest,
+     * instead of scanning every resource of the bin type for every item.
+     */
+    std::vector<std::vector<ItemResourceConsumption>> resources;
+
+};
+
+std::ostream& operator<<(
+        std::ostream& os,
+        const ItemType& item_type);
+
+struct FixedItem
+{
+    /** Item type. */
+    ItemTypeId item_type_id;
+
+    /** Initial position of the item. */
+    Length start;
+};
+
+// 'Resource' (a bin type's capacities/consumptions, see
+// 'BinType::resources' below) is defined in
+// 'packingsolver/algorithms/common.hpp', shared across every problem type.
+// 'onedimensional::tree_search' handles 'penalize' resources correctly (see
+// 'BranchingScheme::child_tmp'): they never block an insertion, and the
+// penalty is charged to the node's profit the first time consumption
+// crosses the capacity, exactly like 'Solution::update_indicators'.
+// 'milp_assignment''s MILP model does not yet: it still encodes every
+// resource as a hard linear constraint, so it would need dedicated
+// (non-hard-constraint, penalized-objective) handling before a 'penalize'
+// resource could be used with it.
+
+/**
+ * Bin type structure for a problem of type 'onedimensional'.
+ */
+struct BinType
+{
+    /** Dimension of the bin type. */
+    Length length;
+
+    /** Cost of the bin type. */
+    Profit cost;
+
+    /** Maximum number of copies of the bin type. */
+    BinPos copies;
+
+    /** Minimum number of copies to use of the bin type. */
+    BinPos copies_min;
+
+    /** Maximum weight allowed in the bin type.  */
+    Weight maximum_weight = std::numeric_limits<Weight>::infinity();
+
+    /** Eligibility ids. */
+    std::vector<EligibilityId> eligibility_ids;
+
+    /** Fixed items pre-placed in every bin of this type. */
+    std::vector<FixedItem> fixed_items;
+
+    /** Resources of this bin type; a resource's id is its index in this vector. */
+    std::vector<Resource> resources;
+
+    /*
+     * Computed attributes.
+     */
+
+    /** Item type ids. */
+    std::vector<ItemTypeId> item_type_ids;
+
+    inline Volume space() const { return length; }
+
+    /** Get the number of resources of this bin type. */
+    inline ResourceId number_of_resources() const { return resources.size(); }
+
+    /** Get a resource of this bin type. */
+    inline const Resource& resource(ResourceId resource_id) const { return resources[resource_id]; }
+
+};
+
+std::ostream& operator<<(
+        std::ostream& os,
+        const BinType& bin_type);
+
+struct Parameters
+{
+    /**
+     * Absolute tolerance used by 'strictly_greater_weight' / 'strictly_lesser_weight'
+     * / 'equal_weight' for bin weight comparisons.
+     *
+     * Computed once by 'InstanceBuilder::build()' from the highest
+     * non-infinite maximum weight among the instance's bin types (or left
+     * untouched if a non-zero value was already propagated from a parent
+     * instance's parameters via 'InstanceBuilder::set_parameters()', e.g.
+     * when building a sub-instance of a decomposition) - not meant to be set
+     * directly.
+     */
+    Weight weight_tolerance = 0.0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////// Instance ///////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+class Solution;
+
+/**
+ * User-provided feasibility callback.
+ *
+ * Called on a fully-built Solution in addition to the built-in feasibility
+ * checks; see 'FeasibilityCallbackResult' for what it may return.
+ */
+using FeasibilityCallback = std::function<FeasibilityCallbackResult(const Solution&)>;
+
+/**
+ * Instance class for a problem of type "onedimensional".
+ */
+class Instance
+{
+
+public:
+
+    /*
+     * Getters
+     */
+
+    /** Get the problem type. */
+    static inline ProblemType type() { return ProblemType::OneDimensional; };
+
+    /** Get the objective of the problem. */
+    inline Objective objective() const { return objective_; }
+
+    /*
+     * Getters: parameters
+     */
+
+    /** Get parameters. */
+    const Parameters& parameters() const { return parameters_; }
+
+    /** Get the feasibility callback. */
+    inline const FeasibilityCallback& feasibility_callback() const { return feasibility_callback_; }
+
+    /*
+     * Getters: bin types
+     */
+
+    /** Get the number of bin types. */
+    inline BinTypeId number_of_bin_types() const { return bin_types_.size(); }
+
+    /** Get a bin type. */
+    inline const BinType& bin_type(BinTypeId bin_type_id) const { return bin_types_[bin_type_id]; }
+
+    /** Get the number of bins. */
+    inline BinPos number_of_bins() const { return bin_type_ids_.size(); }
+
+    /** Get the id of a bin at a given position. */
+    inline BinTypeId bin_type_id(BinPos bin_pos) const { return bin_type_ids_[bin_pos]; }
+
+    /** Get the total length of the bins. */
+    inline Area bin_length() const { return bin_length_; }
+
+    /** Get the total length of the bins before bin i_pos. */
+    inline Area previous_bin_length(BinPos bin_pos) const { return previous_bins_length_[bin_pos]; }
+
+    /** Get the largest cost of the bins. */
+    inline Profit largest_bin_cost() const { return largest_bin_cost_; }
+
+    /** Get the absolute tolerance for bin weight comparisons. */
+    inline Weight weight_tolerance() const { return parameters_.weight_tolerance; }
+
+    /*
+     * Getters: item types
+     */
+
+    /* Get the number of item types. */
+    inline ItemTypeId number_of_item_types() const { return item_types_.size(); }
+
+    /** Get an item type. */
+    inline const ItemType& item_type(ItemTypeId item_type_id) const { return item_types_[item_type_id]; }
+
+    /** Get the number of items. */
+    inline ItemPos number_of_items() const { return number_of_items_; }
+
+    /** Get the total length of the items. */
+    inline Area item_length() const { return item_length_; }
+
+    /** Get the mean length of the items. */
+    inline Area mean_item_length() const { return item_length_ / number_of_items(); }
+
+    /** Get the total profit of the items. */
+    inline Profit item_profit() const { return item_profit_; }
+
+    /** Get the largest profit of the items. */
+    inline Profit largest_item_profit() const { return largest_item_profit_; }
+
+    /** Get the id of the item type with largest efficiency. */
+    inline ItemTypeId largest_efficiency_item_type_id() const { return largest_efficiency_item_type_id_; }
+
+    /** Get the largest number of copies of the items. */
+    inline ItemPos largest_item_copies() const { return largest_item_copies_; }
+
+    /** Return true iff all items have infinite copies. */
+    inline bool unbounded_knapsack() const { return all_item_types_infinite_copies_; }
+
+    /**
+     * Return 'true' iff item type 'item_type_id' fits in at least one bin
+     * type.
+     */
+    bool fits_some_bin(ItemTypeId item_type_id) const;
+
+    /** Return 'true' iff item type 'item_type_id' fits in bin type 'bin_type_id'. */
+    bool item_type_fits_bin_type(
+            ItemTypeId item_type_id,
+            BinTypeId bin_type_id) const;
+
+    /** Get the item type precedences; see 'Precedence'. */
+    inline const std::vector<Precedence>& precedences() const { return precedences_; }
+
+    /**
+     * Return 'true' iff the instance has a single bin type with a finite
+     * maximum weight and at least one item type with a nonzero weight -
+     * i.e. iff its weight capacity is an actual, non-trivial per-bin
+     * aggregate constraint (see 'Reduction::full_bin_reduction_applies'
+     * for why this matters there: a per-bin aggregate is invisible to a
+     * dedicated-bin reservation that only ever checks a single item
+     * type's/pair's own length).
+     */
+    bool weight_matters() const;
+
+    /**
+     * Return 'true' iff the instance has a single bin type with at least
+     * one resource - i.e. iff it has an actual, non-trivial per-bin
+     * aggregate constraint beyond length and weight (see 'weight_matters'
+     * and 'Reduction::full_bin_reduction_applies').
+     */
+    bool resources_matter() const;
+
+    /*
+     * Export
+     */
+
+    /** Print the instance into a stream. */
+    std::ostream& format(
+            std::ostream& os,
+            int verbosity_level = 1) const;
+
+    /**
+     * Write the instance to a file, in the given format (default 'Csv',
+     * matching the previous behavior). See 'InstanceFormat'.
+     */
+    void write(
+            const std::string& instance_path,
+            InstanceFormat format = InstanceFormat::Csv) const;
+
+    /** Write the instance as three CSV files; see 'InstanceFormat::Csv'. */
+    void write_csv(const std::string& instance_path) const;
+
+    /** Write the instance as a single JSON file; see 'InstanceFormat::Json'. */
+    void write_json(const std::string& instance_path) const;
+
+private:
+
+    /*
+     * Private methods
+     */
+
+    /** Create an instance manually. */
+    Instance() { }
+
+    /*
+     * Private attributes
+     */
+
+    /** Objective. */
+    Objective objective_ = Objective::BinPacking;
+
+    /** Parameters. */
+    Parameters parameters_;
+
+    /** User-provided feasibility callback. */
+    FeasibilityCallback feasibility_callback_ = [](const Solution&) { return FeasibilityCallbackResult(); };
+
+    /** Bin types. */
+    std::vector<BinType> bin_types_;
+
+    /** Item types. */
+    std::vector<ItemType> item_types_;
+
+    /** Item type precedences; see 'precedences'. */
+    std::vector<Precedence> precedences_;
+
+    /*
+     * Private attributes computed by the 'build' method
+     */
+
+    /** For each bin position, the corresponding bin type. */
+    std::vector<BinTypeId> bin_type_ids_;
+
+    /** For each bin position, the length of the previous bins. */
+    std::vector<Area> previous_bins_length_;
+
+    /** Total packable length. */
+    Length bin_length_ = 0;
+
+    /** Largest bin cost. */
+    Profit largest_bin_cost_ = 0.0;
+
+    /** Number of items. */
+    ItemPos number_of_items_ = 0;
+
+    /** Total item length. */
+    Length item_length_ = 0;
+
+    /** Total item profit. */
+    Profit item_profit_ = 0;
+
+    /** Largest item profit. */
+    Profit largest_item_profit_ = 0.0;
+
+    /** Id of the item with maximum efficiency. */
+    ItemTypeId largest_efficiency_item_type_id_ = -1;
+
+    /** Largest item copies. */
+    ItemPos largest_item_copies_ = 0;
+
+    /** True iff all item types have an infinite number of copies. */
+    bool all_item_types_infinite_copies_ = false;
+
+    friend class InstanceBuilder;
+
+};
+
+}
+}

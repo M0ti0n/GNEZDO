@@ -1,0 +1,597 @@
+/**
+ * Sequential value correction algorithm
+ *
+ * Algorithm for multiple knapsack, bin packing and variable-sized bin packing
+ * problems.
+ *
+ * For variable-sized bin packing, it doesn't handle the minimum number of
+ * copies of each bin type to use.
+ *
+ * The algorithm solves a single knapsack subproblem for each bin until either
+ * all items are packed, or there is no bin left.
+ * Then, it restarts but increases the profits of the items that where packed
+ * in bins with high waste, such that they get packed earlier and hopefully
+ * generate less waste.
+ *
+ * For Variable-sized bin packing, this algorithm should require less
+ * computational effort to find a good solution than the other algorithms for
+ * this objective.
+ * For multiple knapsack and bin packing, it is useful for boxstacks problem
+ * type since, in this case, tree search might not be applied directly to get a
+ * good solution.
+ *
+ * Some references from which this implementation is inspired:
+ * - "Linear one-dimensional cutting-packing problems: numerical experiments
+ *   with the sequential value correction method (SVC) and a modified
+ *   branch-and-bound method (MBB)" (Mukhacheva et al., 2000)
+ *   https://doi.org/10.1590/S0101-74382000000200002
+ * - "Parallelized sequential value correction procedure for the
+ *   one-dimensional cutting stock problem with multiple stock lengths" (Cui et
+ *   Tang, 2014)
+ *   https://doi.org/10.1080/0305215X.2013.841903
+ * - "Sequential value correction heuristic for the two-dimensional cutting
+ *   stock problem with three-staged homogenous patterns" (Chen et al., 2016)
+ *   https://doi.org/10.1080/10556788.2015.1048860
+ */
+
+#pragma once
+
+#include "packingsolver/algorithms/common.hpp"
+
+#include <algorithm>
+#include <functional>
+#include <numeric>
+#include <sstream>
+
+namespace packingsolver
+{
+
+template <typename Instance, typename Solution>
+using SequentialValueCorrectionFunction = std::function<SolutionPool<Instance, Solution>(const Instance&)>;
+
+template <typename Instance, typename Solution, typename Output = packingsolver::Output<Instance, Solution>>
+struct SequentialValueCorrectionOutput: Output
+{
+    /** Constructor. */
+    SequentialValueCorrectionOutput(const Instance& instance):
+        Output(instance) { }
+
+
+    /** Number of iterations. */
+    Counter number_of_iterations = 0;
+
+    /** List of all patterns generated during the algorithm. */
+    std::vector<Solution> all_patterns;
+};
+
+template <typename Instance, typename Solution, typename Output = packingsolver::Output<Instance, Solution>>
+struct SequentialValueCorrectionParameters: packingsolver::Parameters<Instance, Solution, Output>
+{
+    /** Maximum number of iterations. */
+    Counter maximum_number_of_iterations = -1;
+
+    /**
+     * Exponent applied to an item's space to get its initial profit for the
+     * BinPacking-family objectives (not used for 'Knapsack', which keeps the
+     * item's own profit) - see this file's own profit computation. Greater
+     * than 1 breaks the many exact-space ties a 1D dynamic programming
+     * subproblem would otherwise face, without changing the optimal
+     * *selection* whenever a bin's subproblem can pack everything given to
+     * it (profits stay strictly positive and monotonic in space either
+     * way). Harmless once later iterations adjust profits away from this
+     * initial value (the regular, multi-iteration scheme), but with only a
+     * single pass and nothing to correct it, distorting the search guide
+     * away from an otherwise-reachable full packing is a net loss - see
+     * 'optimize_sequential_single_knapsack' (in every domain that has one),
+     * which overrides this to 1.0.
+     */
+    double initial_profit_exponent = 1.1;
+
+    /**
+     * If the objective is "BinPacking", stop as soon as a solution using this
+     * number of bins is found.
+     *
+     * If all items fit in the first bin, but the first solution found uses
+     * more bins, then it is very unlikely that the solutions of the next
+     * iterations manage to pack all items in the first bin only.
+     */
+    BinPos bin_packing_goal = 2;
+};
+
+template <typename Instance, typename InstanceBuilder, typename Solution, typename AlgorithmFormatter, typename Output = packingsolver::Output<Instance, Solution>>
+SequentialValueCorrectionOutput<Instance, Solution, Output> sequential_value_correction(
+        const Instance& instance,
+        const SequentialValueCorrectionFunction<Instance, Solution>& function,
+        const SequentialValueCorrectionParameters<Instance, Solution, Output>& parameters)
+{
+    SequentialValueCorrectionOutput<Instance, Solution, Output> output(instance);
+    AlgorithmFormatter algorithm_formatter(instance, parameters, output);
+    algorithm_formatter.start();
+    algorithm_formatter.print_header();
+
+    if (instance.number_of_item_types() == 0)
+        return output;
+
+    // Initialize profits.
+    std::vector<Profit> profits(instance.number_of_item_types());
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance.number_of_item_types();
+            ++item_type_id) {
+        if (instance.objective() == Objective::Knapsack) {
+            profits[item_type_id] = instance.item_type(item_type_id).profit;
+        } else {
+            profits[item_type_id] = std::pow(
+                    instance.item_type(item_type_id).space(),
+                    parameters.initial_profit_exponent);
+        }
+        //std::cout << "item_type_id " << item_type_id
+        //    << " profit " << profits[item_type_id]
+        //    << std::endl;
+    }
+    auto lbs = largest_bin_space(instance);
+
+    // Bin type of the bin at each position, in the order in which bins are
+    // considered by the algorithm.
+    //
+    // For the Knapsack objective, bins are considered by increasing space,
+    // regardless of the order in which they appear in the instance.
+    // Otherwise, bins are considered in the order in which they appear in
+    // the instance.
+    std::vector<BinTypeId> bin_type_id_order(instance.number_of_bin_types());
+    std::iota(bin_type_id_order.begin(), bin_type_id_order.end(), 0);
+    if (instance.objective() == Objective::Knapsack) {
+        std::stable_sort(
+                bin_type_id_order.begin(),
+                bin_type_id_order.end(),
+                [&instance](BinTypeId bin_type_id_1, BinTypeId bin_type_id_2)
+                {
+                    return instance.bin_type(bin_type_id_1).space()
+                        < instance.bin_type(bin_type_id_2).space();
+                });
+    }
+    std::vector<BinTypeId> bin_type_ids_by_position;
+    for (BinTypeId bin_type_id: bin_type_id_order) {
+        const auto& bin_type = instance.bin_type(bin_type_id);
+        for (BinPos copy = 0; copy < bin_type.copies; ++copy)
+            bin_type_ids_by_position.push_back(bin_type_id);
+    }
+
+    for (output.number_of_iterations = 0;; output.number_of_iterations++) {
+        // track fixed copies from bins added to the partial solution in this iteration
+        std::vector<ItemPos> partial_fixed_copies(instance.number_of_item_types(), 0);
+        //std::cout << "it " << output.number_of_iterations
+        //    << " / " << parameters.maximum_number_of_iterations
+        //    << std::endl;
+
+        // Check maximum number of iterations.
+        if (parameters.maximum_number_of_iterations != -1
+                && output.number_of_iterations == parameters.maximum_number_of_iterations)
+            return output;
+
+        Solution solution(instance);
+        std::vector<double> item_type_adjusted_space(instance.number_of_item_types(), 0.0);
+
+        // For VBPP objective, we store the solutions found for each bin type
+        // at each iteration. Thus, at the next iteration, we can check if the
+        // previously computed ones are still feasible.
+        std::vector<std::pair<Solution, Profit>> solutions_cur(
+                instance.number_of_bin_types(),
+                {Solution(instance), 0.0});
+
+        for (;;) {
+
+            // Check end.
+            if (parameters.timer.needs_to_end())
+                return output;
+
+            // Stop if all items have been packed.
+            if (solution.number_of_items() == instance.number_of_items())
+                break;
+
+            // Stop if all bins have been used.
+            if (solution.number_of_bins() == instance.number_of_bins())
+                break;
+
+            // Find bin types to try.
+            std::vector<BinTypeId> bin_type_ids;
+            if (instance.objective() == Objective::VariableSizedBinPacking) {
+                // Start with mandatory bins (bin types with copies_min > 0).
+                BinTypeId smallest_mandatory_bin_type_id = -1;
+                for (BinTypeId bin_type_id = 0;
+                        bin_type_id < instance.number_of_bin_types();
+                        ++bin_type_id) {
+                    const auto& bin_type = instance.bin_type(bin_type_id);
+                    if (solution.bin_copies(bin_type_id) >= bin_type.copies_min)
+                        continue;
+                    if (smallest_mandatory_bin_type_id == -1
+                            || bin_type.space() < instance.bin_type(smallest_mandatory_bin_type_id).space()) {
+                        smallest_mandatory_bin_type_id = bin_type_id;
+                    }
+                }
+
+                if (smallest_mandatory_bin_type_id != -1) {
+                    bin_type_ids.push_back(smallest_mandatory_bin_type_id);
+                } else {
+                    for (BinTypeId bin_type_id = 0;
+                            bin_type_id < instance.number_of_bin_types();
+                            ++bin_type_id) {
+                        const auto& bin_type = instance.bin_type(bin_type_id);
+                        if (solution.bin_copies(bin_type_id) == bin_type.copies)
+                            continue;
+                        bin_type_ids.push_back(bin_type_id);
+                    }
+                }
+            } else {
+                bin_type_ids.push_back(bin_type_ids_by_position[solution.number_of_bins()]);
+            }
+
+            std::vector<ItemPos> bin_fixed_copies(instance.number_of_item_types(), 0);
+            for (BinTypeId bin_type_id: bin_type_ids) {
+                const auto& bin_type = instance.bin_type(bin_type_id);
+
+                // Compute k_i: fixed copies of each item type in this bin type.
+                for (const auto& fixed_item: bin_type.fixed_items)
+                    bin_fixed_copies[fixed_item.item_type_id]++;
+
+                if (instance.objective() == Objective::VariableSizedBinPacking
+                        && solutions_cur[bin_type_id].first.number_of_items() > 0) {
+                    // Check if previous solution is still valid.
+                    bool valid = true;
+                    for (ItemTypeId item_type_id = 0;
+                            item_type_id < instance.number_of_item_types();
+                            ++item_type_id) {
+                        ItemPos available = instance.item_type(item_type_id).copies
+                            - instance.item_type(item_type_id).copies_fixed
+                            - (solution.item_copies(item_type_id) - partial_fixed_copies[item_type_id])
+                            + bin_fixed_copies[item_type_id];
+                        if (available
+                                < solutions_cur[bin_type_id].first.item_copies(item_type_id)) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    if (valid) {
+                        for (const auto& fixed_item: bin_type.fixed_items)
+                            bin_fixed_copies[fixed_item.item_type_id]--;
+                        continue;
+                    }
+                }
+
+                // Build Knapsack subproblem instance.
+                // Copies = k_orig - k_fixed - k_sol_free + k_i.
+                InstanceBuilder kp_instance_builder = InstanceBuilder();
+                kp_instance_builder.set_objective(Objective::Knapsack);
+                kp_instance_builder.set_parameters(instance.parameters());
+                BinTypeId kp_bin_type_id = kp_instance_builder.add_bin_type(instance, bin_type_id);
+                kp_instance_builder.set_bin_type_copies(kp_bin_type_id, 1);
+                kp_instance_builder.set_bin_type_copies_min(kp_bin_type_id, 0);
+                std::vector<ItemTypeId> kp2orig;
+                for (ItemTypeId item_type_id = 0;
+                        item_type_id < instance.number_of_item_types();
+                        ++item_type_id) {
+                    ItemPos copies = instance.item_type(item_type_id).copies
+                        - instance.item_type(item_type_id).copies_fixed
+                        - (solution.item_copies(item_type_id) - partial_fixed_copies[item_type_id])
+                        + bin_fixed_copies[item_type_id];
+                    if (copies <= 0)
+                        continue;
+                    ItemTypeId kp_item_type_id = kp_instance_builder.add_item_type(instance, item_type_id);
+                    kp_instance_builder.set_item_type_profit(kp_item_type_id, profits[item_type_id]);
+                    kp_instance_builder.set_item_type_copies(kp_item_type_id, copies);
+                    kp2orig.push_back(item_type_id);
+                }
+                Instance kp_instance = kp_instance_builder.build();
+
+                // Solve Knapsack subproblem instance.
+                SolutionPool<Instance, Solution> kp_solution_pool = function(kp_instance);
+                if (parameters.timer.needs_to_end())
+                    return output;
+
+                auto kp_solution = kp_solution_pool.best();
+
+                if (kp_solution.number_of_different_bins() == 0) {
+                    solutions_cur[bin_type_id].first = Solution(instance);
+                    solutions_cur[bin_type_id].second = 0;
+                    for (const auto& fixed_item: bin_type.fixed_items)
+                        bin_fixed_copies[fixed_item.item_type_id]--;
+                    continue;
+                }
+
+                // Compute the number of copies of the selected Knapsack solution
+                // to add. Only free items limit number_of_copies; fixed items
+                // are always present in the bin type.
+                BinPos number_of_copies
+                    = instance.bin_type(bin_type_id).copies
+                    - solution.bin_copies(bin_type_id);
+                for (ItemTypeId kp_item_type_id = 0;
+                        kp_item_type_id < kp_instance.number_of_item_types();
+                        ++kp_item_type_id) {
+                    ItemTypeId item_type_id = kp2orig[kp_item_type_id];
+                    ItemPos free_remaining = instance.item_type(item_type_id).copies
+                        - instance.item_type(item_type_id).copies_fixed
+                        - (solution.item_copies(item_type_id) - partial_fixed_copies[item_type_id]);
+                    ItemPos free_packed = kp_solution.item_copies(kp_item_type_id)
+                        - bin_fixed_copies[item_type_id];
+                    if (free_packed > 0) {
+                        number_of_copies = std::min(
+                                number_of_copies,
+                                (BinPos)(free_remaining / free_packed));
+                    }
+                }
+                if (number_of_copies < 1) {
+                    throw std::logic_error(
+                            FUNC_SIGNATURE + "; "
+                            "number_of_copies: " + std::to_string(number_of_copies) + ".");
+                }
+
+                // If the objective is BinPackingWithLeftovers and this is the
+                // last bin, then we re-optimize it to maximize the leftover
+                // value.
+                if (instance.objective() == Objective::BinPackingWithLeftovers
+                        && solution.number_of_items()
+                        + number_of_copies * kp_solution.number_of_items()
+                        == instance.number_of_items()) {
+
+                    InstanceBuilder bppl_instance_builder;
+                    bppl_instance_builder.set_objective(Objective::BinPackingWithLeftovers);
+                    bppl_instance_builder.set_parameters(instance.parameters());
+                    BinTypeId bppl_bin_type_id = bppl_instance_builder.add_bin_type(instance, bin_type_id);
+                    bppl_instance_builder.set_bin_type_copies(bppl_bin_type_id, 1);
+                    bppl_instance_builder.set_bin_type_copies_min(bppl_bin_type_id, 0);
+                    for (ItemTypeId item_type_id: kp2orig) {
+                        ItemPos free_copies = instance.item_type(item_type_id).copies
+                            - instance.item_type(item_type_id).copies_fixed
+                            - (solution.item_copies(item_type_id) - partial_fixed_copies[item_type_id]);
+                        ItemPos copies = (free_copies / number_of_copies)
+                            + bin_fixed_copies[item_type_id];
+                        ItemTypeId bppl_item_type_id = bppl_instance_builder.add_item_type(instance, item_type_id);
+                        bppl_instance_builder.set_item_type_profit(bppl_item_type_id, profits[item_type_id]);
+                        bppl_instance_builder.set_item_type_copies(bppl_item_type_id, copies);
+                    }
+                    Instance bppl_instance = bppl_instance_builder.build();
+
+                    SolutionPool<Instance, Solution> bppl_solution_pool = function(bppl_instance);
+                    if (parameters.timer.needs_to_end())
+                        return output;
+
+                    auto bppl_solution = bppl_solution_pool.best();
+
+                    Solution kp_solution_tmp(bppl_instance);
+                    kp_solution_tmp.append_bin(kp_solution, 0, 1);
+                    if (!(bppl_solution < kp_solution_tmp))
+                        kp_solution = bppl_solution;
+                }
+
+                Solution kp_solution_orig(instance);
+                kp_solution_orig.append_bin(kp_solution, 0, 1, {bin_type_id}, kp2orig);
+                solutions_cur[bin_type_id].first = kp_solution_orig;
+                solutions_cur[bin_type_id].second = kp_solution.profit();
+                output.all_patterns.push_back(kp_solution_orig);
+
+                // If the objective is VariableSizedBinPacking and the
+                // current solution is full, check if it is the new best
+                // solution.
+                if (instance.objective() == Objective::VariableSizedBinPacking
+                        && solution.number_of_items()
+                        + number_of_copies * kp_solution.number_of_items()
+                        == instance.number_of_items()) {
+
+                    // Update current solution.
+                    Solution solution_tmp = solution;
+                    solution_tmp.append_bin(
+                            kp_solution_orig,
+                            0,
+                            number_of_copies);
+
+                    // Update best solution.
+                    std::stringstream ss;
+                    ss << "iteration " << output.number_of_iterations;
+                    algorithm_formatter.update_solution(solution_tmp, ss.str());
+                }
+
+                // Revert bin_fixed_copies for the next bin type.
+                for (const auto& fixed_item: bin_type.fixed_items)
+                    bin_fixed_copies[fixed_item.item_type_id]--;
+            }
+
+            // Find best solution.
+
+            double ratio_best = 0;
+            BinTypeId bin_type_id_best = -1;
+            for (BinTypeId bin_type_id: bin_type_ids) {
+                const auto& bin_type = instance.bin_type(bin_type_id);
+
+                // Update next solution.
+                double ratio = solutions_cur[bin_type_id].second / bin_type.cost;
+                //std::cout << "bin_type_id " << bin_type_id
+                //    << " cost " << bin_type.cost
+                //    << " profit " << solutions_cur[bin_type_id].second
+                //    << " ratio " << ratio
+                //    << std::endl;
+                if (ratio_best < ratio) {
+                    ratio_best = ratio;
+                    bin_type_id_best = bin_type_id;
+                }
+            }
+
+            if (bin_type_id_best == -1) {
+                // Only 'BinPacking', as a problem constraint, requires bin
+                // types to be used in a fixed order. But this heuristic's
+                // own construction procedure - the 'else' branch above -
+                // uses that same single fixed-position candidate
+                // ('bin_type_ids_by_position[solution.number_of_bins()]')
+                // for every objective handled there, not just 'BinPacking':
+                // an implementation detail, not a reflection of an actual
+                // ordering constraint for those other objectives. So the
+                // same failure mode applies to all of them: that one fixed
+                // position being useless does not mean packing is done - a
+                // later position's (different) bin type may still be able
+                // to pack the remaining items, or add more profit
+                // (Knapsack), and the optimal solution can legitimately
+                // require this position's bin to stay empty. Leave it empty
+                // and move on to the next position instead of giving up
+                // early.
+                //
+                // Only excluded: VariableSizedBinPacking, whose own branch
+                // above already tries every not-yet-exhausted bin type as a
+                // candidate every iteration, so none of them being useful
+                // here genuinely does mean none ever will be.
+                if (instance.objective() == Objective::VariableSizedBinPacking)
+                    break;
+                solution.append_empty_bin(bin_type_ids[0], 1);
+                continue;
+            }
+            const Solution& kp_solution_best = solutions_cur[bin_type_id_best].first;
+
+            // Compute the number of copies of the selected Knapsack solution
+            // to add. Only free items limit number_of_copies.
+            for (const auto& fixed_item: instance.bin_type(bin_type_id_best).fixed_items)
+                bin_fixed_copies[fixed_item.item_type_id]++;
+            BinPos number_of_copies
+                = instance.bin_type(bin_type_id_best).copies
+                - solution.bin_copies(bin_type_id_best);
+            for (ItemTypeId item_type_id = 0;
+                    item_type_id < instance.number_of_item_types();
+                    ++item_type_id) {
+                ItemPos free_remaining = instance.item_type(item_type_id).copies
+                    - instance.item_type(item_type_id).copies_fixed
+                    - (solution.item_copies(item_type_id) - partial_fixed_copies[item_type_id]);
+                ItemPos free_packed = kp_solution_best.item_copies(item_type_id)
+                    - bin_fixed_copies[item_type_id];
+                if (free_packed > 0) {
+                    number_of_copies = std::min(
+                            number_of_copies,
+                            (BinPos)(free_remaining / free_packed));
+                }
+            }
+            for (const auto& fixed_item: instance.bin_type(bin_type_id_best).fixed_items)
+                bin_fixed_copies[fixed_item.item_type_id]--;
+            if (number_of_copies < 1) {
+                throw std::logic_error(
+                        FUNC_SIGNATURE + "; "
+                        "number_of_copies: " + std::to_string(number_of_copies) + ".");
+            }
+
+            // Update ratio_sums.
+            //auto item_space = instance.item_type(0).space();
+            double item_space = 0;
+            for (ItemTypeId item_type_id = 0;
+                    item_type_id < instance.number_of_item_types();
+                    ++item_type_id) {
+                item_space += kp_solution_best.item_copies(item_type_id) * instance.item_type(item_type_id).space();
+            }
+            Area waste = instance.bin_type(bin_type_id_best).space() - item_space;
+            for (ItemTypeId item_type_id = 0;
+                    item_type_id < instance.number_of_item_types();
+                    ++item_type_id) {
+                const auto& item_type = instance.item_type(item_type_id);
+                ItemPos copies = (double)kp_solution_best.item_copies(item_type_id);
+                double ratio = (double)copies * (double)item_type.space() / (double)item_space;
+                //std::cout << "item_type_id " << item_type_id
+                //    << " space " << item_type.space()
+                //    << " ratio " << ratio
+                //    << " waste " << waste;
+                item_type_adjusted_space[item_type_id]
+                    += number_of_copies
+                    * ((double)copies * (double)instance.item_type(item_type_id).space()
+                            + ratio * waste);
+                //std::cout << " adjusted_space " << item_type_adjusted_space[item_type_id] << std::endl;
+            }
+
+            // Update partial_fixed_copies, then current solution.
+            for (const auto& fixed_item: instance.bin_type(bin_type_id_best).fixed_items)
+                partial_fixed_copies[fixed_item.item_type_id] += number_of_copies;
+            solution.append_bin(
+                    kp_solution_best,
+                    0,
+                    number_of_copies);
+        }
+
+        //if (output.number_of_iterations > 0) {
+        //    std::cout << "it " << output.number_of_iterations
+        //        << " old " << output.solution_pool.best().number_of_bins()
+        //        << " new " << solution.number_of_bins()
+        //        << std::endl;
+        //}
+        //std::cout << solution.cost() << std::endl;
+        //for (ItemTypeId item_type_id = 0;
+        //        item_type_id < instance.number_of_item_types();
+        //        ++item_type_id) {
+        //    if (solution.item_copies(item_type_id) != instance.item_type(item_type_id).copies) {
+        //        std::cout << item_type_id << std::endl;
+        //    }
+        //}
+        //std::cout << solution.number_of_items() << " " << solution.number_of_bins() << std::endl;
+        //solution.write("solution_svc_" + std::to_string(output.number_of_iterations) + ".json");
+
+        // Update best solution.
+        std::stringstream ss;
+        ss << "iteration " << output.number_of_iterations;
+        algorithm_formatter.update_solution(solution, ss.str());
+
+        // Check BinPacking goal.
+        if (instance.objective() == Objective::BinPacking
+                && output.solution_pool.best().number_of_items() == instance.number_of_items()
+                && output.solution_pool.best().number_of_bins() <= std::max(parameters.bin_packing_goal, (BinPos)2))
+            return output;
+
+        // If the objective is "Knapsack" and all items have been packed, stop.
+        if (instance.objective() == Objective::Knapsack
+                && output.solution_pool.best().number_of_items() == instance.number_of_items())
+            return output;
+
+        // Update profits.
+        for (ItemTypeId item_type_id = 0;
+                item_type_id < instance.number_of_item_types();
+                ++item_type_id) {
+            const auto& item_type = instance.item_type(item_type_id);
+            //std::cout << "item_type_id " << item_type_id
+            //    << " adjusted_space " << item_type_adjusted_space[item_type_id]
+            //    << " profit " << profits[item_type_id];
+            // For 'BinPacking' / 'VariableSizedBinPacking', every copy of
+            // every item type must eventually be packed, so an item type
+            // left unpacked is always a shortfall to correct - the "+=" term
+            // below feeds that pressure into 'item_type_adjusted_space' (and
+            // so into 'profit_new'), rising the longer the item type stays
+            // unpacked.
+            //
+            // For 'Knapsack', being left unpacked is not a shortfall: it may
+            // simply be the correct call (this item type's profit isn't
+            // competitive enough for the space/weight it uses against the
+            // other item types packed instead), so that same shortfall term
+            // does not apply here - 'item_type_adjusted_space' is left to
+            // only the per-bin waste/ratio term already accumulated for it
+            // above (in the main loop, common to every objective). An item
+            // type left entirely unpacked never gets any such contribution
+            // either (its packed copies are 0 in every bin considered), so
+            // 'item_type_adjusted_space' is still exactly 0 for it here -
+            // skip the division below for that case instead of computing
+            // 0 / 0.
+            Profit profit_new = 0.0;
+            if (instance.objective() == Objective::Knapsack) {
+                if (solution.item_copies(item_type_id) == 0)
+                    continue;
+                profit_new
+                    = item_type.profit
+                    / item_type.space()
+                    * item_type_adjusted_space[item_type_id]
+                    / solution.item_copies(item_type_id);
+            } else {
+                item_type_adjusted_space[item_type_id]
+                    += 100 * lbs * (item_type.copies - item_type.copies_fixed
+                            - (solution.item_copies(item_type_id) - partial_fixed_copies[item_type_id]));
+                profit_new
+                    = item_type_adjusted_space[item_type_id]
+                    / item_type.copies;
+            }
+            profits[item_type_id] = 0.5 * profits[item_type_id] + 0.5 * profit_new;
+            //std::cout << " -> " << profits[item_type_id] << std::endl;
+        }
+
+    }
+
+    algorithm_formatter.end();
+    return output;
+}
+
+}

@@ -1,0 +1,588 @@
+#include "packingsolver/boxstacks/instance.hpp"
+
+#include <fstream>
+#include <sstream>
+
+using namespace packingsolver;
+using namespace packingsolver::boxstacks;
+
+std::string boxstacks::to_string(Rotation rotation)
+{
+    switch (rotation) {
+    case Rotation::XYZ: return "XYZ";
+    case Rotation::YXZ: return "YXZ";
+    case Rotation::ZYX: return "ZYX";
+    case Rotation::YZX: return "YZX";
+    case Rotation::XZY: return "XZY";
+    case Rotation::ZXY: return "ZXY";
+    default: return "?";
+    }
+}
+
+std::ostream& boxstacks::operator<<(
+        std::ostream& os,
+        Rotation rotation)
+{
+    os << to_string(rotation);
+    return os;
+}
+
+Rotation boxstacks::rotation_from_string(const std::string& str)
+{
+    if (str == "XYZ") return Rotation::XYZ;
+    if (str == "YXZ") return Rotation::YXZ;
+    if (str == "ZYX") return Rotation::ZYX;
+    if (str == "YZX") return Rotation::YZX;
+    if (str == "XZY") return Rotation::XZY;
+    if (str == "ZXY") return Rotation::ZXY;
+    throw std::invalid_argument(
+            FUNC_SIGNATURE + ": "
+            "unknown rotation string \"" + str + "\".");
+}
+
+std::ostream& boxstacks::operator<<(
+        std::ostream& os,
+        Point xyz)
+{
+    os << "x " << xyz.x << " y " << xyz.y << " z " << xyz.z;
+    return os;
+}
+
+std::ostream& packingsolver::boxstacks::operator<<(
+        std::ostream& os,
+        const ItemType& item_type)
+{
+    os
+        << "x " << item_type.box.x
+        << " y " << item_type.box.y
+        << " z " << item_type.box.z
+        << " profit " << item_type.profit
+        << " copies " << item_type.copies
+        << " group_id " << item_type.group_id
+        << " rotations";
+    for (Rotation r: item_type.rotations)
+        os << " " << r;
+    return os;
+}
+
+std::ostream& packingsolver::boxstacks::operator<<(
+        std::ostream& os,
+        const BinType& bin_type)
+{
+    os
+        << "x " << bin_type.box.x
+        << " y " << bin_type.box.y
+        << " z " << bin_type.box.z
+        << " copies " << bin_type.copies
+        ;
+    return os;
+}
+
+bool Instance::fits_some_bin(
+        ItemTypeId item_type_id) const
+{
+    const ItemType& item_type = this->item_type(item_type_id);
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = this->bin_type(bin_type_id);
+        for (Rotation rotation: item_type.rotations) {
+            if (item_type.x(rotation) <= bin_type.box.x
+                    && item_type.y(rotation) <= bin_type.box.y
+                    && item_type.z(rotation) <= bin_type.box.z) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+std::istream& boxstacks::operator>>(
+        std::istream& in,
+        LeftoverMode& leftover_mode)
+{
+    std::string token;
+    in >> token;
+    if (token == "x" || token == "X") {
+        leftover_mode = LeftoverMode::X;
+    } else if (token == "y" || token == "Y") {
+        leftover_mode = LeftoverMode::Y;
+    } else if (token == "xy" || token == "XY") {
+        leftover_mode = LeftoverMode::XY;
+    } else {
+        in.setstate(std::ios_base::failbit);
+    }
+    return in;
+}
+
+std::ostream& boxstacks::operator<<(
+        std::ostream& os,
+        LeftoverMode leftover_mode)
+{
+    switch (leftover_mode) {
+    case LeftoverMode::X: {
+        os << "X";
+        break;
+    } case LeftoverMode::Y: {
+        os << "Y";
+        break;
+    } case LeftoverMode::XY: {
+        os << "XY";
+        break;
+    }
+    }
+    return os;
+}
+
+std::ostream& Instance::format(
+        std::ostream& os,
+        int verbosity_level) const
+{
+    if (verbosity_level >= 1) {
+        os
+            << "Objective:             " << objective() << std::endl
+            ;
+        if (objective() == Objective::BinPackingWithLeftovers) {
+            os
+                << "Leftover mode:         " << parameters_.leftover_mode << std::endl
+                ;
+        }
+        os
+            << "Number of item types:  " << number_of_item_types() << std::endl
+            << "Number of items:       " << number_of_items() << std::endl
+            << "Number of bin types:   " << number_of_bin_types() << std::endl
+            << "Number of bins:        " << number_of_bins() << std::endl
+            << "Number of groups:      " << number_of_groups() << std::endl
+            << "Number of defects:     " << number_of_defects() << std::endl
+            << "Unloading constraint:  " << unloading_constraint() << std::endl
+            << "Total item volume:     " << item_volume() << std::endl
+            << "Total item profit:     " << item_profit() << std::endl
+            << "Total item weight:     " << item_weight() << std::endl
+            << "Total bin volume:      " << bin_volume() << std::endl
+            << "Total bin weight:      " << bin_weight() << std::endl
+            ;
+    }
+
+    if (verbosity_level >= 2) {
+        os
+            << std::endl
+            << std::setw(12) << "Bin type"
+            << std::setw(10) << "X"
+            << std::setw(10) << "Y"
+            << std::setw(10) << "Z"
+            << std::setw(12) << "Cost"
+            << std::setw(12) << "Copies"
+            << std::setw(12) << "Copies min"
+            << std::setw(12) << "Weight"
+            << std::setw(12) << "MaxStckDen"
+            << std::endl
+            << std::setw(12) << "--------"
+            << std::setw(10) << "-"
+            << std::setw(10) << "-"
+            << std::setw(10) << "-"
+            << std::setw(12) << "----"
+            << std::setw(12) << "------"
+            << std::setw(12) << "----------"
+            << std::setw(12) << "------"
+            << std::setw(12) << "----------"
+            << std::endl;
+        for (BinTypeId bin_type_id = 0;
+                bin_type_id < number_of_bin_types();
+                ++bin_type_id) {
+            const BinType& bin_type = this->bin_type(bin_type_id);
+            os
+                << std::setw(12) << bin_type_id
+                << std::setw(10) << bin_type.box.x
+                << std::setw(10) << bin_type.box.y
+                << std::setw(10) << bin_type.box.z
+                << std::setw(12) << bin_type.cost
+                << std::setw(12) << bin_type.copies
+                << std::setw(12) << bin_type.copies_min
+                << std::setw(12) << bin_type.maximum_weight
+                << std::setw(12) << bin_type.maximum_stack_density
+                << std::endl;
+        }
+
+        os
+            << std::endl
+            << std::setw(12) << "Bin type"
+            ;
+        SemiTrailerTruckData::print_header_1(os);
+        os
+            << std::endl
+            << std::setw(12) << "--------"
+            ;
+        SemiTrailerTruckData::print_header_2(os);
+        os << std::endl;
+        for (BinTypeId bin_type_id = 0;
+                bin_type_id < number_of_bin_types();
+                ++bin_type_id) {
+            const BinType& bin_type = this->bin_type(bin_type_id);
+            os
+                << std::setw(12) << bin_type_id;
+            bin_type.semi_trailer_truck_data.format(os);
+        }
+
+        if (number_of_defects() > 0) {
+            os
+                << std::endl
+                << std::setw(12) << "Defect"
+                << std::setw(12) << "Bin type"
+                << std::setw(12) << "X"
+                << std::setw(12) << "Y"
+                << std::setw(12) << "LX"
+                << std::setw(12) << "LY"
+                << std::endl
+                << std::setw(12) << "------"
+                << std::setw(12) << "--------"
+                << std::setw(12) << "-"
+                << std::setw(12) << "-"
+                << std::setw(12) << "--"
+                << std::setw(12) << "--"
+                << std::endl;
+            for (BinTypeId bin_type_id = 0;
+                    bin_type_id < number_of_bin_types();
+                    ++bin_type_id) {
+                const BinType& bin_type = this->bin_type(bin_type_id);
+                for (DefectId defect_id = 0;
+                        defect_id < (DefectId)bin_type.defects.size();
+                        ++defect_id) {
+                    const auto& defect = bin_type.defects[defect_id];
+                    os
+                        << std::setw(12) << defect_id
+                        << std::setw(12) << defect.bin_type_id
+                        << std::setw(12) << defect.pos.x
+                        << std::setw(12) << defect.pos.y
+                        << std::setw(12) << defect.rect.x
+                        << std::setw(12) << defect.rect.y
+                        << std::endl;
+                }
+            }
+        }
+
+        os
+            << std::endl
+            << std::setw(10) << "Item type"
+            << std::setw(10) << "X"
+            << std::setw(10) << "Y"
+            << std::setw(10) << "Z"
+            << std::setw(12) << "Profit"
+            << std::setw(10) << "Copies"
+            << std::setw(10) << "Rot."
+            << std::setw(10) << "Group id"
+            << std::setw(10) << "Weight"
+            << std::setw(10) << "Stack id"
+            << std::endl
+            << std::setw(10) << "---------"
+            << std::setw(10) << "-"
+            << std::setw(10) << "-"
+            << std::setw(10) << "-"
+            << std::setw(12) << "------"
+            << std::setw(10) << "------"
+            << std::setw(10) << "---------"
+            << std::setw(10) << "--------"
+            << std::setw(10) << "------"
+            << std::setw(10) << "--------"
+            << std::endl;
+        for (ItemTypeId item_type_id = 0;
+                item_type_id < number_of_item_types();
+                ++item_type_id) {
+            const ItemType& item_type = this->item_type(item_type_id);
+            os
+                << std::setw(10) << item_type_id
+                << std::setw(10) << item_type.box.x
+                << std::setw(10) << item_type.box.y
+                << std::setw(10) << item_type.box.z
+                << std::setw(12) << item_type.profit
+                << std::setw(10) << item_type.copies
+                << std::setw(10) << item_type.rotations.size()
+                << std::setw(10) << item_type.group_id
+                << std::setw(10) << item_type.weight
+                << std::setw(10) << item_type.stackability_id
+                << std::endl;
+        }
+
+        os
+            << std::endl
+            << std::setw(10) << "Group"
+            << std::setw(30) << "Check weight constraints"
+            << std::endl
+            << std::setw(10) << "-----"
+            << std::setw(30) << "------------------------"
+            << std::endl;
+        for (GroupId group_id = 0;
+                group_id < number_of_groups();
+                ++group_id) {
+            os
+                << std::setw(10) << group_id
+                << std::setw(30) << check_weight_constraints(group_id)
+                << std::endl;
+        }
+    }
+
+    return os;
+}
+
+void Instance::write(
+        const std::string& instance_path,
+        InstanceFormat format) const
+{
+    switch (format) {
+    case InstanceFormat::Csv:
+        write_csv(instance_path);
+        break;
+    case InstanceFormat::Json:
+        write_json(instance_path);
+        break;
+    }
+}
+
+void Instance::write_csv(
+        const std::string& instance_path) const
+{
+    write_item_types(instance_path + "_items.csv");
+    write_bin_types(instance_path + "_bins.csv");
+    if (number_of_defects() > 0)
+        write_defects(instance_path + "_defects.csv");
+    write_parameters(instance_path + "_parameters.csv");
+}
+
+void Instance::write_json(
+        const std::string& instance_path) const
+{
+    nlohmann::json j;
+
+    {
+        std::stringstream ss;
+        ss << objective();
+        j["objective"] = ss.str();
+    }
+    {
+        std::stringstream ss;
+        ss << parameters_.unloading_constraint;
+        j["unloading_constraint"] = ss.str();
+    }
+    {
+        std::stringstream ss;
+        ss << parameters_.leftover_mode;
+        j["leftover_mode"] = ss.str();
+    }
+    j["no_check_weight_constraints"] = nlohmann::json::array();
+    for (GroupId group_id = 0;
+            group_id < (GroupId)parameters_.check_weight_constraints.size();
+            ++group_id) {
+        if (!check_weight_constraints(group_id))
+            j["no_check_weight_constraints"].push_back(group_id);
+    }
+
+    j["bin_types"] = nlohmann::json::array();
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = this->bin_type(bin_type_id);
+        nlohmann::json json_bin_type;
+        json_bin_type["x"] = bin_type.box.x;
+        json_bin_type["y"] = bin_type.box.y;
+        json_bin_type["z"] = bin_type.box.z;
+        json_bin_type["cost"] = bin_type.cost;
+        json_bin_type["copies"] = bin_type.copies;
+        json_bin_type["copies_min"] = bin_type.copies_min;
+        // The defaults (no maximum) have no JSON representation: omit the
+        // fields instead, matching the default the reader falls back to when
+        // they are absent.
+        if (bin_type.maximum_weight != std::numeric_limits<Weight>::infinity())
+            json_bin_type["maximum_weight"] = bin_type.maximum_weight;
+        if (bin_type.maximum_stack_density != std::numeric_limits<double>::max())
+            json_bin_type["maximum_stack_density"] = bin_type.maximum_stack_density;
+        if (bin_type.semi_trailer_truck_data.is)
+            json_bin_type["semi_trailer_truck"] = bin_type.semi_trailer_truck_data.to_json();
+        if (!bin_type.defects.empty()) {
+            json_bin_type["defects"] = nlohmann::json::array();
+            for (const rectangle::Defect& defect: bin_type.defects) {
+                nlohmann::json json_defect;
+                json_defect["x"] = defect.pos.x;
+                json_defect["y"] = defect.pos.y;
+                json_defect["width"] = defect.rect.x;
+                json_defect["height"] = defect.rect.y;
+                json_bin_type["defects"].push_back(json_defect);
+            }
+        }
+        j["bin_types"].push_back(json_bin_type);
+    }
+
+    j["item_types"] = nlohmann::json::array();
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = this->item_type(item_type_id);
+        nlohmann::json json_item_type;
+        json_item_type["x"] = item_type.box.x;
+        json_item_type["y"] = item_type.box.y;
+        json_item_type["z"] = item_type.box.z;
+        json_item_type["profit"] = item_type.profit;
+        json_item_type["copies"] = item_type.copies;
+        json_item_type["copies_min"] = item_type.copies_min;
+        json_item_type["group_id"] = item_type.group_id;
+        json_item_type["weight"] = item_type.weight;
+        json_item_type["stackability_id"] = item_type.stackability_id;
+        json_item_type["nesting_height"] = item_type.nesting_height;
+        if (item_type.maximum_stackability != std::numeric_limits<ItemPos>::max())
+            json_item_type["maximum_stackability"] = item_type.maximum_stackability;
+        if (item_type.maximum_weight_above != std::numeric_limits<Weight>::infinity())
+            json_item_type["maximum_weight_above"] = item_type.maximum_weight_above;
+        json_item_type["rotations"] = nlohmann::json::array();
+        for (Rotation rotation: item_type.rotations)
+            json_item_type["rotations"].push_back(to_string(rotation));
+        j["item_types"].push_back(json_item_type);
+    }
+
+    std::ofstream file(instance_path);
+    if (!file.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + instance_path + "\".");
+    }
+    file << j.dump(4) << std::endl;
+}
+
+void Instance::write_defects(
+        const std::string& defects_path) const
+{
+    std::ofstream file(defects_path);
+    if (!file.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + defects_path + "\".");
+    }
+    file << "BIN,X,Y,LX,LY" << std::endl;
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < number_of_bin_types();
+            ++bin_type_id) {
+        for (const rectangle::Defect& defect: bin_type(bin_type_id).defects) {
+            file
+                << bin_type_id << ","
+                << defect.pos.x << ","
+                << defect.pos.y << ","
+                << defect.rect.x << ","
+                << defect.rect.y << std::endl;
+        }
+    }
+}
+
+void Instance::write_item_types(
+        const std::string& items_path) const
+{
+    std::ofstream file(items_path);
+    if (!file.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + items_path + "\".");
+    }
+    file << "ID,"
+        "X,"
+        "Y,"
+        "Z,"
+        "COPIES,"
+        "COPIES_MIN,"
+        "PROFIT,"
+        "GROUP_ID,"
+        "ROTATION_XYZ,"
+        "ROTATION_YXZ,"
+        "ROTATION_ZYX,"
+        "ROTATION_YZX,"
+        "ROTATION_XZY,"
+        "ROTATION_ZXY,"
+        "WEIGHT,"
+        "STACKABILITY_ID,"
+        "NESTING_HEIGHT,"
+        "MAXIMUM_STACKABILITY,"
+        "MAXIMUM_WEIGHT_ABOVE" << std::endl;
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = this->item_type(item_type_id);
+        file
+            << item_type_id << ","
+            << item_type.box.x << ","
+            << item_type.box.y << ","
+            << item_type.box.z << ","
+            << item_type.copies << ","
+            << item_type.copies_min << ","
+            << item_type.profit << ","
+            << item_type.group_id << ","
+            << (item_type.can_rotate(Rotation::XYZ)? 1: 0) << ","
+            << (item_type.can_rotate(Rotation::YXZ)? 1: 0) << ","
+            << (item_type.can_rotate(Rotation::ZYX)? 1: 0) << ","
+            << (item_type.can_rotate(Rotation::YZX)? 1: 0) << ","
+            << (item_type.can_rotate(Rotation::XZY)? 1: 0) << ","
+            << (item_type.can_rotate(Rotation::ZXY)? 1: 0) << ","
+            << item_type.weight << ","
+            << item_type.stackability_id << ","
+            << item_type.nesting_height << ","
+            << item_type.maximum_stackability << ","
+            << item_type.maximum_weight_above << std::endl;
+    }
+}
+
+void Instance::write_bin_types(
+        const std::string& bins_path) const
+{
+    std::ofstream file(bins_path);
+    if (!file.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + bins_path + "\".");
+    }
+    file << "ID,"
+        "X,"
+        "Y,"
+        "Z,"
+        "COST,"
+        "COPIES,"
+        "COPIES_MIN,"
+        "MAXIMUM_WEIGHT,"
+        "MAXIMUM_STACK_DENSITY,";
+    SemiTrailerTruckData::write_header(file);
+    file << std::endl;
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = this->bin_type(bin_type_id);
+        file
+            << bin_type_id << ","
+            << bin_type.box.x << ","
+            << bin_type.box.y << ","
+            << bin_type.box.z << ","
+            << bin_type.cost << ","
+            << bin_type.copies << ","
+            << bin_type.copies_min << ","
+            << bin_type.maximum_weight << ","
+            << bin_type.maximum_stack_density << ",";
+        bin_type.semi_trailer_truck_data.write(file);
+        file << std::endl;
+    }
+}
+
+void Instance::write_parameters(
+        const std::string& parameters_path) const
+{
+    std::ofstream file(parameters_path);
+    if (!file.good()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "unable to open file \"" + parameters_path + "\".");
+    }
+    file
+        << "NAME,VALUE" << std::endl
+        << "objective," << objective() << std::endl
+        << "unloading-constraint," << parameters_.unloading_constraint << std::endl
+        << "leftover-mode," << parameters_.leftover_mode << std::endl
+        ;
+    for (GroupId group_id = 0;
+            group_id < number_of_groups();
+            ++group_id) {
+        if (!check_weight_constraints(group_id)) {
+            file << "no-check-weight-constraints," << group_id << std::endl;
+        }
+    }
+}

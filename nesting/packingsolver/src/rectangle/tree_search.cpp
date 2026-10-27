@@ -1,0 +1,1727 @@
+#include "rectangle/tree_search.hpp"
+
+#include "packingsolver/rectangle/algorithm_formatter.hpp"
+#include "algorithms/thread_pool.hpp"
+#include "treesearchsolver/iterative_beam_search_2.hpp"
+
+#include "rectangle/solution_builder.hpp"
+
+#include <algorithm>
+#include <iostream>
+#include <numeric>
+#include <string>
+
+#include "shape/shape.hpp"
+
+using namespace packingsolver;
+using namespace packingsolver::rectangle;
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////// BranchingScheme ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+bool BranchingScheme::dominates(
+        ItemTypeId item_type_id_1,
+        ItemTypeId item_type_id_2)
+{
+    const ItemType& item_type_1 = instance().item_type(item_type_id_1);
+    const ItemType& item_type_2 = instance().item_type(item_type_id_2);
+    if (parameters_.predecessor_strategy == 0) {
+        return item_type_1.profit >= item_type_2.profit;
+    } else if (parameters_.predecessor_strategy == 1) {
+        return item_type_1.weight <= item_type_2.weight;
+    } else if (parameters_.predecessor_strategy == 2) {
+        return item_type_1.weight >= item_type_2.weight;
+    } else {
+        throw std::invalid_argument(FUNC_SIGNATURE);
+        return false;
+    }
+}
+
+BranchingScheme::BranchingScheme(
+        const Instance& instance,
+        const Parameters& parameters):
+    instance_(instance),
+    instance_flipper_(instance),
+    parameters_(parameters),
+    predecessors_(instance.number_of_item_types()),
+    predecessors_1_(instance.number_of_item_types()),
+    predecessors_2_(instance.number_of_item_types())
+{
+    // Compute bin_type_ids_ and previous_bins_area_.
+    //
+    // For the Knapsack objective, bins are considered by increasing space,
+    // regardless of the order in which they appear in the instance.
+    // Otherwise, bins are considered in the order in which they appear in
+    // the instance.
+    {
+        std::vector<BinTypeId> bin_type_id_order(instance.number_of_bin_types());
+        std::iota(bin_type_id_order.begin(), bin_type_id_order.end(), 0);
+        if (instance.objective() == Objective::Knapsack) {
+            std::stable_sort(
+                    bin_type_id_order.begin(),
+                    bin_type_id_order.end(),
+                    [&instance](BinTypeId bin_type_id_1, BinTypeId bin_type_id_2)
+                    {
+                        return instance.bin_type(bin_type_id_1).space()
+                            < instance.bin_type(bin_type_id_2).space();
+                    });
+        }
+        Area previous_bin_area = 0;
+        for (BinTypeId bin_type_id: bin_type_id_order) {
+            const BinType& bin_type = instance.bin_type(bin_type_id);
+            for (BinPos copy = 0; copy < bin_type.copies; ++copy) {
+                bin_type_ids_.push_back(bin_type_id);
+                previous_bins_area_.push_back(previous_bin_area);
+                previous_bin_area += bin_type.area();
+            }
+        }
+    }
+
+    // Compute predecessors.
+    //instance.format(std::cout, 3);
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance.number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance.item_type(item_type_id);
+        for (ItemTypeId item_type_id_2 = 0;
+                item_type_id_2 < instance.number_of_item_types();
+                ++item_type_id_2) {
+            if (item_type_id_2 == item_type_id)
+                continue;
+            const ItemType& item_type_2 = instance.item_type(item_type_id_2);
+
+            if (item_type.group_id != item_type_2.group_id)
+                continue;
+
+            if (!dominates(item_type_id_2, item_type_id))
+                continue;
+            if (item_type_id < item_type_id_2
+                    && dominates(item_type_id, item_type_id_2)) {
+                continue;
+            }
+
+            if ((item_type.rect.x == item_type_2.rect.x
+                        && item_type.rect.y == item_type_2.rect.y
+                        && item_type.oriented == item_type_2.oriented)
+                    || (item_type.rect.x == item_type_2.rect.y
+                        && item_type.rect.y == item_type_2.rect.x
+                        && item_type.oriented == false
+                        && item_type_2.oriented == false)) {
+                predecessors_[item_type_id].push_back(item_type_id_2);
+                //std::cout << "0 " << item_type_id_2 << " -> " << item_type_id << std::endl;
+            }
+
+            if (item_type.rect.x == item_type_2.rect.x
+                    && item_type.rect.y == item_type_2.rect.y
+                    && item_type.oriented == false
+                    && item_type_2.oriented == true) {
+                predecessors_1_[item_type_id].push_back(item_type_id_2);
+                //std::cout << "1 " << item_type_id_2 << " -> " << item_type_id << std::endl;
+            }
+
+            if (item_type.rect.x == item_type_2.rect.y
+                    && item_type.rect.y == item_type_2.rect.x
+                    && item_type.oriented == false
+                    && item_type_2.oriented == true) {
+                predecessors_2_[item_type_id].push_back(item_type_id_2);
+                //std::cout << "2 " << item_type_id_2 << " -> " << item_type_id << std::endl;
+            }
+        }
+    }
+
+    // Build root node if some part of the solution is already fixed.
+    if (parameters.fixed_items != nullptr) {
+        root_ = root();
+        for (BinPos bin_pos = 0; bin_pos < parameters.fixed_items->number_of_different_bins(); ++bin_pos) {
+            const SolutionBin& solution_bin = parameters.fixed_items->bin(bin_pos);
+            // Get items and sort them by increasing x-coordinate.
+            std::vector<SolutionItem> solution_items = solution_bin.items;
+            sort(
+                    solution_items.begin(),
+                    solution_items.end(),
+                    [](
+                        const SolutionItem& item_1,
+                        const SolutionItem& item_2) -> bool
+                    {
+                        return item_1.bl_corner.x < item_2.bl_corner.x;
+                    });
+            for (BinPos c = 0; c < solution_bin.copies; ++c) {
+                bool new_bin = 1;
+                for (const auto& solution_item: solution_items) {
+                    //std::cout << "j " << solution_item.j
+                    //    << " x " << solution_item.bl_corner.x
+                    //    << " y " << solution_item.bl_corner.y
+                    //    << " lx " << instance.item_type(solution_item.j).rect.x
+                    //    << " ly " << instance.item_type(solution_item.j).rect.y
+                    //    << std::endl;
+                    Insertion insertion;
+                    insertion.item_type_id = solution_item.item_type_id;
+                    insertion.rotate = solution_item.rotate;
+                    insertion.x = solution_item.bl_corner.x;
+                    insertion.y = solution_item.bl_corner.y;
+                    insertion.new_bin = new_bin;
+                    new_bin = false;
+                    root_ = child(root_, insertion);
+                }
+            }
+        }
+        //std::cout << "number_of_items " << root_->number_of_items
+        //    << " item_area " << root_->item_area
+        //    << " current_area " << root_->current_area
+        //    << std::endl;
+    }
+
+    //unbounded_knapsack_ = instance.unbounded_knapsack();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////// children ///////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+BranchingScheme::Node BranchingScheme::child_tmp(
+        const std::shared_ptr<Node>& pparent,
+        const Insertion& insertion) const
+{
+    const Node& parent = *pparent;
+    Node node;
+
+    node.parent = pparent;
+
+    node.item_type_id = insertion.item_type_id;
+    node.rotate = insertion.rotate;
+    node.x = insertion.x;
+    node.y = insertion.y;
+
+    // Update number_of_bins and last_bin_direction.
+    if (insertion.new_bin > 0) {  // New bin.
+        // 'new_bin_pos' defaults to '-1' for insertions that don't set it
+        // explicitly (e.g. hand-constructed in tests); fall back to the
+        // next sequential position in that case.
+        node.number_of_bins = (insertion.new_bin_pos >= 0)?
+            insertion.new_bin_pos + 1:
+            parent.number_of_bins + 1;
+        node.last_bin_direction = (insertion.new_bin == 1)?
+            Direction::X:
+            Direction::Y;
+    } else {  // Same bin.
+        node.number_of_bins = parent.number_of_bins;
+        node.last_bin_direction = parent.last_bin_direction;
+    }
+    const Instance& instance = this->instance(node.last_bin_direction);
+
+    BinPos bin_pos = node.number_of_bins - 1;
+    Direction o = node.last_bin_direction;
+    BinTypeId bin_type_id = bin_type_ids_[bin_pos];
+    const BinType& bin_type = instance.bin_type(bin_type_id);
+    const ItemType& item_type = instance.item_type(insertion.item_type_id);
+
+    Length xj = item_type.x(insertion.rotate);
+    Length yj = item_type.y(insertion.rotate);
+    Length xs = insertion.x;
+    Length xe = insertion.x + xj;
+    Length ys = insertion.y;
+    Length ye = insertion.y + yj;
+    Length xi = bin_type.rect.x;
+    Length yi = bin_type.rect.y;
+
+    // Update uncovered_items.
+    ItemPos new_uncovered_item_pos = -1;
+    if (insertion.new_bin > 0) {  // New bin.
+        if (ys > 0) {
+            UncoveredItem uncovered_item;
+            uncovered_item.item_type_id = -1;
+            uncovered_item.xs = 0;
+            uncovered_item.xe = 0;
+            uncovered_item.xe_dominance = 0;
+            uncovered_item.ys = 0;
+            uncovered_item.ye = ys;
+            node.uncovered_items.push_back(uncovered_item);
+        }
+        {
+            new_uncovered_item_pos = node.uncovered_items.size();
+            UncoveredItem uncovered_item;
+            uncovered_item.item_type_id = insertion.item_type_id;
+            uncovered_item.xs = xs;
+            uncovered_item.xe = xe;
+            uncovered_item.xe_dominance = xe;
+            uncovered_item.ys = ys;
+            uncovered_item.ye = ye;
+            node.uncovered_items.push_back(uncovered_item);
+        }
+        if (ye < yi) {
+            UncoveredItem uncovered_item;
+            uncovered_item.item_type_id = -1;
+            uncovered_item.xs = 0;
+            uncovered_item.xe = 0;
+            uncovered_item.xe_dominance = 0;
+            uncovered_item.ys = ye;
+            uncovered_item.ye = yi;
+            node.uncovered_items.push_back(uncovered_item);
+        }
+    } else {  // Same bin.
+        for (const UncoveredItem& uncovered_item: parent.uncovered_items) {
+            if (uncovered_item.ye <= ys) {
+                UncoveredItem new_uncovered_item = uncovered_item;
+                node.uncovered_items.push_back(new_uncovered_item);
+            } else if (uncovered_item.ys <= ys) {
+                if (uncovered_item.ys < ys) {
+                    UncoveredItem new_uncovered_item = uncovered_item;
+                    new_uncovered_item.ye = ys;
+                    node.uncovered_items.push_back(new_uncovered_item);
+                }
+
+                new_uncovered_item_pos = node.uncovered_items.size();
+                UncoveredItem new_uncovered_item_2;
+                new_uncovered_item_2.item_type_id = insertion.item_type_id;
+                new_uncovered_item_2.xs = xs;
+                new_uncovered_item_2.xe = xe;
+                new_uncovered_item_2.xe_dominance = xe;
+                new_uncovered_item_2.ys = ys;
+                new_uncovered_item_2.ye = ye;
+                node.uncovered_items.push_back(new_uncovered_item_2);
+
+                if (uncovered_item.ye > ye) {
+                    UncoveredItem new_uncovered_item = uncovered_item;
+                    new_uncovered_item.ys = ye;
+                    node.uncovered_items.push_back(new_uncovered_item);
+                }
+            } else if (uncovered_item.ys >= ye) {
+                UncoveredItem new_uncovered_item = uncovered_item;
+                node.uncovered_items.push_back(new_uncovered_item);
+            } else {
+                if (uncovered_item.ye > ye) {
+                    UncoveredItem new_uncovered_item = uncovered_item;
+                    new_uncovered_item.ys = ye;
+                    node.uncovered_items.push_back(new_uncovered_item);
+                }
+            }
+        }
+    }
+
+    // Update uncovered_item.xe_dominance.
+    if (yi - node.uncovered_items[new_uncovered_item_pos].ye
+            < instance.smallest_item_height()) {
+        for (ItemPos uncovered_item_pos = new_uncovered_item_pos + 1;
+                uncovered_item_pos < node.uncovered_items.size();
+                ++uncovered_item_pos) {
+            node.uncovered_items[uncovered_item_pos].xe_dominance
+                = (std::max)(
+                        node.uncovered_items[uncovered_item_pos].xe_dominance,
+                        node.uncovered_items[new_uncovered_item_pos].xe_dominance);
+        }
+    }
+    if (node.uncovered_items[new_uncovered_item_pos].ys
+            < instance.smallest_item_height()) {
+        for (ItemPos uncovered_item_pos = new_uncovered_item_pos - 1;
+                uncovered_item_pos >= 0;
+                --uncovered_item_pos) {
+            node.uncovered_items[uncovered_item_pos].xe_dominance
+                = (std::max)(
+                        node.uncovered_items[uncovered_item_pos].xe_dominance,
+                        node.uncovered_items[new_uncovered_item_pos].xe_dominance);
+        }
+    }
+
+
+    // Compute item_number_of_copies, number_of_items, items_area,
+    // squared_item_area and profit.
+    node.item_number_of_copies = parent.item_number_of_copies;
+    node.item_number_of_copies[insertion.item_type_id]++;
+    node.number_of_items = parent.number_of_items + 1;
+    node.item_area = parent.item_area + item_type.area();
+    node.item_weight = parent.item_weight + item_type.weight;
+    node.weight_profit = parent.item_weight
+        + (double)1.0 / item_type.weight / insertion.x;
+    node.profit = parent.profit + item_type.profit;
+
+    // Update last_bin_item_number_of_copies and last_bin_resource_consumption.
+    // 'node.profit' is further adjusted below by any 'penalize' resource
+    // whose consumption crosses its capacity for the first time as a result
+    // of this insertion (see 'Resource::penalize'), mirroring 'Solution::
+    // update_indicators' so the search optimizes the same objective the
+    // final solution will report.
+    // Skipped entirely when the bin type has no resources at all, so
+    // instances that don't use resources don't pay for allocating/copying
+    // these per-node vectors.
+    if (bin_type.number_of_resources() > 0) {
+        if (insertion.new_bin > 0) {  // New bin.
+            node.last_bin_item_number_of_copies.assign(instance.number_of_item_types(), 0);
+            node.last_bin_resource_consumption.assign(bin_type.number_of_resources(), 0.0);
+            for (const ItemResourceConsumption& item_resource_consumption: item_type.resources[bin_type_id]) {
+                ResourceId resource_id = item_resource_consumption.resource_id;
+                const Resource& resource = bin_type.resource(resource_id);
+                const std::vector<double>& schedule
+                    = resource.item_consumptions[item_resource_consumption.consumption_pos].second;
+                double consumption = schedule_consumption(schedule, 0);
+                node.last_bin_resource_consumption[resource_id] = consumption;
+                // The bin is empty before this insertion, so any crossing here
+                // is necessarily the first one.
+                if (resource.penalize && consumption > resource.capacity)
+                    node.profit -= resource.penalty;
+            }
+            node.last_bin_item_number_of_copies[insertion.item_type_id] = 1;
+        } else {  // Same bin.
+            node.last_bin_item_number_of_copies = parent.last_bin_item_number_of_copies;
+            ItemPos item_copy = node.last_bin_item_number_of_copies[insertion.item_type_id];
+            node.last_bin_resource_consumption = parent.last_bin_resource_consumption;
+            for (const ItemResourceConsumption& item_resource_consumption: item_type.resources[bin_type_id]) {
+                ResourceId resource_id = item_resource_consumption.resource_id;
+                const Resource& resource = bin_type.resource(resource_id);
+                const std::vector<double>& schedule
+                    = resource.item_consumptions[item_resource_consumption.consumption_pos].second;
+                double previous_consumption = node.last_bin_resource_consumption[resource_id];
+                node.last_bin_resource_consumption[resource_id]
+                    += schedule_consumption(schedule, item_copy);
+                if (resource.penalize
+                        && node.last_bin_resource_consumption[resource_id] > resource.capacity
+                        && previous_consumption <= resource.capacity) {
+                    node.profit -= resource.penalty;
+                }
+            }
+            node.last_bin_item_number_of_copies[insertion.item_type_id]++;
+        }
+    }
+
+    if (item_type.oriented) {
+        node.guide_item_pseudo_profit = parent.guide_item_pseudo_profit
+            + std::pow(xj, 1.2) * std::pow(yj, 1.1) / item_type.area();
+    } else {
+        node.guide_item_pseudo_profit = parent.guide_item_pseudo_profit
+            + std::pow(xj, 1.1) * std::pow(yj, 1.1) / item_type.area();
+    }
+    if (parameters_.group_guiding_strategy == 0) {
+        node.guide_item_area = parent.guide_item_area
+            + item_type.area() * (item_type.group_id + 1);
+        node.guide_profit = parent.guide_profit
+            + item_type.profit * (item_type.group_id + 1);
+    } else if (parameters_.group_guiding_strategy == 1) {
+        node.guide_item_area = parent.guide_item_area + item_type.area();
+        node.guide_profit = parent.guide_profit + item_type.profit;
+    }
+    node.group_score = parent.group_score + (item_type.group_id + 1);
+    node.groups = parent.groups;
+
+    if (insertion.new_bin != 0) {
+        for (GroupId group_id = 0; group_id < instance.number_of_groups(); ++group_id) {
+            node.groups[group_id].last_bin_weight = 0;
+            node.groups[group_id].last_bin_weight_weighted_sum = 0;
+        }
+    }
+    for (GroupId group_id = 0; group_id <= item_type.group_id; ++group_id) {
+        node.groups[group_id].last_bin_weight += item_type.weight;
+        node.groups[group_id].last_bin_weight_weighted_sum
+            += ((double)xs + (double)(xe - xs) / 2) * item_type.weight;
+    }
+
+    for (GroupId group_id = 0; group_id < instance.number_of_groups(); ++group_id) {
+        if (!instance.check_weight_constraints(group_id))
+            continue;
+        if (node.groups[group_id].last_bin_weight == 0)
+            continue;
+        std::pair<double, double> axle_weights = bin_type.semi_trailer_truck_data.compute_axle_weights(
+                node.groups[group_id].last_bin_weight_weighted_sum, node.groups[group_id].last_bin_weight);
+        node.groups[group_id].last_bin_middle_axle_weight = axle_weights.first;
+        node.groups[group_id].last_bin_rear_axle_weight = axle_weights.second;
+        if (strictly_greater_weight(
+                    axle_weights.first,
+                    bin_type.semi_trailer_truck_data.middle_axle_maximum_weight,
+                    instance.weight_tolerance()))
+            node.middle_axle_overweight += axle_weights.first - bin_type.semi_trailer_truck_data.middle_axle_maximum_weight;
+        if (strictly_greater_weight(
+                    axle_weights.second,
+                    bin_type.semi_trailer_truck_data.rear_axle_maximum_weight,
+                    instance.weight_tolerance()))
+            node.rear_axle_overweight += axle_weights.second - bin_type.semi_trailer_truck_data.rear_axle_maximum_weight;
+    }
+
+    // Compute current_area, guide_area and width using uncovered_items.
+    node.xs_max = (insertion.new_bin == 0)?
+        std::max(parent.xs_max, insertion.x):
+        insertion.x;
+    node.ye_max = (insertion.new_bin == 0)? parent.ye_max: 0;
+    node.current_area = previous_bins_area_[bin_pos];
+    node.guide_area = previous_bins_area_[bin_pos] + node.xs_max * yi;
+    Length x = 0;
+    for (auto it = node.uncovered_items.rbegin(); it != node.uncovered_items.rend(); ++it) {
+        const auto& uncovered_item = *it;
+        x = (parameters_.staircase)? std::max(x, uncovered_item.xe): uncovered_item.xe;
+        node.current_area += x * (uncovered_item.ye - uncovered_item.ys);
+        if (node.xe_max < x)
+            node.xe_max = x;
+        if (uncovered_item.xe > 0) {
+            if (node.ye_max < uncovered_item.ye)
+                node.ye_max = uncovered_item.ye;
+        }
+        if (x > node.xs_max)
+            node.guide_area += (x - node.xs_max) * (uncovered_item.ye - uncovered_item.ys);
+    }
+
+    if (node.number_of_items == instance.number_of_items()) {
+        node.current_area = previous_bins_area_[bin_pos] + node.xe_max * yi;
+    }
+
+    node.waste = node.current_area - node.item_area;
+
+    {
+        Area waste = previous_bins_area_[bin_pos] + node.xe_max * yi - instance.item_area();
+        if (node.waste < waste)
+            node.waste = waste;
+    }
+
+    // If there are few items left, try to detect if an extra bin will be
+    // required.
+    if (node.number_of_bins < instance.number_of_bins()
+            && instance.item_area() - node.item_area < bin_type.area()) {
+        for (ItemTypeId item_type_id = 0;
+                item_type_id < instance.number_of_item_types();
+                ++item_type_id) {
+            const ItemType& item_type = instance.item_type(item_type_id);
+            if (node.item_number_of_copies[item_type_id] == item_type.copies)
+                continue;
+            Length xj = item_type.rect.x;
+            if (!item_type.oriented) {
+                Length yj = item_type.rect.y;
+                if (xj > yj)
+                    xj = yj;
+            }
+            int ok = false;
+            for (const UncoveredItem& uncovered_item: node.uncovered_items) {
+                if (uncovered_item.ys + yj <= yi
+                        && uncovered_item.xe + xj <= xi) {
+                    ok = true;
+                    break;;
+                }
+                if (!item_type.oriented
+                        && uncovered_item.ys + xj <= yi
+                        && uncovered_item.xe + yj <= xi) {
+                    ok = true;
+                    break;
+                }
+            }
+            if (!ok) {
+                if (!item_type.oriented && xj > yj)
+                    xj = yj;
+                Area waste = previous_bins_area_[bin_pos + 1]
+                    + xj * yi - instance.item_area();
+                if (node.waste < waste)
+                    node.waste = waste;
+                break;
+            }
+        }
+    }
+
+    if (node.waste < 0) {
+        instance.format(std::cout, 3);
+        std::cout
+            << "current_area " << node.current_area
+            << " number_of_items " << node.number_of_items
+            << " item_area " << node.item_area
+            << " waste " << node.waste
+            << std::endl;
+        std::cout << "id " << node.id
+            << " number_of_items " << node.number_of_items
+            << " group_score " << node.group_score
+            << " load " << (double)node.item_area / node.guide_area
+            << " last_bin_middle_axle_weight " << node.groups.front().last_bin_middle_axle_weight
+            << std::endl;
+        for (auto it = node.uncovered_items.rbegin(); it != node.uncovered_items.rend(); ++it) {
+            std::cout
+                << " ys " << it->ys
+                << " ye " << it->ye
+                << " xe " << it->xe
+                << " item_type_id " << it->item_type_id
+                << std::endl;
+        }
+        for (auto node_tmp = &node;
+                node_tmp->parent != nullptr;
+                node_tmp = node_tmp->parent.get()) {
+            std::cout << " item_type_id " << node_tmp->item_type_id
+                << " x " << node_tmp->x
+                << " y " << node_tmp->y
+                << " r " << node_tmp->rotate
+                << std::endl;
+        }
+        throw std::runtime_error(
+                FUNC_SIGNATURE + ": "
+                "node.waste: " + std::to_string(node.waste) + ".");
+    }
+
+    switch (instance.parameters().leftover_mode) {
+    case LeftoverMode::Area: {
+        node.leftover_value = bin_type.area() - node.xe_max * node.ye_max;
+        break;
+    } case LeftoverMode::X: case LeftoverMode::Y: {
+        // The leftover along the direction of the bin (Y on the flipped
+        // instance), as an area.
+        node.leftover_value = (bin_type.rect.x - node.xe_max) * bin_type.rect.y;
+        break;
+    }
+    }
+
+    if (instance.unloading_constraint() == rectangle::UnloadingConstraint::IncreasingX) {
+        if (node.groups[item_type.group_id].x_min > insertion.x)
+            node.groups[item_type.group_id].x_min = insertion.x;
+        if (node.groups[item_type.group_id].x_max < insertion.x)
+            node.groups[item_type.group_id].x_max = insertion.x;
+    }
+    node.groups[item_type.group_id].number_of_items++;
+
+    node.id = node_id_++;
+    return node;
+}
+
+std::vector<std::shared_ptr<BranchingScheme::Node>> BranchingScheme::children(
+        const std::shared_ptr<Node>& parent) const
+{
+    insertions(parent);
+    std::vector<std::shared_ptr<Node>> cs(insertions_.size());
+    for (Counter i = 0; i < (Counter)insertions_.size(); ++i)
+        cs[i] = std::make_shared<Node>(child_tmp(parent, insertions_[i]));
+    return cs;
+}
+
+const std::vector<BranchingScheme::Insertion>& BranchingScheme::insertions(
+        const std::shared_ptr<Node>& parent) const
+{
+    //std::cout << "id " << parent->id
+    //    << " number_of_items " << parent->number_of_items
+    //    << " number_of_bins " << parent->number_of_bins
+    //    << " waste " << parent->waste
+    //    << " group_score " << parent->group_score
+    //    << " load " << (double)parent->item_area / parent->guide_area
+    //    << " last_bin_middle_axle_weight " << parent->groups.front().last_bin_middle_axle_weight
+    //    << std::endl;
+    //for (auto it = parent->uncovered_items.rbegin(); it != parent->uncovered_items.rend(); ++it) {
+    //    std::cout << " ys " << it->ys << " ye " << it->ye << " xe " << it->xe << " item_type_id " << it->item_type_id << std::endl;
+    //}
+    //for (auto node = parent; node->parent != nullptr; node = node->parent) {
+    //    std::cout << " item_type_id " << node->item_type_id << " x " << node->x << " y " << node->y << " r " << node->rotate << std::endl;
+    //}
+
+    insertions_.clear();
+
+    std::vector<bool> ok(instance().number_of_item_types(), true);
+    std::vector<bool> ok_1(instance().number_of_item_types(), true);
+    std::vector<bool> ok_2(instance().number_of_item_types(), true);
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance().number_of_item_types();
+            ++item_type_id) {
+        for (ItemTypeId item_type_id_pred: predecessors_[item_type_id])
+            if (parent->item_number_of_copies[item_type_id_pred]
+                    != instance().item_type(item_type_id_pred).copies)
+                ok[item_type_id] = false;
+        for (ItemTypeId item_type_id_pred: predecessors_1_[item_type_id])
+            if (parent->item_number_of_copies[item_type_id_pred]
+                    != instance().item_type(item_type_id_pred).copies)
+                ok_1[item_type_id] = false;
+        for (ItemTypeId item_type_id_pred: predecessors_2_[item_type_id])
+            if (parent->item_number_of_copies[item_type_id_pred]
+                    != instance().item_type(item_type_id_pred).copies)
+                ok_2[item_type_id] = false;
+    }
+
+    // Insert in the current bin.
+    if (parent->number_of_bins > 0) {
+        const Instance& instance = this->instance(parent->last_bin_direction);
+        BinTypeId bin_type_id = bin_type_ids_[parent->number_of_bins - 1];
+        const BinType& bin_type = instance.bin_type(bin_type_id);
+
+        // Items.
+        for (ItemTypeId item_type_id: bin_type.item_type_ids) {
+
+            if (!ok[item_type_id])
+                continue;
+
+            const ItemType& item_type = instance.item_type(item_type_id);
+            if (parent->item_number_of_copies[item_type_id] == item_type.copies)
+                continue;
+
+            for (ItemPos uncovered_item_pos = 0;
+                    uncovered_item_pos < (ItemPos)parent->uncovered_items.size();
+                    ++uncovered_item_pos) {
+
+                if (ok_1[item_type_id]) {
+                    bool rotate = false;
+                    insertion_item(
+                            parent,
+                            item_type_id,
+                            rotate,
+                            0,  // new_bin
+                            -1,  // new_bin_pos
+                            uncovered_item_pos,
+                            -1);  // defect_id
+
+                    if (parameters().fixed_items != nullptr) {
+                        Length yj = item_type.rect.y;
+                        //if (uncovered_item_pos > 0)
+                        //    std::cout << "xs " << parent->uncovered_items[uncovered_item_pos - 1].xs
+                        //        << " xe " << parent->uncovered_items[uncovered_item_pos - 1].xe
+                        //        << " ye " << parent->uncovered_items[uncovered_item_pos - 1].ys
+                        //        << " ye " << parent->uncovered_items[uncovered_item_pos - 1].ye
+                        //        << std::endl;
+                        //std::cout << "xs " << parent->uncovered_items[uncovered_item_pos].xs
+                        //    << " xe " << parent->uncovered_items[uncovered_item_pos].xe
+                        //    << " ye " << parent->uncovered_items[uncovered_item_pos].ys
+                        //    << " ye " << parent->uncovered_items[uncovered_item_pos].ye
+                        //    << std::endl;
+                        //if (uncovered_item_pos + 1 < parent->uncovered_items.size())
+                        //    std::cout << "xs " << parent->uncovered_items[uncovered_item_pos + 1].xs
+                        //        << " xe " << parent->uncovered_items[uncovered_item_pos + 1].xe
+                        //        << " ye " << parent->uncovered_items[uncovered_item_pos + 1].ys
+                        //        << " ye " << parent->uncovered_items[uncovered_item_pos + 1].ye
+                        //        << std::endl;
+                        if (uncovered_item_pos + 1 < parent->uncovered_items.size()
+                                && parent->uncovered_items[uncovered_item_pos + 1].xe
+                                < parameters().fixed_items->x_max()) {
+                            insertion_item_fixed(
+                                    parent,
+                                    item_type_id,
+                                    rotate,
+                                    parent->uncovered_items[uncovered_item_pos].xe,
+                                    parent->uncovered_items[uncovered_item_pos].ye);
+                        }
+                        if (uncovered_item_pos > 0
+                                && parent->uncovered_items[uncovered_item_pos - 1].xe
+                                < parameters().fixed_items->x_max()) {
+                            insertion_item_fixed(
+                                    parent,
+                                    item_type_id,
+                                    rotate,
+                                    parent->uncovered_items[uncovered_item_pos].xe,
+                                    parent->uncovered_items[uncovered_item_pos].ys - yj);
+                        }
+                    }
+
+                }
+
+                if (!item_type.oriented && ok_2[item_type_id]) {
+                    bool rotate = true;
+                    insertion_item(
+                            parent,
+                            item_type_id,
+                            rotate,
+                            0,  // new_bin
+                            -1,  // new_bin_pos
+                            uncovered_item_pos,
+                            -1);  // defect_id
+
+                    if (parameters().fixed_items != nullptr) {
+                        Length yj = item_type.rect.x;
+                        if (uncovered_item_pos + 1 < parent->uncovered_items.size()
+                                && parent->uncovered_items[uncovered_item_pos + 1].xe
+                                < parameters().fixed_items->x_max()) {
+                            insertion_item_fixed(
+                                    parent,
+                                    item_type_id,
+                                    rotate,
+                                    parent->uncovered_items[uncovered_item_pos].xe,
+                                    parent->uncovered_items[uncovered_item_pos].ye);
+                        }
+                        if (uncovered_item_pos > 0
+                                && parent->uncovered_items[uncovered_item_pos - 1].xe
+                                < parameters().fixed_items->x_max()) {
+                            insertion_item_fixed(
+                                    parent,
+                                    item_type_id,
+                                    rotate,
+                                    parent->uncovered_items[uncovered_item_pos].xe,
+                                    parent->uncovered_items[uncovered_item_pos].ys - yj);
+                        }
+                    }
+
+                }
+            }
+
+            // Defects.
+            for (DefectId defect_id = 0;
+                    defect_id < (DefectId)bin_type.defects.size();
+                    ++defect_id) {
+
+                if (ok_1[item_type_id])
+                    insertion_item(
+                            parent,
+                            item_type_id,
+                            false,  // rotate
+                            0,  // new_bin
+                            -1,  // new_bin_pos
+                            -1,  // uncovered_item_pos
+                            defect_id);
+
+                if (!item_type.oriented && ok_2[item_type_id])
+                    insertion_item(
+                            parent,
+                            item_type_id,
+                            true,  // rotate
+                            0,  // new_bin
+                            -1,  // new_bin_pos
+                            -1,  // uncovered_item_pos
+                            defect_id);
+            }
+        }
+    }
+
+    // Insert in a new bin.
+    // Bins that can't fit any item are skipped: if a bin position doesn't
+    // yield any insertion, the next bin position is tried instead.
+    for (BinPos new_bin_pos = parent->number_of_bins;
+            insertions_.empty() && new_bin_pos < instance().number_of_bins();
+            ++new_bin_pos) {
+
+        int new_bin = 0;
+        if (parameters_.direction == Direction::X) {
+            new_bin = 1;
+        } else if (parameters_.direction == Direction::Y) {
+            new_bin = 2;
+        } else {
+            BinTypeId bin_type_id = bin_type_ids_[new_bin_pos];
+            const BinType& bin_type = instance().bin_type(bin_type_id);
+            if ((double)instance().total_item_height() / bin_type.rect.y
+                    >= (double)instance().total_item_width() / bin_type.rect.x) {
+                new_bin = 1;
+            } else {
+                new_bin = 2;
+            }
+        }
+        const Instance& instance = this->instance(new_bin);
+        BinTypeId bin_type_id = bin_type_ids_[new_bin_pos];
+        const BinType& bin_type = instance.bin_type(bin_type_id);
+
+        // Items.
+        for (ItemTypeId item_type_id: bin_type.item_type_ids) {
+
+            if (!ok[item_type_id])
+                continue;
+
+            const ItemType& item_type = instance.item_type(item_type_id);
+            if (parent->item_number_of_copies[item_type_id] == item_type.copies)
+                continue;
+
+            if (ok_1[item_type_id])
+                insertion_item(
+                        parent,
+                        item_type_id,
+                        false,
+                        new_bin,
+                        new_bin_pos,
+                        0,  // uncovered_item_pos
+                        -1);  // defect_id
+
+            if (!item_type.oriented && ok_2[item_type_id])
+                insertion_item(
+                        parent,
+                        item_type_id,
+                        true,  // rotate
+                        new_bin,
+                        new_bin_pos,
+                        0,  // uncovered_item_pos
+                        -1);  // defect_id
+
+            // Defects.
+            for (DefectId defect_id = 0;
+                    defect_id < (DefectId)bin_type.defects.size();
+                    ++defect_id) {
+
+                if (ok_1[item_type_id])
+                    insertion_item(
+                            parent,
+                            item_type_id,
+                            false,  // rotate
+                            new_bin,
+                            new_bin_pos,
+                            -1,  // uncovered_item_pos
+                            defect_id);
+
+                if (!item_type.oriented && ok_2[item_type_id])
+                    insertion_item(
+                            parent,
+                            item_type_id,
+                            true,  // rotate
+                            new_bin,
+                            new_bin_pos,
+                            -1,  // uncovered_item_pos
+                            defect_id);
+            }
+        }
+    }
+
+    return insertions_;
+}
+
+void BranchingScheme::insertion_item(
+        const std::shared_ptr<Node>& parent,
+        ItemTypeId item_type_id,
+        bool rotate,
+        int8_t new_bin,
+        BinPos new_bin_pos,
+        ItemPos uncovered_item_pos,
+        DefectId defect_id) const
+{
+    Direction o = (new_bin == 0)?
+        parent->last_bin_direction:
+        ((new_bin == 1)? Direction::X: Direction::Y);
+    const Instance& instance = this->instance(o);
+    const ItemType& item_type = instance.item_type(item_type_id);
+    BinTypeId bin_type_id = (new_bin == 0)?
+        bin_type_ids_[parent->number_of_bins - 1]:
+        bin_type_ids_[new_bin_pos];
+    const BinType& bin_type = instance.bin_type(bin_type_id);
+    Length xj = item_type.x(rotate);
+    Length yj = item_type.y(rotate);
+    Length xi = bin_type.rect.x;
+    Length yi = bin_type.rect.y;
+    Length ys;
+    if (uncovered_item_pos > 0) {
+        ys = parent->uncovered_items[uncovered_item_pos].ys;
+    } else if (defect_id != -1) {
+        ys = bin_type.defects[defect_id].y_end();
+    } else {  // new bin.
+        ys = 0;
+    }
+    Length ye = ys + yj;
+    // Check bin y.
+    if (ye > yi)
+        return;
+    // Check maximum weight.
+    double last_bin_weight = (new_bin == 0)?
+        parent->groups.front().last_bin_weight + item_type.weight:
+        item_type.weight;
+    if (strictly_greater_weight(
+                last_bin_weight,
+                bin_type.maximum_weight,
+                instance.weight_tolerance()))
+        return;
+
+    // Check resource capacity. 'penalize' resources never block an
+    // insertion (see 'Resource::penalize'); only their non-'penalize'
+    // counterparts do. Skipped entirely when the bin type has no resources
+    // (see 'child_tmp').
+    if (bin_type.number_of_resources() > 0) {
+        if (new_bin == 0) {
+            ItemPos item_copy = parent->last_bin_item_number_of_copies[item_type_id];
+            for (const ItemResourceConsumption& item_resource_consumption: item_type.resources[bin_type_id]) {
+                ResourceId resource_id = item_resource_consumption.resource_id;
+                const Resource& resource = bin_type.resource(resource_id);
+                if (resource.penalize)
+                    continue;
+                const std::vector<double>& schedule
+                    = resource.item_consumptions[item_resource_consumption.consumption_pos].second;
+                double consumption = parent->last_bin_resource_consumption[resource_id]
+                    + schedule_consumption(schedule, item_copy);
+                if (consumption > resource.capacity * PSTOL)
+                    return;
+            }
+        } else {
+            for (const ItemResourceConsumption& item_resource_consumption: item_type.resources[bin_type_id]) {
+                ResourceId resource_id = item_resource_consumption.resource_id;
+                const Resource& resource = bin_type.resource(resource_id);
+                if (resource.penalize)
+                    continue;
+                const std::vector<double>& schedule
+                    = resource.item_consumptions[item_resource_consumption.consumption_pos].second;
+                double consumption = schedule_consumption(schedule, 0);
+                if (consumption > resource.capacity * PSTOL)
+                    return;
+            }
+        }
+    }
+
+    // Compute xs.
+    Length xs = 0;
+    if (new_bin == 0) {
+        for (const UncoveredItem& uncovered_item: parent->uncovered_items) {
+            if (uncovered_item.ye <= ys || uncovered_item.ys >= ye)
+                continue;
+            if (xs < uncovered_item.xe)
+                xs = uncovered_item.xe;
+        }
+    }
+
+    // Check unloading constraints.
+    switch (instance.unloading_constraint()) {
+    case UnloadingConstraint::None: {
+        break;
+    } case UnloadingConstraint::OnlyXMovements: {
+        // Check if an item from the uncovered item with higher group is not
+        // blocked by the new item.
+        for (const UncoveredItem& uncovered_item: parent->uncovered_items) {
+            if (uncovered_item.ye <= ys || uncovered_item.ys >= ye)
+                continue;
+            if (uncovered_item.item_type_id == -1)
+                continue;
+            const ItemType& item_type_pred = instance.item_type(uncovered_item.item_type_id);
+            if (item_type.group_id > item_type_pred.group_id)
+                return;
+        }
+        break;
+    } case UnloadingConstraint::IncreasingX: {
+        for (GroupId group = item_type.group_id + 1;
+                group < instance.number_of_groups();
+                ++group) {
+            if (xs < parent->groups[group].x_max)
+                return;
+        }
+        for (GroupId group = 0; group < item_type.group_id; ++group)
+            if (xs > parent->groups[group].x_min)
+                return;
+        break;
+    } default: {
+        throw std::logic_error(FUNC_SIGNATURE);
+    }
+    }
+
+    // Defects
+    // While the item intersects a defect, move it to the right.
+    for (;;) {
+        bool stop = true;
+        for (const Defect& defect: bin_type.defects) {
+            if (defect.x_start() >= xs + xj)
+                continue;
+            if (xs >= defect.x_end())
+                continue;
+            if (defect.y_start() >= ye)
+                continue;
+            if (ys >= defect.y_end())
+                continue;
+            xs = defect.x_end();
+            stop = false;
+        }
+        if (stop)
+            break;
+    }
+
+    Length xe = xs + xj;
+    // Check bin width.
+    if (xe > xi)
+        return;
+
+    if (parameters_.staircase && new_bin == 0 && uncovered_item_pos != -1)
+        for (const UncoveredItem& uncovered_item: parent->uncovered_items)
+            if (uncovered_item.ys > ye && uncovered_item.xe > xs)
+                return;
+
+    if (uncovered_item_pos > 0) {
+        if (xe <= parent->uncovered_items[uncovered_item_pos - 1].xs)
+            return;
+    } else if (defect_id != -1) {
+        if (xe <= bin_type.defects[defect_id].x_start())
+            return;
+        if (xs >= bin_type.defects[defect_id].x_end())
+            return;
+    }
+
+    // If there are fixed items, we forbid adding an item before the end of the
+    // fixed items.
+    if (parameters().fixed_items != nullptr
+            && xs < parameters().fixed_items->x_max())
+        return;
+
+    Insertion insertion;
+    insertion.item_type_id = item_type_id;
+    insertion.rotate = rotate;
+    insertion.x = xs;
+    insertion.y = ys;
+    insertion.new_bin = new_bin;
+    insertion.new_bin_pos = new_bin_pos;
+    insertions_.push_back(insertion);
+}
+
+void BranchingScheme::insertion_item_fixed(
+        const std::shared_ptr<Node>& parent,
+        ItemTypeId item_type_id,
+        bool rotate,
+        Length xs,
+        Length ys) const
+{
+    Direction o = parent->last_bin_direction;
+    const Instance& instance = this->instance(o);
+    const ItemType& item_type = instance.item_type(item_type_id);
+    BinTypeId bin_type_id = bin_type_ids_[parent->number_of_bins - 1];
+    const BinType& bin_type = instance.bin_type(bin_type_id);
+    Length xj = item_type.x(rotate);
+    Length yj = item_type.y(rotate);
+    Length xi = bin_type.rect.x;
+    Length yi = bin_type.rect.y;
+    Length xe = xs + xj;
+    Length ye = ys + yj;
+
+    //std::cout << "insertion_item_fixed " << item_type_id
+    //    << " xs " << xs
+    //    << " ys " << ys
+    //    << std::endl;
+
+    // Check bin y.
+    if (ys < 0)
+        return;
+    if (ye > yi)
+        return;
+    // Check bin x.
+    if (xe > xi)
+        return;
+    // Check maximum weight.
+    double last_bin_weight = parent->groups.front().last_bin_weight + item_type.weight;
+    if (strictly_greater_weight(
+                last_bin_weight,
+                bin_type.maximum_weight,
+                instance.weight_tolerance()))
+        return;
+
+    // Check intersections with other packed items.
+    for (const UncoveredItem& uncovered_item: parent->uncovered_items) {
+        if (uncovered_item.ye <= ys || uncovered_item.ys >= ye)
+            continue;
+        if (xs < uncovered_item.xe) {
+            //std::cout << "xe " << xe << std::endl;
+            return;
+        }
+    }
+
+    // Check unloading constraints.
+    switch (instance.unloading_constraint()) {
+    case UnloadingConstraint::None: {
+        break;
+    } case UnloadingConstraint::OnlyXMovements: {
+        // Check if an item from the uncovered item with higher group is not
+        // blocked by the new item.
+        for (const UncoveredItem& uncovered_item: parent->uncovered_items) {
+            if (uncovered_item.ye <= ys || uncovered_item.ys >= ye)
+                continue;
+            if (uncovered_item.item_type_id == -1)
+                continue;
+            const ItemType& item_type_pred = instance.item_type(uncovered_item.item_type_id);
+            if (item_type.group_id > item_type_pred.group_id)
+                return;
+        }
+        break;
+    } case UnloadingConstraint::IncreasingX: {
+        for (GroupId group = item_type.group_id + 1;
+                group < instance.number_of_groups();
+                ++group) {
+            if (xs < parent->groups[group].x_max)
+                return;
+        }
+        for (GroupId group = 0; group < item_type.group_id; ++group)
+            if (xs > parent->groups[group].x_min)
+                return;
+        break;
+    } default: {
+        throw std::logic_error(FUNC_SIGNATURE);
+    }
+    }
+
+    // Check intersection with defects.
+    for (const Defect& defect: bin_type.defects) {
+        if (defect.x_start() >= xs + xj)
+            continue;
+        if (xs >= defect.x_end())
+            continue;
+        if (defect.y_start() >= ye)
+            continue;
+        if (ys >= defect.y_end())
+            continue;
+        return;
+    }
+
+    Insertion insertion;
+    insertion.item_type_id = item_type_id;
+    insertion.rotate = rotate;
+    insertion.x = xs;
+    insertion.y = ys;
+    insertion.new_bin = 0;
+    insertions_.push_back(insertion);
+    //std::cout << "ok" << std::endl;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+const std::shared_ptr<BranchingScheme::Node> BranchingScheme::root() const
+{
+    if (root_ != nullptr)
+        return std::make_shared<Node>(*root_);
+
+    BranchingScheme::Node node;
+    node.item_number_of_copies = std::vector<ItemPos>(instance().number_of_item_types(), 0);
+    node.groups = std::vector<NodeGroup>(instance().number_of_groups());
+    for (GroupId group_id = 0; group_id < instance().number_of_groups(); ++group_id) {
+        node.groups[group_id].x_min = std::numeric_limits<Length>::max();
+    }
+    node.id = node_id_++;
+    return std::make_shared<Node>(node);
+}
+
+bool BranchingScheme::better(
+        const std::shared_ptr<Node>& node_1,
+        const std::shared_ptr<Node>& node_2) const
+{
+    switch (instance().objective()) {
+    case Objective::BinPacking: case Objective::VariableSizedBinPacking: {
+        if (!leaf(node_1))
+            return false;
+        if (!leaf(node_2))
+            return true;
+        return node_2->number_of_bins > node_1->number_of_bins;
+    } case Objective::BinPackingWithLeftovers: {
+        if (!leaf(node_1))
+            return false;
+        if (!leaf(node_2))
+            return true;
+        if (node_2->number_of_bins != node_1->number_of_bins)
+            return node_2->number_of_bins > node_1->number_of_bins;
+        return node_2->leftover_value < node_1->leftover_value;
+    } case Objective::OpenDimensionX: {
+        if (!leaf(node_1))
+            return false;
+        if (!leaf(node_2))
+            return true;
+        return node_2->xe_max > node_1->xe_max;
+    } case Objective::OpenDimensionY: {
+        if (!leaf(node_1))
+            return false;
+        if (!leaf(node_2))
+            return true;
+        return node_2->xe_max > node_1->xe_max;
+    } case Objective::Knapsack: {
+        return node_2->profit < node_1->profit;
+    } case Objective::Feasibility: {
+        return node_2->profit < node_1->profit;
+    } case Objective::SequentialOneDimensionalRectangleSubproblem: {
+        if (node_1->profit != node_2->profit)
+            return node_1->profit > node_2->profit;
+        return node_1->middle_axle_overweight + node_1->rear_axle_overweight
+            < node_2->middle_axle_overweight + node_2->rear_axle_overweight;
+    } default: {
+        std::stringstream ss;
+        ss << FUNC_SIGNATURE << ": "
+            << "does not support objective '" << instance().objective() << "'.";
+        throw std::logic_error(ss.str());
+        return false;
+    }
+    }
+}
+
+bool BranchingScheme::bound(
+        const std::shared_ptr<Node>& node_1,
+        const std::shared_ptr<Node>& node_2) const
+{
+    switch (instance().objective()) {
+    case Objective::BinPacking: case Objective::VariableSizedBinPacking: {
+        if (!leaf(node_2))
+            return false;
+        BinPos bin_pos = -1;
+        Area a = instance().item_area() + node_1->waste;
+        while (a > 0) {
+            bin_pos++;
+            if (bin_pos >= instance().number_of_bins())
+                return true;
+            BinTypeId bin_type_id = bin_type_ids_[bin_pos];
+            a -= instance().bin_type(bin_type_id).area();
+        }
+        return (bin_pos + 1 >= node_2->number_of_bins);
+    } case Objective::BinPackingWithLeftovers: {
+        if (!leaf(node_2))
+            return false;
+        if (node_1->number_of_bins > node_2->number_of_bins) {
+            return true;
+        } else if (node_1->number_of_bins < node_2->number_of_bins) {
+            return false;
+        } else {
+            return (node_1->leftover_value <= node_2->leftover_value);
+        }
+    } case Objective::Knapsack: {
+        if (leaf(node_2))
+            return true;
+        return false;
+    } case Objective::Feasibility: {
+        if (leaf(node_2))
+            return true;
+        return false;
+    } case Objective::OpenDimensionX: case Objective::OpenDimensionY: {
+        if (!leaf(node_2))
+            return false;
+        // The nodes are in the instance oriented along the open dimension:
+        // the items and the waste need at least this length along it.
+        const BinType& bin_type = instance(parameters_.direction).bin_type(0);
+        return std::max(
+                node_1->xe_max,
+                (node_1->waste + instance().item_area() - 1)
+                / bin_type.rect.y + 1)
+            >= node_2->xe_max;
+    } case Objective::SequentialOneDimensionalRectangleSubproblem: {
+        return false;
+    } default: {
+        std::stringstream ss;
+        ss << FUNC_SIGNATURE << ": "
+            << "does not support objective '" << instance().objective() << "'.";
+        throw std::logic_error(ss.str());
+        return false;
+    }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////// export ////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+Solution BranchingScheme::to_solution(
+        const std::shared_ptr<Node>& node) const
+{
+    std::vector<std::shared_ptr<Node>> descendents;
+    for (std::shared_ptr<Node> current_node = node;
+            current_node->parent != nullptr;
+            current_node = current_node->parent) {
+        descendents.push_back(current_node);
+    }
+    std::reverse(descendents.begin(), descendents.end());
+
+    SolutionBuilder solution_builder(this->instance());
+    BinPos bin_pos = -1;
+    BinPos number_of_bins = 0;
+    for (auto current_node: descendents) {
+        // Bins that were skipped because no item fit in them are still
+        // added to the solution, as empty bins.
+        while (number_of_bins < current_node->number_of_bins) {
+            BinTypeId bin_type_id = bin_type_ids_[number_of_bins];
+            bin_pos = solution_builder.add_bin(bin_type_id, 1);
+            number_of_bins++;
+        }
+        Point bl_corner = (current_node->last_bin_direction == Direction::X)?
+            Point{current_node->x, current_node->y}:
+            Point{current_node->y, current_node->x};
+        solution_builder.add_item(
+                bin_pos,
+                current_node->item_type_id,
+                bl_corner,
+                current_node->rotate);
+        //std::cout << "bin_pos " << bin_pos
+        //    << " current_node->x " << current_node->x
+        //    << " current_node->y " << current_node->y
+        //    << " current_node->xe_max " << current_node->xe_max
+        //    << " current_node->ye_max " << current_node->ye_max
+        //    << " item_type_id " << current_node->item_type_id
+        //    << " item_type.rect " << instance().item_type(current_node->item_type_id).rect
+        //    << " bl_corner " << bl_corner
+        //    << " rotate " << current_node->rotate
+        //    << " waste " << current_node->waste
+        //    << std::endl;
+    }
+    Solution solution = solution_builder.build();
+    if (node->number_of_bins == 1
+            && node->last_bin_direction == Direction::Y
+            && node->xe_max != solution.y_max()) {
+        throw std::runtime_error(
+                FUNC_SIGNATURE + "; "
+                "node->xe_max: " + std::to_string(node->xe_max) + "; "
+                "solution.y_max(): " + std::to_string(solution.y_max()) + ".");
+    }
+    //if (node->waste != solution.waste()) {
+    //    std::cout << node->xe_max << std::endl;
+    //    std::cout << node->current_area << std::endl;
+    //    std::cout << node->item_area << std::endl;
+    //    std::cout << solution.x_max() << std::endl;
+    //    std::cout << node->parent->waste << std::endl;
+    //    throw std::runtime_error(
+    //            "node->waste: " + std::to_string(node->waste)
+    //            + "; solution.waste(): " + std::to_string(solution.waste())
+    //            + ".\n");
+    //}
+    return solution;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+void BranchingScheme::json_export_setup() const
+{
+    // Bins.
+    json_bins_init_ids_ = std::vector<Counter>(instance().number_of_bin_types(), -1);
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance().number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = instance().bin_type(bin_type_id);
+        json_bins_init_ids_[bin_type_id] = json_counter_;
+        json_counter_++;
+    }
+
+    // Items.
+    json_items_init_ids_ = std::vector<std::vector<Counter>>(instance().number_of_item_types());
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance().number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance().item_type(item_type_id);
+        json_items_init_ids_[item_type_id] = std::vector<Counter>(2);
+        json_items_init_ids_[item_type_id][0] = json_counter_;
+        json_counter_++;
+        json_items_init_ids_[item_type_id][1] = json_counter_;
+        json_counter_++;
+    }
+}
+
+nlohmann::json BranchingScheme::json_export_init() const
+{
+    nlohmann::json json_init;
+
+    // Bins.
+    for (BinTypeId bin_type_id = 0;
+            bin_type_id < instance().number_of_bin_types();
+            ++bin_type_id) {
+        const BinType& bin_type = instance().bin_type(bin_type_id);
+
+        Counter json_counter = json_bins_init_ids_[bin_type_id];
+        json_init[json_counter][0] = {
+            {"Shape", shape::build_rectangle(bin_type.rect.x, bin_type.rect.y).to_json()["elements"]},
+            {"FillColor", ""},
+        };
+        for (DefectId defect_id = 0;
+                defect_id < (DefectId)bin_type.defects.size();
+                ++defect_id) {
+            const Defect& defect = bin_type.defects[defect_id];
+            shape::Point p1;
+            p1.x = defect.pos.x;
+            p1.y = defect.pos.y;
+            shape::Point p2 = p1;
+            p2.x += defect.rect.x;
+            p2.y += defect.rect.y;
+            json_init[json_counter][defect_id + 1] = {
+                {"Shape", shape::build_rectangle(p1, p2).to_json()["elements"]},
+                {"FillColor", "red"},
+            };
+        }
+    }
+
+    // Items.
+    for (ItemTypeId item_type_id = 0;
+            item_type_id < instance().number_of_item_types();
+            ++item_type_id) {
+        const ItemType& item_type = instance().item_type(item_type_id);
+        {
+            Counter json_counter = json_items_init_ids_[item_type_id][0];
+            json_init[json_counter][0] = {
+                {"Shape", shape::build_rectangle(item_type.rect.x, item_type.rect.y).to_json()["elements"]},
+                {"FillColor", "blue"},
+            };
+        }
+        {
+            Counter json_counter = json_items_init_ids_[item_type_id][1];
+            json_init[json_counter][0] = {
+                {"Shape", shape::build_rectangle(item_type.rect.y, item_type.rect.x).to_json()["elements"]},
+                {"FillColor", "blue"},
+            };
+        }
+    }
+
+    return json_init;
+}
+
+nlohmann::json BranchingScheme::json_export(
+        const std::shared_ptr<Node>& node) const
+{
+    if (!json_is_setup_) {
+        json_export_setup();
+        json_is_setup_ = true;
+    }
+
+    if (node->number_of_items == 0) {
+        nlohmann::json json = {
+            {"Id", node->id},
+            {"ParentId", (node->parent == nullptr)? -1: node->parent->id},
+        };
+        return json;
+    }
+
+    nlohmann::json plot;
+    Counter i = 0;
+    // Plot bin.
+    BinTypeId bin_type_id = bin_type_ids_[node->number_of_bins - 1];
+    plot[i] = {
+        {"Id",json_bins_init_ids_[bin_type_id]},
+        {"X", 0},
+        {"Y", 0},
+    };
+    i++;
+    // Plot items.
+    for (std::shared_ptr<const Node> node_tmp = node;
+            node_tmp->number_of_bins == node->number_of_bins;
+            node_tmp = node_tmp->parent) {
+        Point bl_corner = (node_tmp->last_bin_direction == Direction::X)?
+            Point{node_tmp->x, node_tmp->y}:
+            Point{node_tmp->y, node_tmp->x};
+        plot[i] = {
+            {"Id", json_items_init_ids_[node_tmp->item_type_id][node_tmp->rotate]},
+            {"X", bl_corner.x},
+            {"Y", bl_corner.y},
+        };
+        if (node_tmp == node)
+            plot[i]["FillColor"] = "green";
+        i++;
+    }
+    nlohmann::json json = {
+        {"Id", node->id},
+        {"ParentId", node->parent->id},
+        {"Data",
+            {
+                {"ItemTypeId", node->item_type_id},
+                {"Rotate", node->rotate},
+                {"NumberOfItems", node->number_of_items},
+                {"NumberOfBins", node->number_of_bins},
+                {"ItemArea", node->item_area},
+                {"Waste", node->waste},
+                {"Profit", node->profit},
+            },
+        },
+    };
+    json["Plot"] = plot;
+    return json;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+std::ostream& packingsolver::rectangle::operator<<(
+        std::ostream& os,
+        const BranchingScheme::UncoveredItem& uncovered_item)
+{
+    os << "item_type_id " << uncovered_item.item_type_id
+        << " xs " << uncovered_item.xs
+        << " xe " << uncovered_item.xe << " " << uncovered_item.xe_dominance
+        << " ys " << uncovered_item.ys
+        << " ye " << uncovered_item.ye
+        ;
+    return os;
+}
+
+bool BranchingScheme::UncoveredItem::operator==(
+        const UncoveredItem& uncovered_item) const
+{
+    return ((item_type_id == uncovered_item.item_type_id)
+            && (xs == uncovered_item.xs)
+            && (xe == uncovered_item.xe)
+            && (ys == uncovered_item.ys)
+            && (ye == uncovered_item.ye)
+            );
+}
+
+bool BranchingScheme::Insertion::operator==(
+        const Insertion& insertion) const
+{
+    return ((item_type_id == insertion.item_type_id)
+            && (rotate == insertion.rotate)
+            && (new_bin == insertion.new_bin)
+            && (x == insertion.x)
+            && (y == insertion.y)
+            );
+}
+
+std::ostream& packingsolver::rectangle::operator<<(
+        std::ostream& os,
+        const BranchingScheme::Insertion& insertion)
+{
+    os << "item_type_id " << insertion.item_type_id
+        << " rotate " << insertion.rotate
+        << " new_bin " << (int)insertion.new_bin
+        << " x " << insertion.x
+        << " y " << insertion.y
+        ;
+    return os;
+}
+
+std::ostream& packingsolver::rectangle::operator<<(
+        std::ostream& os,
+        const BranchingScheme::Node& node)
+{
+    os << "number_of_items " << node.number_of_items
+        << " number_of_bins " << node.number_of_bins
+        << std::endl;
+    os << "item_area " << node.item_area
+        << " current_area " << node.current_area
+        << std::endl;
+    os << "waste " << node.waste
+        << " profit " << node.profit
+        << std::endl;
+
+    // item_number_of_copies
+    os << "item_number_of_copies" << std::flush;
+    for (ItemPos j_pos: node.item_number_of_copies)
+        os << " " << j_pos;
+    os << std::endl;
+
+    return os;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////// tree_search //////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+const packingsolver::rectangle::TreeSearchOutput packingsolver::rectangle::tree_search(
+        const Instance& instance,
+        const TreeSearchParameters& parameters)
+{
+    TreeSearchOutput output(instance);
+    AlgorithmFormatter algorithm_formatter(instance, parameters, output);
+    algorithm_formatter.start();
+    algorithm_formatter.print_header();
+
+    std::vector<GuideId> guides = parameters.guides;
+    if (guides.empty()) {
+        if (instance.objective() == Objective::Knapsack) {
+            guides = {4, 5};
+        } else {
+            guides = {0, 1};
+        }
+    }
+
+    std::vector<Direction> directions;
+    if (!parameters.directions.empty()) {
+        // Caller-provided override (see 'TreeSearchParameters::directions').
+        directions = parameters.directions;
+    } else if (instance.objective() == Objective::OpenDimensionX) {
+        directions = {Direction::X};
+    } else if (instance.objective() == Objective::OpenDimensionY) {
+        directions = {Direction::Y};
+    } else if (instance.objective() == Objective::BinPackingWithLeftovers
+            && instance.parameters().leftover_mode == LeftoverMode::X) {
+        directions = {Direction::X};
+    } else if (instance.objective() == Objective::BinPackingWithLeftovers
+            && instance.parameters().leftover_mode == LeftoverMode::Y) {
+        directions = {Direction::Y};
+    } else if (instance.unloading_constraint() == UnloadingConstraint::IncreasingX
+            || instance.unloading_constraint() == UnloadingConstraint::OnlyXMovements) {
+        directions = {Direction::X};
+    } else if (instance.unloading_constraint() == UnloadingConstraint::IncreasingY
+            || instance.unloading_constraint() == UnloadingConstraint::OnlyYMovements) {
+        directions = {Direction::Y};
+    } else if (instance.number_of_bin_types() == 1) {
+        directions = {Direction::X, Direction::Y};
+    } else {
+        directions = {Direction::Any};
+    }
+
+    std::vector<double> growth_factors = {1.5};
+    if (guides.size() * directions.size() * 2 <= 4)
+        growth_factors = {1.33, 1.5};
+    if (parameters.optimization_mode != OptimizationMode::Anytime)
+        growth_factors = {1.5};
+
+    std::vector<BranchingScheme> branching_schemes;
+    std::vector<treesearchsolver::IterativeBeamSearch2Parameters<BranchingScheme>> ibs_parameters_list;
+    // In 'NotAnytimeDeterministic' mode, each scheme reports to its own
+    // algorithm formatter, writing into its own output, instead of the shared
+    // 'algorithm_formatter', so that the scheme can stop as soon as its own
+    // solution is proven optimal while the order in which solutions reach
+    // the shared one stays deterministic (they are replayed at the end).
+    // These local formatters share silenced parameters (no messages, no JSON
+    // output, no new solution callback). A 'unique_ptr' is used since an
+    // 'AlgorithmFormatter' is neither copyable nor movable.
+    bool deterministic = (parameters.optimization_mode == OptimizationMode::NotAnytimeDeterministic);
+    packingsolver::Parameters<Instance, Solution, Output> local_parameters;
+    local_parameters.verbosity_level = 0;
+    local_parameters.timer = parameters.timer;
+    std::vector<std::unique_ptr<Output>> local_outputs;
+    std::vector<std::unique_ptr<AlgorithmFormatter>> local_algorithm_formatters;
+    for (double growth_factor: growth_factors) {
+        for (GuideId guide_id: guides) {
+            for (Direction direction: directions) {
+                BranchingScheme::Parameters branching_scheme_parameters;
+                branching_scheme_parameters.guide_id = guide_id;
+                branching_scheme_parameters.direction = direction;
+                branching_scheme_parameters.fixed_items = parameters.fixed_items;
+                branching_schemes.push_back(BranchingScheme(instance, branching_scheme_parameters));
+                treesearchsolver::IterativeBeamSearch2Parameters<BranchingScheme> ibs_parameters;
+                ibs_parameters.verbosity_level = 0;
+                ibs_parameters.timer = parameters.timer;
+                ibs_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+                ibs_parameters.growth_factor = growth_factor;
+                if (parameters.optimization_mode != OptimizationMode::Anytime) {
+                    ibs_parameters.minimum_size_of_the_queue = 1;
+                    ibs_parameters.growth_factor = parameters.not_anytime_tree_search_queue_size;
+                    ibs_parameters.maximum_size_of_the_queue = parameters.not_anytime_tree_search_queue_size;
+                }
+                if (!parameters.json_search_tree_path.empty()) {
+                    ibs_parameters.json_search_tree_path = parameters.json_search_tree_path
+                        + "_guide_" + std::to_string(branching_scheme_parameters.guide_id)
+                        + "_d_" + std::to_string((int)branching_scheme_parameters.direction);
+                }
+                if (deterministic) {
+                    local_outputs.push_back(std::make_unique<Output>(instance));
+                    local_algorithm_formatters.push_back(std::make_unique<AlgorithmFormatter>(
+                                instance,
+                                local_parameters,
+                                *local_outputs.back()));
+                    ibs_parameters.timer.add_end_boolean(
+                            &local_algorithm_formatters.back()->end_boolean());
+                }
+                ibs_parameters_list.push_back(ibs_parameters);
+            }
+        }
+    }
+
+    std::vector<std::function<void()>> tasks;
+    std::forward_list<std::exception_ptr> exception_ptr_list;
+    for (Counter scheme_idx = 0; scheme_idx < (Counter)branching_schemes.size(); ++scheme_idx) {
+        AlgorithmFormatter* scheme_algorithm_formatter = (deterministic)?
+            local_algorithm_formatters[(size_t)scheme_idx].get():
+            &algorithm_formatter;
+        ibs_parameters_list[scheme_idx].new_solution_callback
+            = [scheme_algorithm_formatter, &branching_schemes, scheme_idx](
+                    const treesearchsolver::Output<BranchingScheme>& tss_output)
+            {
+                const treesearchsolver::IterativeBeamSearch2Output<BranchingScheme>& tssibs_output
+                    = static_cast<const treesearchsolver::IterativeBeamSearch2Output<BranchingScheme>&>(tss_output);
+                Solution solution = branching_schemes[scheme_idx].to_solution(
+                        tssibs_output.solution_pool.best());
+                std::stringstream ss;
+                ss << "g " << branching_schemes[scheme_idx].parameters().guide_id
+                    << " d " << branching_schemes[scheme_idx].parameters().direction
+                    << " q " << tssibs_output.maximum_size_of_the_queue;
+                scheme_algorithm_formatter->update_solution(solution, ss.str());
+
+                if (tssibs_output.optimal) {
+                    // 'Solution::operator<' always ranks a feasible solution
+                    // above an infeasible one, regardless of objective, so
+                    // 'solution_pool.best()' can only be infeasible here if
+                    // no feasible solution was found anywhere in this
+                    // now-exhaustive search: a genuine infeasibility proof,
+                    // independent of objective.
+                    if (!solution.feasible()) {
+                        // For every non-Knapsack objective (Feasibility
+                        // included), 'copies_min' defaults to 'copies', so
+                        // this already subsumes "not everything got packed"
+                        // - no separate 'full()' check needed.
+                        scheme_algorithm_formatter->update_is_proven_infeasible();
+                    } else if (solution.instance().objective() == packingsolver::Objective::BinPacking) {
+                        scheme_algorithm_formatter->update_bin_packing_bound(solution.number_of_bins());
+                    } else if (solution.instance().objective() == packingsolver::Objective::Knapsack) {
+                        scheme_algorithm_formatter->update_knapsack_bound(solution.profit());
+                    }
+                }
+            };
+        exception_ptr_list.push_front(std::exception_ptr());
+        std::exception_ptr& exception_ptr = exception_ptr_list.front();
+        BranchingScheme& branching_scheme = branching_schemes[scheme_idx];
+        treesearchsolver::IterativeBeamSearch2Parameters<BranchingScheme> ibs_parameters = ibs_parameters_list[scheme_idx];
+        tasks.push_back([&exception_ptr, &branching_scheme, ibs_parameters]() {
+            wrapper<decltype(&treesearchsolver::iterative_beam_search_2<BranchingScheme>), treesearchsolver::iterative_beam_search_2<BranchingScheme>>(
+                    exception_ptr,
+                    branching_scheme,
+                    ibs_parameters);
+        });
+    }
+    run(tasks, parameters.optimization_mode != OptimizationMode::NotAnytimeSequential);
+    for (const std::exception_ptr& exception_ptr: exception_ptr_list)
+        if (exception_ptr)
+            std::rethrow_exception(exception_ptr);
+    if (deterministic) {
+        for (const auto& local_output: local_outputs) {
+            algorithm_formatter.update_solution(
+                    local_output->solution_pool.best(),
+                    local_output->solution_pool.best_label());
+            algorithm_formatter.update_bounds(*local_output);
+        }
+    }
+
+    algorithm_formatter.end();
+    return output;
+}

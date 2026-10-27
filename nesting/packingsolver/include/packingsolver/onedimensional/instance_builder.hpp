@@ -1,0 +1,294 @@
+#pragma once
+
+#include "packingsolver/onedimensional/instance.hpp"
+
+namespace packingsolver
+{
+namespace onedimensional
+{
+
+class InstanceBuilder
+{
+
+public:
+
+    /** Constructor. */
+    InstanceBuilder() { }
+
+    /** Set the objective. */
+    void set_objective(Objective objective) { instance_.objective_ = objective; }
+
+    /*
+     * Read from files
+     */
+
+    /** Read parameters from a file. */
+    void read_parameters(const std::string& parameters_path);
+
+    /** Read bin types from a file. */
+    void read_bin_types(const std::string& bins_path);
+
+    /** Read item types from a file. */
+    void read_item_types(const std::string& items_path);
+
+    /**
+     * Read a full instance from a JSON file.
+     *
+     * Unlike the CSV readers above, this format supports every instance
+     * feature, including resources, and is meant for instances that need
+     * them; simple instances can keep using the CSV readers.
+     */
+    void read(const std::string& instance_path);
+
+    /** Read an instance in the JSON format from a stream. */
+    void read(std::istream& is);
+
+    /*
+     * Set parameters
+     */
+
+    /** Set parameters. */
+    void set_parameters(const Parameters& parameters) { instance_.parameters_ = parameters; }
+
+    /**
+     * Set the absolute tolerance for bin weight comparisons (see
+     * 'Parameters::weight_tolerance').
+     *
+     * Use this when building a onedimensional sub-instance from an instance
+     * of a different problem type (so 'set_parameters()', which only copies
+     * a same-type 'Parameters', can't be used to propagate it) - pass the
+     * parent instance's own weight tolerance so both stay consistent.
+     */
+    void set_weight_tolerance(Weight weight_tolerance) { instance_.parameters_.weight_tolerance = weight_tolerance; }
+
+    /** Set the feasibility callback. */
+    void set_feasibility_callback(const FeasibilityCallback& feasibility_callback) { instance_.feasibility_callback_ = feasibility_callback; }
+
+    /*
+     * Set bin types
+     */
+
+    /** Add a bin type. */
+    BinTypeId add_bin_type(
+            Length length);
+
+    /** Set the cost of a bin type. */
+    void set_bin_type_cost(
+            BinTypeId bin_type_id,
+            Profit cost);
+
+    /** Set the maximum weight of a bin type. */
+    void set_bin_type_maximum_weight(
+            BinTypeId bin_type_id,
+            Weight maximum_weight);
+
+    /** Add an eligibility id to a bin type. */
+    void add_bin_type_eligibility(
+            BinTypeId bin_type_id,
+            EligibilityId eligibility_id);
+
+    /**
+     * Add a resource to a bin type. Returns the resource's id (local to this
+     * bin type). See 'Resource' for the meaning of 'penalize'/'penalty'.
+     */
+    ResourceId add_bin_type_resource(
+            BinTypeId bin_type_id,
+            double capacity,
+            bool penalize = false,
+            double penalty = 0.0);
+
+    /**
+     * Set an item type's whole per-copy consumption schedule of a bin
+     * type's resource at once; see 'Resource::item_consumptions' for the
+     * exact semantics of a copy past the last one in the schedule (it
+     * repeats the last one) - a length-1 schedule gives the same, uniform
+     * consumption regardless of how many copies are already packed, the
+     * common case. May be called at most once per (item type, resource)
+     * pair - 'InstanceBuilder::build' throws otherwise.
+     */
+    void add_resource_consumption(
+            BinTypeId bin_type_id,
+            ResourceId resource_id,
+            ItemTypeId item_type_id,
+            const std::vector<double>& schedule);
+
+    /**
+     * Add a bin type from another bin type.
+     *
+     * This method is used in the column generation procedure.
+     */
+    BinTypeId add_bin_type(
+            const Instance& original_instance,
+            BinTypeId original_bin_type_id);
+
+    /** Set the number of copies of a bin type. */
+    void set_bin_type_copies(
+            BinTypeId bin_type_id,
+            BinPos copies);
+
+    /** Set the minimum number of copies of a bin type. */
+    void set_bin_type_copies_min(
+            BinTypeId bin_type_id,
+            BinPos copies_min);
+
+    /**
+     * Foe each bin type, set an infinite number of copies.
+     *
+     * This method should be used after reading bin files of Bin Packing
+     * Problems where the number of bin types is not given. By default, the
+     * number of bins would be set to 1.
+     */
+    void set_bin_types_infinite_copies();
+
+    /**
+     * For each bin type, set its cost to its length.
+     *
+     * This method is used to transform a Variable-sized Bin Packing Problem
+     * into an Unweighted Variable-sized Bin Packing Problem.
+     */
+    void set_bin_types_unweighted();
+
+    /*
+     * Set item types
+     */
+
+    /** Add an item type. */
+    ItemTypeId add_item_type(
+            Length length);
+
+    /** Set the length of an item type. */
+    void set_item_type_length(
+            ItemTypeId item_type_id,
+            Length length);
+
+    /** Set the weight of an item type. */
+    void set_item_type_weight(
+            ItemTypeId item_type_id,
+            Weight weight);
+
+    /** Set the nesting length of an item type. */
+    void set_item_type_nesting_length(
+            ItemTypeId item_type_id,
+            Length nesting_length);
+
+    /** Set the maximum stackability of an item type. */
+    void set_item_type_maximum_stackability(
+            ItemTypeId item_type_id,
+            ItemPos maximum_stackability);
+
+    /** Set the maximum weight after of an item type. */
+    void set_item_type_maximum_weight_after(
+            ItemTypeId item_type_id,
+            Weight maximum_weight_after);
+
+    /** Set the eligibility id of an item type. */
+    void set_item_type_eligibility(
+            ItemTypeId item_type_id,
+            EligibilityId eligibility_id);
+
+    /**
+     * Declare that no unit of 'dominated_item_type_id' may be used unless
+     * 'dominating_item_type_id' uses all of its copies; see 'Precedence'
+     * for the exact semantics.
+     */
+    void add_item_type_precedence(
+            ItemTypeId dominated_item_type_id,
+            ItemTypeId dominating_item_type_id);
+
+    /**
+     * Add an item type from another item type.
+     *
+     * This method is used in the column generation procedure.
+     */
+    ItemTypeId add_item_type(
+            const Instance& original_instance,
+            ItemTypeId original_item_type_id);
+
+    /** Set the profit of an item type. */
+    void set_item_type_profit(
+            ItemTypeId item_type_id,
+            Profit profit);
+
+    /** Set the number of copies of an item type. */
+    void set_item_type_copies(
+            ItemTypeId item_type_id,
+            ItemPos copies);
+
+    /** Set the minimum number of copies to pack of an item type. */
+    void set_item_type_copies_min(
+            ItemTypeId item_type_id,
+            ItemPos copies_min);
+
+    /**
+     * For each item type, set an infinite number of copies.
+     *
+     * This method is used to transform a Knapsack Problem into an Unbounded
+     * Knapsack Problem.
+     */
+    void set_item_types_infinite_copies();
+
+    /**
+     * For each item type, set its profit to its length.
+     *
+     * This method is used to transform a Knapsack Problem into an Unweighted
+     * Knapsack Problem.
+     */
+    void set_item_types_unweighted();
+
+    /*
+     * Build
+     */
+
+    /** Build. */
+    Instance build();
+
+private:
+
+    /*
+     * Private methods
+     */
+
+    /**
+     * Resolve the item types with unlimited copies ('copies' == -1): as many
+     * copies as the total length of the bins allows.
+     */
+    void resolve_item_types_unlimited_copies();
+
+    /** Compute item type max length sum. */
+    Length compute_item_type_max_length_sum() const;
+
+    /** Compute bin types length max. */
+    Area compute_bin_types_length_max() const;
+
+    /** Compute bin attributes. */
+    void compute_bin_attributes();
+
+    /*
+     * Private attributes
+     */
+
+    /** Instance. */
+    Instance instance_;
+
+    /** Mapping from original bin type IDs to sub-instance bin type IDs. */
+    std::vector<BinTypeId> orig_to_sub_bin_type_ids_;
+
+    /** Mapping from original item type IDs to sub-instance item type IDs. */
+    std::vector<ItemTypeId> orig_to_sub_item_type_ids_;
+
+    /**
+     * Item type precedences pending completion, indexed by the *original*
+     * instance's precedence id, collected by
+     * 'add_item_type(original_instance, ...)': each entry is
+     * (sub_dominated_item_type_id, sub_dominating_item_type_id), '-1' on
+     * either side until the corresponding item type of that original
+     * precedence gets copied over (which may happen in either order, or
+     * never). 'build()' finalizes every entry with both sides present via
+     * 'add_item_type_precedence' (see there), and drops the rest.
+     */
+    std::vector<std::pair<ItemTypeId, ItemTypeId>> pending_precedences_by_original_id_;
+
+};
+
+}
+}

@@ -1,0 +1,942 @@
+:root {
+    --text: #1f2328;
+    --muted: #59636e;
+    --border: #d1d9e0;
+    --background: #ffffff;
+    --surface: #f6f8fa;
+    --accent: #0969da;
+    --error: #cf222e;
+    color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --text: #e6edf3;
+        --muted: #9198a1;
+        --border: #3d444d;
+        --background: #0d1117;
+        --surface: #151b23;
+        --accent: #4493f8;
+        --error: #f85149;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0 auto;
+    max-width: 88rem;
+    padding: 1rem;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--background);
+}
+
+header p,
+.note {
+    color: var(--muted);
+}
+
+section {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+h1, h2, h3 {
+    margin-top: 0;
+}
+
+label {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0 1rem 0.75rem 0;
+}
+
+input, select, textarea, button {
+    font: inherit;
+    color: inherit;
+}
+
+input, select, textarea {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--background);
+}
+
+textarea {
+    display: block;
+    width: 100%;
+    margin-top: 0.5rem;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.9em;
+}
+
+button {
+    padding: 0.4rem 0.9rem;
+    margin: 0.25rem 0.5rem 0.25rem 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* The objective, the bin types and the item types of the form, separated
+   from each other. */
+.form-group {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+.form-group h3 {
+    margin-bottom: 0.5rem;
+}
+
+/* The buttons to solve and stop, and the status: at the bottom of the window
+   while the form is scrolled, so that they stay at hand. */
+#actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    /* Across the padding of the body, so that the content scrolled below it
+       is hidden. */
+    margin: 0 -1rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--background);
+}
+
+#actions button {
+    margin: 0;
+    padding: 0.5rem 1.5rem;
+}
+
+#solve {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #ffffff;
+}
+
+table {
+    border-collapse: collapse;
+    margin-bottom: 0.5rem;
+}
+
+th, td {
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+
+table.types input[type="number"] {
+    width: 7rem;
+}
+
+.error {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--error);
+    border-radius: 6px;
+    color: var(--error);
+}
+
+#status {
+    margin-left: 0.5rem;
+    /* The elapsed time doesn't move the text after it. */
+    font-variant-numeric: tabular-nums;
+}
+
+/* The key numbers of the solution: a tile each, on one row (wrapped on
+   narrow windows). */
+.stat-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.stat-tile {
+    min-width: 8rem;
+    padding: 0.5rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+}
+
+.stat-label {
+    color: var(--muted);
+    font-size: 0.85em;
+}
+
+/* Proportional figures: a standalone number. */
+.stat-value {
+    font-size: 1.4rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.stat-note {
+    color: var(--muted);
+    font-size: 0.85em;
+}
+
+.dimensions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+label.inline {
+    flex-direction: row;
+    align-items: center;
+    margin: 0;
+}
+
+table.types .dimensions input[type="number"] {
+    width: 5.5rem;
+}
+
+input.vertices.general {
+    width: 32rem;
+}
+
+input.vertices {
+    width: 22rem;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.dimensions button {
+    margin: 0;
+    white-space: nowrap;
+}
+
+.file-description {
+    align-self: center;
+    max-width: 24rem;
+    font-size: 0.9em;
+}
+
+/* Fields with one value: the key and the value on the same line, one field
+   per line. */
+.fields {
+    display: grid;
+    /* The same width for the keys of all the groups, so that their values
+       are aligned. */
+    grid-template-columns: minmax(17rem, max-content) minmax(0, 26rem);
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.fields label {
+    display: block;
+    margin: 0;
+}
+
+.fields input[type="checkbox"] {
+    justify-self: start;
+}
+
+/* Its fields are in the grid of its parent. */
+#instance-parameters:not([hidden]) {
+    display: contents;
+}
+
+@media (max-width: 30rem) {
+    .fields {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: 0.25rem;
+    }
+}
+
+.checkboxes {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    column-gap: 0.75rem;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.9em;
+}
+
+.checkboxes.single-column {
+    grid-template-columns: auto;
+}
+
+.table-scroll {
+    overflow-x: auto;
+}
+
+/* The defects of a bin type or the holes of an item type, on a line below
+   it. */
+tr.placed-shapes-line td {
+    padding-left: 1.5rem;
+}
+
+.placed-shapes-label {
+    display: inline-block;
+    margin-right: 1rem;
+    color: var(--muted);
+    vertical-align: top;
+    padding-top: 0.4rem;
+}
+
+.placed-shapes {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.placed-shapes button {
+    margin: 0;
+    align-self: flex-start;
+}
+
+td.row-buttons {
+    white-space: nowrap;
+}
+
+/* A number which can be unlimited, and its checkbox. */
+.unlimited {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* The cutting costs of the rectangleguillotine problem type. */
+.cutting-costs table {
+    width: auto;
+}
+
+.cutting-costs th, .cutting-costs td {
+    padding: 0.15rem 0.5rem 0.15rem 0;
+}
+
+.cutting-costs tbody th {
+    font-weight: normal;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.cutting-costs input {
+    width: 7rem;
+}
+
+.cutting-costs button {
+    margin: 0.25rem 0.5rem 0 0;
+}
+
+/* A second line in a header of a table. */
+.header-note {
+    font-weight: normal;
+    font-size: 0.85em;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+/* The details of a row, on a line below it. */
+tr.details-line td {
+    padding-left: 1.5rem;
+}
+
+.details {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 1.25rem;
+}
+
+.details label.inline {
+    gap: 0.4rem;
+}
+
+.details input[type="number"] {
+    width: 7rem;
+}
+
+.details input.ids {
+    width: 10rem;
+}
+
+/* A hole of a defect, below it. */
+.dimensions.hole-line {
+    padding-left: 1.5rem;
+}
+
+/* The id of a row. */
+td.row-id {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+input.item-type-id {
+    width: 4rem;
+}
+
+/* The resources of a bin type, and their consumptions below them. */
+.dimensions.resource, .dimensions.consumption-line {
+    flex-wrap: wrap;
+}
+
+.dimensions.consumption-line {
+    padding-left: 1.5rem;
+}
+
+/* A field of the details of the row isn't at its default value. */
+.row-buttons button.modified::after {
+    content: " •";
+    color: var(--accent);
+}
+
+.error-text {
+    color: var(--error);
+}
+
+/* The thumbnail of a row of the irregular form. */
+svg.thumbnail {
+    display: block;
+    width: 4.5rem;
+    height: 3rem;
+}
+
+svg.thumbnail.invalid {
+    border: 1px dashed var(--error);
+    border-radius: 4px;
+}
+
+#plot {
+    width: 100%;
+}
+
+#progress {
+    font-variant-numeric: tabular-nums;
+}
+
+#progress-chart {
+    width: 100%;
+    margin-bottom: 0.5rem;
+}
+
+#progress-details summary {
+    cursor: pointer;
+    color: var(--muted);
+    margin-bottom: 0.5rem;
+}
+
+/* Examples of solutions, at the top of the page. */
+#gallery {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    margin: 1rem 0 0.5rem;
+}
+
+#gallery button {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0.5rem;
+    text-align: left;
+}
+
+#gallery button[aria-pressed="true"] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+#gallery img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: contain;
+    background: #ffffff;
+    border-radius: 4px;
+}
+
+#gallery span {
+    color: var(--muted);
+    font-size: 0.85em;
+}
+
+@media (max-width: 48rem) {
+    #gallery {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 30rem) {
+    #gallery {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* The projects on the left of the page, the form and the results on the
+   right; the projects above them on narrow windows. */
+#layout {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    gap: 0 1.5rem;
+    align-items: start;
+}
+
+#sidebar {
+    position: sticky;
+    top: 1rem;
+    margin: 1.5rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+#sidebar > label {
+    display: block;
+    margin: 0 0 0.25rem;
+}
+
+#sidebar select {
+    width: 100%;
+    margin-bottom: 1rem;
+}
+
+#sidebar h2 {
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+}
+
+@media (max-width: 60rem) {
+    #layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #sidebar {
+        position: static;
+        margin-bottom: 0;
+    }
+}
+
+.project-list {
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.project-list button {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    width: 100%;
+    margin: 0 0 0.25rem;
+    padding: 0.35rem 0.6rem;
+    border-color: transparent;
+    background: transparent;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+.project-list button:hover {
+    background: var(--surface);
+}
+
+.project-list button[aria-current="true"] {
+    border-color: var(--accent);
+    background: var(--surface);
+}
+
+/* "Solving", after the name of a project. */
+.project-tag {
+    flex-shrink: 0;
+    color: var(--muted);
+    font-size: 0.8em;
+}
+
+.project-tag.solving {
+    color: var(--accent);
+}
+
+/* The examples, which can be folded, above the projects. */
+#examples {
+    margin: 0 0 0.5rem;
+}
+
+/* The sidebar stays in view (sticky): the examples scroll in a box. */
+#example-list {
+    position: relative;
+    max-height: 40vh;
+    overflow-y: auto;
+    border-block: 1px solid var(--border);
+    padding-top: 0.25rem;
+}
+
+#examples summary {
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: bold;
+}
+
+#example-link-error:empty {
+    display: none;
+}
+
+#no-projects {
+    margin: 0.25rem 0 0.75rem;
+}
+
+.sidebar-buttons button {
+    width: 100%;
+    margin: 0 0 0.5rem;
+}
+
+#load-json-error {
+    margin: 0 0 0.5rem;
+}
+
+#load-json-error:empty {
+    display: none;
+}
+
+/* The name of the project and its buttons. */
+#project-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
+}
+
+#project-header h2 {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+#project-name-input {
+    font-size: 1.25rem;
+    min-width: 16rem;
+}
+
+#project-header .buttons button {
+    margin: 0 0.5rem 0 0;
+}
+
+/* The form, without the look of a fieldset. */
+fieldset#form-fields {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+/* The first error of the form, below it. */
+#form-error:empty {
+    display: none;
+}
+
+/* The invalid fields of the form; their error is their tooltip. */
+.invalid input:not([type="checkbox"]),
+.invalid select,
+input.invalid,
+select.invalid {
+    border-color: var(--error);
+    box-shadow: 0 0 0 1px var(--error);
+}
+
+/* The rotations of a row: a cell of checkboxes. */
+td.invalid .checkboxes {
+    outline: 1px solid var(--error);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* The defects or the resources of a row: their label, not all their
+   fields. */
+tr.placed-shapes-line.invalid .invalid,
+tr.placed-shapes-line.invalid input:not([type="checkbox"]) {
+    border-color: var(--border);
+    box-shadow: none;
+}
+
+tr.placed-shapes-line.invalid .placed-shapes-label,
+.row-buttons button.invalid {
+    color: var(--error);
+}
+
+.row-buttons button.invalid {
+    border-color: var(--error);
+}
+
+/* What was pasted in a table. */
+#paste-status:empty {
+    display: none;
+}
+
+.paste-hint {
+    margin: 0.25rem 0 0;
+    font-size: 0.85em;
+}
+
+/* The visualizer of the solutions ('viewer/'): an overview of the bins, and
+   a view of one bin below it. */
+.viewer:focus {
+    outline: none;
+}
+
+.viewer-summary {
+    margin: 0 0 0.5rem;
+    color: var(--muted);
+}
+
+/* The bins of the overview: a grid, scrolled if it is high. */
+.viewer-overview {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+    gap: 0.5rem;
+    max-height: 22rem;
+    overflow-y: auto;
+    padding: 2px;
+    margin-bottom: 1rem;
+}
+
+.viewer-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0.35rem;
+    background: var(--background);
+}
+
+.viewer-cell svg {
+    width: 100%;
+    height: 6rem;
+}
+
+.viewer-cell[aria-pressed="true"] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.viewer-cell-caption {
+    font-size: 0.85em;
+    color: var(--muted);
+    text-align: center;
+}
+
+/* The number of copies of a bin ("×4"). */
+.viewer-copies {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.viewer-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.viewer-detail-header button {
+    margin: 0;
+    padding: 0.2rem 0.8rem;
+    font-size: 1.1rem;
+}
+
+.viewer-detail-image svg {
+    display: block;
+    width: 100%;
+    max-height: 70vh;
+}
+
+/* The shapes of a bin: lines of 1 pixel whatever the zoom. */
+.viewer-bin path {
+    vector-effect: non-scaling-stroke;
+    stroke-width: 1;
+}
+
+.viewer-bin-outline {
+    fill: var(--background);
+    stroke: var(--text);
+}
+
+.viewer-item {
+    stroke: #1f2328;
+}
+
+.viewer-bin.detail .viewer-item:hover {
+    stroke-width: 2.5;
+}
+
+.viewer-defect {
+    fill: crimson;
+    stroke: crimson;
+}
+
+/* The isometric views of box and boxstacks ('render3d.js'). */
+.viewer-bin-3d polygon,
+.viewer-bin-3d line {
+    vector-effect: non-scaling-stroke;
+    stroke-width: 1;
+    stroke-linejoin: round;
+}
+
+.viewer-bin-3d .viewer-item polygon {
+    stroke: #1f2328;
+}
+
+.viewer-bin-floor,
+.viewer-bin-wall {
+    fill: var(--surface);
+    stroke: var(--muted);
+}
+
+.viewer-bin-edge {
+    stroke: var(--text);
+}
+
+.viewer-defect-face {
+    fill: crimson;
+    fill-opacity: 0.6;
+    stroke: crimson;
+}
+
+.viewer-bin-3d.detail .viewer-item:hover polygon {
+    filter: brightness(1.15);
+}
+
+.viewer-trim {
+    fill: var(--muted);
+    fill-opacity: 0.35;
+    stroke: none;
+}
+
+.viewer-waste {
+    fill: var(--muted);
+    fill-opacity: 0.15;
+    stroke: none;
+}
+
+.viewer-residual {
+    fill: none;
+    stroke: none;
+}
+
+.viewer-cut {
+    fill: none;
+    stroke: var(--text);
+    stroke-opacity: 0.6;
+}
+
+.viewer-item-label {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    text-anchor: middle;
+    dominant-baseline: central;
+    fill: #1f2328;
+    /* Not the stroke of its item (in the isometric views). */
+    stroke: none;
+    pointer-events: none;
+}
+
+/* The bins of onedimensional: a row each, at the same scale. */
+.viewer-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.viewer-row {
+    display: grid;
+    grid-template-columns: 6rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.viewer-row-caption {
+    font-size: 0.85em;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.viewer-row-bin {
+    position: relative;
+    height: 1.6rem;
+    border: 1px solid var(--text);
+    background: var(--background);
+}
+
+.viewer-row-item {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    overflow: hidden;
+    border-right: 1px solid #1f2328;
+    font-size: 0.75em;
+    line-height: 1.5rem;
+    color: #1f2328;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* The title of a page, and the links to the project on its right (below it
+   on narrow windows). */
+.page-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.page-title h1 {
+    margin: 0;
+}
+
+.project-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+/* A link shown as a rounded button, with an icon. */
+.link-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.9em;
+    text-decoration: none;
+}
+
+.link-button svg {
+    flex-shrink: 0;
+    fill: currentColor;
+}
+
+.link-button:hover,
+.link-button:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+a {
+    color: var(--accent);
+}
