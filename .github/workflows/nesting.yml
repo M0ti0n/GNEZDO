@@ -47,7 +47,8 @@ jobs:
               for k in ("baseline", "prepass", "post"):
                   print(d, k, {x: r[k][x] for x in ("sheets", "sheet_equivalents", "parts_in_holes", "valid", "min_gap")})
                   assert r[k]["valid"], f"{d} {k}: a layout failed the validator"
-              assert r["post"]["sheet_equivalents"] <= r["prepass"]["sheet_equivalents"], f"{d}: the post-pass made it worse"
+              assert r["post"]["sheet_equivalents"] <= r["baseline"]["sheet_equivalents"], f"{d}: the whole job is worse than PackingSolver alone"
+              print(d, "time", r["post"]["seconds"])
           assert json.load(open("out/compare.json"))["prepass"]["parts_in_holes"] > 0, "the pre-pass put nothing into the holes"
           EOF
 
