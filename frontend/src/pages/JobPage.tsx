@@ -2,18 +2,20 @@ import { useMemo, useRef, useState } from "react";
 import type { JobPart, PartSummary } from "../api/types";
 import { IconClose, IconLibrary } from "../components/Icons";
 import { usePickLists } from "../components/pickLists";
+import { NumInput } from "../components/NumInput";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PartPropertiesDialog } from "../components/PartPropertiesDialog";
 import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PARTS_MIME } from "../shell/Drawer";
 import { readDxf } from "../import/dxf";
 import { boxOf, union } from "../import/geometry";
-import { DEFAULT_SIZES, MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, type StockSheet, type StockSource } from "../job/stock";
+import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
 
 interface Props {
   title: string;
   parts: JobPart[] | undefined;                 // undefined = loading
   stock: StockSheet[];
+  stockSettings: StockSettings;
   onStock: (stock: StockSheet[]) => void;
   onDropParts: (parts: PartSummary[]) => void;
   onPart: (partId: string, patch: Partial<Pick<JobPart, "qty" | "qtyMax" | "part">>) => void;
@@ -47,31 +49,8 @@ const value = (jp: JobPart, c: Col): string | number => {
   }
 };
 
-/** A number field that is edited freely and checked when it is left (Enter or leaving the field). */
-function NumInput({ value, min = 0, int = false, onCommit, className = "field", ...rest }: {
-  value: number; min?: number; int?: boolean; onCommit: (n: number) => void; className?: string;
-} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "min">) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const cancelled = useRef(false);
-  const commit = () => {
-    if (cancelled.current) { cancelled.current = false; setDraft(null); return; }  // Esc: keep the old value
-    if (draft === null) return;
-    const n = Number(draft.replace(",", "."));
-    onCommit(Number.isFinite(n) && draft.trim() !== "" ? Math.max(min, int ? Math.round(n) : n) : value);
-    setDraft(null);
-  };
-  return (
-    <input {...rest} className={className} inputMode={int ? "numeric" : "decimal"}
-      value={draft ?? (value ? String(value) : "")}
-      onChange={(e) => setDraft(e.target.value)}
-      onFocus={(e) => e.target.select()}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { cancelled.current = true; (e.target as HTMLInputElement).blur(); } }} />
-  );
-}
-
 // Work parts screen of a job: the job part list (left) and the stock sheets (right).
-export function JobPage({ title, parts, stock, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice }: Props) {
+export function JobPage({ title, parts, stock, stockSettings, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice }: Props) {
   const [over, setOver] = useState(false);
   // the part's pop-up (double-click its name), and its versions
   const [editing, setEditing] = useState<PartSummary | null>(null);
@@ -227,13 +206,20 @@ export function JobPage({ title, parts, stock, onStock, onDropParts, onPart, onR
           onRestored={(now) => { onPart(now.id, { part: now }); setHistory(now); }} />
       )}
 
-      <StockPanel parts={parts ?? []} stock={stock} onStock={onStock} onNotice={onNotice} />
+      <StockPanel parts={parts ?? []} stock={stock} settings={stockSettings} onStock={onStock} onNotice={onNotice} />
     </div>
   );
 }
 
-function StockPanel({ parts, stock, onStock, onNotice }: {
-  parts: JobPart[]; stock: StockSheet[]; onStock: (s: StockSheet[]) => void; onNotice: (t: string) => void;
+const optionLabel = (id: StockSource, label: string, st: StockSettings) => {
+  if (id === "parts") return `${label} (${st.globalLengthMm} × ${st.globalWidthMm})`;
+  const sl = slotOf(st, id);
+  if (!sl) return label;
+  return `${label}: ${[sl.material.trim(), `${sl.lengthMm} × ${sl.widthMm}`].filter(Boolean).join(" ")}`;
+};
+
+function StockPanel({ parts, stock, settings, onStock, onNotice }: {
+  parts: JobPart[]; stock: StockSheet[]; settings: StockSettings; onStock: (s: StockSheet[]) => void; onNotice: (t: string) => void;
 }) {
   const [from, setFrom] = useState<StockSource>("parts");
   const file = useRef<HTMLInputElement>(null);
@@ -256,7 +242,8 @@ function StockPanel({ parts, stock, onStock, onNotice }: {
       const missing = jobPairs.filter((p) => !covered.has(sheetKey(p.material, p.thicknessMm)));
       if (!jobPairs.length) { onNotice("The job part list is empty: add parts first"); return; }
       if (!missing.length) { onNotice("Every material and thickness of the part list has a sheet already"); return; }
-      const [l, w] = DEFAULT_SIZES.default1;
+      // one sheet per material and thickness of the list, at the global sheet size (Settings -> Stock)
+      const l = settings.globalLengthMm, w = settings.globalWidthMm;
       onStock([...stock, ...missing.map((p) => newSheet({ source: "parts", ...p, lengthMm: l, widthMm: w, qty: 1, unlimited: true }))]);
       return;
     }
@@ -266,8 +253,17 @@ function StockPanel({ parts, stock, onStock, onNotice }: {
       onStock([...stock, newSheet({ source: "remnant", ...nextPair(), lengthMm: 0, widthMm: 0, qty: 1, unlimited: false })]);
       return;
     }
-    const [l, w] = DEFAULT_SIZES[from];
-    onStock([...stock, newSheet({ source: from, ...nextPair(), lengthMm: l, widthMm: w, qty: 1, unlimited: true })]);
+    // a default slot: its size and material; the thickness from the part list (first one of that
+    // material with no sheet yet), or empty to fill in
+    const slot = slotOf(settings, from);
+    if (!slot) return;
+    let pair = nextPair();
+    if (slot.material.trim()) {
+      const same = jobPairs.filter((p) => p.material.trim().toLowerCase() === slot.material.trim().toLowerCase());
+      const t = (same.find((p) => !covered.has(sheetKey(p.material, p.thicknessMm))) ?? same[0])?.thicknessMm ?? 0;
+      pair = { material: slot.material.trim(), thicknessMm: t };
+    }
+    onStock([...stock, newSheet({ source: from, ...pair, lengthMm: slot.lengthMm, widthMm: slot.widthMm, qty: 1, unlimited: true })]);
   };
 
   const fromDxf = async (f: File) => {
@@ -298,7 +294,7 @@ function StockPanel({ parts, stock, onStock, onNotice }: {
           onChange={(e) => setFrom(e.target.value as StockSource)}>
           {STOCK_SOURCES.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.id.startsWith("default") ? `${s.label} (${DEFAULT_SIZES[s.id as keyof typeof DEFAULT_SIZES].join(" × ")})` : s.label}
+              {optionLabel(s.id, s.label, settings)}
             </option>
           ))}
         </select>
