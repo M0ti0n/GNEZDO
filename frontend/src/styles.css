@@ -1323,6 +1323,8 @@ th.num .th-sort { flex-direction: row-reverse; }
 .nest-card-title { font-family: var(--font-cond); font-weight: 600; font-size: 18px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
 .slash { margin: 0 6px; color: var(--ink-3); font-weight: 400; }
 .nest-card-gap { flex: 1; }
+.nest-card-sheet { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 6px;
+  font-family: var(--font-cond); font-weight: 600; font-size: 16px; color: var(--ink-2); letter-spacing: .02em; }
 .nest-live-tag { padding: 2px 8px; border-radius: 5px; background: var(--yellow-tint); color: var(--yellow-ink); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 .nest-view { display: inline-grid; place-items: center; text-align: center; height: 32px; min-width: 76px; padding: 0 14px; border-radius: 7px; font-weight: 600; letter-spacing: .03em;
   border: 1.5px solid var(--green-ink); background: var(--green-tint); color: var(--green-ink); }
