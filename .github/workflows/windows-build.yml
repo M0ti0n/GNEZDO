@@ -33,11 +33,18 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
+          # on failure the last error lines become annotations (readable without the full log)
+          function Fail($what, $log) {
+            $lines = Get-Content $log | Select-String -Pattern "error|Error|FAILED|fatal" | Select-Object -Last 25
+            $msg = ($lines -join "%0A") -replace "\r", ""
+            Write-Output "::error title=$what::$msg"
+            throw $what
+          }
           cmake -S nesting/packingsolver -B build -DCMAKE_BUILD_TYPE=Release `
-            -DPACKINGSOLVER_BUILD_TEST=OFF -DPACKINGSOLVER_USE_CLP=OFF -DPACKINGSOLVER_USE_HIGHS=ON
-          if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
-          cmake --build build --config Release --target packingsolver_irregular -j 4
-          if ($LASTEXITCODE -ne 0) { throw "build failed" }
+            -DPACKINGSOLVER_BUILD_TEST=OFF -DPACKINGSOLVER_USE_CLP=OFF -DPACKINGSOLVER_USE_HIGHS=ON *> configure.log
+          if ($LASTEXITCODE -ne 0) { Get-Content configure.log -Tail 60; Fail "cmake configure failed" configure.log }
+          cmake --build build --config Release --target packingsolver_irregular -j 4 *> build.log
+          if ($LASTEXITCODE -ne 0) { Get-Content build.log -Tail 80; Fail "build failed" build.log }
           New-Item -ItemType Directory -Force out-solver | Out-Null
           $exe = Get-ChildItem build -Recurse -Filter packingsolver_irregular.exe | Select-Object -First 1
           Copy-Item $exe.FullName out-solver/
