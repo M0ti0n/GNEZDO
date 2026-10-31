@@ -1223,7 +1223,10 @@ th.num .th-sort { flex-direction: row-reverse; }
 .work-grid thead th .th-sort { width: 100%; padding: 8px 10px; text-align: inherit; font: inherit; color: inherit; white-space: nowrap; }
 .work-grid thead th.num .th-sort { text-align: right; }
 .work-grid thead th .th-sort:hover { background: var(--green-tint); }
-.work-grid td { padding: 3px 10px; }
+.work-grid { table-layout: fixed; }
+.work-grid td { padding: 3px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-grid .cell-name { cursor: default; }
+.work-grid .cell-name:hover { color: var(--green-ink); }
 .work-grid .cell-no { color: var(--ink-3); font-variant-numeric: tabular-nums; width: 1%; }
 .work-grid .qty { width: 64px; }
 .cell-nested { font-weight: 600; font-variant-numeric: tabular-nums; width: 1%; }
@@ -1235,10 +1238,11 @@ th.num .th-sort { flex-direction: row-reverse; }
 .stock h2 { padding: 12px 16px 0; }
 .stock-add { display: flex; gap: 8px; padding: 10px 16px 12px; border-bottom: 1px solid var(--line); }
 .stock-add select { flex: 1; height: 36px; }
-.stock-add-btn { height: 36px; padding: 0 18px; font-weight: 600; }
+.stock-add-btn { height: 36px; padding: 0 20px; font-weight: 600; border: 1.5px solid var(--green-ink); background: var(--green-tint); color: var(--green-ink); }
+.stock-add-btn:hover { background: #d3ecc6; }
 .stock-empty { margin: 14px 16px; color: var(--ink-3); font-size: 13.5px; line-height: 1.45; }
 .stock-list { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px 16px; display: grid; gap: 10px; align-content: start; }
-.sheet-card { border: 1.5px solid #3a3a3a; border-radius: 8px; padding: 8px 10px; display: grid; gap: 7px; background: #fff; }
+.sheet-card { border: 1.5px solid var(--green); border-radius: 8px; padding: 8px 10px; display: grid; gap: 7px; background: #fff; }
 .sheet-row { display: flex; align-items: center; gap: 8px; }
 .sheet-name {
   display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 6px 0 10px;
@@ -1251,11 +1255,12 @@ th.num .th-sort { flex-direction: row-reverse; }
 }
 .sheet-info:hover { background: var(--green-tint); color: var(--green-ink); }
 .sheet-mat { flex: 1; min-width: 0; height: 32px; }
-.sheet-del { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 6px; font-size: 20px; line-height: 1; color: var(--ink-2); }
+.sheet-del { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-2); }
 .sheet-del:hover { background: #fde8e7; border-color: #e7a9a4; color: #c62828; }
 .sheet-dims .field { width: 0; flex: 1; height: 32px; text-align: center; }
 .sheet-dims .sheet-t { flex: .55; }
 .sheet-x { color: var(--ink-3); }
+.sheet-dims.is-too-big .field { border-color: #e7a9a4; background: #fde8e7; color: #b3261e; }
 .sheet-qty label:first-child { display: inline-flex; align-items: center; gap: 6px; }
 .sheet-qty input.field { width: 70px; height: 32px; text-align: center; }
 .sheet-qty input:disabled { opacity: .45; }

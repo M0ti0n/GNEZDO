@@ -2,10 +2,13 @@ import { useMemo, useRef, useState } from "react";
 import type { JobPart, PartSummary } from "../api/types";
 import { IconClose, IconLibrary } from "../components/Icons";
 import { usePickLists } from "../components/pickLists";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { PartPropertiesDialog } from "../components/PartPropertiesDialog";
+import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PARTS_MIME } from "../shell/Drawer";
 import { readDxf } from "../import/dxf";
 import { boxOf, union } from "../import/geometry";
-import { DEFAULT_SIZES, STOCK_SOURCES, newSheet, sheetKey, type StockSheet, type StockSource } from "../job/stock";
+import { DEFAULT_SIZES, MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, type StockSheet, type StockSource } from "../job/stock";
 
 interface Props {
   title: string;
@@ -13,7 +16,7 @@ interface Props {
   stock: StockSheet[];
   onStock: (stock: StockSheet[]) => void;
   onDropParts: (parts: PartSummary[]) => void;
-  onPart: (partId: string, patch: Partial<Pick<JobPart, "qty" | "qtyMax">>) => void;
+  onPart: (partId: string, patch: Partial<Pick<JobPart, "qty" | "qtyMax" | "part">>) => void;
   onRemove: (partId: string) => void;
   onOpenParts: () => void;
   onNotice: (text: string) => void;
@@ -25,7 +28,7 @@ const COLS: { id: Col; label: string; num?: boolean; title?: string }[] = [
   { id: "project", label: "Project" },
   { id: "name", label: "Part name" },
   { id: "material", label: "Material" },
-  { id: "thickness", label: "Thickness", num: true },
+  { id: "thickness", label: "Thickness" },
   { id: "qty", label: "Qty req", num: true, title: "Requested: setting it also sets Qty max" },
   { id: "nested", label: "Qty nested", num: true, title: "On the nest now: green when the requested number is reached" },
   { id: "qtyMax", label: "Qty max", num: true, title: "Nesting may add copies up to this into space that would be scrap" },
@@ -68,6 +71,9 @@ function NumInput({ value, min = 0, int = false, onCommit, className = "field", 
 // Work parts screen of a job: the job part list (left) and the stock sheets (right).
 export function JobPage({ title, parts, stock, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice }: Props) {
   const [over, setOver] = useState(false);
+  // the part's pop-up (double-click its name), and its versions
+  const [editing, setEditing] = useState<PartSummary | null>(null);
+  const [history, setHistory] = useState<PartSummary | null>(null);
   const [sort, setSort] = useState<{ col: Col; dir: 1 | -1 }>({ col: "no", dir: 1 });
 
   const rows = useMemo(() => {
@@ -116,6 +122,12 @@ export function JobPage({ title, parts, stock, onStock, onDropParts, onPart, onR
         {parts && parts.length > 0 && (
           <div className="work-scroll">
             <table className="grid work-grid">
+              <colgroup>
+                {/* material and thickness narrow and side by side; the room goes to project and part name */}
+                <col style={{ width: 52 }} /><col style={{ width: "19%" }} /><col />
+                <col style={{ width: 104 }} /><col style={{ width: 76 }} />
+                <col style={{ width: 84 }} /><col style={{ width: 92 }} /><col style={{ width: 84 }} /><col style={{ width: 42 }} />
+              </colgroup>
               <thead>
                 <tr>
                   {COLS.map((c) => (
@@ -138,9 +150,10 @@ export function JobPage({ title, parts, stock, onStock, onDropParts, onPart, onR
                     <tr key={jp.part.id}>
                       <td className="num cell-no">{jp.no}</td>
                       <td>{jp.part.project}</td>
-                      <td className="cell-name">{jp.part.name}</td>
+                      <td className="cell-name" title={`${jp.part.name}: double-click for its properties`}
+                        onDoubleClick={() => setEditing(jp.part)}>{jp.part.name}</td>
                       <td>{jp.part.material}</td>
-                      <td className="num">{jp.part.thicknessMm} mm</td>
+                      <td>{jp.part.thicknessMm} mm</td>
                       <td className="num">
                         <NumInput className="field qty" int min={1} value={jp.qty} aria-label={`Requested quantity of ${jp.part.name}`}
                           onCommit={(q) => onPart(jp.part.id, { qty: q, qtyMax: q })} />
@@ -166,6 +179,17 @@ export function JobPage({ title, parts, stock, onStock, onDropParts, onPart, onR
         {over && <div className="drop-veil" aria-hidden="true"><span>Drop to add to {title}</span></div>}
       </section>
 
+      {editing && (
+        <PartPropertiesDialog part={editing} onClose={() => setEditing(null)}
+          onSaved={(now) => onPart(now.id, { part: now })}
+          onDeleted={(id) => onRemove(id)}
+          onVersions={(p) => { setEditing(null); setHistory(p); }} />
+      )}
+      {history && (
+        <PartHistoryDialog part={history} onClose={() => setHistory(null)}
+          onRestored={(now) => { onPart(now.id, { part: now }); setHistory(now); }} />
+      )}
+
       <StockPanel parts={parts ?? []} stock={stock} onStock={onStock} onNotice={onNotice} />
     </div>
   );
@@ -176,6 +200,7 @@ function StockPanel({ parts, stock, onStock, onNotice }: {
 }) {
   const [from, setFrom] = useState<StockSource>("parts");
   const file = useRef<HTMLInputElement>(null);
+  const [tooBig, setTooBig] = useState<{ file: string; l: number; w: number } | null>(null);
   const lists = usePickLists("");
   const materials = useMemo(() => [...new Set([...parts.map((p) => p.part.material), ...lists.materials.map((m) => m.value)])]
     .filter(Boolean).sort((a, b) => a.localeCompare(b)), [parts, lists.materials]);
@@ -214,8 +239,10 @@ function StockPanel({ parts, stock, onStock, onNotice }: {
       if (!drawing.entities.length) { onNotice(`${f.name}: no lines to take the sheet size from`); return; }
       const b = drawing.entities.map(boxOf).reduce(union);
       const r = (v: number) => Math.round(v * 10) / 10;
+      const l = r(b.maxX - b.minX), w = r(b.maxY - b.minY);
+      if (!fitsMachine(l, w)) { setTooBig({ file: f.name, l, w }); return; }
       onStock([...stock, newSheet({
-        source: "dxf", ...nextPair(), lengthMm: r(b.maxX - b.minX), widthMm: r(b.maxY - b.minY), qty: 1, unlimited: false,
+        source: "dxf", ...nextPair(), lengthMm: l, widthMm: w, qty: 1, unlimited: false,
         fileName: f.name.replace(/\.dxf$/i, ""),
       })]);
     } catch (e) {
@@ -238,7 +265,7 @@ function StockPanel({ parts, stock, onStock, onNotice }: {
             </option>
           ))}
         </select>
-        <button type="button" className="btn btn-quiet stock-add-btn" onClick={add}>Add</button>
+        <button type="button" className="btn stock-add-btn" onClick={add}>Add</button>
         <input ref={file} type="file" accept=".dxf" hidden
           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void fromDxf(f); }} />
       </div>
@@ -259,9 +286,10 @@ function StockPanel({ parts, stock, onStock, onNotice }: {
                 {materials.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
               <button type="button" className="sheet-del" onClick={() => onStock(stock.filter((x) => x.id !== s.id))}
-                aria-label={`Remove sheet ${i + 1}`} title="Remove sheet">×</button>
+                aria-label={`Remove sheet ${i + 1}`} title="Remove sheet"><IconClose size={15} /></button>
             </div>
-            <div className="sheet-row sheet-dims">
+            <div className={`sheet-row sheet-dims${s.lengthMm && s.widthMm && !fitsMachine(s.lengthMm, s.widthMm) ? " is-too-big" : ""}`}
+              title={s.lengthMm && s.widthMm && !fitsMachine(s.lengthMm, s.widthMm) ? `Bigger than the machine can cut (${MACHINE_LIMIT.join(" × ")} mm)` : undefined}>
               <NumInput className="field sheet-t" value={s.thicknessMm} placeholder="t" aria-label={`Thickness of sheet ${i + 1} (mm)`}
                 title="Thickness [mm]" onCommit={(n) => set(s.id, { thicknessMm: n })} />
               <span className="sheet-x">×</span>
@@ -284,6 +312,13 @@ function StockPanel({ parts, stock, onStock, onNotice }: {
           </div>
         ))}
       </div>
+      {tooBig && (
+        <ConfirmDialog title="Sheet too big for the machine" confirmLabel="OK" notice
+          onConfirm={() => setTooBig(null)} onCancel={() => setTooBig(null)}>
+          The sheet in <b>{tooBig.file}</b> is {tooBig.l} × {tooBig.w} mm. The machine cuts sheets up to{" "}
+          {MACHINE_LIMIT.join(" × ")} mm, so it was not added.
+        </ConfirmDialog>
+      )}
     </aside>
   );
 }
