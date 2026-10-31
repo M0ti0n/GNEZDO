@@ -96,7 +96,7 @@ export function JobPage({ title, parts, stock, onStock, onDropParts, onPart, onR
   // (Shift+Enter up), Home / End to the row's first / last cell, Ctrl+Home / Ctrl+End to the corners.
   const onGridKey = (e: React.KeyboardEvent<HTMLTableSectionElement>) => {
     const target = e.target as HTMLElement;
-    const td = target.closest<HTMLElement>("td[data-c]");
+    const td = target.closest<HTMLTableCellElement>("td[data-c]");
     if (!td || e.altKey || e.metaKey) return;
     const tr = td.parentElement as HTMLTableRowElement;
     const body = e.currentTarget;
