@@ -1169,27 +1169,25 @@ th.num .th-sort { flex-direction: row-reverse; }
   padding: 8px 14px; background: var(--plate); border-bottom: 1px solid var(--line);
   overflow-x: auto;
 }
-.jsec-work    { --js-ink: #1e9b40; --js-fill: #d4ffb0; }
-.jsec-auto    { --js-ink: #d94a00; --js-fill: #fee39f; }
-.jsec-manual  { --js-ink: #cc0e22; --js-fill: #ffb6c3; }
-.jsec-process { --js-ink: #83408c; --js-fill: #e0d6fb; }
-.jsec-report  { --js-ink: #1688ba; --js-fill: #c4effd; }
-.jsec { flex-shrink: 0; height: 96px; }
+.jsec-work    { --js-ink: #1d9942; --js-fill: #d0ffad; }
+.jsec-auto    { --js-ink: #dc4702; --js-fill: #ffe29d; }
+.jsec-manual  { --js-ink: #cd0212; --js-fill: #ffb5c1; }
+.jsec-process { --js-ink: #863c87; --js-fill: #ddd3ff; }
+.jsec-report  { --js-ink: #0290bd; --js-fill: #c4f1ff; }
+/* proportions of the design: tile 1.47 : 1, icon about two thirds of its height */
+.jsec { flex-shrink: 0; height: 106px; }
 .jsec-tile {
-  width: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  background: var(--js-fill); color: var(--js-ink); border-radius: 4px; padding: 6px 4px 8px;
+  width: 156px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  background: var(--js-fill); color: var(--js-ink); padding: 6px 4px 8px;
   transition: filter .12s, transform .06s;
 }
 .jsec-tile:hover { filter: brightness(.96) saturate(1.15); }
 .jsec-tile:active { transform: translateY(1px); }
-.jsec-icon svg { display: block; width: 72px; height: 54px; }
-.jsec-label {
-  font-family: var(--font-cond); font-size: 13.5px; font-weight: 600; letter-spacing: .03em;
-  text-transform: uppercase; white-space: nowrap; line-height: 1;
-}
+.jsec-icon { display: block; height: 66px; width: auto; max-width: 140px; object-fit: contain; }
+.jsec-label { font-family: var(--font); font-size: 16px; font-weight: 500; letter-spacing: .01em; text-transform: uppercase; white-space: nowrap; line-height: 1; }
 .jsec.is-open {
   display: flex; align-items: flex-start; gap: 6px; padding: 4px 10px 4px 4px;
-  background: #fff; border: 2px solid var(--js-ink); border-radius: 4px;
+  background: #fff; border: 2px solid var(--js-ink);
   animation: jsec-in .14s ease-out;
 }
 @keyframes jsec-in { from { opacity: .4; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
@@ -1197,7 +1195,10 @@ th.num .th-sort { flex-direction: row-reverse; }
   align-self: stretch; width: 28px; margin-right: 6px; display: grid; place-items: center;
   background: var(--js-ink); color: var(--js-fill); border-radius: 2px;
 }
-.jsec-back svg { width: 16px; height: 56px; }
+.jsec-back svg { width: 18px; height: 84px; }
 .jsec-back:hover { filter: brightness(1.12); }
-.jsec .jtool { align-self: center; }
+.jsec .jtool { align-self: center; width: 80px; }
+.jsec .jtool .itool-box { width: 72px; height: 72px; border-radius: 12px; }
+.jsec .jtool .itool-box img { width: 56px; height: 56px; display: block; }
+.jsec .jtool .itool-label { font-family: var(--font); font-weight: 500; font-size: 13px; letter-spacing: 0; }
 .jsec-empty { align-self: center; padding: 0 18px 0 6px; color: var(--ink-3); font-size: 13.5px; font-style: italic; white-space: nowrap; }
