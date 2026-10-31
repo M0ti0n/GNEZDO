@@ -183,6 +183,8 @@ jobs:
       - name: Unzip and start (demo)
         shell: pwsh
         run: |
+          # any failure also becomes an annotation (readable without the full log)
+          trap { Write-Output "::error title=Smoke test::$($_.Exception.Message)"; break }
           Expand-Archive gnezdo-windows.zip -DestinationPath .
           Copy-Item gnezdo/config.example.json gnezdo/config.json
           # start.bat asks the program first whether it may run here
@@ -221,7 +223,14 @@ jobs:
           # nothing may be unpacked into %TEMP%\.net (single-file extraction)
           if (Test-Path "$env:TEMP\.net") { throw "files were unpacked into %TEMP%" }
           # a taken port gives a plain message, not a crash dump
-          $l = [System.Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, 8090); $l.Start()
+          # (the stopped GNEZDO's connections may keep the port busy for a moment)
+          Wait-Process -Id $p.Id -Timeout 30 -ErrorAction SilentlyContinue
+          $l = $null
+          for ($i = 0; $i -lt 30 -and -not $l; $i++) {
+            try { $l = [System.Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, 8090); $l.Start() }
+            catch { $l = $null; Start-Sleep 2 }
+          }
+          if (-not $l) { throw "port 8090 stayed busy after GNEZDO stopped" }
           $q = Start-Process -FilePath gnezdo/program/GNEZDO.exe -WorkingDirectory gnezdo -PassThru -Wait -RedirectStandardOutput out2.txt -RedirectStandardError err2.txt
           $l.Stop()
           $msg = Get-Content err2.txt -Raw
