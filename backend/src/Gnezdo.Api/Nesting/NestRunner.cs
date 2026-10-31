@@ -185,8 +185,14 @@ public sealed class NestRunner : IDisposable
         // written by the engine as tmp + rename; a read may still meet a half-written file now and then
         for (var i = 0; i < 3; i++)
         {
-            try { return File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path)) : null; }
-            catch (Exception e) when (e is IOException or JsonException) { Thread.Sleep(30); }
+            try
+            {
+                if (!File.Exists(path)) return null;
+                // shared for writing and deleting: the engine replaces the file while it works
+                using var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                return JsonNode.Parse(f);
+            }
+            catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { Thread.Sleep(30); }
         }
         return null;
     }

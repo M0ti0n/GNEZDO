@@ -8,7 +8,7 @@ name: Windows test build
 on:
   push:
     branches: [main, "build/**"]
-    paths: ["frontend/**", "backend/src/**", "packaging/**", ".github/workflows/windows-build.yml"]
+    paths: ["frontend/**", "backend/src/**", "packaging/**", "nesting/**", ".github/workflows/windows-build.yml"]
   workflow_dispatch:
 
 permissions:
@@ -19,7 +19,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # PackingSolver for Windows (built once per version of nesting/packingsolver, then from the cache)
+  solver:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: out-solver
+          key: solver-win-${{ hashFiles('nesting/packingsolver/**', 'nesting/patches/**') }}
+      - name: Build packingsolver_irregular.exe
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          # on failure the last error lines become annotations (readable without the full log)
+          fail() {
+            tail -60 "$2"
+            msg=$(grep -E "error|Error|FAILED|fatal" "$2" | tail -25 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')
+            echo "::error title=$1::$msg"
+            exit 1
+          }
+          # the program's target (packingsolver_irregular is also, apart from case, the library's
+          # name, and on Windows the build tool does not tell them apart)
+          cmake -S nesting/packingsolver -B build -DCMAKE_BUILD_TYPE=Release \
+            -DPACKINGSOLVER_BUILD_TEST=OFF -DPACKINGSOLVER_USE_CLP=OFF -DPACKINGSOLVER_USE_HIGHS=ON > configure.log 2>&1 \
+            || fail "cmake configure failed" configure.log
+          cmake --build build --config Release --target PackingSolver_irregular_main -j 4 > build.log 2>&1 \
+            || fail "build failed" build.log
+          echo "::notice title=Build::$(tail -3 build.log | sed ':a;N;$!ba;s/\r//g;s/\n/%0A/g')"
+          exe=$(/usr/bin/find build -iname 'packingsolver_irregular*.exe' | head -1)
+          if [ -z "$exe" ]; then
+            echo "::error title=No exe::$(/usr/bin/find build -iname '*.exe' | head -20 | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
+          mkdir -p out-solver
+          cp "$exe" out-solver/packingsolver_irregular.exe
+          ls -la out-solver
+      - name: It runs on Windows
+        shell: pwsh
+        run: |
+          & out-solver/packingsolver_irregular.exe -i nesting/nestprep/examples/demo_sheets.json -o out.json -c sol.json -t 5 -v 0 --linear-programming-solver highs
+          if ($LASTEXITCODE -ne 0) { throw "packingsolver_irregular.exe failed ($LASTEXITCODE)" }
+          if (-not (Test-Path sol.json)) { throw "no solution written" }
+          Write-Output "::notice title=PackingSolver::packingsolver_irregular.exe built and ran on Windows"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solver-windows
+          path: out-solver/packingsolver_irregular.exe
+
   build:
+    needs: solver
     runs-on: ubuntu-latest
     env:
       DOTNET_NOLOGO: "1"
@@ -47,6 +97,36 @@ jobs:
           dotnet publish backend/src/Gnezdo.Api -c Release -r win-x64 --self-contained true \
             -p:PublishSingleFile=false -p:DebugType=none -o out/publish
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: solver-windows
+          path: out/solver
+
+      # The nesting engine: PackingSolver, nestprep and a Python of its own (with numpy), so
+      # nothing has to be installed on the PC
+      - name: Nesting engine for Windows
+        run: |
+          set -e
+          n=out/nesting
+          mkdir -p $n/python $n/nestprep
+          cp out/solver/packingsolver_irregular.exe $n/
+          PY=3.12.10
+          curl -fsSL -o py.zip https://www.python.org/ftp/python/$PY/python-$PY-embed-amd64.zip
+          unzip -q py.zip -d $n/python
+          pip download numpy==2.2.6 --only-binary=:all: --platform win_amd64 --python-version 3.12 \
+            --implementation cp --abi cp312 -d wheels -q
+          mkdir -p $n/python/Lib/site-packages
+          for w in wheels/*.whl; do unzip -q -o "$w" -d $n/python/Lib/site-packages; done
+          # the embedded Python only looks where its ._pth file says
+          pth=$(ls $n/python/python3*._pth)
+          printf 'python312.zip\n.\nLib\\site-packages\nimport site\n' > "$pth"
+          cat "$pth"
+          cp nesting/nestprep/nestprep_cli.py $n/nestprep/
+          mkdir -p $n/nestprep/nestprep
+          cp nesting/nestprep/nestprep/*.py $n/nestprep/nestprep/
+          cp nesting/PACKINGSOLVER_VERSION $n/
+          du -sh $n
+
       - name: Assemble the zip
         run: |
           set -e
@@ -60,6 +140,7 @@ jobs:
           jq '.ConnectionStrings.Gnezdo = ""' out/publish/appsettings.json > $d/program/appsettings.json
           cp -r out/web-db $d/program/wwwroot
           cp -r out/web-demo $d/program/wwwroot-demo
+          cp -r out/nesting $d/nesting
           cp packaging/start.bat packaging/config.example.json packaging/INSTALL.txt packaging/demo_server.py $d/
           echo "GNEZDO test build $(date -u +%Y-%m-%d) from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}" > $d/VERSION.txt
           ls -la $d; ls $d/program | wc -l
@@ -92,12 +173,18 @@ jobs:
     needs: build
     runs-on: windows-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+          sparse-checkout: nesting/nestprep/examples
       - uses: actions/download-artifact@v4
         with:
           name: gnezdo-windows
       - name: Unzip and start (demo)
         shell: pwsh
         run: |
+          # any failure also becomes an annotation (readable without the full log)
+          trap { Write-Output "::error title=Smoke test::$($_.Exception.Message)"; break }
           Expand-Archive gnezdo-windows.zip -DestinationPath .
           Copy-Item gnezdo/config.example.json gnezdo/config.json
           # start.bat asks the program first whether it may run here
@@ -117,11 +204,33 @@ jobs:
           if ($page.Content -notmatch "<div id=`"root`"") { throw "index.html not served" }
           $deep = Invoke-WebRequest http://localhost:8090/some/page
           if ($deep.StatusCode -ne 200) { throw "fallback to index.html failed" }
+          # a real nest: the demo job through GNEZDO's API and the bundled engine
+          $st = Invoke-RestMethod http://localhost:8090/api/nest/status
+          if (-not $st.available) { throw "nesting not available: $($st.reason)" }
+          $req = Get-Content repo/nesting/nestprep/examples/demo_request.json -Raw
+          $run = Invoke-RestMethod -Method Post -Uri http://localhost:8090/api/nest -Body $req -ContentType "application/json"
+          for ($i = 0; $i -lt 120; $i++) {
+            Start-Sleep 2
+            $run = Invoke-RestMethod "http://localhost:8090/api/nest/$($run.id)"
+            if ($run.state -in @("done", "stopped", "error")) { break }
+          }
+          $j = $run | ConvertTo-Json -Depth 4 -Compress
+          Write-Output $j.Substring(0, [Math]::Min(800, $j.Length))
+          if ($run.state -ne "done") { throw "nest ended as $($run.state): $($run.error)" }
+          if (-not $run.result.valid) { throw "layout check failed: $($run.result.errors)" }
+          Write-Output "::notice title=Nesting::demo job nested on Windows in $($run.seconds) s, $($run.result.sheets.Count) sheets"
           Stop-Process $p.Id
           # nothing may be unpacked into %TEMP%\.net (single-file extraction)
           if (Test-Path "$env:TEMP\.net") { throw "files were unpacked into %TEMP%" }
           # a taken port gives a plain message, not a crash dump
-          $l = [System.Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, 8090); $l.Start()
+          # (the stopped GNEZDO's connections may keep the port busy for a moment)
+          Wait-Process -Id $p.Id -Timeout 30 -ErrorAction SilentlyContinue
+          $l = $null
+          for ($i = 0; $i -lt 30 -and -not $l; $i++) {
+            try { $l = [System.Net.Sockets.TcpListener]::new([Net.IPAddress]::Any, 8090); $l.Start() }
+            catch { $l = $null; Start-Sleep 2 }
+          }
+          if (-not $l) { throw "port 8090 stayed busy after GNEZDO stopped" }
           $q = Start-Process -FilePath gnezdo/program/GNEZDO.exe -WorkingDirectory gnezdo -PassThru -Wait -RedirectStandardOutput out2.txt -RedirectStandardError err2.txt
           $l.Stop()
           $msg = Get-Content err2.txt -Raw

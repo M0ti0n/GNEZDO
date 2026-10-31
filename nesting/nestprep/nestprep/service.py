@@ -208,7 +208,13 @@ class Run:
         p = os.path.join(self.dir, name)
         with open(p + ".tmp", "w") as f:
             json.dump(obj, f)
-        os.replace(p + ".tmp", p)
+        # Windows: the replace fails while GNEZDO happens to be reading the file; try again
+        for i in range(20):
+            try:
+                os.replace(p + ".tmp", p)
+                return
+            except PermissionError:
+                time.sleep(0.05 * (i + 1))
 
     def progress(self, stage: str = ""):
         with self.lock:
