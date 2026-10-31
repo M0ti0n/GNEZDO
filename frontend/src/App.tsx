@@ -23,6 +23,7 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
+import { JobToolbar } from "./shell/JobToolbar";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
 import type { Drawing } from "./import/geometry";
 import { VIEW_TITLE, drawingTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
@@ -307,7 +308,8 @@ export function App() {
           importPanel={importPanel}
         />
         <div className="workspace">
-          {active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
+          {active.kind === "job" ? <JobToolbar key={job?.id} />
+            : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
           <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" || active.kind === "rules" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && (
