@@ -328,28 +328,15 @@ function SolutionInfo({ sheets, parts, jobParts, origin }: {
           ))}
         </tbody>
       </table>
-      <dl className="sheet-stats-list">
-        {([
-          ["Pieces nested", `${data.nested} / ${data.required}`, "Nested pieces / pieces required"],
-          ["Sheets", String(sheets.length)],
-          ["Nesting efficiency", pct(eff(data.partsKg, data.usedKg)), "Weight of the parts / weight of the sheets used (the remnant strips not counted)"],
-          ["Sheet weight (kg)", kg(data.sheetKg)],
-          ["Part weight (kg)", kg(data.partsKg)],
-          ["Remnant (kg)", kg(data.remnantKg), "The strips after the cut areas, reusable"],
-          ["Scrap and unused (kg)", kg(data.usedKg - data.partsKg)],
-          ["Cut length (m)", data.cutM.toFixed(1)],
-          ["Pierces", String(data.pierces)],
-        ] as [string, string, string?][]).map(([k, v, hint]) => (
-          <div key={k} title={hint}><dt>{k}</dt><dd>{v}</dd></div>
-        ))}
-      </dl>
     </>
   );
 }
 
 function NestInfo({ sheet, parts, origin }: { sheet: NestedSheet; parts: Map<string, PartRef>; origin: Origin }) {
   const st = useMemo(() => sheetStats(sheet, parts, origin), [sheet, parts, origin]);
+  const used = st.sheetKg - st.remnantKg;
   const rows: [string, string, string?][] = [
+    ["Efficiency (%)", (used > 0 ? (100 * st.partsKg) / used : 0).toFixed(1), "Weight of the parts / weight of the sheet without the remnant strip"],
     ["Cut Area XY (mm)", `${Math.round(st.cutX)} x ${Math.round(st.cutY)}`, "From the origin corner to the farthest part"],
     ["Sheet (kg)", kg(st.sheetKg)],
     ["Part weight (kg)", kg(st.partsKg)],
@@ -358,9 +345,6 @@ function NestInfo({ sheet, parts, origin }: { sheet: NestedSheet; parts: Map<str
     ["Remnant (%)", st.remnantPct.toFixed(0)],
     ["Unused (kg)", kg(st.unusedKg), "Beside the cut area, outside the remnant strip"],
     ["Unused (%)", st.unusedPct.toFixed(0)],
-    ["Efficiency", pct(st.sheetKg - st.remnantKg > 0 ? (100 * st.partsKg) / (st.sheetKg - st.remnantKg) : 0), "Parts / sheet without the remnant strip"],
-    ["Cut length (m)", st.cutM.toFixed(1)],
-    ["Pierces", String(st.pierces)],
     ["Cutting Number", "1", "How many times this sheet is cut"],
     ["Time Rapid", "—", "Needs the technology tables"],
     ["Time Cutting", "—", "Needs the technology tables"],

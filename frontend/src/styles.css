@@ -1353,9 +1353,9 @@ th.num .th-sort { flex-direction: row-reverse; }
   background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgba(10, 40, 25, .18); }
 .sol-menu button { padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; text-align: left; font: inherit; cursor: pointer; }
 .sol-menu button:hover { background: var(--green-tint); color: var(--green-ink); }
-.sol-list { flex: 0 1 auto; max-height: 46%; min-height: 60px; overflow-y: auto; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 12px; }
+.sol-list { flex: 1 1 0; min-height: 60px; overflow-y: auto; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 12px; }
 /* the solution, sheet and parts info, in the same tile under the solutions */
-.info-tabs { flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.info-tabs { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .info-tab-bar { flex: none; display: flex; margin: 12px 16px 0; border: 1.5px solid var(--green); border-radius: 7px; overflow: hidden; }
 .info-tab-bar button { flex: 1; height: 32px; padding: 0 4px; border: 0; border-left: 1px solid #cfe5c2; background: #fff; color: var(--green-ink);
   display: grid; place-items: center; text-align: center; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; }
@@ -1393,7 +1393,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .sol-x { margin-left: auto; display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-2); background: #fff; }
 .sol-x:hover { background: #fde8e7; border-color: #e7a9a4; color: #c62828; }
 .sol-err { margin: 6px 0 0; font-size: 13px; }
-.sol-tree { list-style: none; margin: 4px 0 0 14px; padding: 4px 0 2px; border-left: 1.5px solid #b9c4c9; display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; }
+.sol-tree { list-style: none; margin: 4px 0 0 14px; padding: 4px 0 2px; border-left: 1.5px solid #b9c4c9; display: flex; flex-direction: column; gap: 6px; }
 .sol-tree li { display: flex; align-items: center; }
 .sol-tree li::before { content: ""; width: 40px; flex: none; border-top: 1.5px solid #b9c4c9; }
 .sol-tree button { width: 124px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; text-align: left; font-weight: 600; font-size: 14px; }
