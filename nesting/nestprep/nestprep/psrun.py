@@ -64,7 +64,7 @@ def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
 
     stop_after: end once a layout exists and no better one has turned up for this many seconds.
     should_stop(): polled; True ends the run, keeping the best layout so far ("stopped").
-    on_progress({"sheets", "waste", "seconds"}): called for every better layout.
+    on_progress({"sheets", "waste", "seconds", "solution"}): called for every better layout.
     """
     tmp = workdir or tempfile.mkdtemp(prefix="ps_")
     os.makedirs(tmp, exist_ok=True)
@@ -112,7 +112,7 @@ def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
                 seen, sol, improved_at = m, cur, now
                 if on_progress:
                     on_progress({"sheets": sum(int(b.get("copies", 1)) for b in cur["bins"]),
-                                 "waste": waste(), "seconds": round(now, 1)})
+                                 "waste": waste(), "seconds": round(now, 1), "solution": cur})
         if should_stop and should_stop():
             stopped = True
         elif now >= time_limit and sol:

@@ -65,6 +65,8 @@ export interface NestRun {
   seconds: number;
   groups?: NestGroupProgress[];
   result?: NestResult;
+  /** while it runs: the best layout found so far */
+  best?: { sheets: NestedSheet[] };
   error?: string;
 }
 

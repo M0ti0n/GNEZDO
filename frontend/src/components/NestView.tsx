@@ -63,7 +63,9 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
   const sol = solutions.find((s) => s.id === selected.sol) ?? solutions[solutions.length - 1];
-  const sheets = sol?.run?.result?.sheets ?? [];
+  // a running solution shows its best layout so far
+  const sheets = sol?.run?.result?.sheets ?? sol?.run?.best?.sheets ?? [];
+  const liveSheets = !!sol && !sol.run?.result && sheets.length > 0;
   const sheetNo = Math.min(selected.sheet, Math.max(0, sheets.length - 1));
   const [full, setFull] = useState<number | null>(null);
   const grid = useRef<HTMLDivElement>(null);
@@ -89,7 +91,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
           <div className="nest-empty">
             {sol.error || sol.run?.error ? <p className="nest-err">Solution {sol.no}: {sol.error ?? sol.run?.error}</p>
               : isFinished(sol.run) ? <p>Solution {sol.no} has no sheets.</p>
-              : <p><b>Solution {sol.no} is running.</b> Its sheets show here when it finishes, or press Stop and keep.</p>}
+              : <p><b>Solution {sol.no} is running.</b> Its sheets show here as soon as it has a first layout.</p>}
           </div>
         )}
         {sheets.map((sh, i) => (
@@ -97,8 +99,9 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
             onClick={() => onSelect({ sol: sol!.id, sheet: i })}>
             <header>
               <span className="nest-card-title">Solution {sol!.no} <span className="slash">/</span> Sheet {i + 1}</span>
-              <button type="button" className="nest-i" title="Sheet info" aria-label={`Info on sheet ${i + 1}`}
+              <button type="button" className="sheet-info" title="Sheet info" aria-label={`Info on sheet ${i + 1}`}
                 onClick={(e) => { e.stopPropagation(); onSelect({ sol: sol!.id, sheet: i }); }}>i</button>
+              {liveSheets && <span className="nest-live-tag">best so far</span>}
               <span className="nest-card-gap" />
               <button type="button" className="nest-view" onClick={(e) => { e.stopPropagation(); onSelect({ sol: sol!.id, sheet: i }); setFull(i); }}
                 title={editable(i) ? "Full screen, to change the sheet by hand" : "Full screen"}>{editable(i) ? "EDIT" : "VIEW"}</button>
@@ -161,7 +164,7 @@ function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, 
       <header className="sol-head">
         <h2>Solutions</h2>
         <span className="sol-add-wrap">
-          <button type="button" className="sol-add" onClick={(e) => { e.stopPropagation(); setMenu((m) => !m); }}
+          <button type="button" className="stock-add-btn sol-add" onClick={(e) => { e.stopPropagation(); setMenu((m) => !m); }}
             disabled={running} title={running ? "A solution is running; the next one starts after it" : "Nest the job again, another way"}>Add New Solution</button>
           {menu && (
             <span className="sol-menu" role="menu">
@@ -179,49 +182,53 @@ function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, 
         {solutions.map((s) => {
           const live = !isFinished(s.run) && !s.error;
           const sheets = s.run?.result?.sheets ?? [];
-          const best = (s.run?.groups ?? []).reduce((a, g) => a + (g.sheets ?? 0), 0);
+          const best = s.run?.best?.sheets.length || (s.run?.groups ?? []).reduce((a, g) => a + (g.sheets ?? 0), 0);
           const on = s.id === current;
           const failed = s.error ?? s.run?.error;
-          return (
-            <div key={s.id} data-sol={s.id} className={`sol${on ? " is-on" : ""}${live ? " is-live" : ""}`}>
-              <div className="sol-row">
-                <button type="button" className="sol-name" onClick={() => onSelect({ sol: s.id, sheet: 0 })}>
-                  SOLUTION {s.no}
-                </button>
-                {live ? (
-                  <span className="sol-progress">{s.run?.state === "queued" ? "WAITING" : "IN PROGRESS"} <b>{hms((Date.now() - s.startedAt) / 1000)}</b></span>
-                ) : (
+          const skipped = s.run?.result?.skipped.length ?? 0;
+          if (live) {
+            // running: name and time, mode and minutes, best sheet count, VIEW and STOP AND KEEP
+            return (
+              <div key={s.id} data-sol={s.id} className={`sol-live${on ? " is-on" : ""}`}>
+                <div className="sol-live-row">
+                  <span className="sol-title">Solution {s.no}</span>
+                  <span className="sol-progress">{s.run?.state === "queued" ? "Waiting" : "In progress"}<b>{hms((Date.now() - s.startedAt) / 1000)}</b></span>
+                </div>
+                <div className="sol-live-row">
                   <span className="sol-badge">{MODE_SHORT[s.mode]}</span>
-                )}
-                {!live && sheets.length > 0 && (
-                  <button type="button" className={`sol-save${s.saved ? " is-saved" : ""}`} onClick={() => onSave(s.id)}
-                    title={s.saved ? "This is the solution kept for the job" : "Keep this solution for the job"}>{s.saved ? "SAVED" : "SAVE"}</button>
-                )}
-                {!live && (
-                  <button type="button" className="sol-x" onClick={() => onRemove(s.id)} title={`Remove solution ${s.no}`} aria-label={`Remove solution ${s.no}`}>
-                    <IconClose size={16} />
-                  </button>
-                )}
-              </div>
-              {live && (
-                <div className="sol-live">
-                  <span className="sol-badge">{MODE_SHORT[s.mode]}</span>
-                  {s.mode === "custom" && s.custom && <span className="sol-badge">{s.custom.minutes === null ? "∞" : `${s.custom.minutes}min`}</span>}
-                  <span className="sol-best">{best ? `${best} ${best === 1 ? "sheet" : "sheets"}` : "no layout yet"}</span>
-                  <span className="sol-live-gap" />
-                  <button type="button" className="sol-stop" disabled={!s.run || s.run.stopAsked} onClick={() => onStop(s.id)}
+                  {s.mode === "custom" && s.custom && <span className="sol-badge">{s.custom.minutes === null ? "∞" : `${s.custom.minutes} min`}</span>}
+                </div>
+                <div className="sol-live-best">{best ? `${best} ${best === 1 ? "sheet" : "sheets"}` : "no layout yet"}</div>
+                <div className="sol-live-row is-end">
+                  <button type="button" className="sol-btn" disabled={!s.run?.best?.sheets.length}
+                    onClick={() => onSelect({ sol: s.id, sheet: 0 })} title="Show the best layout so far">VIEW</button>
+                  <button type="button" className="btn btn-save sol-stop" disabled={!s.run || s.run.stopAsked} onClick={() => onStop(s.id)}
                     title="End it now and keep the best layout found so far">{s.run?.stopAsked ? "STOPPING…" : "STOP AND KEEP"}</button>
                 </div>
-              )}
-              {!live && failed && <p className="sol-err">{failed}</p>}
-              {!live && !failed && (
-                <p className="sol-sum">
-                  {sheets.length} {sheets.length === 1 ? "sheet" : "sheets"} · {hms(s.run?.seconds ?? 0)}
-                  {s.run?.state === "stopped" ? " · stopped" : ""}
-                  {(s.run?.result?.skipped.length ?? 0) > 0 && <span className="sol-warn"> · {s.run!.result!.skipped.length} not nested</span>}
-                </p>
-              )}
-              {on && !live && sheets.length > 0 && (
+              </div>
+            );
+          }
+          // finished: name and mode in one box, remove beside it, the sheets as a tree below
+          return (
+            <div key={s.id} data-sol={s.id} className="sol">
+              <div className="sol-row">
+                <button type="button" className={`sol-box${on ? " is-on" : ""}`} onClick={() => onSelect({ sol: s.id, sheet: 0 })}
+                  title={failed ? failed : `${sheets.length} ${sheets.length === 1 ? "sheet" : "sheets"} · ${hms(s.run?.seconds ?? 0)}${s.run?.state === "stopped" ? " · stopped" : ""}`}>
+                  <span className="sol-title">Solution {s.no}</span>
+                  {s.saved && <span className="sol-saved" title="Kept for the job">✓</span>}
+                  <span className={`sol-badge${failed ? " is-error" : ""}`}>{failed ? "FAILED" : MODE_SHORT[s.mode]}</span>
+                </button>
+                {sheets.length > 0 && (
+                  <button type="button" className={`sol-btn sol-save${s.saved ? " is-saved" : ""}`} onClick={() => onSave(s.id)}
+                    title={s.saved ? "This solution is kept for the job (click to undo)" : "Keep this solution for the job"}>{s.saved ? "SAVED" : "SAVE"}</button>
+                )}
+                <button type="button" className="sol-x" onClick={() => onRemove(s.id)} title={`Remove solution ${s.no}`} aria-label={`Remove solution ${s.no}`}>
+                  <IconClose size={16} />
+                </button>
+              </div>
+              {failed && on && <p className="sol-err">{failed}</p>}
+              {skipped > 0 && on && <p className="sol-err">{skipped} {skipped === 1 ? "part" : "parts"} not nested: {s.run!.result!.skipped[0].reason}</p>}
+              {on && sheets.length > 0 && (
                 <ol className="sol-tree">
                   {sheets.map((_, i) => (
                     <li key={i}>

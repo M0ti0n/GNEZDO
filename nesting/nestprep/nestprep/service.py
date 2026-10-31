@@ -199,6 +199,7 @@ class Run:
         cpu = os.cpu_count() or 2
         self.parallel = workers or max(1, min(len(self.groups), cpu // 4 or 1))
         self.state = "running"
+        self.best: dict[int, list] = {}  # group -> its best sheets so far (best.json)
         os.makedirs(rundir, exist_ok=True)
 
     def stop_requested(self) -> bool:
@@ -222,6 +223,25 @@ class Run:
                                          "seconds": round(time.perf_counter() - self.t0, 1),
                                          "groups": self.status})
 
+    def sheets_of(self, i: int, placed: list[dict]) -> list[dict]:
+        g = self.groups[i]
+        out = []
+        for sh in placed:
+            s = g["sheets"][sh["bin_type"]]
+            out.append({"sheetId": s.get("id"), "lengthMm": float(s["lengthMm"]), "widthMm": float(s["widthMm"]),
+                        "material": g["material"], "thicknessMm": g["thicknessMm"],
+                        "parts": [{"partId": g["partIds"][p["orig_type"]], "x": round(p["xf"].x, 3),
+                                   "y": round(p["xf"].y, 3), "angle": p["xf"].angle, "mirror": p["xf"].mirror}
+                                  for p in sh["parts"]]})
+        return out
+
+    def write_best(self, i: int, sheets: list[dict]):
+        """The best layout so far of every group, for viewing while the run goes on."""
+        with self.lock:
+            self.best[i] = sheets
+            allsheets = [sh for k in sorted(self.best) for sh in self.best[k]]
+            self.write("best.json", {"sheets": allsheets})
+
     def group(self, i: int) -> dict:
         g = self.groups[i]
         mode = self.req.get("mode", "fast")
@@ -230,9 +250,12 @@ class Run:
         def on_progress(d):
             with self.lock:
                 d = dict(d)
+                layout = d.pop("layout", None)
                 if "seconds" in d:
                     d["bestAt"] = d.pop("seconds")  # when the best layout so far was found
                 self.status[i].update({k: v for k, v in d.items() if v is not None})
+            if layout:
+                self.write_best(i, self.sheets_of(i, layout))
             self.progress()
         stop_after = self.req.get("stopAfterMinutes")
         workers = max(2, (os.cpu_count() or 2) // self.parallel)
@@ -255,14 +278,8 @@ class Run:
             it["copies"] = counts[t]
         v = validate(check, placed)
         m = metrics(check, placed) if placed else {}
-        sheets = []
-        for sh in placed:
-            s = g["sheets"][sh["bin_type"]]
-            sheets.append({"sheetId": s.get("id"), "lengthMm": float(s["lengthMm"]), "widthMm": float(s["widthMm"]),
-                           "material": g["material"], "thicknessMm": g["thicknessMm"],
-                           "parts": [{"partId": g["partIds"][p["orig_type"]], "x": round(p["xf"].x, 3),
-                                      "y": round(p["xf"].y, 3), "angle": p["xf"].angle, "mirror": p["xf"].mirror}
-                                     for p in sh["parts"]]})
+        sheets = self.sheets_of(i, placed)
+        self.write_best(i, sheets)
         with self.lock:
             self.status[i].update(stage="done", sheets=len(sheets), stopped=job["stopped"])
         self.progress()
