@@ -117,6 +117,11 @@ public class Job
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ModifiedAt { get; set; }
     public string ModifiedBy { get; set; } = "";
+    /// <summary>Stock sheets of the job (the STOCK panel), JSON array as the job tab keeps them.</summary>
+    public string Stock { get; set; } = "";
+    /// <summary>The saved nest solution (sheets with placed parts, counts, mode, origin), JSON; empty = not nested.</summary>
+    public string Nest { get; set; } = "";
+    public DateTimeOffset? NestedAt { get; set; }
     public List<JobPart> Parts { get; set; } = [];
 }
 
@@ -128,4 +133,8 @@ public class JobPart
     public int PartId { get; set; }
     public Part Part { get; set; } = null!;
     public int Qty { get; set; }
+    /// <summary>Nesting may add copies up to this into space that would be scrap (at least Qty).</summary>
+    public int QtyMax { get; set; }
+    /// <summary>The part's ID number in the job (the work part list's ID column).</summary>
+    public int No { get; set; }
 }

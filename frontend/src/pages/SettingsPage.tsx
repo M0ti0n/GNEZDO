@@ -43,6 +43,17 @@ export function SettingsPage({ stock, onStock, machine, onMachine }: {
           <p>How the cutting machine works with a sheet.</p>
         </header>
         <section className="rule">
+          <h3>Cutting area</h3>
+          <p className="rule-help">The largest sheet the machine can cut, length × width. A bigger sheet is refused in the STOCK panel and shown red.</p>
+          <div className="size-row">
+            <NumInput value={machine.cutLengthMm} min={1} aria-label="Cutting length (mm)" onCommit={(n) => onMachine({ ...machine, cutLengthMm: n })} />
+            <span>×</span>
+            <NumInput value={machine.cutWidthMm} min={1} aria-label="Cutting width (mm)" onCommit={(n) => onMachine({ ...machine, cutWidthMm: n })} />
+            <span className="size-unit">mm</span>
+          </div>
+        </section>
+
+        <section className="rule">
           <h3>Sheet origin (0,0)</h3>
           <p className="rule-help">The corner of the sheet where the machine's 0,0 is. Nesting packs the parts towards this corner, so what is left over is one piece at the other end.</p>
           <div className="origin-pick" role="radiogroup" aria-label="Sheet origin">

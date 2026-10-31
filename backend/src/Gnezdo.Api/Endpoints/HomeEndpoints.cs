@@ -185,20 +185,22 @@ public static class HomeEndpoints
     private static async Task<IResult> JobPartsAsync(int id, GnezdoDb db, CancellationToken ct)
     {
         if (!await db.Jobs.AnyAsync(j => j.Id == id, ct)) return Results.NotFound();
-        var parts = await db.JobParts.AsNoTracking()
+        var rows = await db.JobParts.AsNoTracking()
             .Where(jp => jp.JobId == id)
-            .OrderBy(jp => jp.Part.Name)
-            .Select(jp => new { jp.Part, jp.Qty })
-            .Select(x => new JobPartDto(
-                new PartDto(
-                    x.Part.Id.ToString(), x.Part.Name, x.Part.Project != null ? x.Part.Project.Code : "",
-                    x.Part.Material.Name, x.Part.ThicknessMm, x.Part.Qty, x.Part.WidthMm, x.Part.HeightMm,
-                    x.Part.AreaMm2, x.Part.OutlinePath, x.Part.Description, x.Part.Engraved,
-                    x.Part.ImportBatchId.ToString(), x.Part.ImportBatch.ImportedAt, x.Part.CreatedAt, x.Part.ModifiedAt,
-                    x.Part.Revision),
-                x.Qty))
+            .OrderBy(jp => jp.No).ThenBy(jp => jp.Part.Name)
+            .Select(jp => new
+            {
+                Dto = new PartDto(
+                    jp.Part.Id.ToString(), jp.Part.Name, jp.Part.Project != null ? jp.Part.Project.Code : "",
+                    jp.Part.Material.Name, jp.Part.ThicknessMm, jp.Part.Qty, jp.Part.WidthMm, jp.Part.HeightMm,
+                    jp.Part.AreaMm2, jp.Part.OutlinePath, jp.Part.Description, jp.Part.Engraved,
+                    jp.Part.ImportBatchId.ToString(), jp.Part.ImportBatch.ImportedAt, jp.Part.CreatedAt, jp.Part.ModifiedAt,
+                    jp.Part.Revision),
+                jp.Qty, jp.QtyMax, jp.No,
+            })
             .ToListAsync(ct);
-        return Results.Ok(parts);
+        // jobs saved before Qty max and ID numbers existed: max = req, numbers in name order
+        return Results.Ok(rows.Select((r, i) => new JobPartDto(r.Dto, r.Qty, Math.Max(r.QtyMax, r.Qty), r.No > 0 ? r.No : i + 1)).ToList());
     }
 
     // ---- projects ----------------------------------------------------------

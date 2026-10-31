@@ -306,7 +306,49 @@ const detailOf = (p: PartSummary): PartDetail =>
   ({ part: p, rotations: extra.get(p.id)?.rotations ?? [90], mirror: extra.get(p.id)?.mirror ?? false,
     filler: extra.get(p.id)?.filler ?? false, sourceFile: extra.get(p.id)?.sourceFile ?? "" });
 
+/** What a job tab saves (Work parts SAVE). The stock and nest are kept as the tab has them. */
+export interface JobSaveData { name: string; parts: JobPart[]; stock: unknown[]; nest: unknown | null; modifiedBy?: string }
+export interface JobSaved { id: string; name: string; status: JobStatus; sheetCount: number; modifiedAt: string }
+/** A saved job's stock sheets and saved nest (its parts: jobParts). */
+export interface JobDetail { id: string; name: string; status: JobStatus; sheetCount: number; stock: unknown[] | null; nest: unknown | null }
+
+// sample mode: saved jobs live in this tab
+const savedJobDetails = new Map<string, JobDetail>();
+function mockSaveJob(id: string | null, d: JobSaveData): JobSaved {
+  const now = new Date().toISOString();
+  const sheets = (d.nest as { result?: { sheets?: unknown[] } } | null)?.result?.sheets?.length ?? 0;
+  const status: JobStatus = sheets ? "nested" : "draft";
+  const jobId = id ?? `j-${Date.now().toString(36)}`;
+  const lines = d.parts.map((jp, i) => ({ ...jp, qtyMax: Math.max(jp.qty, jp.qtyMax ?? jp.qty), no: jp.no ?? i + 1, nested: undefined }));
+  const row = {
+    id: jobId, name: d.name, status, sheetCount: sheets, createdAt: now, modifiedAt: now, modifiedBy: d.modifiedBy ?? "",
+    material: lines[0]?.part.material ?? "", thicknessMm: lines[0]?.part.thicknessMm ?? 0,
+    partCount: lines.reduce((n, l) => n + l.qty, 0),
+    projects: [...new Set(lines.map((l) => l.part.project))].sort(),
+    materials: [...new Set(lines.map((l) => l.part.material))].sort(),
+    thicknesses: [...new Set(lines.map((l) => l.part.thicknessMm))].sort((a, b) => a - b),
+    lines,
+  };
+  const i = sampleJobs.findIndex((j) => j.id === jobId);
+  if (i >= 0) sampleJobs.splice(i, 1, { ...sampleJobs[i], ...row, createdAt: sampleJobs[i].createdAt });
+  else sampleJobs.unshift(row as (typeof sampleJobs)[number]);
+  savedJobDetails.set(jobId, { id: jobId, name: d.name, status, sheetCount: sheets, stock: d.stock, nest: d.nest });
+  return { id: jobId, name: d.name, status, sheetCount: sheets, modifiedAt: now };
+}
+
 export const api = {
+  /** Saves a job: new (id null) or over the saved one. */
+  saveJob: (id: string | null, d: JobSaveData): Promise<JobSaved> => {
+    if (!useApi) return delay(0).then(() => mockSaveJob(id, d));
+    const body = {
+      name: d.name, stock: d.stock, nest: d.nest, modifiedBy: d.modifiedBy ?? "",
+      parts: d.parts.map((jp) => ({ partId: jp.part.id, qty: jp.qty, qtyMax: jp.qtyMax ?? jp.qty, no: jp.no })),
+    };
+    return id ? post<JobSaved>(`/api/jobs/${id}`, body, "PUT") : post<JobSaved>("/api/jobs", body);
+  },
+  /** A saved job's stock sheets and saved nest; null when it has none (sample jobs). */
+  job: (id: string): Promise<JobDetail | null> =>
+    useApi ? get<JobDetail>(`/api/jobs/${id}`) : delay(savedJobDetails.get(id) ?? null),
   /** One saved part with rotations, mirror, filler and source file. */
   part: (id: string): Promise<PartDetail> => {
     if (useApi) return get<PartDetail>(`/api/parts/${id}`);

@@ -82,6 +82,13 @@ namespace Gnezdo.Api.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("Nest")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("NestedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<int>("SheetCount")
                         .HasColumnType("int");
 
@@ -89,6 +96,10 @@ namespace Gnezdo.Api.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Stock")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -107,7 +118,13 @@ namespace Gnezdo.Api.Data.Migrations
                     b.Property<int>("PartId")
                         .HasColumnType("int");
 
+                    b.Property<int>("No")
+                        .HasColumnType("int");
+
                     b.Property<int>("Qty")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QtyMax")
                         .HasColumnType("int");
 
                     b.HasKey("JobId", "PartId");

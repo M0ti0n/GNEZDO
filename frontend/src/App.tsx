@@ -24,10 +24,11 @@ import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
-import { buildRequest, isFinished, nestApi, nestProblem, type NestMode, type NestRun, type Solution } from "./job/nest";
+import { buildRequest, isFinished, nestApi, nestProblem, savedOfSolution, solutionFromSaved, type NestMode, type NestRun, type Solution } from "./job/nest";
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type NestSelection } from "./components/NestView";
 import { loadMachineSettings, saveMachineSettings, type MachineSettings } from "./job/machine";
+import { setMachineLimit } from "./job/stock";
 import { loadStockSettings, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
@@ -48,7 +49,8 @@ export function App() {
   const [customFor, setCustomFor] = useState<string | null>(null);
   const [stockSettings, setStockSettingsState] = useState<StockSettings>(loadStockSettings);
   const [machine, setMachineState] = useState<MachineSettings>(loadMachineSettings);
-  const setMachine = (m: MachineSettings) => { setMachineState(m); saveMachineSettings(m); };
+  const setMachine = (m: MachineSettings) => { setMachineLimit(m.cutLengthMm, m.cutWidthMm); setMachineState(m); saveMachineSettings(m); };
+  useState(() => setMachineLimit(machine.cutLengthMm, machine.cutWidthMm));  // once, at start
   const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); saveStockSettings(s); };
   // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
   const [imports, setImports] = useState<ImportItem[]>([]);
@@ -92,7 +94,16 @@ export function App() {
     if (active.kind !== "job" || !id || id in jobParts) return;
     setJobParts((m) => ({ ...m, [id]: undefined }));
     if (id.startsWith("new-")) setJobParts((m) => ({ ...m, [id]: [] }));
-    else api.jobParts(id).then((p) => setJobParts((m) => ({ ...m, [id]: p.map((jp, i) => ({ ...jp, no: jp.no ?? i + 1, qtyMax: jp.qtyMax ?? jp.qty })) })));
+    else {
+      api.jobParts(id).then((p) => setJobParts((m) => ({ ...m, [id]: p.map((jp, i) => ({ ...jp, no: jp.no || i + 1, qtyMax: Math.max(jp.qty, jp.qtyMax ?? jp.qty) })) })));
+      // a saved job brings its stock sheets and its saved solution back
+      api.job(id).then((d) => {
+        if (!d) return;
+        if (Array.isArray(d.stock)) setJobStock((m) => ({ ...m, [id]: d.stock as StockSheet[] }));
+        const sol = solutionFromSaved(d.nest);
+        if (sol) setJobSol((m) => ({ ...m, [id]: { list: [sol], sel: { sol: sol.id, sheet: 0 } } }));
+      }).catch(() => { /* an older server without job details: parts only */ });
+    }
   }, [active, jobParts]);
 
   useEffect(() => {
@@ -249,6 +260,12 @@ export function App() {
       return;
     }
     if (itemId) history.forget(itemId);
+    // a closed job tab forgets what it held: opened again, it shows the job as saved
+    const jid = t?.kind === "job" ? t.jobId : undefined;
+    if (jid) {
+      const drop = <T,>(m: Record<string, T>) => { const n = { ...m }; delete n[jid]; return n; };
+      setJobParts(drop); setJobStock(drop); setJobSol(drop); setJobScreen(drop); setJobServerId(drop);
+    }
     dispatch({ type: "close", id: tabId });
   };
   const closeWithoutSaving = (itemId: string) => {
@@ -363,6 +380,32 @@ export function App() {
     patchSol(jobId, solId, (x) => (x.run ? { ...x, run: { ...x.run, stopAsked: true } } : x));
     try { await nestApi.stop(runId); } catch (e) { setToast((e as Error).message); }
   };
+  // Saving a job (Work parts SAVE; until that button exists, Ctrl+S): parts with their quantities,
+  // the stock sheets and the SAVED solution. A new job gets its database id on the first save.
+  const [jobServerId, setJobServerId] = useState<Record<string, string>>({});
+  const saveJob = async (jobId: string, title: string) => {
+    const parts = jobParts[jobId];
+    if (!parts) return;
+    const serverId = jobId.startsWith("new-") ? jobServerId[jobId] ?? null : jobId;
+    const saved = solsOf(jobId).list.find((x) => x.saved && x.run?.result);
+    try {
+      const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: saved ? savedOfSolution(saved) : null, modifiedBy: USER_NAME });
+      if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
+      setToast(`Job saved${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}`);
+    } catch (e) {
+      setToast(`Not saved: ${(e as Error).message}`);
+    }
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "s" || !job) return;
+      e.preventDefault();
+      void saveJob(job.id, job.title);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   /** Pieces per part of the solution that counts: the saved one, else the one shown. */
   const nestedCounts = (jobId: string): Record<string, number> | null => {
     const st = jobSol[jobId];
