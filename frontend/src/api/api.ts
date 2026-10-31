@@ -50,27 +50,27 @@ interface SampleJob {
 }
 const sampleJobRows: SampleJob[] = [
   { id: "j-2787", name: "Miha2787", status: "nested", sheetCount: 8, createdHoursAgo: 0.5, modifiedHoursAgo: 0.4, modifiedBy: "Miha", parts: "test30" },
-  { id: "j-2786", name: "26-0412 Konzole", status: "released", sheetCount: 3, createdHoursAgo: 3.5, modifiedHoursAgo: 3, modifiedBy: "Miha", parts: [["k-01", 24], ["k-02", 12], ["k-03", 48]] },
-  { id: "j-2785", name: "26-0409 Prirobnice", status: "cut", sheetCount: 2, createdHoursAgo: 25, modifiedHoursAgo: 20, modifiedBy: "Rok", parts: [["p-01", 4], ["p-02", 2]] },
-  { id: "j-2784", name: "26-0410 Ohišje", status: "draft", sheetCount: 0, createdHoursAgo: 26.5, modifiedHoursAgo: 26, modifiedBy: "Miha", parts: [["o-01", 2], ["o-02", 1]] },
-  { id: "j-2781", name: "Ostanki teden 43", status: "cut", sheetCount: 1, createdHoursAgo: 60, modifiedHoursAgo: 50, modifiedBy: "Rok", parts: [["n-02", 5], ["k-03", 2], ["o-02", 1]] },
-  { id: "j-2779", name: "26-0398 Nosilci", status: "cut", sheetCount: 4, createdHoursAgo: 78, modifiedHoursAgo: 75, modifiedBy: "Miha", parts: [["n-01", 16], ["n-02", 15]] },
+  { id: "j-2786", name: "26-0412 Brackets", status: "released", sheetCount: 3, createdHoursAgo: 3.5, modifiedHoursAgo: 3, modifiedBy: "Miha", parts: [["k-01", 24], ["k-02", 12], ["k-03", 48]] },
+  { id: "j-2785", name: "26-0409 Flanges", status: "cut", sheetCount: 2, createdHoursAgo: 25, modifiedHoursAgo: 20, modifiedBy: "Rok", parts: [["p-01", 4], ["p-02", 2]] },
+  { id: "j-2784", name: "26-0410 Housing", status: "draft", sheetCount: 0, createdHoursAgo: 26.5, modifiedHoursAgo: 26, modifiedBy: "Miha", parts: [["o-01", 2], ["o-02", 1]] },
+  { id: "j-2781", name: "Remnants week 43", status: "cut", sheetCount: 1, createdHoursAgo: 60, modifiedHoursAgo: 50, modifiedBy: "Rok", parts: [["n-02", 5], ["k-03", 2], ["o-02", 1]] },
+  { id: "j-2779", name: "26-0398 Supports", status: "cut", sheetCount: 4, createdHoursAgo: 78, modifiedHoursAgo: 75, modifiedBy: "Miha", parts: [["n-01", 16], ["n-02", 15]] },
 ];
 
 const sampleImports: ImportSummary[] = [
   { id: "i-912", source: "TEST_30_industrial", project: "Miha2787", partCount: 30, materials: ["HARDOX 1 mm"], importedAt: hoursAgo(0.6), importedBy: "Miha", warnings: 0 },
-  { id: "i-911", source: "26-0412_konzole.dwg", project: "26-0412", partCount: 12, materials: ["S235 3 mm"], importedAt: hoursAgo(4), importedBy: "Miha", warnings: 2 },
-  { id: "i-910", source: "26-0410 Ohišje", project: "26-0410", partCount: 9, materials: ["INOX 1.4301 2 mm"], importedAt: hoursAgo(27), importedBy: "Miha", warnings: 0 },
-  { id: "i-909", source: "26-0409_prirobnice", project: "26-0409", partCount: 6, materials: ["S355 10 mm", "S355 15 mm"], importedAt: hoursAgo(30), importedBy: "Rok", warnings: 1 },
-  { id: "i-905", source: "26-0398 Nosilci", project: "26-0398", partCount: 18, materials: ["S235 8 mm"], importedAt: hoursAgo(80), importedBy: "Miha", warnings: 0 },
+  { id: "i-911", source: "26-0412_brackets.dwg", project: "26-0412", partCount: 12, materials: ["S235 3 mm"], importedAt: hoursAgo(4), importedBy: "Miha", warnings: 2 },
+  { id: "i-910", source: "26-0410 Housing", project: "26-0410", partCount: 9, materials: ["INOX 1.4301 2 mm"], importedAt: hoursAgo(27), importedBy: "Miha", warnings: 0 },
+  { id: "i-909", source: "26-0409_flanges", project: "26-0409", partCount: 6, materials: ["S355 10 mm", "S355 15 mm"], importedAt: hoursAgo(30), importedBy: "Rok", warnings: 1 },
+  { id: "i-905", source: "26-0398 Supports", project: "26-0398", partCount: 18, materials: ["S235 8 mm"], importedAt: hoursAgo(80), importedBy: "Miha", warnings: 0 },
 ];
 
 const sampleProjects: ProjectSummary[] = [
   { id: "p-2787", code: "Miha2787", name: "Test job – 30 industrial parts", partCount: 30, jobCount: 1, cutPercent: 0, lastActivityAt: hoursAgo(0.4) },
-  { id: "p-0412", code: "26-0412", name: "Konzole za transporter", customer: "Kovinar d.o.o.", partCount: 12, jobCount: 1, cutPercent: 40, lastActivityAt: hoursAgo(3) },
-  { id: "p-0410", code: "26-0410", name: "Ohišje krmilne omare", customer: "Elektro Vrhnika", partCount: 9, jobCount: 1, cutPercent: 0, lastActivityAt: hoursAgo(26) },
-  { id: "p-0409", code: "26-0409", name: "Prirobnice DN200", customer: "Hidro Celje", partCount: 6, jobCount: 1, cutPercent: 100, lastActivityAt: hoursAgo(20) },
-  { id: "p-0398", code: "26-0398", name: "Nosilci podesta", customer: "Gradnje Bovec", partCount: 18, jobCount: 2, cutPercent: 100, lastActivityAt: hoursAgo(75) },
+  { id: "p-0412", code: "26-0412", name: "Conveyor brackets", customer: "Metalworks Ltd.", partCount: 12, jobCount: 1, cutPercent: 40, lastActivityAt: hoursAgo(3) },
+  { id: "p-0410", code: "26-0410", name: "Control cabinet housing", customer: "Electro Supply Ltd.", partCount: 9, jobCount: 1, cutPercent: 0, lastActivityAt: hoursAgo(26) },
+  { id: "p-0409", code: "26-0409", name: "Flanges DN200", customer: "Hydro Systems Ltd.", partCount: 6, jobCount: 1, cutPercent: 100, lastActivityAt: hoursAgo(20) },
+  { id: "p-0398", code: "26-0398", name: "Platform supports", customer: "Build Group Ltd.", partCount: 18, jobCount: 2, cutPercent: 100, lastActivityAt: hoursAgo(75) },
 ];
 
 const importTime = Object.fromEntries(sampleImports.map((i) => [i.id, i.importedAt]));
@@ -208,6 +208,8 @@ export interface SavePart extends PartKey {
   engraved: boolean;
   geometry: string;      // entities as JSON
   sourceFile: string;
+  /** Pieces needed: from the file name when the import rule says so, otherwise 0 (set in the job). */
+  qty: number;
   /** Replace a part with the same project and name; otherwise it is reported as "exists". */
   replace: boolean;
 }
@@ -264,7 +266,7 @@ function mockSave(parts: SavePart[]): SavedPart[] {
     const row: PartSummary = {
       id: i >= 0 ? sampleParts[i].id : `new-${++mockSeq}`,
       name: p.name.trim(), project: p.project.trim(), material: p.material.trim(), thicknessMm: p.thicknessMm,
-      qty: 1, w: p.widthMm, h: p.heightMm, areaMm2: p.areaMm2, path: p.outlinePath,
+      qty: p.qty, w: p.widthMm, h: p.heightMm, areaMm2: p.areaMm2, path: p.outlinePath,
       description: p.description, engraved: p.engraved, importId: "i-new",
       importedAt: now, createdAt: i >= 0 ? sampleParts[i].createdAt : now, modifiedAt: now,
       revision: i >= 0 ? sampleParts[i].revision + 1 : 1,

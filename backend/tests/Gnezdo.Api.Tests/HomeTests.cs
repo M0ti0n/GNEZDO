@@ -45,8 +45,8 @@ public sealed class HomeTests(ApiFixture api)
     {
         var cut = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs?status=cut");
         Assert.Equal(3, cut!.Count);
-        var konzole = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs?name=konzole");
-        Assert.Single(konzole!);
+        var brackets = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs?name=brackets");
+        Assert.Single(brackets!);
     }
 
     [Fact]

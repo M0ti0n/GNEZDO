@@ -1224,7 +1224,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .work-grid thead th .th-sort { width: 100%; padding: 8px 10px; text-align: inherit; font: inherit; color: inherit; white-space: nowrap; }
 .work-grid thead th.num .th-sort { text-align: right; }
 .work-grid thead th .th-sort:hover { background: var(--green-tint); }
-.work-grid { table-layout: fixed; }
+.work-grid { table-layout: fixed; min-width: 940px; }
 .work-grid td { padding: 3px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .work-grid .cell-name { cursor: default; }
 /* the cell you are on, as in a spreadsheet */
@@ -1281,3 +1281,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .slot-table { display: grid; gap: 8px; margin-top: 4px; }
 .slot-head, .slot-row { display: grid; grid-template-columns: 90px minmax(160px, 1fr) auto; align-items: center; gap: 12px; }
 .slot-head { font-size: 12.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.work-pcs { margin-left: auto; padding: 4px 12px; border-radius: 6px; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.work-pcs.is-short { background: #fde3e1; color: #b3261e; }
+.work-pcs.is-done { background: #dff2d3; color: var(--green-ink); }
+.work-grid .qty.is-required { outline: 2px solid var(--yellow); outline-offset: -1px; background: var(--yellow-tint); }

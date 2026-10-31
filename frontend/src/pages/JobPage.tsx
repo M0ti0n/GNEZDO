@@ -69,6 +69,7 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
   }, [parts, sort]);
 
   const total = (parts ?? []).reduce((s, jp) => s + jp.qty, 0);
+  const nestedTotal = (parts ?? []).reduce((s, jp) => s + (jp.nested ?? 0), 0);
 
   // Moving around the list as in a spreadsheet: arrows move from cell to cell (in a number field
   // left / right move once the caret is at its edge or all of it is selected), Enter moves down
@@ -124,7 +125,11 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
       >
         <header className="work-head">
           <h2>Job part list</h2>
-          <span className="work-sum">{title}{parts && parts.length > 0 && ` · ${parts.length} parts, ${total} pieces`}</span>
+          <span className="work-sum">{title}{parts && parts.length > 0 && ` · ${parts.length} ${parts.length === 1 ? "part" : "parts"}`}</span>
+          {parts && parts.length > 0 && (
+            <span className={`work-pcs ${total > 0 && nestedTotal >= total ? "is-done" : "is-short"}`}
+              title="Pieces nested / pieces required">{nestedTotal} / {total} PCS</span>
+          )}
         </header>
 
         {parts === undefined && <p className="state">Loading parts…</p>}
@@ -171,11 +176,12 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
                       <td data-c={3} tabIndex={-1}>{jp.part.material}</td>
                       <td data-c={4} tabIndex={-1}>{jp.part.thicknessMm} mm</td>
                       <td data-c={5} className="num">
-                        <NumInput className="field qty" int min={1} value={jp.qty} aria-label={`Requested quantity of ${jp.part.name}`}
+                        <NumInput className={`field qty${jp.qty ? "" : " is-required"}`} int min={0} value={jp.qty} placeholder="set"
+                          title={jp.qty ? undefined : "Set the number of pieces needed"} aria-label={`Requested quantity of ${jp.part.name}`}
                           onCommit={(q) => onPart(jp.part.id, { qty: q, qtyMax: q })} />
                       </td>
-                      <td data-c={6} tabIndex={-1} className={`num cell-nested ${nested >= jp.qty ? "is-done" : "is-short"}`}
-                        title={nested >= jp.qty ? "Requested number nested" : `${jp.qty - nested} more to nest`}>{nested}</td>
+                      <td data-c={6} tabIndex={-1} className={`num cell-nested ${jp.qty > 0 && nested >= jp.qty ? "is-done" : "is-short"}`}
+                        title={!jp.qty ? "Qty req is not set" : nested >= jp.qty ? "Requested number nested" : `${jp.qty - nested} more to nest`}>{nested}</td>
                       <td data-c={7} className="num">
                         <NumInput className="field qty" int min={jp.qty} value={max} aria-label={`Maximum quantity of ${jp.part.name}`}
                           title="At least the requested number" onCommit={(m) => onPart(jp.part.id, { qtyMax: m })} />

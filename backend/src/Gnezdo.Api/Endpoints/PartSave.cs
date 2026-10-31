@@ -17,7 +17,9 @@ public record SavePartRequest(
     // Filler: nested only into gaps among other parts (optional, false when left out).
     bool Filler,
     // Replace: true replaces a part with the same project and name; false leaves it and reports "exists".
-    bool Replace);
+    bool Replace,
+    // Pieces needed, from the file name when the import rule says so; 0 = set by hand in the job.
+    int? Qty = null);
 
 public record SavePartsRequest(IReadOnlyList<SavePartRequest> Parts, string? Source, string? ImportedBy);
 
@@ -131,6 +133,7 @@ public static class PartSave
             part.Rotations = string.Join(",", (r.Rotations ?? []).Distinct().OrderDescending());
             part.Mirror = r.Mirror;
             part.Filler = r.Filler;
+            part.Qty = Math.Max(0, r.Qty ?? 0);
             part.SourceFile = r.SourceFile?.Trim() ?? "";
             part.ModifiedAt = now;
             results.Add((r, part, existing is null ? "created" : "replaced"));

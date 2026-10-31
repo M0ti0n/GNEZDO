@@ -33,7 +33,7 @@ export const roleOf = (e: Entity): Role => e.role ?? "cut";
 
 export interface Drawing {
   id: string;
-  fileName: string;        // without extension, e.g. "1625-25-01_P1_3kos"
+  fileName: string;        // without extension, e.g. "1625-25-01_P1_3pcs"
   entities: Entity[];
   /** Loose points from the file (DXF POINT): never cut; shown so Sweep can remove them. */
   points?: { id: string; p: Pt; layer?: string }[];
@@ -264,7 +264,7 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   };
 }
 
-/** "1625-25-01_P1_3kos" -> 3: the last number before the extension is the quantity. */
+/** "1625-25-01_P1_3pcs" -> 3: the last number before the extension is the quantity. */
 export function quantityFromName(fileName: string): number | null {
   const m = fileName.replace(/\.(dxf|dwg)$/i, "").match(/(\d+)\D*$/);
   return m ? Number(m[1]) : null;

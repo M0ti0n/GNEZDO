@@ -17,7 +17,7 @@ const circle = (cx: number, cy: number, r: number): Entity => ({ id: id(), kind:
 
 export const sampleDrawing: Drawing = {
   id: "sample-1625-25-01_P1",
-  fileName: "1625-25-01_P1_3kos",
+  fileName: "1625-25-01_P1_3pcs",
   entities: [
     // outside, corner radius 20
     line(20, 0, 380, 0),
@@ -54,7 +54,7 @@ export const sampleDrawing: Drawing = {
 // with two holes, a tracing mark and two open cut slits.
 export const cleanDrawing: Drawing = {
   id: "sample-1625-25-01_P2",
-  fileName: "1625-25-01_P2_5kos",
+  fileName: "1625-25-01_P2_5pcs",
   entities: [
     line(0, 0, 300, 0), line(300, 0, 300, 180), line(300, 180, 0, 180), line(0, 180, 0, 0),
     circle(60, 90, 22), circle(240, 90, 22),
