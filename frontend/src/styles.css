@@ -1285,3 +1285,22 @@ th.num .th-sort { flex-direction: row-reverse; }
 .work-pcs.is-short { background: #fde3e1; color: #b3261e; }
 .work-pcs.is-done { background: #dff2d3; color: var(--green-ink); }
 .work-grid .qty.is-required { outline: 2px solid var(--yellow); outline-offset: -1px; background: var(--yellow-tint); }
+
+/* Custom nest dialog */
+.cn-dlg { width: min(560px, 100%); display: flex; flex-direction: column; }
+.cn-icon { width: 46px; height: 46px; padding: 3px; }
+.cn-icon img { width: 100%; height: 100%; display: block; }
+.cn-body { padding: 16px 20px 6px; display: flex; flex-direction: column; gap: 16px; }
+.cn-sec h3 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); margin: 0 0 8px; }
+.cn-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cn-chip { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px; border-radius: 8px;
+  border: 1.5px solid var(--line); background: var(--plate); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.cn-chip:hover { border-color: var(--green); }
+.cn-chip.is-on { border-color: var(--green); background: var(--green-tint); color: var(--green-ink); }
+.cn-inf { font-size: 20px; line-height: 1; font-weight: 700; }
+.cn-other { padding-right: 10px; }
+.cn-num { width: 64px; height: 30px; text-align: right; padding: 0 8px; font-weight: 600; }
+.cn-check { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 15px; cursor: pointer; }
+.cn-check input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--green); }
+.cn-check .cn-num:disabled { opacity: .5; }
+.cn-note { margin: 0 0 8px; padding: 10px 12px; border-radius: 8px; background: #f2f7f5; font-size: 14px; color: var(--ink-2, #444); line-height: 1.45; }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SideScroll } from "../components/SideScroll";
+import { CustomNestDialog } from "../components/CustomNestDialog";
 
 // Toolbar of a job tab, drawn after Fab's layout: five sections, left to right. Collapsed, a
 // section is one coloured tile. Pressing the tile opens it: the tile gives way to a narrow back
@@ -15,6 +16,7 @@ import tileProcess from "./jobtools/tile-process.png";
 import tileReport from "./jobtools/tile-report.png";
 import toolFastNest from "./jobtools/tool-fastNest.png";
 import toolThoroughNest from "./jobtools/tool-thoroughNest.png";
+import toolCustomNest from "./jobtools/tool-customNest.png";
 import toolMirrorV from "./jobtools/tool-mirrorV.png";
 import toolMirrorH from "./jobtools/tool-mirrorH.png";
 import toolArrange from "./jobtools/tool-arrange.png";
@@ -34,6 +36,7 @@ const SECTIONS: Section[] = [
     id: "auto", label: "Automatic nest", icon: tileAuto, tools: [
       { id: "fastNest", label: "Fast", icon: toolFastNest, hint: "Fast nest: the whole job in about 30 s" },
       { id: "thoroughNest", label: "Thorough", icon: toolThoroughNest, hint: "Thorough nest: up to 90 s, a shorter last sheet" },
+      { id: "customNest", label: "Custom", icon: toolCustomNest, hint: "Custom nest: you set the time, or run until you stop it; keeps the best layout so far" },
     ],
   },
   {
@@ -57,6 +60,7 @@ const SECTIONS: Section[] = [
 
 export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: string) => void }) {
   const [open, setOpen] = useState<SectionId | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -70,7 +74,7 @@ export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: str
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  return (
+  return (<>
     <SideScroll className="jtools" wrapClassName="jtools-wrap" role="toolbar" label="Job tools" more="tools" activeKey={open}>
       {SECTIONS.map((s) => open === s.id ? (
         <div key={s.id} className={`jsec jsec-${s.id} is-open is-active`} role="group" aria-label={s.label}>
@@ -79,7 +83,7 @@ export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: str
           </button>
           {s.tools.length ? s.tools.map((t) => (
             <button key={t.id} type="button" className="itool jtool" title={`${t.hint ?? t.label} (not built yet)`}
-              onClick={() => onTool?.(s.id, t.id)}>
+              onClick={() => t.id === "customNest" ? setCustomOpen(true) : onTool?.(s.id, t.id)}>
               <span className="itool-box"><img src={t.icon} alt="" draggable={false} /></span>
               <span className="itool-label">{t.label}</span>
             </button>
@@ -93,5 +97,7 @@ export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: str
         </button>
       ))}
     </SideScroll>
-  );
+    {customOpen && <CustomNestDialog onCancel={() => setCustomOpen(false)}
+      onStart={() => { setCustomOpen(false); onTool?.("auto", "customNest"); }} />}
+  </>);
 }
