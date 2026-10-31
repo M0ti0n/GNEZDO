@@ -24,6 +24,8 @@ import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
+import { buildRequest, isFinished, nestApi, nestProblem, type JobNest, type NestMode, type NestRun } from "./job/nest";
+import type { CustomNestSettings } from "./components/CustomNestDialog";
 import { loadStockSettings, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
@@ -37,6 +39,8 @@ export function App() {
   const [drawer, setDrawer] = useState<DrawerMode | null>(null);
   const [jobParts, setJobParts] = useState<Record<string, JobPart[] | undefined>>({});
   const [jobStock, setJobStock] = useState<Record<string, StockSheet[]>>({});
+  // the nest going on or the last one, per job tab
+  const [jobNest, setJobNest] = useState<Record<string, JobNest | undefined>>({});
   const [stockSettings, setStockSettingsState] = useState<StockSettings>(loadStockSettings);
   const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); saveStockSettings(s); };
   // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
@@ -301,6 +305,55 @@ export function App() {
 
   const job = activeTab?.kind === "job" && activeTab.jobId ? { id: activeTab.jobId, title: activeTab.title } : null;
 
+  // Nesting: start a run for a job tab, ask the server how it goes once a second, and when it
+  // has finished put the nested counts into Qty nested.
+  const setNest = (jobId: string, f: (n: JobNest | undefined) => JobNest | undefined) =>
+    setJobNest((m) => ({ ...m, [jobId]: f(m[jobId]) }));
+  const finishNest = (jobId: string, run: NestRun) => {
+    setNest(jobId, (n) => n && { ...n, run });
+    const nested = run.result?.nested;
+    if (nested) setJobParts((m) => ({ ...m, [jobId]: (m[jobId] ?? []).map((jp) => ({ ...jp, nested: nested[jp.part.id] ?? 0 })) }));
+  };
+  const pollNest = async (jobId: string, id: string) => {
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1000));
+      let run: NestRun;
+      try { run = await nestApi.get(id); } catch (e) {
+        setNest(jobId, (n) => n && { ...n, error: (e as Error).message });
+        return;
+      }
+      if (isFinished(run)) return finishNest(jobId, run);
+      setNest(jobId, (n) => n && n.run?.id === id ? { ...n, run } : n);
+    }
+  };
+  const startNest = async (jobId: string, mode: NestMode, custom?: CustomNestSettings) => {
+    const cur = jobNest[jobId];
+    if (cur && !cur.error && !isFinished(cur.run)) { setToast("A nest is already running for this job"); return; }
+    const problem = nestProblem(jobParts[jobId], jobStock[jobId] ?? []);
+    if (problem) { setToast(problem); return; }
+    setNest(jobId, () => ({ mode, custom, run: null, startedAt: Date.now() }));
+    try {
+      const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom);
+      const run = await nestApi.start(req);
+      setNest(jobId, (n) => n && { ...n, run });
+      void pollNest(jobId, run.id);
+    } catch (e) {
+      setNest(jobId, (n) => n && { ...n, error: (e as Error).message });
+    }
+  };
+  const stopNest = async (jobId: string) => {
+    const id = jobNest[jobId]?.run?.id;
+    if (!id) return;
+    setNest(jobId, (n) => n && n.run ? { ...n, run: { ...n.run, stopAsked: true } } : n);
+    try { await nestApi.stop(id); } catch (e) { setToast((e as Error).message); }
+  };
+  const onJobTool = (_section: string, tool: string, custom?: CustomNestSettings) => {
+    if (!job) return;
+    if (tool === "fastNest") void startNest(job.id, "fast");
+    else if (tool === "thoroughNest") void startNest(job.id, "thorough");
+    else if (tool === "customNest") void startNest(job.id, "custom", custom);
+  };
+
   return (
     <div className="app">
       <TabBar
@@ -325,7 +378,7 @@ export function App() {
           importPanel={importPanel}
         />
         <div className="workspace">
-          {active.kind === "job" ? <JobToolbar key={job?.id} />
+          {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} />
             : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
           <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
@@ -343,6 +396,9 @@ export function App() {
                 onNotice={setToast}
                 onRemove={(pid) => setJobParts((m) => ({ ...m, [job.id]: (m[job.id] ?? []).filter((jp) => jp.part.id !== pid) }))}
                 onOpenParts={() => setDrawer("parts")}
+                nest={jobNest[job.id]}
+                onStopNest={() => void stopNest(job.id)}
+                onHideNest={() => setNest(job.id, (n) => (n && !n.error && !isFinished(n.run) ? n : undefined))}
               />
             )}
             {active.kind === "jobSearch" && (
