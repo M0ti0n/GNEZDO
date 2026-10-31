@@ -19,6 +19,7 @@ Examples
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
@@ -35,11 +36,12 @@ from nestprep.solution import expand, metrics, validate  # noqa: E402
 # Whole-job time budgets (pre-pass + nest + post-pass), on the machine it runs on.
 LEVELS = {
     # pre-pass, nest, then compaction of the last sheet; the chain only from leftover time
-    "quick": dict(total=30.0, post=5.0, min_nest=10.0, max_nest=30.0,
+    # grace: more nest time when there is no layout yet at the end of it (then a warning)
+    "quick": dict(total=30.0, post=5.0, grace=15.0, min_nest=10.0, max_nest=30.0,
                   post_opts=dict(pairs=False, chain_time=1.5, compact_time=5.0)),
     # pre-pass, nest, then sheet pairs, chain and compaction. The nest is capped at 30 s: on the
     # test jobs a longer nest gave the same layout, the time is worth more in the post-pass.
-    "thorough": dict(total=90.0, post=40.0, min_nest=20.0, max_nest=30.0,
+    "thorough": dict(total=90.0, post=40.0, grace=30.0, min_nest=20.0, max_nest=30.0,
                      post_opts=dict(pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
 }
 
@@ -54,7 +56,7 @@ class NestError(Exception):
     """A job that cannot be nested as it is; the message says why, for the user."""
 
 
-def parts_too_big(inst: dict) -> list[str]:
+def parts_too_big(inst: dict) -> list[tuple[int, str]]:
     """Part types that fit no sheet at any allowed rotation (bounding boxes; PackingSolver would
     otherwise just find no layout and not say why)."""
     import math
@@ -80,27 +82,32 @@ def parts_too_big(inst: dict) -> list[str]:
         fits = any(w <= L + 1e-6 and h <= W + 1e-6 for a in angles for (w, h) in [size(a)] for (L, W) in sheets)
         if not fits:
             w, h = size(0)
-            out.append(f"part #{n + 1} ({w:.0f} x {h:.0f} mm)")
+            out.append((n, f"part #{n + 1} ({w:.0f} x {h:.0f} mm)"))
     return out
 
 
 def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str, quiet: bool = False) -> dict:
     """The whole nesting job within the level's time budget: pre-pass, nest, post-pass."""
+    # parts that fit no sheet are left out (nested by hand); the job goes on with the rest
     big = parts_too_big(inst)
     if big:
-        raise NestError("Bigger than every stock sheet: " + ", ".join(big))
+        inst = copy.deepcopy(inst)
+        for n, _ in big:
+            inst["item_types"][n]["copies"] = 0
+        if not quiet:
+            print("skipped, bigger than every sheet: " + ", ".join(t for _, t in big), flush=True)
+    if not any(int(it.get("copies", 1)) for it in inst["item_types"]):
+        raise NestError("Every part is bigger than every stock sheet")
     L = LEVELS[level]
     t0 = time.perf_counter()
     pre, mapping = PrePass(inst, binary, pre_opts).build()
     pre_t = time.perf_counter() - t0
     nest_t = min(L["max_nest"], max(L["min_nest"], L["total"] - pre_t - L["post"]))
-    r = psrun.solve(pre, binary, nest_t, "anytime", workdir=os.path.join(outdir, "nest"))
-    # no complete layout yet (a hard job): keep going with more time, up to four times the level's time
-    while not r["solution"] and time.perf_counter() - t0 < 4 * L["total"]:
-        nest_t *= 2
-        r = psrun.solve(pre, binary, nest_t, "anytime", workdir=os.path.join(outdir, "nest"))
+    # no layout yet when the time is up (a hard job): a little more time, stopping at the first one
+    r = psrun.solve_grace(pre, binary, nest_t, L["grace"], workdir=os.path.join(outdir, "nest"))
     if not r["solution"]:
-        raise NestError(f"No layout found in {time.perf_counter() - t0:.0f} s")
+        raise NestError(f"No layout found in {time.perf_counter() - t0:.0f} s. "
+                        "Try Thorough nest, or nest fewer parts at a time.")
     nest_done = time.perf_counter() - t0
     post_budget = max(L["post"] * 0.5, L["total"] - nest_done)
     pp = PostPass(pre, r["solution"], binary, post_options(level, post_budget, quiet))
@@ -109,7 +116,8 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     dump(pre, os.path.join(outdir, "instance_pre.json"))
     dump(mapping, os.path.join(outdir, "composites.json"))
     dump(sol, os.path.join(outdir, "solution.json"))
-    return {"solution": sol, "mapping": mapping, "steps": pp.log,
+    return {"solution": sol, "mapping": mapping, "steps": pp.log, "instance": inst,
+            "skipped": [t for _, t in big],
             "seconds": {"prepass": round(pre_t, 1), "nest": round(r["time"], 1),
                         "post": round(total - nest_done, 1), "total": round(total, 1)}}
 
@@ -240,9 +248,11 @@ def cmd_nest(a):
     except NestError as e:
         print(json.dumps({"valid": False, "error": str(e)}))
         sys.exit(2)
+    inst = job["instance"]  # without the parts that were skipped
     sheets = expand(job["solution"], job["mapping"])
     v = validate(inst, sheets)
-    report = {"valid": v["ok"], **metrics(inst, sheets), "seconds": job["seconds"], "steps": job["steps"]}
+    report = {"valid": v["ok"], **metrics(inst, sheets), "skipped": job["skipped"],
+              "seconds": job["seconds"], "steps": job["steps"]}
     dump(report, os.path.join(a.outdir, "report.json"))
     print(json.dumps({k: x for k, x in report.items() if k != "steps"}))
     for e in v["errors"][:20]:
