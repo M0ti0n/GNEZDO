@@ -24,6 +24,7 @@ import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
+import type { StockSheet } from "./job/stock";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
 import type { Drawing } from "./import/geometry";
 import { VIEW_TITLE, drawingTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
@@ -34,6 +35,7 @@ export function App() {
   const [state, dispatch] = useReducer(shellReducer, initialShell);
   const [drawer, setDrawer] = useState<DrawerMode | null>(null);
   const [jobParts, setJobParts] = useState<Record<string, JobPart[] | undefined>>({});
+  const [jobStock, setJobStock] = useState<Record<string, StockSheet[]>>({});
   // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
   const [imports, setImports] = useState<ImportItem[]>([]);
   const [rules, setRulesState] = useState<ImportRules>(loadRules);
@@ -76,7 +78,7 @@ export function App() {
     if (active.kind !== "job" || !id || id in jobParts) return;
     setJobParts((m) => ({ ...m, [id]: undefined }));
     if (id.startsWith("new-")) setJobParts((m) => ({ ...m, [id]: [] }));
-    else api.jobParts(id).then((p) => setJobParts((m) => ({ ...m, [id]: p })));
+    else api.jobParts(id).then((p) => setJobParts((m) => ({ ...m, [id]: p.map((jp, i) => ({ ...jp, no: jp.no ?? i + 1, qtyMax: jp.qtyMax ?? jp.qty })) })));
   }, [active, jobParts]);
 
   useEffect(() => {
@@ -254,7 +256,12 @@ export function App() {
   const addParts = (jobId: string, title: string, parts: PartSummary[]) => {
     const current = jobParts[jobId] ?? [];
     const fresh = parts.filter((p) => !current.some((c) => c.part.id === p.id));
-    setJobParts((m) => ({ ...m, [jobId]: [...(m[jobId] ?? []), ...fresh.map((p) => ({ part: p, qty: p.qty }))] }));
+    setJobParts((m) => {
+      const list = m[jobId] ?? [];
+      // ID numbers go on from the highest one, so a part keeps its number for the life of the job
+      const next = list.reduce((n, jp) => Math.max(n, jp.no ?? 0), 0);
+      return { ...m, [jobId]: [...list, ...fresh.map((p, i) => ({ part: p, qty: p.qty, qtyMax: p.qty, no: next + i + 1, nested: 0 }))] };
+    });
     const skipped = parts.length - fresh.length;
     setToast(
       fresh.length === 0
@@ -316,10 +323,13 @@ export function App() {
               <JobPage
                 title={job.title}
                 parts={jobParts[job.id]}
+                stock={jobStock[job.id] ?? []}
+                onStock={(st) => setJobStock((m) => ({ ...m, [job.id]: st }))}
                 onDropParts={(parts) => addParts(job.id, job.title, parts)}
-                onQty={(pid, qty) => setJobParts((m) => ({
-                  ...m, [job.id]: (m[job.id] ?? []).map((jp) => (jp.part.id === pid ? { ...jp, qty } : jp)),
+                onPart={(pid, patch) => setJobParts((m) => ({
+                  ...m, [job.id]: (m[job.id] ?? []).map((jp) => (jp.part.id === pid ? { ...jp, ...patch } : jp)),
                 }))}
+                onNotice={setToast}
                 onRemove={(pid) => setJobParts((m) => ({ ...m, [job.id]: (m[job.id] ?? []).filter((jp) => jp.part.id !== pid) }))}
                 onOpenParts={() => setDrawer("parts")}
               />

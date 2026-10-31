@@ -133,5 +133,11 @@ export const defaultDir = (key: SortKey): SortOrder["dir"] => (key === "created"
 /** A part placed in a job, with the quantity to cut in this job. */
 export interface JobPart {
   part: PartSummary;
-  qty: number;
+  qty: number;             // requested (QTY REQ)
+  /** QTY MAX: nesting may add copies up to this into space that would be scrap; set to qty when qty changes. */
+  qtyMax?: number;
+  /** ID number in the job: given when the part is added, stays with it when the list is sorted. */
+  no?: number;
+  /** QTY NESTED: copies on the current nest (0 until nesting exists). */
+  nested?: number;
 }
