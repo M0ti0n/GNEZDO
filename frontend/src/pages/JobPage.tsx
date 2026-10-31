@@ -52,7 +52,9 @@ function NumInput({ value, min = 0, int = false, onCommit, className = "field", 
   value: number; min?: number; int?: boolean; onCommit: (n: number) => void; className?: string;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "min">) {
   const [draft, setDraft] = useState<string | null>(null);
+  const cancelled = useRef(false);
   const commit = () => {
+    if (cancelled.current) { cancelled.current = false; setDraft(null); return; }  // Esc: keep the old value
     if (draft === null) return;
     const n = Number(draft.replace(",", "."));
     onCommit(Number.isFinite(n) && draft.trim() !== "" ? Math.max(min, int ? Math.round(n) : n) : value);
@@ -64,7 +66,7 @@ function NumInput({ value, min = 0, int = false, onCommit, className = "field", 
       onChange={(e) => setDraft(e.target.value)}
       onFocus={(e) => e.target.select()}
       onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setDraft(null); (e.target as HTMLInputElement).blur(); } }} />
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { cancelled.current = true; (e.target as HTMLInputElement).blur(); } }} />
   );
 }
 
@@ -88,6 +90,41 @@ export function JobPage({ title, parts, stock, onStock, onDropParts, onPart, onR
   }, [parts, sort]);
 
   const total = (parts ?? []).reduce((s, jp) => s + jp.qty, 0);
+
+  // Moving around the list as in a spreadsheet: arrows move from cell to cell (in a number field
+  // left / right move once the caret is at its edge or all of it is selected), Enter moves down
+  // (Shift+Enter up), Home / End to the row's first / last cell, Ctrl+Home / Ctrl+End to the corners.
+  const onGridKey = (e: React.KeyboardEvent<HTMLTableSectionElement>) => {
+    const target = e.target as HTMLElement;
+    const td = target.closest<HTMLElement>("td[data-c]");
+    if (!td || e.altKey || e.metaKey) return;
+    const tr = td.parentElement as HTMLTableRowElement;
+    const body = e.currentTarget;
+    const nR = body.rows.length, nC = tr.cells.length;
+    let r = tr.sectionRowIndex, c = td.cellIndex;
+    const input = target instanceof HTMLInputElement ? target : null;
+    const all = !!input && input.selectionStart === 0 && input.selectionEnd === input.value.length;
+    const atStart = !input || all || (input.selectionStart === 0 && input.selectionEnd === 0);
+    const atEnd = !input || all || input.selectionStart === input.value.length;
+    switch (e.key) {
+      case "ArrowUp": r--; break;
+      case "ArrowDown": r++; break;
+      case "ArrowLeft": if (!atStart) return; c--; break;
+      case "ArrowRight": if (!atEnd) return; c++; break;
+      case "Enter": r += e.shiftKey ? -1 : 1; break;
+      case "Home": if (input && !all && !e.ctrlKey) return; c = 0; if (e.ctrlKey) r = 0; break;
+      case "End": if (input && !all && !e.ctrlKey) return; c = nC - 1; if (e.ctrlKey) r = nR - 1; break;
+      case "Escape": if (input) setTimeout(() => input.focus(), 0); return;
+      default: return;
+    }
+    r = Math.max(0, Math.min(nR - 1, r));
+    c = Math.max(0, Math.min(nC - 1, c));
+    e.preventDefault();
+    const cell = body.rows[r].cells[c];
+    const el = cell.querySelector<HTMLElement>("input, button") ?? cell;
+    el.focus({ preventScroll: true });
+    cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
   const accepts = (e: React.DragEvent) => e.dataTransfer.types.includes(PARTS_MIME);
 
   return (
@@ -124,7 +161,7 @@ export function JobPage({ title, parts, stock, onStock, onDropParts, onPart, onR
             <table className="grid work-grid">
               <colgroup>
                 {/* material and thickness narrow and side by side; the room goes to project and part name */}
-                <col style={{ width: 52 }} /><col style={{ width: "19%" }} /><col />
+                <col style={{ width: 52 }} /><col style={{ width: "16%" }} /><col />
                 <col style={{ width: 104 }} /><col style={{ width: 76 }} />
                 <col style={{ width: 84 }} /><col style={{ width: 92 }} /><col style={{ width: 84 }} /><col style={{ width: 42 }} />
               </colgroup>
@@ -142,29 +179,29 @@ export function JobPage({ title, parts, stock, onStock, onDropParts, onPart, onR
                   <th aria-label="Remove" />
                 </tr>
               </thead>
-              <tbody>
+              <tbody onKeyDown={onGridKey}>
                 {rows.map((jp) => {
                   const nested = jp.nested ?? 0;
                   const max = jp.qtyMax ?? jp.qty;
                   return (
                     <tr key={jp.part.id}>
-                      <td className="num cell-no">{jp.no}</td>
-                      <td>{jp.part.project}</td>
-                      <td className="cell-name" title={`${jp.part.name}: double-click for its properties`}
+                      <td data-c={0} tabIndex={-1} className="num cell-no">{jp.no}</td>
+                      <td data-c={1} tabIndex={-1}>{jp.part.project}</td>
+                      <td data-c={2} tabIndex={-1} className="cell-name" title={`${jp.part.name}: double-click for its properties`}
                         onDoubleClick={() => setEditing(jp.part)}>{jp.part.name}</td>
-                      <td>{jp.part.material}</td>
-                      <td>{jp.part.thicknessMm} mm</td>
-                      <td className="num">
+                      <td data-c={3} tabIndex={-1}>{jp.part.material}</td>
+                      <td data-c={4} tabIndex={-1}>{jp.part.thicknessMm} mm</td>
+                      <td data-c={5} className="num">
                         <NumInput className="field qty" int min={1} value={jp.qty} aria-label={`Requested quantity of ${jp.part.name}`}
                           onCommit={(q) => onPart(jp.part.id, { qty: q, qtyMax: q })} />
                       </td>
-                      <td className={`num cell-nested ${nested >= jp.qty ? "is-done" : "is-short"}`}
+                      <td data-c={6} tabIndex={-1} className={`num cell-nested ${nested >= jp.qty ? "is-done" : "is-short"}`}
                         title={nested >= jp.qty ? "Requested number nested" : `${jp.qty - nested} more to nest`}>{nested}</td>
-                      <td className="num">
+                      <td data-c={7} className="num">
                         <NumInput className="field qty" int min={jp.qty} value={max} aria-label={`Maximum quantity of ${jp.part.name}`}
                           title="At least the requested number" onCommit={(m) => onPart(jp.part.id, { qtyMax: m })} />
                       </td>
-                      <td>
+                      <td data-c={8}>
                         <button className="icon-btn" onClick={() => onRemove(jp.part.id)} aria-label={`Remove ${jp.part.name}`} title="Remove from job">
                           <IconClose size={15} />
                         </button>

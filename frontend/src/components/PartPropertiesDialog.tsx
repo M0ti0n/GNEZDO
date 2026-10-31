@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { IconClose } from "./Icons";
 import { api, type PartDetail } from "../api/api";
 import type { PartSummary } from "../api/types";
 import { ROTATIONS, type Rotation } from "../import/rules";
@@ -97,7 +98,7 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
             <h2 id="pp-title">Part properties</h2>
             <p>{p.name}{p.project ? ` · ${p.project}` : ""}</p>
           </div>
-          <button type="button" className="icon-btn dlg-close" onClick={onClose} disabled={busy} aria-label="Close" title="Close (Esc)">×</button>
+          <button type="button" className="icon-btn dlg-close" onClick={onClose} disabled={busy} aria-label="Close" title="Close (Esc)"><IconClose size={16} /></button>
         </header>
 
         <div className="proc-body">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { IconClose } from "../components/Icons";
 import { roleOf, type Entity } from "./geometry";
 import { colourKey } from "./rules";
 import { IMPORT_TOOLS } from "./ImportTools";
@@ -93,7 +94,7 @@ export function ColourLinesDialog({ entities, onCancel, onApply }: Props) {
             <h2 id="cl-title">Color lines</h2>
             <p>{groups.length} {groups.length === 1 ? "color" : "colors"} in this part</p>
           </div>
-          <button type="button" className="icon-btn dlg-close" onClick={onCancel} aria-label="Close" title="Close (Esc)">×</button>
+          <button type="button" className="icon-btn dlg-close" onClick={onCancel} aria-label="Close" title="Close (Esc)"><IconClose size={16} /></button>
         </header>
         <table className="colour-table">
           <thead><tr><th>Color</th><th className="num">Lines</th><th>Tool</th></tr></thead>

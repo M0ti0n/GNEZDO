@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { IconClose } from "../components/Icons";
 import { api } from "../api/api";
 import { Combobox, type ComboOption } from "../components/Combobox";
 import { usePickLists } from "../components/pickLists";
@@ -95,7 +96,7 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
             <h2 id="proc-title">Process part</h2>
             <p>{drawing.fileName}</p>
           </div>
-          <button type="button" className="icon-btn dlg-close" onClick={onCancel} disabled={saving} aria-label="Close" title="Close (Esc)">×</button>
+          <button type="button" className="icon-btn dlg-close" onClick={onCancel} disabled={saving} aria-label="Close" title="Close (Esc)"><IconClose size={16} /></button>
         </header>
 
         <div className="proc-body">
