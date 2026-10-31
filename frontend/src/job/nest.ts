@@ -4,6 +4,7 @@ import { api } from "../api/api";
 import type { JobPart } from "../api/types";
 import type { CustomNestSettings } from "../components/CustomNestDialog";
 import type { StockSheet } from "./stock";
+import type { Origin } from "./machine";
 
 export type NestMode = "fast" | "thorough" | "custom";
 
@@ -26,6 +27,8 @@ export interface NestRequestSheet {
 
 export interface NestRequest {
   mode: NestMode;
+  /** the sheet corner the parts are packed towards (the machine's 0,0) */
+  origin: Origin;
   minutes: number | null;
   stopAfterMinutes: number | null;
   partGapMm: number;
@@ -121,13 +124,14 @@ export function nestProblem(parts: JobPart[] | undefined, stock: StockSheet[]): 
 }
 
 /** The request for a job: parts with their nesting rules (fetched per part), the stock sheets. */
-export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: NestMode, custom?: CustomNestSettings): Promise<NestRequest> {
+export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: NestMode, custom?: CustomNestSettings, origin: Origin = "top-left"): Promise<NestRequest> {
   const withQty = parts.filter((jp) => jp.qty > 0);
   const details = await Promise.all(withQty.map((jp) =>
     api.part(jp.part.id).then((d) => ({ rotations: d.rotations, mirror: d.mirror }))
       .catch(() => ({ rotations: [90], mirror: false }))));
   return {
     mode,
+    origin,
     minutes: mode === "custom" ? custom?.minutes ?? null : null,
     stopAfterMinutes: mode === "custom" ? custom?.stopAfterMinutes ?? null : null,
     partGapMm: PART_GAP_MM,
@@ -155,6 +159,8 @@ export interface Solution extends JobNest {
   /** sheets (by index) locked against changes; an unlocked sheet of a finished solution can be edited */
   locked: number[];
   saved?: boolean;
+  /** the corner the parts were packed towards */
+  origin?: Origin;
 }
 
 export const hms = (s: number) => {
@@ -197,15 +203,15 @@ const perimeter = (pts: [number, number][]) =>
   pts.reduce((s, p, i) => { const q = pts[(i + 1) % pts.length]; return s + Math.hypot(q[0] - p[0], q[1] - p[1]); }, 0);
 
 /** The parts' extents on a sheet: placed outline points, transformed as the engine placed them. */
-function placedExtent(path: string, p: PlacedPart): { maxX: number; maxY: number } {
+function placedExtent(path: string, p: PlacedPart) {
   const a = (p.angle * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
-  let maxX = 0, maxY = 0;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const lp of loopsOf(path)) for (const [x0, y] of lp) {
     const x = p.mirror ? -x0 : x0;
-    maxX = Math.max(maxX, x * c - y * s + p.x);
-    maxY = Math.max(maxY, x * s + y * c + p.y);
+    const X = x * c - y * s + p.x, Y = x * s + y * c + p.y;
+    minX = Math.min(minX, X); maxX = Math.max(maxX, X); minY = Math.min(minY, Y); maxY = Math.max(maxY, Y);
   }
-  return { maxX, maxY };
+  return { minX, minY, maxX, maxY };
 }
 
 export interface SheetStats {
@@ -223,15 +229,18 @@ export interface SheetStats {
   pieces: number;
 }
 
-export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string; areaMm2: number }>): SheetStats {
+export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string; areaMm2: number }>, origin: Origin = "top-left"): SheetStats {
   const t = sheet.thicknessMm, rho = densityOf(sheet.material);
   const kg = (areaMm2: number) => (areaMm2 * t * rho) / 1e6;  // mm² · mm → dm³ (1e6 mm³)
   let cutX = 0, cutY = 0, partsArea = 0, cut = 0, pierces = 0;
   for (const p of sheet.parts) {
     const part = parts.get(p.partId);
     if (!part) continue;
+    // the cut area is measured from the origin corner
     const e = placedExtent(part.path, p);
-    cutX = Math.max(cutX, e.maxX); cutY = Math.max(cutY, e.maxY);
+    const right = origin.endsWith("right"), bottom = origin.startsWith("bottom");
+    cutX = Math.max(cutX, right ? sheet.lengthMm - e.minX : e.maxX);
+    cutY = Math.max(cutY, bottom ? sheet.widthMm - e.minY : e.maxY);
     partsArea += part.areaMm2;
     const loops = loopsOf(part.path);
     cut += loops.reduce((s, lp) => s + perimeter(lp), 0);

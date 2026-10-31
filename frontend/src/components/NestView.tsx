@@ -5,6 +5,7 @@ import {
   NEST_MODE_LABEL, hms, isFinished, partColor, sheetStats,
   type NestMode, type NestedSheet, type Solution,
 } from "../job/nest";
+import type { Origin } from "../job/machine";
 
 // The nest screen of a job (after Fab's layout): the chosen solution's sheets, four to a screen
 // (scroll for more), each with [i], VIEW (EDIT once unlocked) and a lock; on the right the
@@ -120,8 +121,9 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
 
       <aside className="nest-side">
         <SolutionsPanel solutions={solutions} current={sol?.id ?? null} sheetNo={sheetNo}
-          onSelect={onSelect} onAdd={onAdd} onStop={onStop} onRemove={onRemove} onSave={onSave} />
-        {sol && sheets[sheetNo] && <SheetInfo solNo={sol.no} sheetNo={sheetNo} sheet={sheets[sheetNo]} parts={byId} />}
+          onSelect={onSelect} onAdd={onAdd} onStop={onStop} onRemove={onRemove} onSave={onSave}>
+          {sol && sheets.length > 0 && <InfoTabs sol={sol} sheets={sheets} sheetNo={sheetNo} parts={byId} jobParts={parts} />}
+        </SolutionsPanel>
       </aside>
 
       {full !== null && sol && sheets[full] && (
@@ -132,7 +134,8 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
   );
 }
 
-function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, onRemove, onSave }: {
+function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, onRemove, onSave, children }: {
+  children?: React.ReactNode;
   solutions: Solution[]; current: string | null; sheetNo: number;
   onSelect: (s: NestSelection) => void; onAdd: (m: NestMode) => void; onStop: (id: string) => void;
   onRemove: (id: string) => void; onSave: (id: string) => void;
@@ -243,22 +246,98 @@ function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, 
           );
         })}
       </div>
+      {children}
     </section>
   );
 }
 
 const kg = (n: number) => n.toFixed(1);
 
-function SheetInfo({ solNo, sheetNo, sheet, parts }: { solNo: number; sheetNo: number; sheet: NestedSheet; parts: Map<string, PartRef> }) {
-  const [tab, setTab] = useState<"nest" | "parts">("nest");
-  const st = useMemo(() => sheetStats(sheet, parts), [sheet, parts]);
-  const counts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const p of sheet.parts) m.set(p.partId, (m.get(p.partId) ?? 0) + 1);
-    return [...m].map(([id, n]) => ({ id, n, part: parts.get(id) })).sort((a, b) => (a.part?.no ?? 0) - (b.part?.no ?? 0));
-  }, [sheet, parts]);
+type Tab = "solution" | "nest" | "parts";
+
+/** Below the solutions, in the same tile: the whole solution, the chosen sheet, the parts on it. */
+function InfoTabs({ sol, sheets, sheetNo, parts, jobParts }: {
+  sol: Solution; sheets: NestedSheet[]; sheetNo: number; parts: Map<string, PartRef>; jobParts: JobPart[];
+}) {
+  const [tab, setTab] = useState<Tab>("solution");
+  const sheet = sheets[sheetNo];
+  const origin = sol.origin ?? "top-left";
+  const tabs: [Tab, string][] = [["solution", "Solution info"], ["nest", "Nest info"], ["parts", "Parts info"]];
+  return (
+    <div className="info-tabs">
+      <div className="info-tab-bar" role="tablist">
+        {tabs.map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "is-on" : ""} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+      <div className="info-head">
+        {tab === "solution"
+          ? <><b>Solution {sol.no}</b><span>{NEST_MODE_LABEL[sol.mode]} · {sheets.length} {sheets.length === 1 ? "sheet" : "sheets"}{sol.run?.result ? ` · ${hms(sol.run.seconds)}` : " · best so far"}</span></>
+          : <><b>Solution {sol.no} <span className="slash">/</span> Sheet {sheetNo + 1}</b>
+              <span>{sheet.material} · {sheet.thicknessMm} mm · {sheet.lengthMm} × {sheet.widthMm} · {sheet.parts.length} parts</span></>}
+      </div>
+      <div className="info-body">
+        {tab === "solution" && <SolutionInfo sheets={sheets} parts={parts} jobParts={jobParts} origin={origin} />}
+        {tab === "nest" && <NestInfo sheet={sheet} parts={parts} origin={origin} />}
+        {tab === "parts" && <PartsInfo sheet={sheet} parts={parts} />}
+      </div>
+    </div>
+  );
+}
+
+const pct = (n: number) => `${n.toFixed(1)} %`;
+
+function SolutionInfo({ sheets, parts, jobParts, origin }: {
+  sheets: NestedSheet[]; parts: Map<string, PartRef>; jobParts: JobPart[]; origin: Origin;
+}) {
+  const data = useMemo(() => {
+    // per material and thickness: sheets by size, weights, efficiency
+    const groups = new Map<string, { label: string; sizes: Map<string, number>; sheets: number; sheetKg: number; partsKg: number;
+      remnantKg: number; usedKg: number; cutM: number; pierces: number; pieces: number }>();
+    for (const sh of sheets) {
+      const st = sheetStats(sh, parts, origin);
+      const key = `${sh.material}|${sh.thicknessMm}`;
+      const g = groups.get(key) ?? { label: `${sh.material} ${sh.thicknessMm} mm`, sizes: new Map(), sheets: 0, sheetKg: 0, partsKg: 0, remnantKg: 0, usedKg: 0, cutM: 0, pierces: 0, pieces: 0 };
+      const size = `${sh.lengthMm} × ${sh.widthMm}`;
+      g.sizes.set(size, (g.sizes.get(size) ?? 0) + 1);
+      g.sheets++; g.sheetKg += st.sheetKg; g.partsKg += st.partsKg; g.remnantKg += st.remnantKg;
+      g.usedKg += st.sheetKg - st.remnantKg; g.cutM += st.cutM; g.pierces += st.pierces; g.pieces += st.pieces;
+      groups.set(key, g);
+    }
+    const list = [...groups.values()];
+    const sum = (f: (g: typeof list[number]) => number) => list.reduce((a, g) => a + f(g), 0);
+    const nested = sheets.reduce((a, sh) => a + sh.parts.length, 0);
+    const required = jobParts.reduce((a, jp) => a + jp.qty, 0);
+    return { list, nested, required, sheetKg: sum((g) => g.sheetKg), partsKg: sum((g) => g.partsKg), remnantKg: sum((g) => g.remnantKg),
+      usedKg: sum((g) => g.usedKg), cutM: sum((g) => g.cutM), pierces: sum((g) => g.pierces) };
+  }, [sheets, parts, jobParts, origin]);
+  const eff = (partsKg: number, usedKg: number) => (usedKg > 0 ? (100 * partsKg) / usedKg : 0);
+  return (
+    <>
+      <table className="info-table">
+        <thead><tr><th>Material</th><th className="num">Sheets</th><th className="num" title="Nesting efficiency: weight of the parts / weight of the sheets used (the remnant strips not counted)">Eff.</th><th className="num" title="Weight of the sheets">Sheet kg</th><th className="num" title="Weight of the parts">Part kg</th></tr></thead>
+        <tbody>
+          {data.list.map((g) => (
+            <tr key={g.label}>
+              <td><b>{g.label}</b>{[...g.sizes].map(([size, n]) => <div key={size} className="info-sub">{n} × {size}</div>)}</td>
+              <td className="num">{g.sheets}</td>
+              <td className="num">{pct(eff(g.partsKg, g.usedKg))}</td>
+              <td className="num">{kg(g.sheetKg)}</td>
+              <td className="num">{kg(g.partsKg)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function NestInfo({ sheet, parts, origin }: { sheet: NestedSheet; parts: Map<string, PartRef>; origin: Origin }) {
+  const st = useMemo(() => sheetStats(sheet, parts, origin), [sheet, parts, origin]);
+  const used = st.sheetKg - st.remnantKg;
   const rows: [string, string, string?][] = [
-    ["Cut Area XY (mm)", `${Math.round(st.cutX)} x ${Math.round(st.cutY)}`, "From the sheet's corner to the farthest part"],
+    ["Efficiency (%)", (used > 0 ? (100 * st.partsKg) / used : 0).toFixed(1), "Weight of the parts / weight of the sheet without the remnant strip"],
+    ["Cut Area XY (mm)", `${Math.round(st.cutX)} x ${Math.round(st.cutY)}`, "From the origin corner to the farthest part"],
     ["Sheet (kg)", kg(st.sheetKg)],
     ["Part weight (kg)", kg(st.partsKg)],
     ["Scrap (kg)", kg(st.scrapKg), "Inside the cut area, between the parts"],
@@ -266,44 +345,40 @@ function SheetInfo({ solNo, sheetNo, sheet, parts }: { solNo: number; sheetNo: n
     ["Remnant (%)", st.remnantPct.toFixed(0)],
     ["Unused (kg)", kg(st.unusedKg), "Beside the cut area, outside the remnant strip"],
     ["Unused (%)", st.unusedPct.toFixed(0)],
-    ["Cut length (m)", st.cutM.toFixed(1)],
-    ["Pierces", String(st.pierces)],
     ["Cutting Number", "1", "How many times this sheet is cut"],
     ["Time Rapid", "—", "Needs the technology tables"],
     ["Time Cutting", "—", "Needs the technology tables"],
     ["Time Total", "—", "Needs the technology tables"],
   ];
   return (
-    <section className="sheet-stats" aria-label={`Solution ${solNo}, sheet ${sheetNo + 1}`}>
-      <header>
-        <b>Solution {solNo} <span className="slash">/</span> Sheet {sheetNo + 1}</b>
-        <span className="sheet-stats-line">
-          <span>{sheet.material}</span><span>{sheet.thicknessMm}mm</span><span>{sheet.lengthMm}x{sheet.widthMm}</span><span>{st.pieces} Parts</span>
-        </span>
-      </header>
-      <div className="sheet-stats-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={tab === "nest"} className={tab === "nest" ? "is-on" : ""} onClick={() => setTab("nest")}>Nest info</button>
-        <button type="button" role="tab" aria-selected={tab === "parts"} className={tab === "parts" ? "is-on" : ""} onClick={() => setTab("parts")}>Part info</button>
-      </div>
-      {tab === "nest" ? (
-        <dl className="sheet-stats-list">
-          {rows.map(([k, v, hint]) => (
-            <div key={k} title={hint}><dt>{k}</dt><dd className={v === "—" ? "is-na" : ""}>{v}</dd></div>
-          ))}
-        </dl>
-      ) : (
-        <ul className="sheet-parts">
-          {counts.map(({ id, n, part }) => (
-            <li key={id}>
-              <span className="part-swatch" style={{ background: partColor(part?.no).fill, borderColor: partColor(part?.no).stroke }} />
-              <span className="sheet-parts-no">{part?.no ?? ""}</span>
-              <span className="sheet-parts-name">{part?.name ?? id}</span>
-              <b>{n}</b>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <dl className="sheet-stats-list">
+      {rows.map(([k, v, hint]) => (
+        <div key={k} title={hint}><dt>{k}</dt><dd className={v === "—" ? "is-na" : ""}>{v}</dd></div>
+      ))}
+    </dl>
+  );
+}
+
+function PartsInfo({ sheet, parts }: { sheet: NestedSheet; parts: Map<string, PartRef> }) {
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of sheet.parts) m.set(p.partId, (m.get(p.partId) ?? 0) + 1);
+    return [...m].map(([id, n]) => ({ id, n, part: parts.get(id) })).sort((a, b) => (a.part?.no ?? 0) - (b.part?.no ?? 0));
+  }, [sheet, parts]);
+  return (
+    <table className="info-table">
+      <thead><tr><th>ID</th><th>Part</th><th className="num">Qty</th></tr></thead>
+      <tbody>
+        {counts.map(({ id, n, part }) => (
+          <tr key={id}>
+            <td className="info-id"><span className="part-swatch" style={{ background: partColor(part?.no).fill, borderColor: partColor(part?.no).stroke }} />{part?.no ?? ""}</td>
+            <td className="info-name" title={part?.name}>{part?.name ?? id}</td>
+            <td className="num"><b>{n}</b></td>
+          </tr>
+        ))}
+      </tbody>
+      <tfoot><tr><td /><td>Total</td><td className="num"><b>{sheet.parts.length}</b></td></tr></tfoot>
+    </table>
   );
 }
 
