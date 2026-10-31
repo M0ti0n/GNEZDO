@@ -184,6 +184,14 @@ class PrePass:
             self.parts.append(Part(t, shapes, pl, [Member(t, Xf(), 0)],
                                    int(it.get("copies", 1)), "original", rj, it))
         self.n_orig = len(self.parts)
+        # sheet sizes (bounding boxes): a composite must still fit one of them
+        self.sheets = []
+        for b in instance.get("bin_types", []):
+            if "elements" in b:
+                x0, y0, x1, y1 = geom.shape_to_poly(b).bbox
+                self.sheets.append((x1 - x0, y1 - y0))
+            else:
+                self.sheets.append((float(b["width"]), float(b["height"])))
         self.cache: dict = {}
         self.stats = Counter()
         self.log: list[str] = []
@@ -300,6 +308,9 @@ class PrePass:
             fills += res
         return fills
 
+    def fits_sheet(self, p: Part) -> bool:
+        return not self.sheets or any(p.fits_box(w, h) for w, h in self.sheets)
+
     def compose(self, host: Part, fills, kind="holefill") -> Part | None:
         shapes = [copy.deepcopy(s) for s in host.shapes]
         members = list(host.members)
@@ -310,7 +321,10 @@ class PrePass:
         placements = self.compatible_placements(host.placements, members)
         if not placements:
             return None
-        return Part(len(self.parts), shapes, placements, members, 0, kind)
+        comp = Part(len(self.parts), shapes, placements, members, 0, kind)
+        if self.fits_sheet(host) and not self.fits_sheet(comp):
+            return None  # a filler took away the rotation the host needs to fit a sheet
+        return comp
 
     def compatible_placements(self, base, members):
         out = []
@@ -335,10 +349,17 @@ class PrePass:
         hosts.sort(key=lambda t: t[0])
         for _, host in hosts:
             rounds = 0
+            strict = False
             while host.remaining > 0 and rounds < self.opt.max_rounds_per_host:
                 rounds += 1
                 avail = {p.pid: p.remaining for p in self.parts}
                 avail[host.pid] -= 1  # the host copy itself
+                if strict:
+                    # only fillers that turn with the host, so the host keeps all its rotations
+                    angles = {geom.norm_angle(a) for a, _ in host.placements}
+                    for p in self.parts:
+                        if not angles <= {geom.norm_angle(a) for a, _ in p.placements}:
+                            avail[p.pid] = 0
                 fills = self.fill_host_once(host, avail)
                 if not fills:
                     break
@@ -353,6 +374,10 @@ class PrePass:
                     break
                 comp = self.compose(host, fills)
                 if comp is None:
+                    if not strict:
+                        strict = True
+                        self.say(f"  host {host.pid + 1}: fill rejected (rotation), again with fillers that turn with it")
+                        continue
                     self.say(f"  host {host.pid + 1}: fill rejected (no common rotation)")
                     break
                 comp.remaining = k
@@ -429,7 +454,7 @@ class PrePass:
             pair.members = [Member(m.orig_type, m.xf.then(shift), 0) for m in members]
             pair._poly = None
             pair.placements = self.compatible_placements(QUARTER_PLACEMENTS(p), pair.members)
-            if not pair.placements:
+            if not pair.placements or not self.fits_sheet(pair):
                 continue
             f2 = self.bbox_fill(pair)
             if f2 >= self.opt.pair_min_fill and f2 >= f1 + self.opt.pair_min_gain:
