@@ -13,6 +13,8 @@ import tileAuto from "./jobtools/tile-auto.png";
 import tileManual from "./jobtools/tile-manual.png";
 import tileProcess from "./jobtools/tile-process.png";
 import tileReport from "./jobtools/tile-report.png";
+import toolFastNest from "./jobtools/tool-fastNest.png";
+import toolThoroughNest from "./jobtools/tool-thoroughNest.png";
 import toolMirrorV from "./jobtools/tool-mirrorV.png";
 import toolMirrorH from "./jobtools/tool-mirrorH.png";
 import toolArrange from "./jobtools/tool-arrange.png";
@@ -23,12 +25,17 @@ import toolNestReport from "./jobtools/tool-nestReport.png";
 import toolCostReport from "./jobtools/tool-costReport.png";
 
 // The icons are cut from Fab's design sheet as they are (tile icons on their tile colour).
-interface SectionTool { id: string; label: string; icon: string }
+interface SectionTool { id: string; label: string; icon: string; hint?: string }
 interface Section { id: SectionId; label: string; icon: string; tools: SectionTool[] }
 
 const SECTIONS: Section[] = [
   { id: "work", label: "Work parts", icon: tileWork, tools: [] },
-  { id: "auto", label: "Automatic nest", icon: tileAuto, tools: [] },
+  {
+    id: "auto", label: "Automatic nest", icon: tileAuto, tools: [
+      { id: "fastNest", label: "Fast", icon: toolFastNest, hint: "Fast nest: the whole job in about 30 s" },
+      { id: "thoroughNest", label: "Thorough", icon: toolThoroughNest, hint: "Thorough nest: up to 90 s, a shorter last sheet" },
+    ],
+  },
   {
     id: "manual", label: "Manual nest", icon: tileManual, tools: [
       { id: "mirrorV", label: "Mirror V", icon: toolMirrorV },
@@ -71,7 +78,7 @@ export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: str
             <svg viewBox="0 0 20 60" width="20" height="60" aria-hidden="true"><path d="M16 2 3 30l13 28Z" fill="currentColor" /></svg>
           </button>
           {s.tools.length ? s.tools.map((t) => (
-            <button key={t.id} type="button" className="itool jtool" title={`${t.label} (not built yet)`}
+            <button key={t.id} type="button" className="itool jtool" title={`${t.hint ?? t.label} (not built yet)`}
               onClick={() => onTool?.(s.id, t.id)}>
               <span className="itool-box"><img src={t.icon} alt="" draggable={false} /></span>
               <span className="itool-label">{t.label}</span>
