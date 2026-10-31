@@ -24,7 +24,8 @@ import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
-import type { StockSheet } from "./job/stock";
+import { loadStockSettings, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
+import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
 import type { Drawing } from "./import/geometry";
 import { VIEW_TITLE, drawingTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
@@ -36,6 +37,8 @@ export function App() {
   const [drawer, setDrawer] = useState<DrawerMode | null>(null);
   const [jobParts, setJobParts] = useState<Record<string, JobPart[] | undefined>>({});
   const [jobStock, setJobStock] = useState<Record<string, StockSheet[]>>({});
+  const [stockSettings, setStockSettingsState] = useState<StockSettings>(loadStockSettings);
+  const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); saveStockSettings(s); };
   // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
   const [imports, setImports] = useState<ImportItem[]>([]);
   const [rules, setRulesState] = useState<ImportRules>(loadRules);
@@ -316,14 +319,15 @@ export function App() {
         />
         <div className="workspace">
           {active.kind === "job" ? <JobToolbar key={job?.id} />
-            : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
-          <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" || active.kind === "rules" ? " page-flush" : ""}`} aria-label={active.title}>
+            : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
+          <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && (
               <JobPage
                 title={job.title}
                 parts={jobParts[job.id]}
                 stock={jobStock[job.id] ?? []}
+                stockSettings={stockSettings}
                 onStock={(st) => setJobStock((m) => ({ ...m, [job.id]: st }))}
                 onDropParts={(parts) => addParts(job.id, job.title, parts)}
                 onPart={(pid, patch) => setJobParts((m) => ({
@@ -358,7 +362,8 @@ export function App() {
               // a list that has not been touched yet follows the new defaults
               if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller }));
             }} />}
-            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && <PlaceholderPage tab={active} />}
+            {active.kind === "settings" && <SettingsPage stock={stockSettings} onStock={setStockSettings} />}
+            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
           </main>
         </div>
       </div>
