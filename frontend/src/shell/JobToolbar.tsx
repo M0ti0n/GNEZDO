@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SideScroll } from "../components/SideScroll";
-import { CustomNestDialog, type CustomNestSettings } from "../components/CustomNestDialog";
+import type { CustomNestSettings } from "../components/CustomNestDialog";
 
 // Toolbar of a job tab, drawn after Fab's layout: five sections, left to right. Collapsed, a
 // section is one coloured tile. Pressing the tile opens it: the tile gives way to a narrow back
@@ -58,14 +58,18 @@ const SECTIONS: Section[] = [
   },
 ];
 
-export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: string, custom?: CustomNestSettings) => void }) {
-  const [open, setOpen] = useState<SectionId | null>(null);
-  const [customOpen, setCustomOpen] = useState(false);
+export function JobToolbar({ onTool, onSection }: {
+  onTool?: (section: SectionId, tool: string, custom?: CustomNestSettings) => void;
+  /** a section was opened (null: closed) */
+  onSection?: (section: SectionId | null) => void;
+}) {
+  const [open, setOpenState] = useState<SectionId | null>(null);
+  const setOpen = (s: SectionId | null) => { setOpenState(s); onSection?.(s); };
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || document.querySelector(".dlg-backdrop")) return;
+      if (e.key !== "Escape" || document.querySelector(".dlg-backdrop, .full-view")) return;
       const t = e.target as HTMLElement | null;
       if (t?.closest("input, select, textarea")) return;
       setOpen(null);
@@ -83,7 +87,7 @@ export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: str
           </button>
           {s.tools.length ? s.tools.map((t) => (
             <button key={t.id} type="button" className="itool jtool" title={t.ready ? t.hint ?? t.label : `${t.hint ?? t.label} (not built yet)`}
-              onClick={() => t.id === "customNest" ? setCustomOpen(true) : onTool?.(s.id, t.id)}>
+              onClick={() => onTool?.(s.id, t.id)}>
               <span className="itool-box"><img src={t.icon} alt="" draggable={false} /></span>
               <span className="itool-label">{t.label}</span>
             </button>
@@ -97,7 +101,5 @@ export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: str
         </button>
       ))}
     </SideScroll>
-    {customOpen && <CustomNestDialog onCancel={() => setCustomOpen(false)}
-      onStart={(c) => { setCustomOpen(false); onTool?.("auto", "customNest", c); }} />}
   </>);
 }

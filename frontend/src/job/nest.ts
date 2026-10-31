@@ -145,3 +145,105 @@ export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: 
 export const isFinished = (r: NestRun | null | undefined) => !!r && (r.state === "done" || r.state === "stopped" || r.state === "error");
 
 export const clockOf = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+/** One nesting of a job: a run (going on or finished) shown as "Solution n" in the SOLUTIONS panel. */
+export interface Solution extends JobNest {
+  id: string;
+  no: number;
+  /** sheets (by index) locked against changes; an unlocked sheet of a finished solution can be edited */
+  locked: number[];
+  saved?: boolean;
+}
+
+export const hms = (s: number) => {
+  const t = Math.max(0, Math.floor(s));
+  return [Math.floor(t / 3600), Math.floor((t % 3600) / 60), t % 60].map((n) => String(n).padStart(2, "0")).join(":");
+};
+
+/** A colour of its own for every part of the job (by its ID in the work part list). */
+export function partColor(no: number | undefined): { fill: string; stroke: string } {
+  const n = no ?? 0;
+  const h = (n * 137.508) % 360;  // golden angle: neighbours get far-apart hues
+  // and three levels of lightness, so parts with similar hues still differ
+  const l = [68, 56, 76][n % 3], sat = [62, 58, 70][n % 3];
+  return { fill: `hsl(${h.toFixed(1)} ${sat}% ${l}%)`, stroke: `hsl(${h.toFixed(1)} 55% 28%)` };
+}
+
+/** Density [kg/dm³] from the material name; steel unless the name says otherwise. */
+export function densityOf(material: string): number {
+  const m = material.toUpperCase();
+  if (/\bALU|ALMG|\bAL\b|ALUMIN/.test(m)) return 2.7;
+  if (/INOX|1\.43|1\.44|1\.45|STAINLESS|AISI/.test(m)) return 7.9;
+  if (/\bCU\b|COPPER/.test(m)) return 8.96;
+  if (/BRASS|\bMS\b|MESSING/.test(m)) return 8.5;
+  return 7.85;
+}
+
+/** Closed loops of a part outline path ("M x y L x y ... Z"), for lengths and extents. */
+export function loopsOf(path: string): [number, number][][] {
+  const loops: [number, number][][] = [];
+  for (const sub of path.split(/(?=[Mm])/)) {
+    const nums = sub.match(/-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi)?.map(Number) ?? [];
+    const pts: [number, number][] = [];
+    for (let i = 0; i + 1 < nums.length; i += 2) pts.push([nums[i], nums[i + 1]]);
+    if (pts.length > 2) loops.push(pts);
+  }
+  return loops;
+}
+
+const perimeter = (pts: [number, number][]) =>
+  pts.reduce((s, p, i) => { const q = pts[(i + 1) % pts.length]; return s + Math.hypot(q[0] - p[0], q[1] - p[1]); }, 0);
+
+/** The parts' extents on a sheet: placed outline points, transformed as the engine placed them. */
+function placedExtent(path: string, p: PlacedPart): { maxX: number; maxY: number } {
+  const a = (p.angle * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+  let maxX = 0, maxY = 0;
+  for (const lp of loopsOf(path)) for (const [x0, y] of lp) {
+    const x = p.mirror ? -x0 : x0;
+    maxX = Math.max(maxX, x * c - y * s + p.x);
+    maxY = Math.max(maxY, x * s + y * c + p.y);
+  }
+  return { maxX, maxY };
+}
+
+export interface SheetStats {
+  /** extents of the parts from the sheet's corner [mm] */
+  cutX: number; cutY: number;
+  sheetKg: number; partsKg: number;
+  /** among the parts, inside the cut area */
+  scrapKg: number;
+  /** strip after the parts (the sheet's length past the cut area), reusable */
+  remnantKg: number; remnantPct: number;
+  /** the rest: beside the cut area, too narrow for a remnant strip of the full width */
+  unusedKg: number; unusedPct: number;
+  /** cut length [m] and pierces (one per closed contour) */
+  cutM: number; pierces: number;
+  pieces: number;
+}
+
+export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string; areaMm2: number }>): SheetStats {
+  const t = sheet.thicknessMm, rho = densityOf(sheet.material);
+  const kg = (areaMm2: number) => (areaMm2 * t * rho) / 1e6;  // mm² · mm → dm³ (1e6 mm³)
+  let cutX = 0, cutY = 0, partsArea = 0, cut = 0, pierces = 0;
+  for (const p of sheet.parts) {
+    const part = parts.get(p.partId);
+    if (!part) continue;
+    const e = placedExtent(part.path, p);
+    cutX = Math.max(cutX, e.maxX); cutY = Math.max(cutY, e.maxY);
+    partsArea += part.areaMm2;
+    const loops = loopsOf(part.path);
+    cut += loops.reduce((s, lp) => s + perimeter(lp), 0);
+    pierces += loops.length;
+  }
+  const L = sheet.lengthMm, W = sheet.widthMm;
+  cutX = Math.min(L, cutX); cutY = Math.min(W, cutY);
+  const sheetA = L * W, cutA = cutX * cutY, remnantA = (L - cutX) * W;
+  const unusedA = Math.max(0, sheetA - cutA - remnantA);
+  return {
+    cutX, cutY, pieces: sheet.parts.length,
+    sheetKg: kg(sheetA), partsKg: kg(partsArea), scrapKg: kg(Math.max(0, cutA - partsArea)),
+    remnantKg: kg(remnantA), remnantPct: (100 * remnantA) / sheetA,
+    unusedKg: kg(unusedA), unusedPct: (100 * unusedA) / sheetA,
+    cutM: cut / 1000, pierces,
+  };
+}
