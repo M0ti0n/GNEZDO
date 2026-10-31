@@ -35,3 +35,12 @@ let seq = 0;
 export const newSheet = (s: Omit<StockSheet, "id">): StockSheet => ({ id: `st${Date.now().toString(36)}${++seq}`, ...s });
 
 export const sheetKey = (material: string, thicknessMm: number) => `${material.trim().toLowerCase()}|${thicknessMm}`;
+
+/** Largest sheet the machine can cut [length, width] mm. Will come from the machine settings; this until then. */
+export const MACHINE_LIMIT: [number, number] = [3000, 1500];
+
+/** Does a sheet fit the machine's cutting area (either way round)? */
+export const fitsMachine = (l: number, w: number) => {
+  const [L, W] = MACHINE_LIMIT;
+  return (l <= L && w <= W) || (l <= W && w <= L);
+};
