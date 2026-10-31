@@ -50,14 +50,57 @@ def post_options(level: str, budget: float, quiet: bool = False) -> PostOptions:
     return PostOptions(budget=budget, quiet=quiet, **LEVELS[level]["post_opts"])
 
 
+class NestError(Exception):
+    """A job that cannot be nested as it is; the message says why, for the user."""
+
+
+def parts_too_big(inst: dict) -> list[str]:
+    """Part types that fit no sheet at any allowed rotation (bounding boxes; PackingSolver would
+    otherwise just find no layout and not say why)."""
+    import math
+    from nestprep import geom
+    sheets = []
+    for b in inst["bin_types"]:
+        x0, y0, x1, y1 = geom.shape_to_poly(b).bbox if "elements" in b else (0, 0, b["width"], b["height"])
+        sheets.append((x1 - x0, y1 - y0))
+    out = []
+    for n, it in enumerate(inst["item_types"]):
+        if int(it.get("copies", 1)) == 0:
+            continue
+        def corners(s):
+            if "elements" in s:
+                return geom.shape_to_poly(s).outer
+            return [(0, 0), (s["width"], 0), (s["width"], s["height"]), (0, s["height"])]  # rectangle
+        pts = [p for s in (it["shapes"] if "shapes" in it else [it]) for p in corners(s)]
+        angles = sorted({a for r in it.get("allowed_rotations", [{"start": 0, "end": 0}]) for a in (r["start"], r["end"])})
+        def size(a):
+            c, s_ = math.cos(math.radians(a)), math.sin(math.radians(a))
+            xs = [x * c - y * s_ for x, y in pts]; ys = [x * s_ + y * c for x, y in pts]
+            return max(xs) - min(xs), max(ys) - min(ys)
+        fits = any(w <= L + 1e-6 and h <= W + 1e-6 for a in angles for (w, h) in [size(a)] for (L, W) in sheets)
+        if not fits:
+            w, h = size(0)
+            out.append(f"part #{n + 1} ({w:.0f} x {h:.0f} mm)")
+    return out
+
+
 def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str, quiet: bool = False) -> dict:
     """The whole nesting job within the level's time budget: pre-pass, nest, post-pass."""
+    big = parts_too_big(inst)
+    if big:
+        raise NestError("Bigger than every stock sheet: " + ", ".join(big))
     L = LEVELS[level]
     t0 = time.perf_counter()
     pre, mapping = PrePass(inst, binary, pre_opts).build()
     pre_t = time.perf_counter() - t0
     nest_t = min(L["max_nest"], max(L["min_nest"], L["total"] - pre_t - L["post"]))
     r = psrun.solve(pre, binary, nest_t, "anytime", workdir=os.path.join(outdir, "nest"))
+    # no complete layout yet (a hard job): keep going with more time, up to four times the level's time
+    while not r["solution"] and time.perf_counter() - t0 < 4 * L["total"]:
+        nest_t *= 2
+        r = psrun.solve(pre, binary, nest_t, "anytime", workdir=os.path.join(outdir, "nest"))
+    if not r["solution"]:
+        raise NestError(f"No layout found in {time.perf_counter() - t0:.0f} s")
     nest_done = time.perf_counter() - t0
     post_budget = max(L["post"] * 0.5, L["total"] - nest_done)
     pp = PostPass(pre, r["solution"], binary, post_options(level, post_budget, quiet))
@@ -192,7 +235,11 @@ def cmd_nest(a):
     """One nesting job as GNEZDO would run it."""
     inst = load(a.instance)
     os.makedirs(a.outdir, exist_ok=True)
-    job = run_job(inst, psrun.find_binary(a.solver), a.level, opts_from(a), a.outdir, a.quiet)
+    try:
+        job = run_job(inst, psrun.find_binary(a.solver), a.level, opts_from(a), a.outdir, a.quiet)
+    except NestError as e:
+        print(json.dumps({"valid": False, "error": str(e)}))
+        sys.exit(2)
     sheets = expand(job["solution"], job["mapping"])
     v = validate(inst, sheets)
     report = {"valid": v["ok"], **metrics(inst, sheets), "seconds": job["seconds"], "steps": job["steps"]}
