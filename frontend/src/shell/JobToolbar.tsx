@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SideScroll } from "../components/SideScroll";
-import { CustomNestDialog } from "../components/CustomNestDialog";
+import { CustomNestDialog, type CustomNestSettings } from "../components/CustomNestDialog";
 
 // Toolbar of a job tab, drawn after Fab's layout: five sections, left to right. Collapsed, a
 // section is one coloured tile. Pressing the tile opens it: the tile gives way to a narrow back
@@ -27,16 +27,16 @@ import toolNestReport from "./jobtools/tool-nestReport.png";
 import toolCostReport from "./jobtools/tool-costReport.png";
 
 // The icons are cut from Fab's design sheet as they are (tile icons on their tile colour).
-interface SectionTool { id: string; label: string; icon: string; hint?: string }
+interface SectionTool { id: string; label: string; icon: string; hint?: string; ready?: boolean }
 interface Section { id: SectionId; label: string; icon: string; tools: SectionTool[] }
 
 const SECTIONS: Section[] = [
   { id: "work", label: "Work parts", icon: tileWork, tools: [] },
   {
     id: "auto", label: "Automatic nest", icon: tileAuto, tools: [
-      { id: "fastNest", label: "Fast", icon: toolFastNest, hint: "Fast nest: the whole job in about 30 s" },
-      { id: "thoroughNest", label: "Thorough", icon: toolThoroughNest, hint: "Thorough nest: up to 90 s, a shorter last sheet" },
-      { id: "customNest", label: "Custom", icon: toolCustomNest, hint: "Custom nest: you set the time, or run until you stop it; keeps the best layout so far" },
+      { id: "fastNest", label: "Fast", icon: toolFastNest, hint: "Fast nest: the whole job in about 30 s", ready: true },
+      { id: "thoroughNest", label: "Thorough", icon: toolThoroughNest, hint: "Thorough nest: up to 90 s, a shorter last sheet", ready: true },
+      { id: "customNest", label: "Custom", icon: toolCustomNest, hint: "Custom nest: you set the time, or run until you stop it; keeps the best layout so far", ready: true },
     ],
   },
   {
@@ -58,7 +58,7 @@ const SECTIONS: Section[] = [
   },
 ];
 
-export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: string) => void }) {
+export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: string, custom?: CustomNestSettings) => void }) {
   const [open, setOpen] = useState<SectionId | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
 
@@ -82,7 +82,7 @@ export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: str
             <svg viewBox="0 0 20 60" width="20" height="60" aria-hidden="true"><path d="M16 2 3 30l13 28Z" fill="currentColor" /></svg>
           </button>
           {s.tools.length ? s.tools.map((t) => (
-            <button key={t.id} type="button" className="itool jtool" title={`${t.hint ?? t.label} (not built yet)`}
+            <button key={t.id} type="button" className="itool jtool" title={t.ready ? t.hint ?? t.label : `${t.hint ?? t.label} (not built yet)`}
               onClick={() => t.id === "customNest" ? setCustomOpen(true) : onTool?.(s.id, t.id)}>
               <span className="itool-box"><img src={t.icon} alt="" draggable={false} /></span>
               <span className="itool-label">{t.label}</span>
@@ -98,6 +98,6 @@ export function JobToolbar({ onTool }: { onTool?: (section: SectionId, tool: str
       ))}
     </SideScroll>
     {customOpen && <CustomNestDialog onCancel={() => setCustomOpen(false)}
-      onStart={() => { setCustomOpen(false); onTool?.("auto", "customNest"); }} />}
+      onStart={(c) => { setCustomOpen(false); onTool?.("auto", "customNest", c); }} />}
   </>);
 }
