@@ -23,7 +23,7 @@ public sealed class PartSearchTests(ApiFixture api)
     public async Task Name_is_contains_and_case_insensitive()
     {
         var parts = await Search("?name=flange");
-        Assert.Equal(9, parts.Count);
+        Assert.Equal(11, parts.Count);   // 9 in the 30-part test job + FLANGE_DN200_340 and BLIND_FLANGE_DN200
         Assert.All(parts, p => Assert.Contains("FLANGE", p.Name));
     }
 
