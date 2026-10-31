@@ -31,24 +31,23 @@ jobs:
           key: solver-win-${{ hashFiles('nesting/packingsolver/**', 'nesting/patches/**') }}
       - name: Build packingsolver_irregular.exe
         if: steps.cache.outputs.cache-hit != 'true'
-        shell: pwsh
+        shell: bash
         run: |
           # on failure the last error lines become annotations (readable without the full log)
-          function Fail($what, $log) {
-            $lines = Get-Content $log | Select-String -Pattern "error|Error|FAILED|fatal" | Select-Object -Last 25
-            $msg = ($lines -join "%0A") -replace "\r", ""
-            Write-Output "::error title=$what::$msg"
-            throw $what
+          fail() {
+            tail -60 "$2"
+            msg=$(grep -E "error|Error|FAILED|fatal" "$2" | tail -25 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')
+            echo "::error title=$1::$msg"
+            exit 1
           }
-          cmake -S nesting/packingsolver -B build -DCMAKE_BUILD_TYPE=Release `
-            -DPACKINGSOLVER_BUILD_TEST=OFF -DPACKINGSOLVER_USE_CLP=OFF -DPACKINGSOLVER_USE_HIGHS=ON *> configure.log
-          if ($LASTEXITCODE -ne 0) { Get-Content configure.log -Tail 60; Fail "cmake configure failed" configure.log }
-          cmake --build build --config Release --target packingsolver_irregular -j 4 *> build.log
-          if ($LASTEXITCODE -ne 0) { Get-Content build.log -Tail 80; Fail "build failed" build.log }
-          New-Item -ItemType Directory -Force out-solver | Out-Null
-          $exe = Get-ChildItem build -Recurse -Filter packingsolver_irregular.exe | Select-Object -First 1
-          Copy-Item $exe.FullName out-solver/
-          Get-ChildItem out-solver
+          cmake -S nesting/packingsolver -B build -DCMAKE_BUILD_TYPE=Release \
+            -DPACKINGSOLVER_BUILD_TEST=OFF -DPACKINGSOLVER_USE_CLP=OFF -DPACKINGSOLVER_USE_HIGHS=ON > configure.log 2>&1 \
+            || fail "cmake configure failed" configure.log
+          cmake --build build --config Release --target packingsolver_irregular -j 4 > build.log 2>&1 \
+            || fail "build failed" build.log
+          mkdir -p out-solver
+          cp "$(find build -name packingsolver_irregular.exe | head -1)" out-solver/
+          ls -la out-solver
       - name: It runs on Windows
         shell: pwsh
         run: |
