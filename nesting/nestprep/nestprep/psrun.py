@@ -53,3 +53,53 @@ def solve(instance: dict, binary: str, time_limit: float = 2.0,
     if not keep and workdir is None:
         shutil.rmtree(tmp, ignore_errors=True)
     return {"solution": sol, "output": out, "time": dt}
+
+
+def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
+                workdir: str | None = None) -> dict:
+    """Anytime solve for `time_limit` seconds; when there is no layout yet by then, up to `grace`
+    seconds more, stopping at the first layout. PackingSolver writes each better layout to the
+    solution file as it finds it, so the run is not started again."""
+    tmp = workdir or tempfile.mkdtemp(prefix="ps_")
+    os.makedirs(tmp, exist_ok=True)
+    inst_p, out_p, sol_p = (os.path.join(tmp, n) for n in ("instance.json", "output.json", "solution.json"))
+    for q in (out_p, sol_p):
+        if os.path.exists(q):
+            os.remove(q)
+    with open(inst_p, "w") as f:
+        json.dump(instance, f)
+    cmd = [binary, "-i", inst_p, "-o", out_p, "-c", sol_p, "-t", str(time_limit + grace), "-v", "0",
+           "--optimization-mode", "anytime", "--linear-programming-solver", LP_SOLVER]
+    t0 = time.perf_counter()
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+
+    def read():
+        try:
+            with open(sol_p) as f:
+                sol = json.load(f)
+            return sol if sol and sol.get("bins") else None
+        except (OSError, ValueError):
+            return None  # not there yet, or being written
+
+    sol = None
+    while proc.poll() is None:
+        time.sleep(0.25)
+        if time.perf_counter() - t0 >= time_limit:
+            sol = read()
+            if sol:
+                proc.terminate()
+                proc.wait()
+                break
+    if proc.returncode not in (0, None) and sol is None and proc.returncode > 0:
+        raise RuntimeError(f"solver failed ({proc.returncode}): {proc.stderr.read()[-2000:]}")
+    if sol is None:
+        sol = read()
+    out = {}
+    try:
+        with open(out_p) as f:
+            out = json.load(f)
+    except (OSError, ValueError):
+        pass
+    if workdir is None:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return {"solution": sol, "output": out, "time": time.perf_counter() - t0}
