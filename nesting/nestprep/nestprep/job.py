@@ -15,6 +15,7 @@ from typing import Callable
 from . import geom, psrun
 from .holefill import Options, PrePass
 from .postpass import PostOptions, PostPass
+from .solution import expand
 
 # Whole-job time budgets (pre-pass + nest + post-pass), on the machine it runs on.
 LEVELS = {
@@ -102,7 +103,8 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     level custom: the nest runs `minutes` (None: until stopped). stop_after: seconds with no
     better layout after which the nest ends (custom only). should_stop: polled during the
     nest; when it says so the best layout so far is kept and only the last sheet is compacted.
-    on_progress gets {stage, sheets?, waste?} as the job goes on.
+    on_progress gets {stage, sheets?, waste?, layout?} as the job goes on (layout: the best
+    layout so far, expanded to the original parts).
     """
     say = on_progress or (lambda d: None)
     os.makedirs(outdir, exist_ok=True)
@@ -129,6 +131,10 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     say({"stage": "nest"})
 
     def progress(best):
+        best = dict(best)
+        sol = best.pop("solution", None)
+        if sol:
+            best["layout"] = expand(sol, mapping)  # the best layout so far, as original parts
         say({"stage": "nest", **best})
     # no layout yet when the time is up (a hard job): a little more time, stopping at the first one
     r = psrun.solve_grace(pre, binary, nest_t, L["grace"], workdir=os.path.join(outdir, "nest"),

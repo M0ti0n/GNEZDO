@@ -23,6 +23,9 @@ public sealed class NestTests : IAsyncLifetime
         groups = [{"material": "S235", "thicknessMm": 10, "stage": "nest", "sheets": 2}]
         write("progress.json", {"state": "running", "groups": groups})
         state = "done"
+        sheet = {"sheetId": req["sheets"][0]["id"], "lengthMm": 3000, "widthMm": 1500,
+                 "parts": [{"partId": p["id"], "x": 5, "y": 5, "angle": 0, "mirror": False} for p in req["parts"]]}
+        write("best.json", {"sheets": [sheet]})
         if req["mode"] == "custom":
             while not os.path.exists(os.path.join(rundir, "stop")):
                 time.sleep(0.05)
@@ -118,7 +121,9 @@ public sealed class NestTests : IAsyncLifetime
         var id = (await res.Content.ReadFromJsonAsync<JsonObject>())!["id"]!.GetValue<string>();
         await WaitFor(id, "running");
         await Task.Delay(300);
-        Assert.Equal("running", (await _client.GetFromJsonAsync<JsonObject>($"/api/nest/{id}"))!["state"]!.GetValue<string>());
+        var live = (await _client.GetFromJsonAsync<JsonObject>($"/api/nest/{id}"))!;
+        Assert.Equal("running", live["state"]!.GetValue<string>());
+        Assert.Single(live["best"]!["sheets"]!.AsArray());  // the best layout so far, while it runs
         var stop = await _client.PostAsync($"/api/nest/{id}/stop", null);
         Assert.Equal(HttpStatusCode.OK, stop.StatusCode);
         var run = await WaitFor(id, "stopped", "error");

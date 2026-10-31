@@ -176,6 +176,9 @@ public sealed class NestRunner : IDisposable
             o["groups"] = progress["groups"]?.DeepClone();
         if (run.State is NestState.Done or NestState.Stopped && ReadJson(Path.Combine(run.Dir, "result.json")) is { } result)
             o["result"] = result;
+        // while it runs: the best layout so far (to view it before the run ends)
+        else if (run.State == NestState.Running && ReadJson(Path.Combine(run.Dir, "best.json")) is { } best)
+            o["best"] = best;
         if (run.Error is not null) o["error"] = run.Error;
         return o;
     }
