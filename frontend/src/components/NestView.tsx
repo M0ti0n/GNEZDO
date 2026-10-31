@@ -102,6 +102,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
               <span className="nest-card-title">Solution {sol!.no} <span className="slash">/</span> Sheet {i + 1}</span>
               <button type="button" className="sheet-info" title="Sheet info" aria-label={`Info on sheet ${i + 1}`}
                 onClick={(e) => { e.stopPropagation(); onSelect({ sol: sol!.id, sheet: i }); }}>i</button>
+              <span className="nest-card-sheet" title="Material, thickness × length × width (mm)">{sh.material} {sh.thicknessMm}x{sh.lengthMm}x{sh.widthMm}</span>
               {liveSheets && <span className="nest-live-tag">best so far</span>}
               <span className="nest-card-gap" />
               <button type="button" className="nest-view" onClick={(e) => { e.stopPropagation(); onSelect({ sol: sol!.id, sheet: i }); setFull(i); }}
