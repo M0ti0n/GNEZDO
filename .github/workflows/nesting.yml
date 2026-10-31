@@ -51,6 +51,22 @@ jobs:
               print(d, "time", r["post"]["seconds"])
           assert json.load(open("out/compare.json"))["prepass"]["parts_in_holes"] > 0, "the pre-pass put nothing into the holes"
           EOF
+          # a part bigger than every sheet: a clear error, not a crash
+          python - <<'EOF'
+          import json
+          inst = json.load(open("examples/demo_sheets.json"))
+          b = inst["bin_types"][0]
+          big = max(b.get("width", 0), b.get("height", 0), 5000) * 2
+          inst["item_types"].append({"type": "rectangle", "width": big, "height": 10, "copies": 1})
+          json.dump(inst, open("too_big.json", "w"))
+          EOF
+          set +e
+          out=$(python nestprep_cli.py nest too_big.json --level quick --solver $PS --outdir out_big -q)
+          code=$?
+          set -e
+          echo "$out"
+          test $code -eq 2
+          echo "$out" | grep -q "Bigger than every stock sheet"
 
       - uses: actions/upload-artifact@v4
         with:
