@@ -45,8 +45,14 @@ jobs:
             || fail "cmake configure failed" configure.log
           cmake --build build --config Release --target packingsolver_irregular -j 4 > build.log 2>&1 \
             || fail "build failed" build.log
+          echo "::notice title=Build::$(tail -3 build.log | sed ':a;N;$!ba;s/\r//g;s/\n/%0A/g')"
+          exe=$(/usr/bin/find build -iname 'packingsolver_irregular*.exe' | head -1)
+          if [ -z "$exe" ]; then
+            echo "::error title=No exe::$(/usr/bin/find build -iname '*.exe' | head -20 | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
           mkdir -p out-solver
-          cp "$(find build -name packingsolver_irregular.exe | head -1)" out-solver/
+          cp "$exe" out-solver/packingsolver_irregular.exe
           ls -la out-solver
       - name: It runs on Windows
         shell: pwsh
