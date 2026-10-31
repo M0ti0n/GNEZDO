@@ -187,11 +187,12 @@ class PrePass:
         # sheet sizes (bounding boxes): a composite must still fit one of them
         self.sheets = []
         for b in instance.get("bin_types", []):
+            e = 2 * float(b.get("item_bin_minimum_spacing", 0.0))  # edge distance on both sides
             if "elements" in b:
                 x0, y0, x1, y1 = geom.shape_to_poly(b).bbox
-                self.sheets.append((x1 - x0, y1 - y0))
+                self.sheets.append((x1 - x0 - e, y1 - y0 - e))
             else:
-                self.sheets.append((float(b["width"]), float(b["height"])))
+                self.sheets.append((float(b["width"]) - e, float(b["height"]) - e))
         self.cache: dict = {}
         self.stats = Counter()
         self.log: list[str] = []

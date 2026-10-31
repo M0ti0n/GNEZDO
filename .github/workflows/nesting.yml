@@ -68,6 +68,19 @@ jobs:
           print("skipped", r["skipped"])
           assert r["valid"] and len(r["skipped"]) == 1, r
           EOF
+          # a run as GNEZDO starts it: two materials, one part without a matching sheet
+          python nestprep_cli.py run examples/demo_request.json out_run --solver $PS
+          python - <<'EOF'
+          import json
+          r = json.load(open("out_run/result.json"))
+          p = json.load(open("out_run/progress.json"))
+          print({k: r[k] for k in ("state", "seconds", "valid", "skipped", "groups")})
+          assert r["state"] == "done" and p["state"] == "done" and r["valid"], r
+          assert [s["partId"] for s in r["skipped"]] == ["99"], r["skipped"]
+          req = json.load(open("examples/demo_request.json"))
+          want = {x["id"]: x["qty"] for x in req["parts"] if x["id"] != "99"}
+          assert r["nested"] == want, (r["nested"], want)
+          EOF
 
       - uses: actions/upload-artifact@v4
         with:

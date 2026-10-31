@@ -56,10 +56,16 @@ def solve(instance: dict, binary: str, time_limit: float = 2.0,
 
 
 def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
-                workdir: str | None = None) -> dict:
+                workdir: str | None = None, *, stop_after: float | None = None,
+                should_stop=None, on_progress=None) -> dict:
     """Anytime solve for `time_limit` seconds; when there is no layout yet by then, up to `grace`
     seconds more, stopping at the first layout. PackingSolver writes each better layout to the
-    solution file as it finds it, so the run is not started again."""
+    solution file as it finds it, so the run is never started again.
+
+    stop_after: end once a layout exists and no better one has turned up for this many seconds.
+    should_stop(): polled; True ends the run, keeping the best layout so far ("stopped").
+    on_progress({"sheets", "waste", "seconds"}): called for every better layout.
+    """
     tmp = workdir or tempfile.mkdtemp(prefix="ps_")
     os.makedirs(tmp, exist_ok=True)
     inst_p, out_p, sol_p = (os.path.join(tmp, n) for n in ("instance.json", "output.json", "solution.json"))
@@ -81,19 +87,51 @@ def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
         except (OSError, ValueError):
             return None  # not there yet, or being written
 
-    sol = None
+    def waste():
+        try:
+            with open(out_p) as f:
+                o = json.load(f)
+            last = (o.get("IntermediaryOutputs") or [{}])[-1].get("Solution", {})
+            w = last.get("FullWastePercentage")
+            return None if w is None else round(100 * float(w), 1)
+        except (OSError, ValueError, AttributeError):
+            return None
+
+    sol, stopped = None, False
+    seen, improved_at = None, None
     while proc.poll() is None:
         time.sleep(0.25)
-        if time.perf_counter() - t0 >= time_limit:
-            sol = read()
-            if sol:
-                proc.terminate()
-                proc.wait()
-                break
-    if proc.returncode not in (0, None) and sol is None and proc.returncode > 0:
+        now = time.perf_counter() - t0
+        try:
+            m = os.stat(sol_p).st_mtime_ns
+        except OSError:
+            m = None
+        if m is not None and m != seen:
+            cur = read()
+            if cur:
+                seen, sol, improved_at = m, cur, now
+                if on_progress:
+                    on_progress({"sheets": sum(int(b.get("copies", 1)) for b in cur["bins"]),
+                                 "waste": waste(), "seconds": round(now, 1)})
+        if should_stop and should_stop():
+            stopped = True
+        elif now >= time_limit and sol:
+            pass  # time is up and a layout exists
+        elif stop_after and sol and now - improved_at >= stop_after:
+            pass  # nothing better for a while
+        else:
+            continue
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        break
+    if proc.returncode not in (0, None) and sol is None and proc.returncode > 0 and not stopped:
         raise RuntimeError(f"solver failed ({proc.returncode}): {proc.stderr.read()[-2000:]}")
-    if sol is None:
-        sol = read()
+    if sol is None or (not stopped and proc.returncode == 0):
+        sol = read() or sol
     out = {}
     try:
         with open(out_p) as f:
@@ -102,4 +140,4 @@ def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
         pass
     if workdir is None:
         shutil.rmtree(tmp, ignore_errors=True)
-    return {"solution": sol, "output": out, "time": time.perf_counter() - t0}
+    return {"solution": sol, "output": out, "time": time.perf_counter() - t0, "stopped": stopped}
