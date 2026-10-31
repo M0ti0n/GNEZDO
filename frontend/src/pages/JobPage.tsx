@@ -24,6 +24,13 @@ interface Props {
   onNotice: (text: string) => void;
 }
 
+/** Nested count against the part's range: short of Qty req, within Qty req..Qty max, or over Qty max. */
+function nestState(jp: JobPart): "short" | "ok" | "over" {
+  const n = jp.nested ?? 0;
+  if (!jp.qty || n < jp.qty) return "short";
+  return n > (jp.qtyMax ?? jp.qty) ? "over" : "ok";
+}
+
 type Col = "no" | "project" | "name" | "material" | "thickness" | "qty" | "nested" | "qtyMax";
 const COLS: { id: Col; label: string; num?: boolean; title?: string }[] = [
   { id: "no", label: "ID", num: true },
@@ -32,7 +39,7 @@ const COLS: { id: Col; label: string; num?: boolean; title?: string }[] = [
   { id: "material", label: "Material" },
   { id: "thickness", label: "Thickness" },
   { id: "qty", label: "Qty req", num: true, title: "Requested: setting it also sets Qty max" },
-  { id: "nested", label: "Qty nested", num: true, title: "On the nest now: green when the requested number is reached" },
+  { id: "nested", label: "Qty nested", num: true, title: "On the nest now: green from Qty req up to Qty max, red below or above" },
   { id: "qtyMax", label: "Qty max", num: true, title: "Nesting may add copies up to this into space that would be scrap" },
 ];
 
@@ -70,6 +77,8 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
 
   const total = (parts ?? []).reduce((s, jp) => s + jp.qty, 0);
   const nestedTotal = (parts ?? []).reduce((s, jp) => s + (jp.nested ?? 0), 0);
+  // the job is done when every part is nested at least Qty req and at most Qty max times
+  const allNested = (parts ?? []).length > 0 && (parts ?? []).every((jp) => nestState(jp) === "ok");
 
   // Moving around the list as in a spreadsheet: arrows move from cell to cell (in a number field
   // left / right move once the caret is at its edge or all of it is selected), Enter moves down
@@ -127,8 +136,8 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
           <h2>Job part list</h2>
           <span className="work-sum">{title}{parts && parts.length > 0 && ` · ${parts.length} ${parts.length === 1 ? "part" : "parts"}`}</span>
           {parts && parts.length > 0 && (
-            <span className={`work-pcs ${total > 0 && nestedTotal >= total ? "is-done" : "is-short"}`}
-              title="Pieces nested / pieces required">{nestedTotal} / {total} PCS</span>
+            <span className={`work-pcs ${allNested ? "is-done" : "is-short"}`}
+              title="Pieces nested / pieces required (green when every part is between its Qty req and Qty max)">{nestedTotal} / {total} PCS</span>
           )}
         </header>
 
@@ -180,8 +189,11 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
                           title={jp.qty ? undefined : "Set the number of pieces needed"} aria-label={`Requested quantity of ${jp.part.name}`}
                           onCommit={(q) => onPart(jp.part.id, { qty: q, qtyMax: q })} />
                       </td>
-                      <td data-c={6} tabIndex={-1} className={`num cell-nested ${jp.qty > 0 && nested >= jp.qty ? "is-done" : "is-short"}`}
-                        title={!jp.qty ? "Qty req is not set" : nested >= jp.qty ? "Requested number nested" : `${jp.qty - nested} more to nest`}>{nested}</td>
+                      <td data-c={6} tabIndex={-1} className={`num cell-nested ${nestState(jp) === "ok" ? "is-done" : "is-short"}`}
+                        title={!jp.qty ? "Qty req is not set"
+                          : nested < jp.qty ? `${jp.qty - nested} more to nest`
+                          : nested > max ? `${nested - max} more than Qty max`
+                          : "Between Qty req and Qty max"}>{nested}</td>
                       <td data-c={7} className="num">
                         <NumInput className="field qty" int min={jp.qty} value={max} aria-label={`Maximum quantity of ${jp.part.name}`}
                           title="At least the requested number" onCommit={(m) => onPart(jp.part.id, { qtyMax: m })} />
