@@ -85,13 +85,31 @@ def _elements(lp) -> list[dict]:
             for a, b in zip(lp, lp[1:] + lp[:1])]
 
 
-def path_shape(path: str) -> dict:
+def origin_flips(origin: str) -> tuple[int, int]:
+    """The engine packs towards its 0,0 (the top-left corner as the sheet is drawn). For another
+    corner the job is nested flipped and the layout flipped back: (-1 = flip) along x, along y."""
+    o = str(origin or "top-left")
+    return (-1 if o.endswith("right") else 1, -1 if o.startswith("bottom") else 1)
+
+
+def path_shape(path: str, flips: tuple[int, int] = (1, 1)) -> tuple[dict, tuple[float, float]]:
     """PackingSolver shape of a part: the largest loop is the outline, loops directly inside
-    it are holes (a loop inside a hole is a piece that drops out; it is not nested)."""
-    loops = path_loops(path)
+    it are holes (a loop inside a hole is a piece that drops out; it is not nested).
+    With flips the part is mirrored into the engine's frame and moved back to x, y >= 0;
+    the second value is that shift, needed to map the placement back."""
+    sx, sy = flips
+    loops = [[(sx * x, sy * y) for x, y in lp] for lp in path_loops(path)]
+    shift = (0.0, 0.0)
+    if loops and (sx, sy) != (1, 1):
+        shift = (-min(x for lp in loops for x, _ in lp), -min(y for lp in loops for _, y in lp))
+        loops = [[(x + shift[0], y + shift[1]) for x, y in lp] for lp in loops]
+    return _shape(loops), shift
+
+
+def _shape(loops) -> dict:
     if not loops:
         raise ValueError("no closed outline")
-    loops.sort(key=lambda lp: -abs(_area(lp)))
+    loops = sorted(loops, key=lambda lp: -abs(_area(lp)))
     outer, rest = loops[0], loops[1:]
     holes = []
     for i, lp in enumerate(rest):
@@ -131,6 +149,7 @@ def _key(material, thickness) -> tuple:
 def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
     """Instances per material and thickness; parts that cannot be nested are listed with why."""
     gap = float(req.get("partGapMm", 5))
+    flips = origin_flips(req.get("origin"))
     edge = float(req.get("edgeGapMm", 5))
     skipped, by_key = [], {}
     for p in req.get("parts", []):
@@ -146,10 +165,10 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
         if not sheets:
             skipped += [{"partId": p["id"], "reason": f"No stock sheet for {label}"} for p in parts]
             continue
-        items, ids = [], []
+        items, ids, shifts = [], [], []
         for p in parts:
             try:
-                shape = path_shape(p.get("path", ""))
+                shape, shift = path_shape(p.get("path", ""), flips)
             except ValueError:
                 skipped.append({"partId": p["id"], "reason": "No closed outline"})
                 continue
@@ -157,6 +176,7 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
                           "allowed_rotations": rotations(p.get("rotations")),
                           "allow_mirroring": bool(p.get("mirror"))})
             ids.append(p["id"])
+            shifts.append(shift)
         if not items:
             continue
         pieces = sum(it["copies"] for it in items)
@@ -179,7 +199,7 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
                 "bin_types": bins, "item_types": items}
         groups.append({"label": label, "material": parts[0].get("material", ""),
                        "thicknessMm": parts[0].get("thicknessMm"), "instance": inst,
-                       "partIds": ids, "sheets": sheets})
+                       "partIds": ids, "sheets": sheets, "flips": flips, "shifts": shifts})
     return groups, skipped
 
 
@@ -224,15 +244,32 @@ class Run:
                                          "groups": self.status})
 
     def sheets_of(self, i: int, placed: list[dict]) -> list[dict]:
+        """Sheets as GNEZDO shows them: placements of the original parts (outline as sent), in the
+        sheet's own frame (the flips for the origin corner undone)."""
         g = self.groups[i]
+        sx, sy = g.get("flips", (1, 1))
         out = []
         for sh in placed:
             s = g["sheets"][sh["bin_type"]]
-            out.append({"sheetId": s.get("id"), "lengthMm": float(s["lengthMm"]), "widthMm": float(s["widthMm"]),
-                        "material": g["material"], "thicknessMm": g["thicknessMm"],
-                        "parts": [{"partId": g["partIds"][p["orig_type"]], "x": round(p["xf"].x, 3),
-                                   "y": round(p["xf"].y, 3), "angle": p["xf"].angle, "mirror": p["xf"].mirror}
-                                  for p in sh["parts"]]})
+            L, W = float(s["lengthMm"]), float(s["widthMm"])
+            parts = []
+            for p in sh["parts"]:
+                xf = p["xf"]
+                a, m, x, y = xf.angle, xf.mirror, xf.x, xf.y
+                if (sx, sy) != (1, 1):
+                    # engine frame point: R(a) M (S q + c) + t; sheet frame: S (that) + offset
+                    cx, cy = g["shifts"][p["orig_type"]]
+                    u = -cx if m else cx
+                    r = math.radians(a)
+                    vx, vy = u * math.cos(r) - cy * math.sin(r), u * math.sin(r) + cy * math.cos(r)
+                    x = sx * (vx + x) + (L if sx < 0 else 0.0)
+                    y = sy * (vy + y) + (W if sy < 0 else 0.0)
+                    if sx * sy < 0:
+                        a = (-a) % 360.0  # one flip turns the rotation the other way
+                parts.append({"partId": g["partIds"][p["orig_type"]], "x": round(x, 3), "y": round(y, 3),
+                              "angle": round(a, 6), "mirror": m})
+            out.append({"sheetId": s.get("id"), "lengthMm": L, "widthMm": W,
+                        "material": g["material"], "thicknessMm": g["thicknessMm"], "parts": parts})
         return out
 
     def write_best(self, i: int, sheets: list[dict]):

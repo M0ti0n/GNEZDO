@@ -27,6 +27,7 @@ import { JobToolbar } from "./shell/JobToolbar";
 import { buildRequest, isFinished, nestApi, nestProblem, type NestMode, type NestRun, type Solution } from "./job/nest";
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type NestSelection } from "./components/NestView";
+import { loadMachineSettings, saveMachineSettings, type MachineSettings } from "./job/machine";
 import { loadStockSettings, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
@@ -46,6 +47,8 @@ export function App() {
   const [jobScreen, setJobScreen] = useState<Record<string, "parts" | "nest" | undefined>>({});
   const [customFor, setCustomFor] = useState<string | null>(null);
   const [stockSettings, setStockSettingsState] = useState<StockSettings>(loadStockSettings);
+  const [machine, setMachineState] = useState<MachineSettings>(loadMachineSettings);
+  const setMachine = (m: MachineSettings) => { setMachineState(m); saveMachineSettings(m); };
   const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); saveStockSettings(s); };
   // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
   const [imports, setImports] = useState<ImportItem[]>([]);
@@ -342,11 +345,11 @@ export function App() {
     // the sheets shown stay until the new solution has some
     setSols(jobId, (s0) => {
       const shown = s0.list.find((x) => x.id === s0.sel.sol)?.run?.result?.sheets.length;
-      return { list: [...s0.list, { id, no, mode, custom, run: null, startedAt: Date.now(), locked: [] }], sel: shown ? s0.sel : { sol: id, sheet: 0 } };
+      return { list: [...s0.list, { id, no, mode, custom, run: null, startedAt: Date.now(), locked: [], origin: machine.origin }], sel: shown ? s0.sel : { sol: id, sheet: 0 } };
     });
     setJobScreen((m) => ({ ...m, [jobId]: "nest" }));
     try {
-      const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom);
+      const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom, machine.origin);
       const run = await nestApi.start(req);
       patchSol(jobId, id, (x) => ({ ...x, run }));
       void pollNest(jobId, id, run.id);
@@ -466,7 +469,7 @@ export function App() {
               // a list that has not been touched yet follows the new defaults
               if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller }));
             }} />}
-            {active.kind === "settings" && <SettingsPage stock={stockSettings} onStock={setStockSettings} />}
+            {active.kind === "settings" && <SettingsPage stock={stockSettings} onStock={setStockSettings} machine={machine} onMachine={setMachine} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
           </main>
         </div>

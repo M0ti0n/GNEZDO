@@ -3,15 +3,19 @@ import { Combobox } from "../components/Combobox";
 import { NumInput } from "../components/NumInput";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
+import { DEFAULT_MACHINE_SETTINGS, ORIGINS, type MachineSettings } from "../job/machine";
 
 type Section = "stock" | "machine";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock", ready: true },
-  { id: "machine", label: "Machine", ready: false },
+  { id: "machine", label: "Machine", ready: true },
 ];
 
 // GNEZDO menu -> Settings. Stock: the global sheet size and the three default sheet slots.
-export function SettingsPage({ stock, onStock }: { stock: StockSettings; onStock: (s: StockSettings) => void }) {
+export function SettingsPage({ stock, onStock, machine, onMachine }: {
+  stock: StockSettings; onStock: (s: StockSettings) => void;
+  machine: MachineSettings; onMachine: (m: MachineSettings) => void;
+}) {
   const [section, setSection] = useState<Section>("stock");
   const lists = usePickLists("");
   const materials = useMemo(() => lists.materials, [lists.materials]);
@@ -32,6 +36,36 @@ export function SettingsPage({ stock, onStock }: { stock: StockSettings; onStock
         ))}
       </nav>
 
+      {section === "machine" && (
+      <div className="settings-main">
+        <header className="settings-head">
+          <h2>Machine</h2>
+          <p>How the cutting machine works with a sheet.</p>
+        </header>
+        <section className="rule">
+          <h3>Sheet origin (0,0)</h3>
+          <p className="rule-help">The corner of the sheet where the machine's 0,0 is. Nesting packs the parts towards this corner, so what is left over is one piece at the other end.</p>
+          <div className="origin-pick" role="radiogroup" aria-label="Sheet origin">
+            <div className="origin-sheet">
+              {ORIGINS.map((o) => (
+                <button key={o.id} type="button" role="radio" aria-checked={machine.origin === o.id} aria-label={o.label}
+                  className={`origin-corner is-${o.id}${machine.origin === o.id ? " is-on" : ""}`}
+                  onClick={() => onMachine({ ...machine, origin: o.id })} title={o.label}>
+                  <span>0,0</span>
+                </button>
+              ))}
+              <span className="origin-label">{ORIGINS.find((o) => o.id === machine.origin)?.label}</span>
+            </div>
+          </div>
+          <p className="rule-help">As the sheet is drawn on screen (length left to right).</p>
+        </section>
+        <footer className="settings-foot">
+          Saved in this browser.{" "}
+          <button className="link" onClick={() => onMachine(DEFAULT_MACHINE_SETTINGS)}>Reset to defaults</button>
+        </footer>
+      </div>
+      )}
+      {section === "stock" && (
       <div className="settings-main">
         <header className="settings-head">
           <h2>Stock</h2>
@@ -76,6 +110,7 @@ export function SettingsPage({ stock, onStock }: { stock: StockSettings; onStock
           <button className="link" onClick={() => onStock(DEFAULT_STOCK_SETTINGS)}>Reset to defaults</button>
         </footer>
       </div>
+      )}
     </div>
   );
 }
