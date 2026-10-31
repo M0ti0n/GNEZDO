@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { IconClose } from "./Icons";
 import { api } from "../api/api";
 import type { PartSummary, PartVersion } from "../api/types";
 import { fullDate, when } from "./format";
@@ -54,7 +55,7 @@ export function PartHistoryDialog({ part, onClose, onRestored }: Props) {
             <h2 id="hist-title">Versions</h2>
             <p>{part.name}{part.project ? ` · ${part.project}` : ""}</p>
           </div>
-          <button type="button" className="icon-btn dlg-close" onClick={onClose} aria-label="Close" title="Close (Esc)">×</button>
+          <button type="button" className="icon-btn dlg-close" onClick={onClose} aria-label="Close" title="Close (Esc)"><IconClose size={16} /></button>
         </header>
 
         <div className="hist-body">
