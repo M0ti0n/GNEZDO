@@ -24,8 +24,9 @@ import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
-import { buildRequest, isFinished, nestApi, nestProblem, type JobNest, type NestMode, type NestRun } from "./job/nest";
-import type { CustomNestSettings } from "./components/CustomNestDialog";
+import { buildRequest, isFinished, nestApi, nestProblem, type NestMode, type NestRun, type Solution } from "./job/nest";
+import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
+import { NestPage, type NestSelection } from "./components/NestView";
 import { loadStockSettings, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
@@ -40,7 +41,10 @@ export function App() {
   const [jobParts, setJobParts] = useState<Record<string, JobPart[] | undefined>>({});
   const [jobStock, setJobStock] = useState<Record<string, StockSheet[]>>({});
   // the nest going on or the last one, per job tab
-  const [jobNest, setJobNest] = useState<Record<string, JobNest | undefined>>({});
+  // every nesting run of a job tab ("solutions"), the one shown, and which screen the tab shows
+  const [jobSol, setJobSol] = useState<Record<string, { list: Solution[]; sel: NestSelection } | undefined>>({});
+  const [jobScreen, setJobScreen] = useState<Record<string, "parts" | "nest" | undefined>>({});
+  const [customFor, setCustomFor] = useState<string | null>(null);
   const [stockSettings, setStockSettingsState] = useState<StockSettings>(loadStockSettings);
   const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); saveStockSettings(s); };
   // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
@@ -305,53 +309,70 @@ export function App() {
 
   const job = activeTab?.kind === "job" && activeTab.jobId ? { id: activeTab.jobId, title: activeTab.title } : null;
 
-  // Nesting: start a run for a job tab, ask the server how it goes once a second, and when it
-  // has finished put the nested counts into Qty nested.
-  const setNest = (jobId: string, f: (n: JobNest | undefined) => JobNest | undefined) =>
-    setJobNest((m) => ({ ...m, [jobId]: f(m[jobId]) }));
-  const finishNest = (jobId: string, run: NestRun) => {
-    setNest(jobId, (n) => n && { ...n, run });
-    const nested = run.result?.nested;
-    if (nested) setJobParts((m) => ({ ...m, [jobId]: (m[jobId] ?? []).map((jp) => ({ ...jp, nested: nested[jp.part.id] ?? 0 })) }));
-  };
-  const pollNest = async (jobId: string, id: string) => {
+  // Nesting: every run is a solution of the job tab. Start one, ask the server how it goes once a
+  // second, show it in the SOLUTIONS panel; Qty nested follows the saved solution (else the one shown).
+  const solsOf = (jobId: string) => jobSol[jobId] ?? { list: [], sel: { sol: null, sheet: 0 } };
+  const setSols = (jobId: string, f: (s: { list: Solution[]; sel: NestSelection }) => { list: Solution[]; sel: NestSelection }) =>
+    setJobSol((m) => ({ ...m, [jobId]: f(m[jobId] ?? { list: [], sel: { sol: null, sheet: 0 } }) }));
+  const patchSol = (jobId: string, id: string, f: (s: Solution) => Solution) =>
+    setSols(jobId, (st) => ({ ...st, list: st.list.map((x) => (x.id === id ? f(x) : x)) }));
+  const pollNest = async (jobId: string, solId: string, runId: string) => {
     for (;;) {
       await new Promise((r) => setTimeout(r, 1000));
       let run: NestRun;
-      try { run = await nestApi.get(id); } catch (e) {
-        setNest(jobId, (n) => n && { ...n, error: (e as Error).message });
+      try { run = await nestApi.get(runId); } catch (e) {
+        patchSol(jobId, solId, (x) => ({ ...x, error: (e as Error).message }));
         return;
       }
-      if (isFinished(run)) return finishNest(jobId, run);
-      setNest(jobId, (n) => n && n.run?.id === id ? { ...n, run } : n);
+      patchSol(jobId, solId, (x) => ({ ...x, run }));
+      if (isFinished(run)) {
+        // a finished solution with sheets is shown
+        if (run.result?.sheets.length) setSols(jobId, (st) => ({ ...st, sel: { sol: solId, sheet: 0 } }));
+        return;
+      }
     }
   };
   const startNest = async (jobId: string, mode: NestMode, custom?: CustomNestSettings) => {
-    const cur = jobNest[jobId];
-    if (cur && !cur.error && !isFinished(cur.run)) { setToast("A nest is already running for this job"); return; }
+    const st = solsOf(jobId);
+    if (st.list.some((x) => !x.error && !isFinished(x.run))) { setToast("A solution is running; start the next one when it is done"); return; }
     const problem = nestProblem(jobParts[jobId], jobStock[jobId] ?? []);
     if (problem) { setToast(problem); return; }
-    setNest(jobId, () => ({ mode, custom, run: null, startedAt: Date.now() }));
+    const id = `sol${Date.now().toString(36)}`;
+    const no = Math.max(0, ...st.list.map((x) => x.no)) + 1;
+    // the sheets shown stay until the new solution has some
+    setSols(jobId, (s0) => {
+      const shown = s0.list.find((x) => x.id === s0.sel.sol)?.run?.result?.sheets.length;
+      return { list: [...s0.list, { id, no, mode, custom, run: null, startedAt: Date.now(), locked: [] }], sel: shown ? s0.sel : { sol: id, sheet: 0 } };
+    });
+    setJobScreen((m) => ({ ...m, [jobId]: "nest" }));
     try {
       const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom);
       const run = await nestApi.start(req);
-      setNest(jobId, (n) => n && { ...n, run });
-      void pollNest(jobId, run.id);
+      patchSol(jobId, id, (x) => ({ ...x, run }));
+      void pollNest(jobId, id, run.id);
     } catch (e) {
-      setNest(jobId, (n) => n && { ...n, error: (e as Error).message });
+      patchSol(jobId, id, (x) => ({ ...x, error: (e as Error).message }));
     }
   };
-  const stopNest = async (jobId: string) => {
-    const id = jobNest[jobId]?.run?.id;
-    if (!id) return;
-    setNest(jobId, (n) => n && n.run ? { ...n, run: { ...n.run, stopAsked: true } } : n);
-    try { await nestApi.stop(id); } catch (e) { setToast((e as Error).message); }
+  const stopNest = async (jobId: string, solId: string) => {
+    const runId = solsOf(jobId).list.find((x) => x.id === solId)?.run?.id;
+    if (!runId) return;
+    patchSol(jobId, solId, (x) => (x.run ? { ...x, run: { ...x.run, stopAsked: true } } : x));
+    try { await nestApi.stop(runId); } catch (e) { setToast((e as Error).message); }
+  };
+  /** Pieces per part of the solution that counts: the saved one, else the one shown. */
+  const nestedCounts = (jobId: string): Record<string, number> | null => {
+    const st = jobSol[jobId];
+    if (!st) return null;
+    const done = (x: Solution) => !!x.run?.result && (x.run.state === "done" || x.run.state === "stopped");
+    const sol = st.list.find((x) => x.saved && done(x)) ?? st.list.find((x) => x.id === st.sel.sol && done(x));
+    return sol?.run?.result?.nested ?? null;
   };
   const onJobTool = (_section: string, tool: string, custom?: CustomNestSettings) => {
     if (!job) return;
     if (tool === "fastNest") void startNest(job.id, "fast");
     else if (tool === "thoroughNest") void startNest(job.id, "thorough");
-    else if (tool === "customNest") void startNest(job.id, "custom", custom);
+    else if (tool === "customNest") { if (custom) void startNest(job.id, "custom", custom); else setCustomFor(job.id); }
   };
 
   return (
@@ -378,14 +399,33 @@ export function App() {
           importPanel={importPanel}
         />
         <div className="workspace">
-          {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} />
+          {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool}
+            onSection={(sec) => job && sec && setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" ? "nest" : m[job.id] }))} />
             : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
           <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
-            {active.kind === "job" && job && (
+            {active.kind === "job" && job && jobScreen[job.id] === "nest" && (
+              <NestPage
+                parts={jobParts[job.id] ?? []}
+                solutions={solsOf(job.id).list}
+                selected={solsOf(job.id).sel}
+                onSelect={(sel) => setSols(job.id, (st) => ({ ...st, sel }))}
+                onAdd={(mode) => (mode === "custom" ? setCustomFor(job.id) : void startNest(job.id, mode))}
+                onStop={(id) => void stopNest(job.id, id)}
+                onRemove={(id) => setSols(job.id, (st) => ({ list: st.list.filter((x) => x.id !== id),
+                  sel: st.sel.sol === id ? { sol: st.list.filter((x) => x.id !== id).at(-1)?.id ?? null, sheet: 0 } : st.sel }))}
+                onToggleLock={(id, i) => patchSol(job.id, id, (x) => ({ ...x, locked: x.locked.includes(i) ? x.locked.filter((n) => n !== i) : [...x.locked, i] }))}
+                onSave={(id) => setSols(job.id, (st) => ({ ...st, list: st.list.map((x) => ({ ...x, saved: x.id === id ? !x.saved : false })) }))}
+              />
+            )}
+            {active.kind === "job" && job && jobScreen[job.id] !== "nest" && (
               <JobPage
                 title={job.title}
-                parts={jobParts[job.id]}
+                parts={(() => {
+                  const counts = nestedCounts(job.id);
+                  const list = jobParts[job.id];
+                  return counts && list ? list.map((jp) => ({ ...jp, nested: counts[jp.part.id] ?? 0 })) : list;
+                })()}
                 stock={jobStock[job.id] ?? []}
                 stockSettings={stockSettings}
                 onStock={(st) => setJobStock((m) => ({ ...m, [job.id]: st }))}
@@ -396,10 +436,11 @@ export function App() {
                 onNotice={setToast}
                 onRemove={(pid) => setJobParts((m) => ({ ...m, [job.id]: (m[job.id] ?? []).filter((jp) => jp.part.id !== pid) }))}
                 onOpenParts={() => setDrawer("parts")}
-                nest={jobNest[job.id]}
-                onStopNest={() => void stopNest(job.id)}
-                onHideNest={() => setNest(job.id, (n) => (n && !n.error && !isFinished(n.run) ? n : undefined))}
               />
+            )}
+            {customFor && (
+              <CustomNestDialog onCancel={() => setCustomFor(null)}
+                onStart={(c) => { const id = customFor; setCustomFor(null); void startNest(id, "custom", c); }} />
             )}
             {active.kind === "jobSearch" && (
               <JobSearchPage filter={jobSearch.filter} run={jobSearch.run} onOpenJob={openJob}

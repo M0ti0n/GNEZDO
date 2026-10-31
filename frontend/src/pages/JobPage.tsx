@@ -9,8 +9,7 @@ import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PARTS_MIME } from "../shell/Drawer";
 import { readDxf } from "../import/dxf";
 import { boxOf, union } from "../import/geometry";
-import { NestBar, SheetsView } from "../components/NestView";
-import type { JobNest } from "../job/nest";
+import { partColor } from "../job/nest";
 import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
 
 interface Props {
@@ -24,10 +23,6 @@ interface Props {
   onRemove: (partId: string) => void;
   onOpenParts: () => void;
   onNotice: (text: string) => void;
-  /** The nest going on or the last one, if any. */
-  nest?: JobNest;
-  onStopNest: () => void;
-  onHideNest: () => void;
 }
 
 /** Nested count against the part's range: short of Qty req, within Qty req..Qty max, or over Qty max. */
@@ -63,12 +58,9 @@ const value = (jp: JobPart, c: Col): string | number => {
 };
 
 // Work parts screen of a job: the job part list (left) and the stock sheets (right).
-export function JobPage({ title, parts, stock, stockSettings, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice, nest, onStopNest, onHideNest }: Props) {
+export function JobPage({ title, parts, stock, stockSettings, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice }: Props) {
   const [over, setOver] = useState(false);
-  // parts list or the nested sheets (once a nest has some)
-  const [view, setView] = useState<"parts" | "sheets">("parts");
-  const nestSheets = nest?.run?.result?.sheets ?? [];
-  const showSheets = view === "sheets" && nestSheets.length > 0;
+
   // the part's pop-up (double-click its name), and its versions
   const [editing, setEditing] = useState<PartSummary | null>(null);
   const [history, setHistory] = useState<PartSummary | null>(null);
@@ -127,9 +119,6 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
   const accepts = (e: React.DragEvent) => e.dataTransfer.types.includes(PARTS_MIME);
 
   return (
-    <div className="work-page">
-    {nest && <NestBar nest={nest} parts={parts ?? []} view={showSheets ? "sheets" : "parts"} onView={setView} onStop={onStopNest} onClose={onHideNest} />}
-    {showSheets ? <SheetsView sheets={nestSheets} parts={parts ?? []} /> : (
     <div className="work">
       <section
         className={`work-list${over ? " is-drop-target" : ""}`}
@@ -167,7 +156,7 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
             <table className="grid work-grid">
               <colgroup>
                 {/* material and thickness narrow and side by side; the room goes to project and part name */}
-                <col style={{ width: 52 }} /><col style={{ width: "16%" }} /><col />
+                <col style={{ width: 68 }} /><col style={{ width: "16%" }} /><col />
                 <col style={{ width: 104 }} /><col style={{ width: 76 }} />
                 <col style={{ width: 84 }} /><col style={{ width: 92 }} /><col style={{ width: 84 }} /><col style={{ width: 42 }} />
               </colgroup>
@@ -191,7 +180,8 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
                   const max = jp.qtyMax ?? jp.qty;
                   return (
                     <tr key={jp.part.id}>
-                      <td data-c={0} tabIndex={-1} className="num cell-no">{jp.no}</td>
+                      <td data-c={0} tabIndex={-1} className="num cell-no" title="ID; the colour shows this part on the nested sheets">
+                        <span className="part-swatch" style={{ background: partColor(jp.no).fill, borderColor: partColor(jp.no).stroke }} />{jp.no}</td>
                       <td data-c={1} tabIndex={-1}>{jp.part.project}</td>
                       <td data-c={2} tabIndex={-1} className="cell-name" title={`${jp.part.name}: double-click for its properties`}
                         onDoubleClick={() => setEditing(jp.part)}>{jp.part.name}</td>
@@ -238,8 +228,6 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
       )}
 
       <StockPanel parts={parts ?? []} stock={stock} settings={stockSettings} onStock={onStock} onNotice={onNotice} />
-    </div>
-    )}
     </div>
   );
 }
