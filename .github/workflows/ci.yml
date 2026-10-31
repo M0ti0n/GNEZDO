@@ -80,5 +80,11 @@ jobs:
     needs: [frontend, backend]
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t gnezdo-api backend
+      - run: docker build -f backend/Dockerfile -t gnezdo-api .
+      - name: The nesting engine runs in the image
+        run: |
+          mkdir -p run && chmod 777 run
+          docker run --rm --entrypoint python3 -v "$PWD/nesting/nestprep/examples:/ex:ro" -v "$PWD/run:/run-out" gnezdo-api \
+            /app/nesting/nestprep/nestprep_cli.py run /ex/demo_request.json /run-out --solver /app/nesting/packingsolver_irregular
+          python3 -c "import json; r=json.load(open('run/result.json')); print(r['state'], r['seconds'], r['valid']); assert r['state']=='done' and r['valid']"
       - run: docker build -t gnezdo-web frontend

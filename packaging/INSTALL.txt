@@ -23,6 +23,11 @@ Start it with start.bat; settings are in config.json next to it.
    Other PCs on the network use  http://<name-of-this-pc>:8090
 
 
+NESTING: the "nesting" folder next to "program" holds the nesting engine
+(PackingSolver and a Python of its own). Keep the two folders together; nothing
+else has to be installed. Nesting works in the demo too.
+
+
 3. DEMO OR DATABASE
 -------------------
 Out of the box GNEZDO runs as a DEMO: sample parts and jobs, everything you

@@ -1,0 +1,11 @@
+# keeps the build context of backend/Dockerfile (repository root) small
+.git
+**/node_modules
+**/bin
+**/obj
+frontend
+test-parts
+nesting/packingsolver/build
+nesting/nestprep/out*
+nesting/nestprep/examples
+**/__pycache__
