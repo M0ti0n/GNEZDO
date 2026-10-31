@@ -1,6 +1,7 @@
 using Gnezdo.Api;
 using Gnezdo.Api.Data;
 using Gnezdo.Api.Endpoints;
+using Gnezdo.Api.Nesting;
 using Microsoft.EntityFrameworkCore;
 
 // start.bat runs "GNEZDO.exe --check" first, to find out whether this PC lets the program run at all
@@ -24,6 +25,8 @@ if (builder.Configuration["Urls"] is { Length: > 0 } urls) builder.WebHost.UseUr
 builder.Services.Configure<GnezdoOptions>(builder.Configuration.GetSection("Gnezdo"));
 builder.Services.AddSingleton<ShopTime>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.Configure<NestingOptions>(builder.Configuration.GetSection("Nesting"));
+builder.Services.AddSingleton<NestRunner>();
 // Connection string is read when the first DbContext is created, so tests and Docker can override it.
 if (!demo) builder.Services.AddDbContext<GnezdoDb>((sp, o) => o.UseSqlServer(
     sp.GetRequiredService<IConfiguration>().GetConnectionString("Gnezdo")
@@ -38,6 +41,8 @@ app.UseStatusCodePages();
 if (!demo) await DbInitializer.InitializeAsync(app.Services, app.Logger);
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", demo }));
+// nesting works in the demo too: the job tab sends everything a run needs
+app.MapNestEndpoints();
 if (!demo)
 {
     app.MapPartEndpoints();
