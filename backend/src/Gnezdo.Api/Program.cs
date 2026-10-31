@@ -47,6 +47,7 @@ if (!demo)
 {
     app.MapPartEndpoints();
     app.MapHomeEndpoints();
+    app.MapJobEndpoints();
 }
 
 // Windows build: the web pages are next to the program (wwwroot uses the database,

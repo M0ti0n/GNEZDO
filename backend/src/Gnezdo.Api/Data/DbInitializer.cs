@@ -119,7 +119,7 @@ public static class SampleData
             ModifiedAt = Ago(j.HoursAgo),
             ModifiedBy = j.By,
             // each entry is ["partKey", qty]
-            Parts = j.Parts.Select(e => new JobPart { Part = parts[e[0].GetString()!], Qty = e[1].GetInt32() }).ToList(),
+            Parts = j.Parts.Select((e, i) => new JobPart { Part = parts[e[0].GetString()!], Qty = e[1].GetInt32(), QtyMax = e[1].GetInt32(), No = i + 1 }).ToList(),
         });
 
         db.AddRange(projects.Values);

@@ -258,3 +258,26 @@ export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string
     cutM: cut / 1000, pierces,
   };
 }
+
+
+/** The SAVED solution as it is stored with the job. */
+export interface SavedNest {
+  mode: NestMode; custom?: CustomNestSettings; origin?: Origin;
+  state: "done" | "stopped"; seconds: number; result: NestResult; savedAt: string;
+}
+
+export const savedOfSolution = (s: Solution): SavedNest => ({
+  mode: s.mode, custom: s.custom, origin: s.origin,
+  state: s.run?.state === "stopped" ? "stopped" : "done", seconds: s.run?.seconds ?? 0,
+  result: s.run!.result!, savedAt: new Date().toISOString(),
+});
+
+/** A job's saved nest back as a solution (shown as Solution 1, SAVED); null when there is none. */
+export function solutionFromSaved(nest: unknown): Solution | null {
+  const n = nest as SavedNest | null;
+  if (!n?.result?.sheets?.length) return null;
+  return {
+    id: "saved", no: 1, mode: n.mode ?? "fast", custom: n.custom, origin: n.origin, saved: true, locked: [], startedAt: 0,
+    run: { id: "saved", state: n.state ?? "done", stopAsked: false, seconds: n.seconds ?? 0, result: n.result },
+  };
+}

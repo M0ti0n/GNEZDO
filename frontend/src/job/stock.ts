@@ -72,8 +72,12 @@ export const newSheet = (s: Omit<StockSheet, "id">): StockSheet => ({ id: `st${D
 
 export const sheetKey = (material: string, thicknessMm: number) => `${material.trim().toLowerCase()}|${thicknessMm}`;
 
-/** Largest sheet the machine can cut [length, width] mm. Will come from the machine settings; this until then. */
+/** Largest sheet the machine can cut [length, width] mm: Settings -> Machine -> Cutting area (setMachineLimit). */
 export const MACHINE_LIMIT: [number, number] = [3000, 1500];
+/** Called when the machine settings are loaded or changed. */
+export function setMachineLimit(l: number, w: number) {
+  if (l > 0 && w > 0) { MACHINE_LIMIT[0] = l; MACHINE_LIMIT[1] = w; }
+}
 
 /** Does a sheet fit the machine's cutting area (either way round)? */
 export const fitsMachine = (l: number, w: number) => {

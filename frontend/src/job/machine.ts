@@ -10,9 +10,14 @@ export const ORIGINS: { id: Origin; label: string }[] = [
   { id: "bottom-right", label: "Bottom right" },
 ];
 
-export interface MachineSettings { origin: Origin }
+export interface MachineSettings {
+  origin: Origin;
+  /** The largest sheet the machine can cut [mm]; bigger sheets are refused in the STOCK panel. */
+  cutLengthMm: number;
+  cutWidthMm: number;
+}
 
-export const DEFAULT_MACHINE_SETTINGS: MachineSettings = { origin: "top-left" };
+export const DEFAULT_MACHINE_SETTINGS: MachineSettings = { origin: "top-left", cutLengthMm: 3000, cutWidthMm: 1500 };
 
 const KEY = "gnezdo.machineSettings";
 
