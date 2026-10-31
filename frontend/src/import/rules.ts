@@ -7,6 +7,8 @@ export const ROTATIONS = [90, 45, 30, 5] as const;
 export type Rotation = (typeof ROTATIONS)[number];
 
 export interface ImportRules {
+  /** The last number of the file name is the number of pieces needed (shown in Parts, taken into a job). */
+  qtyFromName: boolean;
   /** Parts without open cut lines may be mirrored when nesting (Mirror is ticked for them by default). */
   mirrorWithoutOpenCut: boolean;
   /** Rotation steps ticked by default for new imports. */
@@ -25,6 +27,7 @@ export interface ImportRules {
 }
 
 export const DEFAULT_RULES: ImportRules = {
+  qtyFromName: false,
   mirrorWithoutOpenCut: true,
   defaultRotations: [90],
   defaultFiller: false,

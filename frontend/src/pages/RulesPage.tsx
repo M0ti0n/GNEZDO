@@ -42,6 +42,16 @@ export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (
         </section>
 
         <section className="rule">
+          <label className="rule-check">
+            <input type="checkbox" checked={rules.qtyFromName} onChange={(e) => set({ qtyFromName: e.target.checked })} />
+            <span><b>Take the number of pieces from the file name</b>
+              <small>The last number in the file name is the number of pieces needed, e.g. <code>1625-25-01_P1_3pcs</code> → 3. It is shown
+                in Parts and becomes Qty req when the part is added to a job. Off: nothing is taken from the name, and Qty req starts at 0
+                in the job, to be set by hand.</small></span>
+          </label>
+        </section>
+
+        <section className="rule">
           <h3>Default rotations</h3>
           <p className="rule-help">Ticked in the import Properties for every new list. Can be changed per import.</p>
           <div className="rule-row">

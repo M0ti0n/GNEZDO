@@ -36,7 +36,7 @@ export interface ImportSummary {
 export interface ProjectSummary {
   id: string;
   code: string;            // order / project number, e.g. "26-0412"
-  name: string;            // e.g. "Konzole za transporter"
+  name: string;            // e.g. "Conveyor brackets"
   customer?: string;
   partCount: number;       // parts in the library tagged with this project
   jobCount: number;        // jobs that contain parts of this project

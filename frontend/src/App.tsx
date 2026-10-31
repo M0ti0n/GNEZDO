@@ -132,6 +132,7 @@ export function App() {
     rotations: [...v.rotations], mirror: v.mirror, filler: v.filler,
     ...partGeometry(i.drawing!),
     sourceFile: i.fileName, replace,
+    qty: rules.qtyFromName ? i.qty ?? 0 : 0,
   });
 
   const importPanel = {
@@ -263,7 +264,12 @@ export function App() {
       const list = m[jobId] ?? [];
       // ID numbers go on from the highest one, so a part keeps its number for the life of the job
       const next = list.reduce((n, jp) => Math.max(n, jp.no ?? 0), 0);
-      return { ...m, [jobId]: [...list, ...fresh.map((p, i) => ({ part: p, qty: p.qty, qtyMax: p.qty, no: next + i + 1, nested: 0 }))] };
+      return { ...m, [jobId]: [...list, ...fresh.map((p, i) => {
+        // the required number: the part's quantity from its file name when the import rule says so,
+        // otherwise 0, to be set by hand
+        const q = rules.qtyFromName ? p.qty : 0;
+        return { part: p, qty: q, qtyMax: q, no: next + i + 1, nested: 0 };
+      })] };
     });
     const skipped = parts.length - fresh.length;
     setToast(
@@ -308,6 +314,7 @@ export function App() {
       />
       <div className={`body${drawer ? " has-drawer" : ""}`}>
         <Drawer
+          showQty={rules.qtyFromName}
           mode={drawer}
           onMode={setDrawer}
           targetJob={job}

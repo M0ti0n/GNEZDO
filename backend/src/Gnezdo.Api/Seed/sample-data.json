@@ -9,26 +9,26 @@
   },
   {
    "code": "26-0412",
-   "name": "Konzole za transporter",
-   "customer": "Kovinar d.o.o.",
+   "name": "Conveyor brackets",
+   "customer": "Metalworks Ltd.",
    "hoursAgo": 5
   },
   {
    "code": "26-0410",
-   "name": "Ohišje krmilne omare",
-   "customer": "Elektro Vrhnika",
+   "name": "Control cabinet housing",
+   "customer": "Electro Supply Ltd.",
    "hoursAgo": 28
   },
   {
    "code": "26-0409",
-   "name": "Prirobnice DN200",
-   "customer": "Hidro Celje",
+   "name": "Flanges DN200",
+   "customer": "Hydro Systems Ltd.",
    "hoursAgo": 31
   },
   {
    "code": "26-0398",
-   "name": "Nosilci podesta",
-   "customer": "Gradnje Bovec",
+   "name": "Platform supports",
+   "customer": "Build Group Ltd.",
    "hoursAgo": 81
   }
  ],
@@ -43,7 +43,7 @@
   },
   {
    "key": "i-911",
-   "source": "26-0412_konzole.dwg",
+   "source": "26-0412_brackets.dwg",
    "project": "26-0412",
    "hoursAgo": 4,
    "by": "Miha",
@@ -51,7 +51,7 @@
   },
   {
    "key": "i-910",
-   "source": "26-0410 Ohišje",
+   "source": "26-0410 Housing",
    "project": "26-0410",
    "hoursAgo": 27,
    "by": "Miha",
@@ -59,7 +59,7 @@
   },
   {
    "key": "i-909",
-   "source": "26-0409_prirobnice",
+   "source": "26-0409_flanges",
    "project": "26-0409",
    "hoursAgo": 30,
    "by": "Rok",
@@ -67,7 +67,7 @@
   },
   {
    "key": "i-905",
-   "source": "26-0398 Nosilci",
+   "source": "26-0398 Supports",
    "project": "26-0398",
    "hoursAgo": 80,
    "by": "Miha",
@@ -587,8 +587,8 @@
   },
   {
    "key": "k-01",
-   "name": "KONZOLA_L_160X120",
-   "description": "Konzola l 160x120",
+   "name": "BRACKET_L_160X120",
+   "description": "Bracket l 160x120",
    "project": "26-0412",
    "material": "S235",
    "thicknessMm": 3,
@@ -604,8 +604,8 @@
   },
   {
    "key": "k-02",
-   "name": "KONZOLA_PLOSCA_200X150",
-   "description": "Konzola plosca 200x150",
+   "name": "BRACKET_PLATE_200X150",
+   "description": "Bracket plate 200x150",
    "project": "26-0412",
    "material": "S235",
    "thicknessMm": 3,
@@ -621,8 +621,8 @@
   },
   {
    "key": "k-03",
-   "name": "REBRO_120X80",
-   "description": "Rebro 120x80",
+   "name": "RIB_120X80",
+   "description": "Rib 120x80",
    "project": "26-0412",
    "material": "S235",
    "thicknessMm": 3,
@@ -638,8 +638,8 @@
   },
   {
    "key": "o-01",
-   "name": "OHISJE_STRANICA_600X400",
-   "description": "Ohisje stranica 600x400",
+   "name": "HOUSING_SIDE_600X400",
+   "description": "Housing side 600x400",
    "project": "26-0410",
    "material": "INOX 1.4301",
    "thicknessMm": 2,
@@ -655,8 +655,8 @@
   },
   {
    "key": "o-02",
-   "name": "OHISJE_POKROV_620X420",
-   "description": "Ohisje pokrov 620x420",
+   "name": "HOUSING_COVER_620X420",
+   "description": "Housing cover 620x420",
    "project": "26-0410",
    "material": "INOX 1.4301",
    "thicknessMm": 2,
@@ -672,8 +672,8 @@
   },
   {
    "key": "p-01",
-   "name": "PRIROBNICA_DN200_340",
-   "description": "Prirobnica dn200 340",
+   "name": "FLANGE_DN200_340",
+   "description": "Flange dn200 340",
    "project": "26-0409",
    "material": "S355",
    "thicknessMm": 10,
@@ -689,8 +689,8 @@
   },
   {
    "key": "p-02",
-   "name": "SLEPA_PRIROBNICA_DN200",
-   "description": "Slepa prirobnica dn200",
+   "name": "BLIND_FLANGE_DN200",
+   "description": "Blind flange dn200",
    "project": "26-0409",
    "material": "S355",
    "thicknessMm": 15,
@@ -706,8 +706,8 @@
   },
   {
    "key": "n-01",
-   "name": "NOSILEC_PODESTA_800X120",
-   "description": "Nosilec podesta 800x120",
+   "name": "PLATFORM_SUPPORT_800X120",
+   "description": "Platform support 800x120",
    "project": "26-0398",
    "material": "S235",
    "thicknessMm": 8,
@@ -723,8 +723,8 @@
   },
   {
    "key": "n-02",
-   "name": "VEZNA_PLOCEVINA_250X250",
-   "description": "Vezna plocevina 250x250",
+   "name": "CONNECTING_PLATE_250X250",
+   "description": "Connecting plate 250x250",
    "project": "26-0398",
    "material": "S235",
    "thicknessMm": 8,
@@ -871,7 +871,7 @@
    "createdHoursAgo": 0.5
   },
   {
-   "name": "26-0412 Konzole",
+   "name": "26-0412 Brackets",
    "status": "released",
    "sheets": 3,
    "hoursAgo": 3,
@@ -893,7 +893,7 @@
    "createdHoursAgo": 3.5
   },
   {
-   "name": "26-0409 Prirobnice",
+   "name": "26-0409 Flanges",
    "status": "cut",
    "sheets": 2,
    "hoursAgo": 20,
@@ -911,7 +911,7 @@
    "createdHoursAgo": 25
   },
   {
-   "name": "26-0410 Ohišje",
+   "name": "26-0410 Housing",
    "status": "draft",
    "sheets": 0,
    "hoursAgo": 26,
@@ -929,7 +929,7 @@
    "createdHoursAgo": 26.5
   },
   {
-   "name": "Ostanki teden 43",
+   "name": "Remnants week 43",
    "status": "cut",
    "sheets": 1,
    "hoursAgo": 50,
@@ -951,7 +951,7 @@
    "createdHoursAgo": 60
   },
   {
-   "name": "26-0398 Nosilci",
+   "name": "26-0398 Supports",
    "status": "cut",
    "sheets": 4,
    "hoursAgo": 75,

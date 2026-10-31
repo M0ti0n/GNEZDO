@@ -24,11 +24,13 @@ interface Props {
   homeActive: boolean;
   onHome: () => void;
   importPanel: ImportPanelProps;
+  /** Show the number of pieces from the file name (import rule). */
+  showQty: boolean;
 }
 
 // Left side: a rail that opens a docked panel for finding imported parts
 // (to drag into a job), searching jobs, or importing new drawings.
-export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeActive, onHome, importPanel }: Props) {
+export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeActive, onHome, importPanel, showQty }: Props) {
   const toggle = (m: DrawerMode) => onMode(mode === m ? null : m);
   return (
     <aside className={`drawer${mode ? " is-open" : ""}`}>
@@ -53,7 +55,7 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeA
       </div>
       {mode && (
         <div className="drawer-panel">
-          {mode === "parts" && <PartsPanel targetJob={targetJob} onAddToJob={onAddToJob} onClose={() => onMode(null)} />}
+          {mode === "parts" && <PartsPanel targetJob={targetJob} onAddToJob={onAddToJob} showQty={showQty} onClose={() => onMode(null)} />}
           {mode === "jobs" && <JobsPanel onSearch={onJobSearch} onClose={() => onMode(null)} />}
           {mode === "import" && <ImportPanel {...importPanel} onClose={() => onMode(null)} />}
         </div>
@@ -112,7 +114,7 @@ function toFilter(d: Draft): PartFilter {
 
 const sameFilter = (a: PartFilter, b: PartFilter) => JSON.stringify(a) === JSON.stringify(b);
 
-function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" | "onAddToJob"> & { onClose: () => void }) {
+function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "targetJob" | "onAddToJob" | "showQty"> & { onClose: () => void }) {
   const [d, setD] = useState<Draft>(EMPTY_DRAFT);
   const [applied, setApplied] = useState<PartFilter>(toFilter(EMPTY_DRAFT));
   const [more, setMore] = useState(false);   // extended filters open
@@ -276,13 +278,13 @@ function PartsPanel({ targetJob, onAddToJob, onClose }: Pick<Props, "targetJob" 
                   <PartThumb part={p} size={58} />
                   <span className="part-name">{p.name}</span>
                   {p.revision > 1 && <VersionBadge part={p} onOpen={setHistory} />}
-                  <span className="part-meta">{sizeLabel(p)}<b>{p.qty}×</b></span>
+                  <span className="part-meta">{sizeLabel(p)}{showQty && <b>{p.qty}×</b>}</span>
                 </button>
               ) : (
                 <button className={`part-row${on ? " is-selected" : ""}`} {...common}>
                   <PartThumb part={p} size={34} />
                   <span className="pr-name">{p.name}</span>
-                  <span className="pr-qty">{p.revision > 1 && <VersionBadge part={p} onOpen={setHistory} />}{p.qty}×</span>
+                  <span className="pr-qty">{p.revision > 1 && <VersionBadge part={p} onOpen={setHistory} />}{showQty && `${p.qty}×`}</span>
                   <span className="pr-meta">
                     <span>{p.project}</span>
                     <span>{materialKey(p.material, p.thicknessMm)}</span>

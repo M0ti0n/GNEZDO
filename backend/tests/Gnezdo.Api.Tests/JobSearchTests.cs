@@ -24,16 +24,16 @@ public sealed class JobSearchTests(ApiFixture api)
     [Fact]
     public async Task Job_name_is_contains()
     {
-        Assert.Equal(new[] { "26-0412 Konzole" }, Names(await Search("?name=konzole")));
+        Assert.Equal(new[] { "26-0412 Brackets" }, Names(await Search("?name=brackets")));
     }
 
     [Fact]
     public async Task Material_and_thickness_match_parts_in_the_job()
     {
-        Assert.Equal(new[] { "26-0409 Prirobnice" }, Names(await Search("?material=S355")));
-        Assert.Equal(new[] { "26-0412 Konzole", "Ostanki teden 43" }, Names(await Search("?material=S235&thicknessMm=3")));
-        Assert.Equal(new[] { "26-0409 Prirobnice" }, Names(await Search("?thicknessMm=15")));
-        Assert.Equal(new[] { "26-0398 Nosilci", "Ostanki teden 43" }, Names(await Search("?material=S235&thicknessMm=8")));
+        Assert.Equal(new[] { "26-0409 Flanges" }, Names(await Search("?material=S355")));
+        Assert.Equal(new[] { "26-0412 Brackets", "Remnants week 43" }, Names(await Search("?material=S235&thicknessMm=3")));
+        Assert.Equal(new[] { "26-0409 Flanges" }, Names(await Search("?thicknessMm=15")));
+        Assert.Equal(new[] { "26-0398 Supports", "Remnants week 43" }, Names(await Search("?material=S235&thicknessMm=8")));
         Assert.Empty(await Search("?material=HARDOX&thicknessMm=8"));
     }
 
@@ -41,14 +41,14 @@ public sealed class JobSearchTests(ApiFixture api)
     public async Task Project_finds_jobs_containing_parts_of_that_project()
     {
         var jobs = await Search("?project=26-0398");
-        Assert.Equal(new[] { "26-0398 Nosilci", "Ostanki teden 43" }, Names(jobs));
+        Assert.Equal(new[] { "26-0398 Supports", "Remnants week 43" }, Names(jobs));
         Assert.All(jobs, j => Assert.Contains("26-0398", j.Projects));
     }
 
     [Fact]
     public async Task Part_name_finds_every_job_it_is_used_in()
     {
-        Assert.Equal(new[] { "26-0398 Nosilci", "Ostanki teden 43" }, Names(await Search("?part=VEZNA_PLOCEVINA")));
+        Assert.Equal(new[] { "26-0398 Supports", "Remnants week 43" }, Names(await Search("?part=CONNECTING_PLATE")));
         Assert.Equal(new[] { "Miha2787" }, Names(await Search("?part=triangle")));
     }
 
@@ -70,7 +70,7 @@ public sealed class JobSearchTests(ApiFixture api)
     [Fact]
     public async Task Filters_combine()
     {
-        Assert.Equal(new[] { "26-0398 Nosilci" }, Names(await Search("?project=26-0398&part=NOSILEC")));
+        Assert.Equal(new[] { "26-0398 Supports" }, Names(await Search("?project=26-0398&part=PLATFORM_SUPPORT")));
         Assert.Empty(await Search("?project=26-0398&material=HARDOX"));
     }
 
@@ -86,10 +86,10 @@ public sealed class JobSearchTests(ApiFixture api)
     public async Task Results_list_every_material_and_thickness_of_a_job()
     {
         var all = await Search("");
-        var ostanki = all.Single(j => j.Name == "Ostanki teden 43");
-        Assert.Equal(new[] { "INOX 1.4301", "S235" }, ostanki.Materials);
-        Assert.Equal(new[] { 2m, 3m, 8m }, ostanki.Thicknesses);
-        Assert.Equal(new[] { 10m, 15m }, all.Single(j => j.Name == "26-0409 Prirobnice").Thicknesses);
+        var remnants = all.Single(j => j.Name == "Remnants week 43");
+        Assert.Equal(new[] { "INOX 1.4301", "S235" }, remnants.Materials);
+        Assert.Equal(new[] { 2m, 3m, 8m }, remnants.Thicknesses);
+        Assert.Equal(new[] { 10m, 15m }, all.Single(j => j.Name == "26-0409 Flanges").Thicknesses);
         var miha = all.Single(j => j.Name == "Miha2787");
         Assert.Equal(new[] { "HARDOX" }, miha.Materials);
         Assert.Equal(new[] { 1m }, miha.Thicknesses);
