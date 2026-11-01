@@ -13,7 +13,7 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { partGeometry } from "./import/toPart";
 import type { SavePart } from "./api/api";
-import { applyRules, loadRules, saveRules, type ImportRules } from "./import/rules";
+import { applyRules, loadRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
 import { RulesPage } from "./pages/RulesPage";
 import { quantityFromName } from "./import/geometry";
 import { HomePage, type HomeAction } from "./pages/HomePage";
@@ -27,6 +27,7 @@ import { JobToolbar } from "./shell/JobToolbar";
 import { buildRequest, isFinished, nestApi, nestProblem, nestsOfJob, solutionsFromSaved, type NestMode, type NestRun, type Solution } from "./job/nest";
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type NestSelection } from "./components/NestView";
+import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
 import { loadMachineSettings, saveMachineSettings, type MachineSettings } from "./job/machine";
 import { setMachineLimit } from "./job/stock";
 import { loadStockSettings, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
@@ -120,6 +121,32 @@ export function App() {
 
   const openImport = () => setDrawer("import");
 
+  // EDIT on a saved part (Part properties, right click in the part list): the part opens on the
+  // importer canvas with its own properties; Process saves it back (replacing it, the old version kept).
+  useEffect(() => {
+    const onEdit = async (ev: Event) => {
+      const part = (ev as CustomEvent<PartSummary>).detail;
+      try {
+        const [drawing, detail] = await Promise.all([drawingOfPart(part), api.part(part.id)]);
+        const item: ImportItem = {
+          id: `imp-db-${part.id}-${Date.now().toString(36)}`, fileName: `${part.name}.dxf`, name: part.name, qty: null,
+          state: "ready", drawing, checked: true, processed: false,
+          source: {
+            partId: part.id, name: part.name, project: part.project, description: part.description, material: part.material,
+            thicknessMm: String(part.thicknessMm), rotations: detail.rotations as Rotation[], mirror: detail.mirror, filler: detail.filler,
+          },
+        };
+        setImports((list) => [...list, item]);
+        setDrawer("import");
+        dispatch({ type: "open", tab: drawingTab(item.id, item.name) });
+      } catch (e) {
+        setToast(`Could not open ${part.name}: ${(e as Error).message}`);
+      }
+    };
+    window.addEventListener(EDIT_PART_EVENT, onEdit);
+    return () => window.removeEventListener(EDIT_PART_EVENT, onEdit);
+  }, []);
+
   const openItem = (item: ImportItem) => {
     if (item.state !== "ready") return;
     patchItem(item.id, { checked: true });   // looking at a part counts as checking it
@@ -178,6 +205,8 @@ export function App() {
       setSaving(true);
       try {
         const res = await api.saveParts(green.map((i) => {
+          // a part opened from the database (EDIT) is saved back over itself, with its own values
+          if (i.source) return toSave(i, { ...i.source, rotations: [...i.source.rotations] }, true);
           return toSave(i, { ...importProps, name: i.name, mirror: mirrorFor(i, importProps, rules) }, false);
         }), "Import list");
         const saved = green.filter((_, k) => res[k]?.status !== "exists").map((i) => i.id);
@@ -496,12 +525,18 @@ export function App() {
               <ImportPage key={shownItem.id}
                 drawing={shownItem.drawing}
                 processed={shownItem.processed}
-                properties={importProps}
-                nestRules={{ rotations: importProps.rotations, mirror: importProps.mirror, filler: importProps.filler }}
+                properties={shownItem.source ? { ...importProps, ...shownItem.source } : importProps}
+                nestRules={shownItem.source
+                  ? { rotations: shownItem.source.rotations, mirror: shownItem.source.mirror, filler: shownItem.source.filler }
+                  : { rotations: importProps.rotations, mirror: importProps.mirror, filler: importProps.filler }}
                 onProcess={() => setProcessing(shownItem.id)}
                 onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
-                onNestRules={(r) => setImportProps((p) => ({ ...p, rotations: r.rotations, mirror: r.mirror, filler: r.filler }))}
+                onNestRules={(r) => shownItem.source
+                  // a part from the database: its own rules change, not the batch's
+                  ? patchItem(shownItem.id, { source: { ...shownItem.source, rotations: r.rotations, mirror: r.mirror, filler: r.filler } })
+                  : setImportProps((p) => ({ ...p, rotations: r.rotations, mirror: r.mirror, filler: r.filler }))}
                 mirrorBlocked={mirrorBlocked(shownItem, rules)}
+                fromDatabase={!!shownItem.source}
                 onEdit={(drawing, label) => editDrawing(shownItem.id, shownItem.drawing!, drawing, label)}
                 undone={undone} />
               </ErrorBoundary>
@@ -519,7 +554,7 @@ export function App() {
       {processingItem?.drawing && (
         <ProcessDialog
           drawing={processingItem.drawing}
-          initial={{
+          initial={processingItem.source ? { ...processingItem.source, rotations: [...processingItem.source.rotations] } : {
             ...importProps,
             name: processingItem.name,
           }}
@@ -529,7 +564,8 @@ export function App() {
             const [r] = await api.saveParts([toSave(processingItem, v, replace)], processingItem.fileName);
             if (r?.status === "exists") throw new Error("a part with this project and name was just saved by someone else; check again");
             setProcessing(null);
-            carryOver({ ...v, rotations: [...v.rotations] });
+            // a part opened from the database keeps its own values; they do not become the batch's
+            if (!processingItem.source) carryOver({ ...v, rotations: [...v.rotations] });
             dropSaved([processingItem.id]);
             setToast(`${r?.status === "replaced" ? "Replaced" : "Saved"} ${v.name.trim()} in the database`);
           }}

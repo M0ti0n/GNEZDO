@@ -8,6 +8,7 @@ import { Combobox } from "./Combobox";
 import { fullDate, when } from "./format";
 import { PartThumb } from "./PartThumb";
 import { usePickLists } from "./pickLists";
+import { editPart, exportPart } from "../import/partFile";
 
 interface Props {
   part: PartSummary;
@@ -32,6 +33,13 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  useEffect(() => {
+    if (!exportOpen) return;
+    const close = () => setExportOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [exportOpen]);
   const lists = usePickLists(f?.material ?? "");
   const set = (patch: Partial<Form>) => setF((x) => (x ? { ...x, ...patch } : x));
 
@@ -177,6 +185,18 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
           ) : (
             <>
               <button type="button" className="btn btn-danger-plain" onClick={() => setConfirmDelete(true)} disabled={!detail || busy}>Delete part</button>
+              <button type="button" className="btn btn-plain" disabled={busy} onClick={() => { onClose(); editPart(part); }}
+                title="Open the part on the importer canvas to change it or measure it; Process saves it back">Edit</button>
+              <span className="pp-export">
+                <button type="button" className="btn btn-plain" disabled={busy} aria-haspopup="menu" aria-expanded={exportOpen}
+                  onClick={(e) => { e.stopPropagation(); setExportOpen((o) => !o); }}>Export ▾</button>
+                {exportOpen && (
+                  <span className="pp-export-menu" role="menu">
+                    <button type="button" role="menuitem" onClick={() => { setExportOpen(false); void exportPart(part, "dxf"); }}>DXF file</button>
+                    <button type="button" role="menuitem" onClick={() => { setExportOpen(false); void exportPart(part, "svg"); }}>SVG file</button>
+                  </span>
+                )}
+              </span>
               <span className="proc-missing">
                 {missing.length ? `Enter ${missing.join(", ")} to save.` : changed ? "The version before is kept and can be restored." : ""}
               </span>

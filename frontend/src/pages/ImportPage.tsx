@@ -59,6 +59,8 @@ interface Props {
   onEdit: (drawing: Drawing, label: string) => void;
   /** Set after Undo / Redo: what was undone or redone (a new object each time). */
   undone?: { text: string } | null;
+  /** Opened from the database (EDIT): its own properties and rules are shown and saved back over it. */
+  fromDatabase?: boolean;
   /** Process tool on a part without problems: opens the save pop-up. */
   onProcess: () => void;
   /** Properties tool: opens the part's properties. */
@@ -69,7 +71,7 @@ interface Props {
   mirrorBlocked?: boolean;
 }
 
-export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false }: Props) {
+export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false, fromDatabase = false }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
   const [tool, setTool] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -709,7 +711,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   Filler
                 </label>
               </div>
-              <p className="gc-note">{mirrorBlocked ? "No mirror: this part has open cut lines. " : ""}Same as Properties: applies to every part in the list.</p>
+              <p className="gc-note">{mirrorBlocked ? "No mirror: this part has open cut lines. " : ""}{fromDatabase ? "This part's own rules (opened from the database); Process saves them back with it." : "Same as Properties: applies to every part in the list."}</p>
             </>
           )}
           </div>}

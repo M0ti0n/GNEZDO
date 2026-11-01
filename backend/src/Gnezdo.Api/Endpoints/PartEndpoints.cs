@@ -36,6 +36,13 @@ public static class PartEndpoints
         app.MapPost("/api/parts/existing", PartSave.ExistingAsync);
         app.MapPost("/api/parts", PartSave.SaveAsync);
         app.MapGet("/api/parts/{id:int}/history", PartSave.HistoryAsync);
+        // the part's drawing (entities with roles), for EDIT on the importer canvas and EXPORT
+        app.MapGet("/api/parts/{id:int}/geometry", async (int id, GnezdoDb db, CancellationToken ct) =>
+        {
+            var row = await db.Parts.AsNoTracking().Where(p => p.Id == id).Select(p => new { p.Geometry }).FirstOrDefaultAsync(ct);
+            return row is null ? Results.NotFound()
+                : Results.Content(string.IsNullOrWhiteSpace(row.Geometry) ? "null" : row.Geometry, "application/json");
+        });
         app.MapPost("/api/parts/{id:int}/restore", PartSave.RestoreAsync);
         app.MapGet("/api/parts/{id:int}", PartEdit.GetAsync);
         app.MapPut("/api/parts/{id:int}", PartEdit.UpdateAsync);

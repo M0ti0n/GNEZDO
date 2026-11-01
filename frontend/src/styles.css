@@ -1450,3 +1450,11 @@ th.num .th-sort { flex-direction: row-reverse; }
 .origin-corner.is-bottom-left { left: 6px; bottom: 6px; }
 .origin-corner.is-bottom-right { right: 6px; bottom: 6px; }
 .origin-label { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-cond); font-weight: 600; font-size: 18px; color: var(--ink-3); pointer-events: none; }
+
+/* Part properties: EXPORT menu (DXF / SVG) */
+.pp-export { position: relative; display: inline-flex; }
+.pp-export-menu { position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 5; display: flex; flex-direction: column; min-width: 130px; padding: 4px;
+  background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px rgba(10, 40, 25, .18); }
+.pp-export-menu button { padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.pp-export-menu button:hover { background: var(--green-tint); color: var(--green-ink); }
+.ctx-sep { height: 1px; margin: 4px 6px; background: var(--line); }

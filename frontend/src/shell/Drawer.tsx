@@ -8,6 +8,7 @@ import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { JobsPanel } from "./JobsPanel";
 import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PartPropertiesDialog } from "../components/PartPropertiesDialog";
+import { editPart, exportPart } from "../import/partFile";
 import { ImportPanel, type ImportPanelProps } from "./ImportPanel";
 
 export type DrawerMode = "parts" | "jobs" | "import";
@@ -363,13 +364,17 @@ function PartMenu({ x, y, part, onClose, onProperties, onVersions }: {
   }, [onClose]);
   const pick = (f: () => void) => () => { onClose(); f(); };
   // keep the menu on screen
-  const left = Math.min(x, window.innerWidth - 200), top = Math.min(y, window.innerHeight - 110);
+  const left = Math.min(x, window.innerWidth - 200), top = Math.min(y, window.innerHeight - 220);
   return (
     <div ref={ref} className="ctx-menu" role="menu" style={{ left, top }} onContextMenu={(e) => e.preventDefault()}>
       <div className="ctx-title">{part.name}</div>
       <button role="menuitem" onClick={pick(onProperties)}>Properties…</button>
       <button role="menuitem" onClick={pick(onVersions)} disabled={part.revision < 2}
         title={part.revision < 2 ? "Only one version so far" : undefined}>Versions{part.revision > 1 ? ` (${part.revision})` : ""}…</button>
+      <div className="ctx-sep" role="separator" />
+      <button role="menuitem" onClick={pick(() => editPart(part))} title="Open the part on the importer canvas to change it or measure it">Edit</button>
+      <button role="menuitem" onClick={pick(() => void exportPart(part, "dxf"))}>Export DXF</button>
+      <button role="menuitem" onClick={pick(() => void exportPart(part, "svg"))}>Export SVG</button>
     </div>
   );
 }
