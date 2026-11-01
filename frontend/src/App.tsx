@@ -508,6 +508,7 @@ export function App() {
                   ...m, [job.id]: (m[job.id] ?? []).map((jp) => (jp.part.id === pid ? { ...jp, ...patch } : jp)),
                 }))}
                 onNotice={setToast}
+                origin={machine.origin}
                 onRemove={(pid) => setJobParts((m) => ({ ...m, [job.id]: (m[job.id] ?? []).filter((jp) => jp.part.id !== pid) }))}
                 onOpenParts={() => setDrawer("parts")}
               />

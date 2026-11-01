@@ -35,7 +35,9 @@ const transformOf = (p: { x: number; y: number; angle: number; mirror: boolean }
 export function SheetSvg({ sheet, parts, titles }: { sheet: NestedSheet; parts: Map<string, PartRef>; titles?: boolean }) {
   return (
     <svg className="sheet-svg" viewBox={`-4 -4 ${sheet.lengthMm + 8} ${sheet.widthMm + 8}`} preserveAspectRatio="xMidYMid meet">
-      <rect className="sheet-plate" x={0} y={0} width={sheet.lengthMm} height={sheet.widthMm} />
+      {sheet.outline?.length
+        ? <path className="sheet-plate" fillRule="evenodd" d={sheet.outline.map((lp) => lp.map(([x, y], i) => `${i ? "L" : "M"}${x} ${y}`).join("") + "Z").join("")} />
+        : <rect className="sheet-plate" x={0} y={0} width={sheet.lengthMm} height={sheet.widthMm} />}
       {sheet.parts.map((p, i) => {
         const part = parts.get(p.partId);
         if (!part) return null;

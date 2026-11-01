@@ -3,7 +3,7 @@
 import { api } from "../api/api";
 import type { JobPart } from "../api/types";
 import type { CustomNestSettings } from "../components/CustomNestDialog";
-import type { StockSheet } from "./stock";
+import { DEFAULT_PART_GAP_MM, defaultTrims, type StockSheet } from "./stock";
 import type { Origin } from "./machine";
 
 export type NestMode = "fast" | "thorough" | "custom";
@@ -23,6 +23,12 @@ export interface NestRequestSheet {
   id: string; material: string; thicknessMm: number; lengthMm: number; widthMm: number;
   /** null: as many as needed */
   qty: number | null; source: string;
+  /** gap from each edge to the parts by the machine's axes (X-, Y- at its 0,0) [mm] */
+  trims: { xMinus: number; xPlus: number; yMinus: number; yPlus: number };
+  partGapMm: number;
+  kerfMm?: number;
+  /** a shaped sheet (DXF): loops, mm, y down; first the outline, then holes */
+  outline?: [number, number][][];
 }
 
 export interface NestRequest {
@@ -41,6 +47,8 @@ export interface PlacedPart { partId: string; x: number; y: number; angle: numbe
 
 export interface NestedSheet {
   sheetId: string; lengthMm: number; widthMm: number; material: string; thicknessMm: number;
+  /** a shaped sheet: its loops (y down), first the outline */
+  outline?: [number, number][][];
   parts: PlacedPart[];
 }
 
@@ -144,6 +152,7 @@ export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: 
     sheets: stock.map((s) => ({
       id: s.id, material: s.material, thicknessMm: s.thicknessMm, lengthMm: s.lengthMm, widthMm: s.widthMm,
       qty: s.unlimited ? null : s.qty, source: s.source,
+      trims: s.trims ?? defaultTrims(), partGapMm: s.partGapMm ?? DEFAULT_PART_GAP_MM, kerfMm: s.kerfMm, outline: s.outline,
     })),
   };
 }
@@ -247,7 +256,10 @@ export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string
   }
   const L = sheet.lengthMm, W = sheet.widthMm;
   cutX = Math.min(L, cutX); cutY = Math.min(W, cutY);
-  const sheetA = L * W, cutA = cutX * cutY, remnantA = (L - cutX) * W;
+  // a shaped sheet (remnant, DXF): its own area (outline less holes); the strips are measured on its extents
+  const shoelace = (lp: [number, number][]) => Math.abs(lp.reduce((a, p, i) => { const q = lp[(i + 1) % lp.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
+  const sheetA = sheet.outline?.length ? shoelace(sheet.outline[0]) - sheet.outline.slice(1).reduce((a, lp) => a + shoelace(lp), 0) : L * W;
+  const cutA = cutX * cutY, remnantA = Math.min((L - cutX) * W, Math.max(0, sheetA - cutA));
   const unusedA = Math.max(0, sheetA - cutA - remnantA);
   return {
     cutX, cutY, pieces: sheet.parts.length,

@@ -1458,3 +1458,26 @@ th.num .th-sort { flex-direction: row-reverse; }
 .pp-export-menu button { padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; text-align: left; font: inherit; cursor: pointer; }
 .pp-export-menu button:hover { background: var(--green-tint); color: var(--green-ink); }
 .ctx-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+
+/* Sheet properties (STOCK panel [i]): laid out like Part properties */
+.sp-icon { color: var(--green-ink); background: var(--green-tint); }
+.sp-thumb { padding: 10px; }
+.sp-svg { width: 100%; height: 100%; }
+.sp-plate { fill: #e8edef; stroke: #6f7d84; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.sp-trim { fill: none; stroke: var(--green); stroke-width: 1.2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+.sp-origin { fill: #d32f2f; }
+.sp-turn { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+.sp-turn-btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 1.5px solid var(--green-ink); border-radius: 7px;
+  background: var(--green-tint); color: var(--green-ink); font-weight: 600; font-size: 13.5px; white-space: nowrap; }
+.sp-turn-btn:hover { background: #d3ecc6; }
+.sp-hint { margin: 8px 2px 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
+.sp-grid { display: grid; grid-template-columns: 104px 1fr 1fr; gap: 8px 10px; align-items: center; margin-top: 4px; }
+.sp-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+.sp-field { display: flex; align-items: center; gap: 6px; }
+.sp-field > span:first-child { width: 22px; flex: none; font-weight: 600; color: var(--ink-2); font-size: 13.5px; }
+.sp-field .field { flex: 1; min-width: 0; height: 34px; text-align: right; }
+.sp-field .field.is-too-big { border-color: #e7a9a4; background: #fde8e7; color: #b3261e; }
+.sp-unit { color: var(--ink-3); font-size: 13px; }
+.sp-unlimited { font-size: 14px; }
+.sp-warn { margin: 10px 0 0; color: #b3261e; font-size: 13.5px; }
+.sp-note { margin: 10px 0 0; color: var(--ink-3); font-size: 13px; }

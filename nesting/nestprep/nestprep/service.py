@@ -137,6 +137,34 @@ def rotations(steps) -> list[dict]:
     return [{"start": a, "end": a} for a in sorted(angles)]
 
 
+def sheet_bin(s: dict, edge: float, flips: tuple[int, int] = (1, 1)) -> dict:
+    """PackingSolver bin of a stock sheet, in the engine's frame (flipped to the origin corner).
+
+    A plain sheet is the area inside its trims: X- / Y- are the gaps at the machine's 0,0 in X / Y,
+    which in the engine's frame is its own 0,0, so the trims need no flipping. A shaped sheet
+    (outline from a DXF, y down) is its outline with its holes as defects, kept the largest trim away."""
+    L, W = float(s["lengthMm"]), float(s["widthMm"])
+    t = s.get("trims") or {}
+    tx0, tx1 = float(t.get("xMinus", edge)), float(t.get("xPlus", edge))
+    ty0, ty1 = float(t.get("yMinus", edge)), float(t.get("yPlus", edge))
+    loops = s.get("outline") or []
+    if not loops:
+        x0, y0, x1, y1 = tx0, ty0, L - tx1, W - ty1
+        if x1 <= x0 or y1 <= y0:
+            raise ValueError("the trims leave no room on the sheet")
+        return {"type": "general", "elements": _elements([(x0, y0), (x1, y0), (x1, y1), (x0, y1)]),
+                "item_bin_minimum_spacing": 0.0}
+    sx, sy = flips
+    fl = [[((L - x) if sx < 0 else x, (W - y) if sy < 0 else y) for x, y in lp] for lp in loops]
+    pos = lambda lp: lp if _area(lp) > 0 else lp[::-1]
+    b = {"type": "general", "elements": _elements(pos(fl[0])), "item_bin_minimum_spacing": max(tx0, tx1, ty0, ty1)}
+    if len(fl) > 1:
+        # a hole in the sheet is an edge too: the parts keep the same distance from it
+        b["defects"] = [{"type": "general", "elements": _elements(pos(lp)), "item_defect_minimum_spacing": b["item_bin_minimum_spacing"]}
+                        for lp in fl[1:]]
+    return b
+
+
 def _rect(L: float, W: float) -> dict:
     return {"type": "general", "elements": _elements([(0, 0), (L, 0), (L, W), (0, W)])}
 
@@ -184,8 +212,7 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
         bins = []
         for s in sheets:
             L, W = float(s["lengthMm"]), float(s["widthMm"])
-            b = {**_rect(L, W), "copies": int(s["qty"]) if s.get("qty") is not None else pieces,
-                 "item_bin_minimum_spacing": edge}
+            b = {**sheet_bin(s, edge, flips), "copies": int(s["qty"]) if s.get("qty") is not None else pieces}
             if not limited:
                 # remnants first: they cost less than a new sheet of the same size
                 b["cost"] = L * W * (0.5 if s.get("source") == "remnant" else 1.0)
@@ -194,8 +221,10 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
             # not enough sheets for everything maybe: as many parts as fit (by area)
             for it in items:
                 it["profit"] = abs(_area(path_loops_outer(it)))
+        # one part gap per nest: the largest any of the group's sheets asks for
+        group_gap = max([float(s["partGapMm"]) for s in sheets if s.get("partGapMm") is not None] or [gap])
         inst = {"objective": "knapsack" if limited else "variable-sized-bin-packing",
-                "parameters": {"item_item_minimum_spacing": gap},
+                "parameters": {"item_item_minimum_spacing": group_gap},
                 "bin_types": bins, "item_types": items}
         groups.append({"label": label, "material": parts[0].get("material", ""),
                        "thicknessMm": parts[0].get("thicknessMm"), "instance": inst,
@@ -268,8 +297,11 @@ class Run:
                         a = (-a) % 360.0  # one flip turns the rotation the other way
                 parts.append({"partId": g["partIds"][p["orig_type"]], "x": round(x, 3), "y": round(y, 3),
                               "angle": round(a, 6), "mirror": m})
-            out.append({"sheetId": s.get("id"), "lengthMm": L, "widthMm": W,
-                        "material": g["material"], "thicknessMm": g["thicknessMm"], "parts": parts})
+            sheet = {"sheetId": s.get("id"), "lengthMm": L, "widthMm": W,
+                     "material": g["material"], "thicknessMm": g["thicknessMm"], "parts": parts}
+            if s.get("outline"):
+                sheet["outline"] = s["outline"]
+            out.append(sheet)
         return out
 
     def write_best(self, i: int, sheets: list[dict]):
