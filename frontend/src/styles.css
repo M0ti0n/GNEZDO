@@ -89,6 +89,7 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 
 /* Undo / Redo: right after the app menu, act on the open tab */
 .undo-redo { display: flex; align-items: center; gap: 2px; flex-shrink: 0; padding-right: 6px; border-right: 1px solid rgba(255, 255, 255, .22); margin: 8px 0; }
+.save-btns { display: flex; align-items: center; gap: 2px; flex-shrink: 0; padding-right: 6px; border-right: 1px solid rgba(255, 255, 255, .22); margin: 8px 0; }
 .undo-btn {
   display: grid; place-items: center; width: 34px; height: 30px; border-radius: 6px; color: #fff;
 }

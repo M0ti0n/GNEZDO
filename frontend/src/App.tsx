@@ -29,7 +29,7 @@ import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNe
 import { NestPage, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
 import { loadLocalMachines, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
-import { NewJobDialog } from "./components/NewJobDialog";
+import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
 import { setMachineLimit } from "./job/stock";
 import { loadStockSettings, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -437,15 +437,19 @@ export function App() {
   // Saving a job (Work parts SAVE / SAVE AS; until those buttons exist, Ctrl+S): parts with their
   // quantities, the stock sheets and every finished solution. A new job gets its database id on the first save.
   const [jobServerId, setJobServerId] = useState<Record<string, string>>({});
-  const saveJob = async (jobId: string, title: string) => {
+  // SAVE writes over the job (a new one is created on its first save); SAVE AS makes a new job under
+  // another name, and the tab goes on as that new job.
+  const saveJob = async (jobId: string, title: string, asNew = false) => {
     const parts = jobParts[jobId];
     if (!parts) return;
-    const serverId = jobId.startsWith("new-") ? jobServerId[jobId] ?? null : jobId;
+    const known = jobServerId[jobId] ?? (jobId.startsWith("new-") ? null : jobId);
+    const serverId = asNew ? null : known;
     const st = solsOf(jobId);
     try {
       const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: USER_NAME, machine: machineFor(jobId).id });
       if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
-      setToast(`Job saved${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}`);
+      if (asNew) dispatch({ type: "rename", id: `job:${jobId}`, title });
+      setToast(`${asNew ? `Saved as ${title}` : "Job saved"}${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}`);
     } catch (e) {
       setToast(`Not saved: ${(e as Error).message}`);
     }
@@ -462,24 +466,21 @@ export function App() {
 
   // Another machine for a job: of another technology (laser -> plasma, ...) its solutions are out of
   // date and it has to be nested again; of the same one they stay, with a reminder to check the gaps.
-  const changeMachine = (jobId: string, id: string) => {
-    const from = machineFor(jobId), to = machineOf(machines, id);
-    if (from.id === to.id) return;
+  // Another machine for a job: gaps, cutting area, materials and thicknesses all change with it, so
+  // the stock and the solutions go (asked first when there are any); the name and part list stay.
+  const [machineAsk, setMachineAsk] = useState<{ jobId: string; id: string } | null>(null);
+  const changeMachine = (jobId: string, id: string, confirmed = false) => {
+    if (machineFor(jobId).id === id) return;
+    const has = (jobStock[jobId] ?? []).length > 0 || solsOf(jobId).list.length > 0;
+    if (solsOf(jobId).list.some((x) => !isFinished(x.run) && !x.error)) { setToast("A solution is running: stop it first"); setMachineAsk(null); return; }
+    if (has && !confirmed) { setMachineAsk({ jobId, id }); return; }
     setJobMachine((m) => ({ ...m, [jobId]: id }));
-    // stock sheets still on the old machine's gaps take the new one's (sheets changed by hand keep theirs)
-    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-    setJobStock((m) => ({ ...m, [jobId]: (m[jobId] ?? []).map((sh) =>
-      same(sh.trims ?? from.trims, from.trims) && (sh.partGapMm ?? from.partGapMm) === from.partGapMm
-        ? { ...sh, trims: { ...to.trims }, partGapMm: to.partGapMm, kerfMm: to.kerfMm || undefined } : sh) }));
-    const sols = solsOf(jobId).list;
-    if (!sols.length) return;
-    if (from.technology !== to.technology) {
-      setSols(jobId, (st) => ({ ...st, list: st.list.map((x) => ({ ...x, outdated: true })) }));
-      setToast(`Nested for ${from.name}: the solutions are out of date, nest the job again for ${to.name}`);
-    } else {
-      setToast(`Solutions kept: check the gaps of ${to.name}`);
-    }
+    setJobStock((m) => ({ ...m, [jobId]: [] }));
+    setJobSol((m) => ({ ...m, [jobId]: undefined }));
+    setJobScreen((m) => ({ ...m, [jobId]: "parts" }));
+    setMachineAsk(null);
   };
+  const [saveAsFor, setSaveAsFor] = useState<{ jobId: string; name: string } | null>(null);
   // the cutting area that the STOCK panel checks: the shown job's machine
   useEffect(() => { const m = machineFor(job?.id); setMachineLimit(m.cutLengthMm, m.cutWidthMm); });
 
@@ -546,6 +547,7 @@ export function App() {
         onClose={requestClose}
         onMenu={(id) => showView(id)}
         undo={undoState}
+        save={job ? { onSave: () => void saveJob(job.id, job.title), onSaveAs: () => setSaveAsFor({ jobId: job.id, name: `${job.title} copy` }) } : null}
       />
       <div className={`body${drawer ? " has-drawer" : ""}`}>
         <Drawer
@@ -605,6 +607,17 @@ export function App() {
                 onRemove={(pid) => setJobParts((m) => ({ ...m, [job.id]: (m[job.id] ?? []).filter((jp) => jp.part.id !== pid) }))}
                 onOpenParts={() => setDrawer("parts")}
               />
+            )}
+            {machineAsk && (
+              <ConfirmDialog title="Change the machine?" confirmLabel={`Change to ${machineOf(machines, machineAsk.id).name}`}
+                onCancel={() => setMachineAsk(null)} onConfirm={() => changeMachine(machineAsk.jobId, machineAsk.id, true)}>
+                Gaps, cutting area, materials and thicknesses come from the machine, so the <b>stock sheets and all solutions</b> of this job are cleared
+                and it has to be nested again. The job name and the work part list stay.
+              </ConfirmDialog>
+            )}
+            {saveAsFor && (
+              <SaveAsDialog name={saveAsFor.name} onCancel={() => setSaveAsFor(null)}
+                onSave={(name) => { const j = saveAsFor.jobId; setSaveAsFor(null); void saveJob(j, name, true); }} />
             )}
             {newJobOpen && <NewJobDialog defaultName={newJobOpen} machines={machines} onCreate={createJob} onCancel={() => setNewJobOpen(null)} />}
             {customFor && (

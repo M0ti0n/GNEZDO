@@ -37,12 +37,22 @@ interface Props {
   onMenu: (id: MenuId) => void;
   /** Undo / Redo of the open tab; greyed out when it has nothing to undo or redo. */
   undo: UndoState;
+  /** SAVE / SAVE AS of the open job tab (missing: nothing to save). */
+  save?: { onSave: () => void; onSaveAs: () => void } | null;
 }
 
-export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu, undo }: Props) {
+export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu, undo, save }: Props) {
   return (
     <header className="tabbar">
       <AppMenu onMenu={onMenu} />
+      <div className="save-btns" role="group" aria-label="Save the job">
+        <button className="undo-btn" onClick={save?.onSave} disabled={!save} title={save ? "Save the job (Ctrl+S)" : "Open a job to save it"} aria-label="Save">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round"><path d="M5 3h11l3 3v15H5z" /><path d="M8 3v5h7V3M8 21v-7h8v7" /></svg>
+        </button>
+        <button className="undo-btn" onClick={save?.onSaveAs} disabled={!save} title={save ? "Save as a new job, under another name" : "Open a job to save it"} aria-label="Save as">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round"><path d="M14 21H5V3h11l3 3v4" /><path d="M8 3v5h7V3" /><path d="m14 21 1-3 5-5 2 2-5 5z" /></svg>
+        </button>
+      </div>
       <UndoRedo {...undo} />
       <SideScroll className="tabs" wrapClassName="tabs-wrap" role="tablist" label="Open jobs and parts" more="tabs" activeKey={activeId}>
         {tabs.length === 0 && <span className="tabs-empty">Opened jobs appear here</span>}

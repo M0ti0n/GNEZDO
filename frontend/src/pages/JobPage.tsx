@@ -13,7 +13,7 @@ import { loopPoints } from "../import/toPart";
 import { SheetPropertiesDialog } from "../components/SheetPropertiesDialog";
 import type { Machine, MachineList } from "../job/machine";
 import { partColor } from "../job/nest";
-import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
+import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, rotateSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
 
 interface Props {
   title: string;
@@ -310,11 +310,19 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
       const b = drawing.entities.map(boxOf).reduce(union);
       const r = (v: number) => Math.round(v * 10) / 10;
       const l = r(b.maxX - b.minX), w = r(b.maxY - b.minY);
-      if (!fitsMachine(l, w)) { setTooBig({ file: f.name, l, w }); return; }
-      onStock([...stock, newSheet({
+      // too long in X but it fits turned: added turned (Sheet properties can turn it back)
+      const turn = !fitsMachine(l, w) && fitsMachine(w, l);
+      if (!fitsMachine(l, w) && !turn) { setTooBig({ file: f.name, l, w }); return; }
+      let sheet = newSheet({
         ...gaps, source: "dxf", ...nextPair(), lengthMm: l, widthMm: w, qty: 1, unlimited: false,
         fileName: f.name.replace(/\.dxf$/i, ""), outline: dxfOutline(drawing.entities, b),
-      })]);
+      });
+      if (turn) {
+        sheet = rotateSheet(sheet);
+        sheet = { ...sheet, original: { lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, outline: sheet.outline } };
+        onNotice(`${f.name}: turned 90° to fit the machine (${MACHINE_LIMIT.join(" × ")} mm)`);
+      }
+      onStock([...stock, sheet]);
     } catch (e) {
       onNotice(`${f.name}: ${(e as Error).message}`);
     }

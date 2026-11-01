@@ -23,7 +23,8 @@ export type ShellAction =
   | { type: "view"; view: ViewKind }
   | { type: "open"; tab: Tab }
   | { type: "activate"; id: string }
-  | { type: "close"; id: string };
+  | { type: "close"; id: string }
+  | { type: "rename"; id: string; title: string };
 
 export const initialShell: ShellState = { view: "home", tabs: [], activeId: null };
 
@@ -62,6 +63,8 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
     }
     case "activate":
       return { ...state, activeId: action.id };
+    case "rename":
+      return { ...state, tabs: state.tabs.map((t) => (t.id === action.id ? { ...t, title: action.title } : t)) };
     case "close": {
       const i = state.tabs.findIndex((t) => t.id === action.id);
       if (i < 0) return state;
