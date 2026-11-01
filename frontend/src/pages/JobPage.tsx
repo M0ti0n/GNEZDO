@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
-import type { JobPart, PartSummary } from "../api/types";
+import { withMaterial, type JobPart, type PartSummary } from "../api/types";
+import { Combobox } from "../components/Combobox";
 import { IconClose, IconLibrary } from "../components/Icons";
 import { usePickLists } from "../components/pickLists";
 import { NumInput } from "../components/NumInput";
@@ -22,7 +23,7 @@ interface Props {
   stockSettings: StockSettings;
   onStock: (stock: StockSheet[]) => void;
   onDropParts: (parts: PartSummary[]) => void;
-  onPart: (partId: string, patch: Partial<Pick<JobPart, "qty" | "qtyMax" | "part">>) => void;
+  onPart: (partId: string, patch: Partial<Pick<JobPart, "qty" | "qtyMax" | "part" | "dbMaterial" | "dbThicknessMm">>) => void;
   onRemove: (partId: string) => void;
   onOpenParts: () => void;
   onNotice: (text: string) => void;
@@ -40,6 +41,37 @@ function nestState(jp: JobPart): "short" | "ok" | "over" {
 }
 
 type Col = "no" | "project" | "name" | "material" | "thickness" | "qty" | "nested" | "qtyMax";
+/**
+ * A drop-down that can be typed in, changing the value only when an entry is picked or the field is
+ * left (Enter too); a value onCommit refuses (false) goes back to the old one.
+ */
+function DraftCombo({ value, options, onCommit, ...rest }: {
+  value: string; options: { value: string; label?: string }[]; onCommit: (v: string) => boolean;
+  ariaLabel: string; numeric?: boolean; suffix?: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = (v: string) => { onCommit(v); setDraft(null); };   // refused: back to the old value
+  return (
+    <span className="combo-wrap" onBlur={() => draft !== null && commit(draft)}
+      onKeyDown={(e) => { if (e.key === "Enter" && draft !== null) { e.preventDefault(); commit(draft); } if (e.key === "Escape") setDraft(null); }}>
+      <Combobox {...rest} value={draft ?? value} options={options} newHint="in this job"
+        onChange={(v) => (options.some((o) => o.value === v) ? commit(v) : setDraft(v))} />
+    </span>
+  );
+}
+
+/** A part saved in the database again: its new values, but the job's own material / thickness stay. */
+function keepJobMaterial(parts: JobPart[] | undefined, now: PartSummary) {
+  const jp = parts?.find((x) => x.part.id === now.id);
+  if (!jp || (jp.dbMaterial === undefined && jp.dbThicknessMm === undefined)) return { part: now };
+  const ownM = jp.dbMaterial !== undefined && jp.part.material !== jp.dbMaterial;
+  const ownT = jp.dbThicknessMm !== undefined && jp.part.thicknessMm !== jp.dbThicknessMm;
+  return {
+    part: { ...now, material: ownM ? jp.part.material : now.material, thicknessMm: ownT ? jp.part.thicknessMm : now.thicknessMm },
+    dbMaterial: now.material, dbThicknessMm: now.thicknessMm,
+  };
+}
+
 const COLS: { id: Col; label: string; num?: boolean; title?: string }[] = [
   { id: "no", label: "ID", num: true },
   { id: "project", label: "Project" },
@@ -70,6 +102,7 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
 
   // the part's pop-up (double-click its name), and its versions
   const [editing, setEditing] = useState<PartSummary | null>(null);
+  const picks = usePickLists("");   // materials and thicknesses for the part list
   const [history, setHistory] = useState<PartSummary | null>(null);
   const [sort, setSort] = useState<{ col: Col; dir: 1 | -1 }>({ col: "no", dir: 1 });
 
@@ -170,7 +203,7 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
               <colgroup>
                 {/* material and thickness narrow and side by side; the room goes to project and part name */}
                 <col style={{ width: 68 }} /><col style={{ width: "16%" }} /><col />
-                <col style={{ width: 104 }} /><col style={{ width: 76 }} />
+                <col style={{ width: 172 }} /><col style={{ width: 124 }} />
                 <col style={{ width: 84 }} /><col style={{ width: 92 }} /><col style={{ width: 84 }} /><col style={{ width: 42 }} />
               </colgroup>
               <thead>
@@ -198,8 +231,36 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
                       <td data-c={1} tabIndex={-1}>{jp.part.project}</td>
                       <td data-c={2} tabIndex={-1} className="cell-name" title={`${jp.part.name}: double-click for its properties`}
                         onDoubleClick={() => setEditing(jp.part)}>{jp.part.name}</td>
-                      <td data-c={3} tabIndex={-1}>{jp.part.material}</td>
-                      <td data-c={4} tabIndex={-1}>{jp.part.thicknessMm} mm</td>
+                      {(() => {
+                        // material / thickness in this job only: the part in the database keeps its own
+                        const ownM = jp.dbMaterial !== undefined && jp.part.material !== jp.dbMaterial;
+                        const ownT = jp.dbThicknessMm !== undefined && jp.part.thicknessMm !== jp.dbThicknessMm;
+                        const set = (patch: { material?: string; thicknessMm?: number }) => {
+                          const now = withMaterial(jp, patch);
+                          onPart(jp.part.id, { part: now.part, dbMaterial: now.dbMaterial, dbThicknessMm: now.dbThicknessMm });
+                        };
+                        return (<>
+                          <td data-c={3} className={`cell-mat${ownM ? " is-job-only" : ""}`}
+                            title={ownM ? `In this job only. In the database: ${jp.dbMaterial}` : "Material in this job (the part in the database is not changed)"}>
+                            <span className="cell-mat-row">
+                              <DraftCombo value={jp.part.material} options={picks.materials} ariaLabel={`Material of ${jp.part.name} in this job`}
+                                onCommit={(v) => { const m = v.trim(); if (!m) return false; if (m !== jp.part.material) set({ material: m }); return true; }} />
+                              {ownM && <button type="button" className="cell-reset" title={`Back to the database's: ${jp.dbMaterial}`}
+                                aria-label={`Material of ${jp.part.name} back to ${jp.dbMaterial}`} onClick={() => set({ material: jp.dbMaterial })}>↺</button>}
+                            </span>
+                          </td>
+                          <td data-c={4} className={`cell-mat${ownT ? " is-job-only" : ""}`}
+                            title={ownT ? `In this job only. In the database: ${jp.dbThicknessMm} mm` : "Thickness in this job (the part in the database is not changed)"}>
+                            <span className="cell-mat-row">
+                              <DraftCombo value={String(jp.part.thicknessMm)} options={picks.thicknesses} numeric suffix="mm"
+                                ariaLabel={`Thickness of ${jp.part.name} in this job`}
+                                onCommit={(v) => { const t = Number(v.replace(",", ".").replace(/[^\d.]/g, "")); if (!(t > 0 && t <= 1000)) return false; if (t !== jp.part.thicknessMm) set({ thicknessMm: t }); return true; }} />
+                              {ownT && <button type="button" className="cell-reset" title={`Back to the database's: ${jp.dbThicknessMm} mm`}
+                                aria-label={`Thickness of ${jp.part.name} back to ${jp.dbThicknessMm} mm`} onClick={() => set({ thicknessMm: jp.dbThicknessMm })}>↺</button>}
+                            </span>
+                          </td>
+                        </>);
+                      })()}
                       <td data-c={5} className="num">
                         <NumInput className={`field qty${jp.qty ? "" : " is-required"}`} int min={0} value={jp.qty} placeholder="set"
                           title={jp.qty ? undefined : "Set the number of pieces needed"} aria-label={`Requested quantity of ${jp.part.name}`}
@@ -231,13 +292,13 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
 
       {editing && (
         <PartPropertiesDialog part={editing} onClose={() => setEditing(null)}
-          onSaved={(now) => onPart(now.id, { part: now })}
+          onSaved={(now) => onPart(now.id, keepJobMaterial(parts, now))}
           onDeleted={(id) => onRemove(id)}
           onVersions={(p) => { setEditing(null); setHistory(p); }} />
       )}
       {history && (
         <PartHistoryDialog part={history} onClose={() => setHistory(null)}
-          onRestored={(now) => { onPart(now.id, { part: now }); setHistory(now); }} />
+          onRestored={(now) => { onPart(now.id, keepJobMaterial(parts, now)); setHistory(now); }} />
       )}
 
       <StockPanel parts={parts ?? []} stock={stock} settings={stockSettings} onStock={onStock} onNotice={onNotice} machine={machine} />

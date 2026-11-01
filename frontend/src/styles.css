@@ -1205,7 +1205,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .jsec-back:hover { filter: brightness(1.12); }
 .jsec .jtool { align-self: center; width: 80px; }
 .jsec .jtool .itool-box { width: 72px; height: 72px; border-radius: 12px; }
-.jsec .jtool .itool-box img { width: 56px; height: 56px; display: block; }
+.jsec .jtool .itool-box img { width: 56px; height: 56px; display: block; mix-blend-mode: multiply; }   /* the icons' white takes the box colour (hover) */
 .jsec .jtool .itool-label { font-family: var(--font); font-weight: 500; font-size: 13px; letter-spacing: 0; }
 .jsec-empty { align-self: center; padding: 0 18px 0 6px; color: var(--ink-3); font-size: 13.5px; font-style: italic; white-space: nowrap; }
 
@@ -1385,9 +1385,14 @@ th.num .th-sort { flex-direction: row-reverse; }
 .sol-badge { padding: 2px 8px; border-radius: 5px; background: var(--green); color: #fff; font-size: 12.5px; font-weight: 600; letter-spacing: .03em; white-space: nowrap; }
 .sol-badge.is-error { background: #c62828; }
 .sol-row { display: flex; align-items: center; gap: 8px; }
-.sol-box { flex: 0 1 230px; min-width: 0; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px 0 12px;
+.sol-box { flex: 0 1 230px; min-width: 0; display: flex; align-items: center; height: 36px; padding: 0;
   border: 1.5px solid var(--line); border-radius: 7px; background: #fff; text-align: left; }
+.sol-pick { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 12px; text-align: left; border-radius: 6px 0 0 6px; }
 .sol-box .sol-badge { margin-left: auto; }
+.sol-fold { flex: none; width: 26px; height: 100%; display: grid; place-items: center; color: var(--ink-2); border-radius: 0 6px 6px 0; }
+.sol-fold svg { transition: transform .12s; transform: rotate(-90deg); }
+.sol-fold.is-open svg { transform: none; }
+.sol-fold:hover { color: var(--green-ink); background: rgba(0, 0, 0, .04); }
 .sol-box:hover { border-color: var(--green); }
 .sol-box.is-on { border-color: var(--green); background: var(--green-tint); }
 .sol-btn { display: inline-grid; place-items: center; text-align: center; height: 32px; padding: 0 10px; border-radius: 7px; font-weight: 600; font-size: 13px; letter-spacing: .03em;
@@ -1519,3 +1524,13 @@ th.num .th-sort { flex-direction: row-reverse; }
   background: #fde8e7; color: #8f1418; font-size: 13.5px; font-weight: 600; }
 .nest-card-warn span { flex: 1; }
 .sp-turn.is-off { opacity: .55; }
+
+/* work part list: material / thickness in this job (drop-downs); blue when set for this job only */
+.work-grid td.cell-mat { padding-top: 3px; padding-bottom: 3px; }
+.cell-mat-row { display: flex; align-items: center; gap: 2px; }
+.cell-mat-row .combo-wrap { flex: 1; min-width: 0; display: block; }
+.cell-mat-row .combo { width: 100%; }
+.work-grid td.cell-mat .field { height: 28px; font-size: 13px; padding-left: 6px; }
+.work-grid td.cell-mat.is-job-only .field { color: var(--blue-ink, #1565c0); font-weight: 600; background: var(--blue-tint, #e8f1fd); }
+.cell-reset { flex: none; width: 20px; height: 22px; border-radius: 4px; color: var(--blue-ink, #1565c0); font-size: 14px; line-height: 1; }
+.cell-reset:hover { background: var(--blue-tint, #e8f1fd); }

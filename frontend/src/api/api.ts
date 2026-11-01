@@ -1,5 +1,7 @@
 import {
   DEFAULT_SORT,
+  jobOwn,
+  withMaterial,
   type SortOrder,
 } from "./types";
 import type {
@@ -361,7 +363,7 @@ export const api = {
     if (!useApi) return delay(0).then(() => mockSaveJob(id, d));
     const body = {
       name: d.name, stock: d.stock, nest: d.nest, modifiedBy: d.modifiedBy ?? "", machine: d.machine ?? "",
-      parts: d.parts.map((jp) => ({ partId: jp.part.id, qty: jp.qty, qtyMax: jp.qtyMax ?? jp.qty, no: jp.no })),
+      parts: d.parts.map((jp) => ({ partId: jp.part.id, qty: jp.qty, qtyMax: jp.qtyMax ?? jp.qty, no: jp.no, ...jobOwn(jp) })),
     };
     return id ? post<JobSaved>(`/api/jobs/${id}`, body, "PUT") : post<JobSaved>("/api/jobs", body);
   },
@@ -460,7 +462,9 @@ export const api = {
   /** Parts already in a job (sample: Miha2787 holds the 30-part test job). */
   jobParts: (jobId: string) =>
     useApi
-      ? get<JobPart[]>(`/api/jobs/${jobId}/parts`)
+      // the job's own material / thickness (set on the work part list) over the part's
+      ? get<(JobPart & { material?: string | null; thicknessMm?: number | null })[]>(`/api/jobs/${jobId}/parts`).then((rows) => rows.map(({ material, thicknessMm, ...jp }) =>
+          material || thicknessMm ? withMaterial(jp, { ...(material ? { material } : {}), ...(thicknessMm ? { thicknessMm } : {}) }) : jp))
       : delay<JobPart[]>(sampleJobs.find((j) => j.id === jobId)?.lines ?? []),
   imports: () => (useApi ? get<ImportSummary[]>("/api/imports") : delay(sampleImports)),
   recentJobs: (take = 8) =>
