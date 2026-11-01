@@ -24,7 +24,7 @@ import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
-import { buildRequest, isFinished, nestApi, nestProblem, nestsOfJob, solutionsFromSaved, type NestMode, type NestRun, type Solution } from "./job/nest";
+import { buildRequest, countsOf, isFinished, nestApi, nestProblem, nestsOfJob, solutionsFromSaved, type NestMode, type NestRun, type NestedSheet, type Solution } from "./job/nest";
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
@@ -483,13 +483,51 @@ export function App() {
   // the cutting area that the STOCK panel checks: the shown job's machine
   useEffect(() => { const m = machineFor(job?.id); setMachineLimit(m.cutLengthMm, m.cutWidthMm); });
 
+  // One nested sheet changed by hand (its own size, trims, gap, cut number): only that sheet changes.
+  const editSheet = (jobId: string, solId: string, index: number, patch: Partial<NestedSheet>) =>
+    patchSol(jobId, solId, (x) => x.run?.result ? {
+      ...x, run: { ...x.run, result: { ...x.run.result, sheets: x.run.result.sheets.map((sh, i) => (i === index ? { ...sh, ...patch } : sh)) } },
+    } : x);
+  // Re-nest this sheet: its parts nested again on it alone (the other sheets stay as they are)
+  const [renesting, setRenesting] = useState<string | null>(null);   // "solId:index"
+  const renestSheet = async (jobId: string, solId: string, index: number) => {
+    const sol = solsOf(jobId).list.find((x) => x.id === solId);
+    const sh = sol?.run?.result?.sheets[index];
+    if (!sol || !sh) return;
+    const counts = new Map<string, number>();
+    for (const p of sh.parts) counts.set(p.partId, (counts.get(p.partId) ?? 0) + 1);
+    const jparts = (jobParts[jobId] ?? []).filter((jp) => counts.has(jp.part.id)).map((jp) => ({ ...jp, qty: counts.get(jp.part.id)! }));
+    const m = machineFor(jobId);
+    setRenesting(`${solId}:${index}`);
+    try {
+      const req = await buildRequest(jparts, [], "fast", undefined, sol.origin ?? m.origin);
+      req.sheets = [{ id: sh.sheetId, material: sh.material, thicknessMm: sh.thicknessMm, lengthMm: sh.lengthMm, widthMm: sh.widthMm,
+        qty: 1, source: "nested", trims: sh.trims ?? { ...m.trims }, partGapMm: sh.partGapMm ?? m.partGapMm, kerfMm: sh.kerfMm, outline: sh.outline }];
+      let run = await nestApi.start(req);
+      while (!isFinished(run)) { await new Promise((r) => setTimeout(r, 1000)); run = await nestApi.get(run.id); }
+      const out = run.result?.sheets[0];
+      const placed = out?.parts.length ?? 0;
+      if (!out || placed < sh.parts.length) {
+        setToast(`Only ${placed} of ${sh.parts.length} parts fit on this sheet: it is kept as it was`);
+        return;
+      }
+      editSheet(jobId, solId, index, { parts: out.parts });
+      setToast(`Sheet ${index + 1} nested again`);
+    } catch (e) {
+      setToast(`Not nested again: ${(e as Error).message}`);
+    } finally {
+      setRenesting(null);
+    }
+  };
+
   /** Pieces per part of the solution shown. */
   const nestedCounts = (jobId: string): Record<string, number> | null => {
     const st = jobSol[jobId];
     if (!st) return null;
     const done = (x: Solution) => !!x.run?.result && (x.run.state === "done" || x.run.state === "stopped");
     const sol = st.list.find((x) => x.id === st.sel.sol && done(x));
-    return sol?.run?.result?.nested ?? null;
+    // every sheet's parts times its cut number (how many times that layout is cut)
+    return sol?.run?.result ? countsOf(sol.run.result.sheets) : null;
   };
   const onJobTool = (_section: string, tool: string, custom?: CustomNestSettings) => {
     if (!job) return;
@@ -537,6 +575,11 @@ export function App() {
                 onStop={(id) => void stopNest(job.id, id)}
                 onRemove={(id) => setSols(job.id, (st) => ({ list: st.list.filter((x) => x.id !== id),
                   sel: st.sel.sol === id ? { sol: st.list.filter((x) => x.id !== id).at(-1)?.id ?? null, sheet: 0 } : st.sel }))}
+                machine={machineFor(job.id)}
+                stock={jobStock[job.id] ?? []}
+                renesting={renesting}
+                onEditSheet={(id, i, patch) => editSheet(job.id, id, i, patch)}
+                onRenestSheet={(id, i) => void renestSheet(job.id, id, i)}
                 onToggleLock={(id, i) => patchSol(job.id, id, (x) => ({ ...x, locked: x.locked.includes(i) ? x.locked.filter((n) => n !== i) : [...x.locked, i] }))}
               />
             )}

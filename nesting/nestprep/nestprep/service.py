@@ -301,6 +301,10 @@ class Run:
                      "material": g["material"], "thicknessMm": g["thicknessMm"], "parts": parts}
             if s.get("outline"):
                 sheet["outline"] = s["outline"]
+            # the sheet's own gaps go with it, so it can be changed on its own later
+            for k in ("trims", "partGapMm", "kerfMm"):
+                if s.get(k) is not None:
+                    sheet[k] = s[k]
             out.append(sheet)
         return out
 

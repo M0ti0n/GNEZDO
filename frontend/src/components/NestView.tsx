@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { JobPart } from "../api/types";
 import { IconClose } from "./Icons";
 import {
-  NEST_MODE_LABEL, hms, isFinished, partColor, sheetStats,
+  NEST_MODE_LABEL, hms, isFinished, partColor, sheetProblems, sheetStats,
   type NestMode, type NestedSheet, type Solution,
 } from "../job/nest";
-import type { Origin } from "../job/machine";
+import type { Machine, Origin } from "../job/machine";
+import type { StockSheet } from "../job/stock";
+import { SheetPropertiesDialog } from "./SheetPropertiesDialog";
 
 // The nest screen of a job (after Fab's layout): the chosen solution's sheets, four to a screen
 // (scroll for more), each with [i], VIEW (EDIT once unlocked) and a lock; on the right the
@@ -22,6 +24,15 @@ interface Props {
   onStop: (solId: string) => void;
   onRemove: (solId: string) => void;
   onToggleLock: (solId: string, sheet: number) => void;
+  /** The job's machine (gaps, 0,0) and stock (a sheet's size as added), for a sheet's properties. */
+  machine: Machine;
+  stock: StockSheet[];
+  /** A sheet changed by hand: only that sheet. */
+  onEditSheet: (solId: string, sheet: number, patch: Partial<NestedSheet>) => void;
+  /** Re-nest this sheet: its parts on it alone. */
+  onRenestSheet: (solId: string, sheet: number) => void;
+  /** "solId:index" of the sheet being nested again */
+  renesting: string | null;
 }
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
@@ -61,7 +72,8 @@ const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock }: Props) {
+export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting }: Props) {
+  const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
   const sol = solutions.find((s) => s.id === selected.sol) ?? solutions[solutions.length - 1];
@@ -101,10 +113,11 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
             onClick={() => onSelect({ sol: sol!.id, sheet: i })}>
             <header>
               <span className="nest-card-title">Solution {sol!.no} <span className="slash">/</span> Sheet {i + 1}</span>
-              <button type="button" className="sheet-info" title="Sheet info" aria-label={`Info on sheet ${i + 1}`}
-                onClick={(e) => { e.stopPropagation(); onSelect({ sol: sol!.id, sheet: i }); }}>i</button>
+              <button type="button" className="sheet-info" title={finished ? "Sheet properties: change this sheet only" : "Sheet info"} aria-label={`Properties of sheet ${i + 1}`}
+                onClick={(e) => { e.stopPropagation(); onSelect({ sol: sol!.id, sheet: i }); if (finished) setProps(i); }}>i</button>
               <span className="nest-card-sheet" title="Material, thickness × length × width (mm)">{sh.material} {sh.thicknessMm}x{sh.lengthMm}x{sh.widthMm}</span>
               {liveSheets && <span className="nest-live-tag">best so far</span>}
+              {(sh.cutNumber ?? 1) > 1 && <span className="nest-cut-tag" title="This layout is cut this many times">×{sh.cutNumber}</span>}
               <span className="nest-card-gap" />
               <button type="button" className="nest-view" onClick={(e) => { e.stopPropagation(); onSelect({ sol: sol!.id, sheet: i }); setFull(i); }}
                 title={editable(i) ? "Full screen, to change the sheet by hand" : "Full screen"}>{editable(i) ? "EDIT" : "VIEW"}</button>
@@ -116,6 +129,18 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
                 <Lock open={!sol!.locked.includes(i)} />
               </button>
             </header>
+            {finished && (() => {
+              const bad = sheetProblems(sh, byId, sol!.origin ?? machine.origin).outside;
+              const busy = renesting === `${sol!.id}:${i}`;
+              return bad > 0 || busy ? (
+                <div className="nest-card-warn" role="alert" onClick={(e) => e.stopPropagation()}>
+                  {busy ? <span>Nesting this sheet again…</span>
+                    : <span>{bad} {bad === 1 ? "part reaches" : "parts reach"} past the trims or the edge</span>}
+                  <button type="button" className="sol-btn" disabled={busy || sol!.locked.includes(i)} onClick={() => onRenestSheet(sol!.id, i)}
+                    title={sol!.locked.includes(i) ? "Unlock the sheet first" : "Nest this sheet's parts again on it alone; the other sheets stay"}>Re-nest this sheet</button>
+                </div>
+              ) : null;
+            })()}
             <div className="nest-card-body"><SheetSvg sheet={sh} parts={byId} titles /></div>
           </article>
         ))}
@@ -128,6 +153,14 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
         </SolutionsPanel>
       </aside>
 
+      {props !== null && sol && sheets[props] && (
+        <SheetPropertiesDialog nested index={props} machine={machine}
+          sheet={nestedAsStock(sheets[props], stock.find((s) => s.id === sheets[props].sheetId), machine)}
+          onSave={(s) => onEditSheet(sol.id, props, {
+            lengthMm: s.lengthMm, widthMm: s.widthMm, trims: s.trims, partGapMm: s.partGapMm, kerfMm: s.kerfMm, cutNumber: Math.max(1, s.qty || 1),
+          })}
+          onClose={() => setProps(null)} />
+      )}
       {full !== null && sol && sheets[full] && (
         <FullView sol={sol} index={full} sheets={sheets} parts={byId} edit={editable(full)}
           onIndex={(i) => { setFull(i); onSelect({ sol: sol.id, sheet: i }); }} onClose={() => setFull(null)} />
@@ -298,9 +331,11 @@ function SolutionInfo({ sheets, parts, jobParts, origin }: {
       const key = `${sh.material}|${sh.thicknessMm}`;
       const g = groups.get(key) ?? { label: `${sh.material} ${sh.thicknessMm} mm`, sizes: new Map(), sheets: 0, sheetKg: 0, partsKg: 0, remnantKg: 0, usedKg: 0, cutM: 0, pierces: 0, pieces: 0 };
       const size = `${sh.lengthMm} × ${sh.widthMm}`;
-      g.sizes.set(size, (g.sizes.get(size) ?? 0) + 1);
-      g.sheets++; g.sheetKg += st.sheetKg; g.partsKg += st.partsKg; g.remnantKg += st.remnantKg;
-      g.usedKg += st.sheetKg - st.remnantKg; g.cutM += st.cutM; g.pierces += st.pierces; g.pieces += st.pieces;
+      g.sizes.set(size, (g.sizes.get(size) ?? 0) + (sh.cutNumber ?? 1));
+      // a layout cut n times counts n times
+      const n = sh.cutNumber ?? 1;
+      g.sheets += n; g.sheetKg += n * st.sheetKg; g.partsKg += n * st.partsKg; g.remnantKg += n * st.remnantKg;
+      g.usedKg += n * (st.sheetKg - st.remnantKg); g.cutM += n * st.cutM; g.pierces += n * st.pierces; g.pieces += n * st.pieces;
       groups.set(key, g);
     }
     const list = [...groups.values()];
@@ -344,7 +379,7 @@ function NestInfo({ sheet, parts, origin }: { sheet: NestedSheet; parts: Map<str
     ["Remnant (%)", st.remnantPct.toFixed(0)],
     ["Unused (kg)", kg(st.unusedKg), "Beside the cut area, outside the remnant strip"],
     ["Unused (%)", st.unusedPct.toFixed(0)],
-    ["Cutting Number", "1", "How many times this sheet is cut"],
+    ["Cutting Number", String(sheet.cutNumber ?? 1), "How many times this layout is cut (Sheet properties of the sheet)"],
     ["Time Rapid", "—", "Needs the technology tables"],
     ["Time Cutting", "—", "Needs the technology tables"],
     ["Time Total", "—", "Needs the technology tables"],
@@ -409,4 +444,15 @@ function FullView({ sol, index, sheets, parts, edit, onIndex, onClose }: {
       <div className="full-body"><SheetSvg sheet={sh} parts={parts} titles /></div>
     </div>
   );
+}
+
+/** A nested sheet in the shape Sheet properties edits; RESET goes back to its stock sheet as added. */
+function nestedAsStock(sh: NestedSheet, from: StockSheet | undefined, m: Machine): StockSheet {
+  return {
+    id: sh.sheetId, source: from?.source ?? "parts", material: sh.material, thicknessMm: sh.thicknessMm,
+    lengthMm: sh.lengthMm, widthMm: sh.widthMm, qty: sh.cutNumber ?? 1, unlimited: false,
+    trims: sh.trims ?? from?.trims ?? { ...m.trims }, partGapMm: sh.partGapMm ?? from?.partGapMm ?? m.partGapMm,
+    kerfMm: sh.kerfMm ?? from?.kerfMm, outline: sh.outline, fileName: from?.fileName,
+    original: { lengthMm: from?.lengthMm ?? sh.lengthMm, widthMm: from?.widthMm ?? sh.widthMm, outline: from?.outline ?? sh.outline },
+  };
 }
