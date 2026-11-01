@@ -63,12 +63,32 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   // -- view: mm -> screen px, fitted to the canvas; wheel zooms, middle / right button pans --------
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 500 });
-  const [view, setView] = useState<{ s: number; tx: number; ty: number } | null>(null);
+  const [view, setViewState] = useState<{ s: number; tx: number; ty: number } | null>(null);
+  // zoom: from the whole sheet (furthest out) to MAX_ZOOM px per mm (a 20 x 20 mm part about 200 px)
+  const MAX_ZOOM = 10, PAD = 24;
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+  const fitScale = (w: number, h: number) => Math.min((w - 2 * PAD) / sheet.lengthMm, (h - 2 * PAD) / sheet.widthMm);
+  /** Keeps the zoom between the whole sheet and MAX_ZOOM, and the sheet in view. */
+  const clampView = useCallback((v: { s: number; tx: number; ty: number }) => {
+    const { w, h } = sizeRef.current;
+    const lo = fitScale(w, h);
+    const s = Math.min(Math.max(v.s, lo), Math.max(lo, MAX_ZOOM));
+    const k = s / v.s;
+    let { tx, ty } = v;
+    if (k !== 1) { tx = w / 2 - (w / 2 - tx) * k; ty = h / 2 - (h / 2 - ty) * k; }
+    const L = sheet.lengthMm * s, W = sheet.widthMm * s;
+    tx = L + 2 * PAD <= w ? (w - L) / 2 : Math.min(PAD, Math.max(w - L - PAD, tx));
+    ty = W + 2 * PAD <= h ? (h - W) / 2 : Math.min(PAD, Math.max(h - W - PAD, ty));
+    return { s, tx, ty };
+  }, [sheet.lengthMm, sheet.widthMm]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const setView = useCallback((f: ((v: { s: number; tx: number; ty: number } | null) => { s: number; tx: number; ty: number } | null) | { s: number; tx: number; ty: number }) =>
+    setViewState((v) => { const n = typeof f === "function" ? f(v) : f; return n && clampView(n); }), [clampView]);
   const fit = useCallback((w: number, h: number) => {
-    const pad = 24;
-    const s = Math.min((w - 2 * pad) / sheet.lengthMm, (h - 2 * pad) / sheet.widthMm);
+    const s = fitScale(w, h);
+    sizeRef.current = { w, h };
     setView({ s, tx: (w - sheet.lengthMm * s) / 2, ty: (h - sheet.widthMm * s) / 2 });
-  }, [sheet.lengthMm, sheet.widthMm]);
+  }, [sheet.lengthMm, sheet.widthMm, setView]);   // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const el = host.current;
     if (!el) return;
@@ -84,12 +104,18 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       e.preventDefault();
       const r = el.getBoundingClientRect();
       const mx = e.clientX - r.left, my = e.clientY - r.top;
-      const k = Math.exp(-e.deltaY * 0.0015);
-      setView((v) => v && { s: v.s * k, tx: mx - (mx - v.tx) * k, ty: my - (my - v.ty) * k });
+      setView((v) => {
+        if (!v) return v;
+        // the zoom limits first, so the point under the pointer stays where it is
+        const lo = fitScale(sizeRef.current.w, sizeRef.current.h);
+        const s = Math.min(Math.max(v.s * Math.exp(-e.deltaY * 0.0015), lo), Math.max(lo, MAX_ZOOM));
+        const k = s / v.s;
+        return { s, tx: mx - (mx - v.tx) * k, ty: my - (my - v.ty) * k };
+      });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [setView]);   // eslint-disable-line react-hooks/exhaustive-deps
   const toMm = (px: number, py: number): Pt => (view ? [(px - view.tx) / view.s, (py - view.ty) / view.s] : [0, 0]);
   const local = (e: { clientX: number; clientY: number }) => {
     const r = host.current!.getBoundingClientRect();
@@ -471,8 +497,15 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
   const list = useMemo(() => {
     const l = jobParts.filter((jp) => all || same(jp));
     const key = (jp: JobPart) => sortBy === "area" ? jp.part.areaMm2 : sortBy === "size" ? Math.max(jp.part.w, jp.part.h) : jp.part.project;
-    return l.slice().sort((a, b) => { const ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * dir; });
-  }, [jobParts, all, sortBy, dir, sheet.material, sheet.thicknessMm]);   // eslint-disable-line react-hooks/exhaustive-deps
+    // parts with their required number nested go last, whatever the sort
+    const done = (jp: JobPart) => (jp.qty > 0 && (counts[jp.part.id] ?? 0) >= jp.qty ? 1 : 0);
+    return l.slice().sort((a, b) => {
+      const d = done(a) - done(b);
+      if (d) return d;
+      const ka = key(a), kb = key(b);
+      return (ka < kb ? -1 : ka > kb ? 1 : 0) * dir;
+    });
+  }, [jobParts, all, sortBy, dir, counts, sheet.material, sheet.thicknessMm]);   // eslint-disable-line react-hooks/exhaustive-deps
   const nested = jobParts.reduce((n, jp) => n + (counts[jp.part.id] ?? 0), 0);
   const total = jobParts.reduce((n, jp) => n + jp.qty, 0);
   useEffect(() => {
@@ -523,7 +556,7 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
           const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0 || 1, h = Math.max(...ys) - y0 || 1;
           const c = partColor(jp.no);
           return (
-            <div key={jp.part.id} className={`mn-tile${n >= jp.qty ? " is-done" : ""}${edit ? "" : " is-off"}`} draggable={edit}
+            <div key={jp.part.id} className={`mn-tile${jp.qty > 0 && n >= jp.qty ? " is-done" : ""}${edit ? "" : " is-off"}`} draggable={edit}
               title={`${jp.part.name}: drag onto the sheet (Ctrl on a part: next to it)`}
               onDragStart={(e) => { e.dataTransfer.setData("text/gnezdo-part", jp.part.id); e.dataTransfer.effectAllowed = "copy"; }}>
               <svg viewBox={`${x0 - w * 0.08} ${y0 - h * 0.08} ${w * 1.16} ${h * 1.16}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
