@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import copy
 import time
+from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -47,6 +48,12 @@ class PostOptions:
     chain_rounds: int = 4
     pair_time: float = 8.0       # per solve (two per pair)
     compact_time: float = 5.0
+    # "anytime" uses every second it is given; "not-anytime-deterministic" returns when its search
+    # is done (usually well inside the limit)
+    solve_mode: str = "anytime"
+    workers: int = 1             # solver processes at the same time (fills of different sheets)
+    pool_time: float = 2.0       # two-phase nest: per sheet, placing the small parts into its gaps
+    pool_rounds: int = 2
     budget: float = 120.0        # whole post-pass [s]; steps stop when it runs out
     quiet: bool = False
 
@@ -64,8 +71,12 @@ class Sheet:
 
 
 class PostPass:
-    def __init__(self, instance: dict, solution: dict, binary: str, opt: PostOptions | None = None):
-        """`instance` is the instance that was nested (the pre-processed one when the pre-pass ran)."""
+    def __init__(self, instance: dict, solution: dict, binary: str, opt: PostOptions | None = None,
+                 pool: Counter | dict | None = None):
+        """`instance` is the instance that was nested (the pre-processed one when the pre-pass ran).
+        `pool`: item copies not nested yet (two-phase nest: the small parts), placed by step_pool."""
+        self.pool = Counter({k: v for k, v in (pool or {}).items() if v > 0})
+        self._bin_area: dict[int, float] = {}
         self.inst = instance
         self.bin = binary
         self.opt = opt or PostOptions()
@@ -144,7 +155,7 @@ class PostPass:
             "item_types": [self.item_json(tid, cands[tid]) for tid in ids],
         }
         try:
-            r = psrun.solve(inst, self.bin, max(0.2, t), "anytime")
+            r = psrun.solve(inst, self.bin, max(0.2, t), self.opt.solve_mode)
         except RuntimeError as e:
             self.say(f"solver failed: {str(e)[:120]}")
             return []
@@ -212,11 +223,128 @@ class PostPass:
 
     def fullness(self, sh: Sheet) -> float:
         b = self.inst["bin_types"][sh.bin_type]
-        if not hasattr(self, "_bin_area"):
-            self._bin_area = {}
         if sh.bin_type not in self._bin_area:
             self._bin_area[sh.bin_type] = geom.shape_to_poly(b).area if "elements" in b else float(b["width"]) * float(b["height"])
         return self.sheet_area(sh) / self._bin_area[sh.bin_type]
+
+    def free_area(self, sh: Sheet) -> float:
+        return (1.0 - self.fullness(sh)) * self._bin_area[sh.bin_type]
+
+    def index_of(self, sh: Sheet) -> int | None:
+        return next((i for i, x in enumerate(self.sheets) if x is sh), None)
+
+    def fill_batch(self, targets: list[Sheet], source: str, t: float) -> int:
+        """Gaps of several sheets at once (one solver process each, `workers` at a time). Every solve
+        sees the parts as they were when the batch started; applying them one by one, a sheet keeps
+        only what is still to be had (a placement minus some parts is still a valid placement).
+        source "pool": the parts not nested yet; "later": parts of the sheets after it (moved)."""
+        jobs = []
+        for sh in targets:
+            k = self.index_of(sh)
+            if k is None:
+                continue
+            if source == "pool":
+                avail = self.pool
+            else:
+                if k >= len(self.sheets) - 1:
+                    continue
+                avail = Counter(p.id for x in self.sheets[k + 1:] for p in x.items)
+            free = self.free_area(sh)
+            fit = [tid for tid, c in avail.items() if c > 0 and self.area(tid) <= free]
+            # each type at most its share of the free area: with hundreds of copies on offer the solver
+            # finds no first answer in its time (and offering fewer placed as many or more)
+            if source == "pool":
+                cands = Counter({tid: min(avail[tid], max(1, int(free / self.area(tid) / len(fit)))) for tid in fit})
+            else:
+                cands = Counter({tid: avail[tid] for tid in fit})
+            if cands:
+                jobs.append((sh, list(sh.items), cands))
+        if not jobs or self.left() < 0.5:
+            return 0
+        tt = min(t, max(0.5, self.left()))
+        run = lambda j: self.solve("knapsack", j[0].bin_type, j[1], j[2], tt)
+        if self.opt.workers > 1 and len(jobs) > 1:
+            with ThreadPoolExecutor(max_workers=self.opt.workers) as ex:
+                results = list(ex.map(run, jobs))
+        else:
+            results = [run(j) for j in jobs]
+        moved = 0
+        for (sh, _, _), placed in zip(jobs, results):
+            k = self.index_of(sh)
+            if k is None or not placed:
+                continue
+            if source == "pool":
+                avail = self.pool
+            else:
+                avail = Counter(p.id for x in self.sheets[k + 1:] for p in x.items)
+            keep, took = [], Counter()
+            for p in placed:
+                if took[p.id] < avail[p.id]:
+                    keep.append(p)
+                    took[p.id] += 1
+            if not keep:
+                continue
+            sh.items += keep
+            if source == "pool":
+                self.pool -= took
+            else:
+                self.take_from_latest(keep, k)
+            moved += len(keep)
+        return moved
+
+    def batches(self, order: list[Sheet]):
+        w = max(1, self.opt.workers)
+        for i in range(0, len(order), w):
+            yield order[i:i + w]
+
+    def step_pool(self):
+        """Two-phase nest: the small parts go into the gaps of the big parts' sheets, the emptiest
+        sheet first; what does not fit goes on new sheets of its own."""
+        t = time.perf_counter()
+        placed = 0
+        for _ in range(self.opt.pool_rounds):
+            if not self.pool:
+                break
+            order = sorted((x for x in self.sheets if self.fullness(x) < 0.95), key=self.fullness)
+            moved = 0
+            for batch in self.batches(order):
+                if not self.pool or self.left() < 1.0:
+                    break
+                moved += self.fill_batch(batch, "pool", self.opt.pool_time)
+            placed += moved
+            if not moved:
+                break
+        self.note("pool", time.perf_counter() - t, placed)
+        if self.pool:
+            self.pack_pool()
+
+    def pack_pool(self):
+        """The small parts left after the gaps: nested on new sheets (all of them, whatever the time)."""
+        t = time.perf_counter()
+        bt = self.sheets[-1].bin_type if self.sheets else 0
+        n = sum(self.pool.values())
+        for attempt in range(3):
+            ids = sorted(self.pool)
+            b = self.bin_json(bt, [])
+            b["copies"] = n
+            inst = {"objective": "bin-packing", "parameters": dict(self.inst.get("parameters", {})),
+                    "bin_types": [b], "item_types": [self.item_json(tid, self.pool[tid]) for tid in ids]}
+            try:
+                r = psrun.solve(inst, self.bin, max(2.0, min(10.0, self.left())) * (attempt + 1), self.opt.solve_mode)
+            except RuntimeError as e:
+                self.say(f"solver failed: {str(e)[:120]}")
+                continue
+            new = []
+            for sb in (r["solution"] or {}).get("bins", []):
+                for _ in range(int(sb.get("copies", 1))):
+                    new.append(Sheet(bt, [Placed(ids[it["id"]], Xf(geom.norm_angle(it["angle"]), bool(it.get("mirror", False)), it["x"], it["y"]))
+                                          for it in sb["items"]]))
+            got = Counter(p.id for x in new for p in x.items)
+            if got == self.pool:
+                self.sheets += new
+                self.pool = Counter()
+                break
+        self.note("pool-new-sheets", time.perf_counter() - t, n - sum(self.pool.values()))
 
     def step_fill(self):
         """The emptiest sheets first: their gaps get parts from the sheets after them (taken from the
@@ -225,25 +353,11 @@ class PostPass:
         total = 0
         for _ in range(self.opt.fill_rounds):
             moved = 0
-            n = len(self.sheets)
-            order = sorted((k for k in range(n - 1) if self.fullness(self.sheets[k]) < self.opt.fill_below),
-                           key=lambda k: self.fullness(self.sheets[k]))
-            done = set()
-            for k0 in order:
+            order = sorted((x for x in self.sheets[:-1] if self.fullness(x) < self.opt.fill_below), key=self.fullness)
+            for batch in self.batches(order):
                 if self.left() < 1.0:
                     break
-                # sheets may have gone since the order was made: find the same sheet again
-                sh = self.sheets[k0] if k0 < len(self.sheets) else None
-                if sh is None or id(sh) in done:
-                    continue
-                k = next((i for i, x in enumerate(self.sheets) if x is sh), None)
-                if k is None or k >= len(self.sheets) - 1:
-                    continue
-                done.add(id(sh))
-                later = Counter(p.id for x in self.sheets[k + 1:] for p in x.items)
-                free = (1.0 - self.fullness(sh)) * self._bin_area[sh.bin_type]
-                cands = Counter({tid: c for tid, c in later.items() if self.area(tid) <= free})
-                moved += self.fill(k, cands, self.opt.fill_time)
+                moved += self.fill_batch(batch, "later", self.opt.fill_time)
             total += moved
             if not moved or self.left() < 1.0:
                 break
@@ -352,6 +466,8 @@ class PostPass:
             self.step_gap()
         # sheet pairs first: on the test jobs they gave most of the gain, the chain after them
         # uses the gaps they open; the chain alone rarely shortened the last sheet
+        if self.pool:
+            self.step_pool()
         if self.opt.fill and len(self.sheets) > 1:
             self.step_fill()
         if self.opt.tail and len(self.sheets) > 1:

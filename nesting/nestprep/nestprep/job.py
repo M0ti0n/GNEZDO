@@ -26,23 +26,54 @@ from .solution import expand
 LEVELS = {
     # grace: more nest time when there is no layout yet at the end of it (then a warning)
     "quick": dict(total=30.0, post=10.0, post_per_sheet=0.6, post_max=40.0, grace=15.0, min_nest=10.0, max_nest=30.0,
-                  pre_opts=dict(pair_max_fill=0.70),
-                  post_opts=dict(fill_time=1.5, fill_rounds=2, tail_time=4.0, pairs=False, chain=False, compact_time=5.0)),
+                  stop_after=5.0, two_phase=False,
+                  pre_opts=dict(pair_max_fill=0.75),
+                  post_opts=dict(pool_time=1.5, fill_time=1.5, fill_rounds=2, tail_time=4.0, pairs=False, chain=False, compact_time=5.0)),
     # the nest is capped at 30 s: on the test jobs a longer nest gave the same layout, the time is
     # worth more in the post-pass
     "thorough": dict(total=90.0, post=30.0, post_per_sheet=2.5, post_max=150.0, grace=30.0, min_nest=20.0, max_nest=30.0,
+                     stop_after=10.0, two_phase=False,
                      pre_opts=dict(),
-                     post_opts=dict(fill_time=3.0, fill_rounds=3, tail_time=6.0, pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
+                     post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, tail_time=6.0, pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
     # the user sets the nest time (or none: until stopped); then the thorough post-pass
-    "custom": dict(total=None, post=30.0, post_per_sheet=2.5, post_max=150.0, grace=60.0, min_nest=None, max_nest=None,
+    "custom": dict(total=None, two_phase=False, post=30.0, post_per_sheet=2.5, post_max=150.0, grace=60.0, min_nest=None, max_nest=None,
                    pre_opts=dict(),
-                   post_opts=dict(fill_time=3.0, fill_rounds=3, tail_time=6.0, pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
+                   post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, tail_time=6.0, pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
 }
 
 
 def post_budget(level: str, sheets: int) -> float:
     L = LEVELS[level]
     return min(L["post_max"], L["post"] + L["post_per_sheet"] * max(0, sheets))
+
+
+def small_items(pre: dict, mapping: dict, max_sheet_share: float = 0.03, max_area_share: float = 0.25) -> dict[int, int]:
+    """Item types for the second phase of a two-phase nest: plain parts (not a host with filled holes,
+    not a pair) of at most 3 % of a sheet each, the smallest first, together at most a quarter of
+    all the parts' area. {item type: copies}; empty when the job is too small to split."""
+    bins = pre.get("bin_types") or []
+    if not bins:
+        return {}
+    sheet = min(geom.shape_to_poly(b).area if "elements" in b else float(b["width"]) * float(b["height"]) for b in bins)
+    kinds = [e.get("kind", "original") for e in mapping.get("item_types", [])]
+    items = []
+    for i, it in enumerate(pre["item_types"]):
+        shapes = it["shapes"] if "shapes" in it else [it]
+        a = sum(geom.shape_to_poly(sh).area for sh in shapes)
+        items.append((a, i, int(it.get("copies", 1))))
+    total = sum(a * c for a, _, c in items)
+    out, acc = {}, 0.0
+    for a, i, c in sorted(items):
+        if (i < len(kinds) and kinds[i] != "original") or a > max_sheet_share * sheet:
+            continue
+        if acc + a * c > max_area_share * total:
+            break
+        out[i] = c
+        acc += a * c
+    # a split is worth it only with enough small pieces, and something left for the main nest
+    if sum(out.values()) < 20 or len(out) == len(items):
+        return {}
+    return out
 
 
 def pre_options(level: str, base: Options) -> Options:
@@ -144,18 +175,29 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
         nest_t = FOREVER if minutes is None else max(10.0, minutes * 60.0 - pre_t - L["post"] - L["post_per_sheet"] * 10)
     else:
         nest_t = min(L["max_nest"], max(L["min_nest"], L["total"] - pre_t - L["post"]))
-        stop_after = None
+        # the nest usually finds its best layout early: it ends after this long without a better one
+        stop_after = L.get("stop_after")
     say({"stage": "nest"})
+
+    # two-phase nest: the main nest gets the big and medium parts; the small ones go into its gaps
+    # afterwards (PostPass step_pool), the emptiest sheet first, and on new sheets what is left
+    small = small_items(pre, mapping) if L.get("two_phase") and pre.get("objective") != "knapsack" else {}
+    keep = [i for i in range(len(pre["item_types"])) if i not in small]
+    nest_inst = pre if not small else {**pre, "item_types": [pre["item_types"][i] for i in keep]}
+    remap = (lambda sol: sol) if not small else (lambda sol: {**sol, "bins": [
+        {**b, "items": [{**it, "id": keep[it["id"]]} for it in b["items"]]} for b in sol.get("bins", [])]})
 
     def progress(best):
         best = dict(best)
         sol = best.pop("solution", None)
         if sol:
-            best["layout"] = expand(sol, mapping)  # the best layout so far, as original parts
+            best["layout"] = expand(remap(sol), mapping)  # the best layout so far, as original parts
         say({"stage": "nest", **best})
     # no layout yet when the time is up (a hard job): a little more time, stopping at the first one
-    r = psrun.solve_grace(pre, binary, nest_t, L["grace"], workdir=os.path.join(outdir, "nest"),
+    r = psrun.solve_grace(nest_inst, binary, nest_t, L["grace"], workdir=os.path.join(outdir, "nest"),
                           stop_after=stop_after, should_stop=should_stop, on_progress=progress)
+    if r["solution"]:
+        r["solution"] = remap(r["solution"])
     if not r["solution"]:
         if r.get("stopped"):
             raise NestError("Stopped before a layout was found")
@@ -169,7 +211,8 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     else:
         n = sum(int(b.get("copies", 1)) for b in r["solution"].get("bins", []))
         opts = post_options(level, post_budget(level, n), quiet)
-    pp = PostPass(pre, r["solution"], binary, opts)
+    opts.workers = max(1, pre_opts.workers)
+    pp = PostPass(pre, r["solution"], binary, opts, pool=small)
     sol = pp.run()
     total = time.perf_counter() - t0
     dump(pre, os.path.join(outdir, "instance_pre.json"))
