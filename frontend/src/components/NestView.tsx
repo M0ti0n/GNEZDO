@@ -22,7 +22,6 @@ interface Props {
   onStop: (solId: string) => void;
   onRemove: (solId: string) => void;
   onToggleLock: (solId: string, sheet: number) => void;
-  onSave: (solId: string) => void;
 }
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
@@ -60,7 +59,7 @@ const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, onSave }: Props) {
+export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock }: Props) {
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
   const sol = solutions.find((s) => s.id === selected.sol) ?? solutions[solutions.length - 1];
@@ -122,7 +121,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
 
       <aside className="nest-side">
         <SolutionsPanel solutions={solutions} current={sol?.id ?? null} sheetNo={sheetNo}
-          onSelect={onSelect} onAdd={onAdd} onStop={onStop} onRemove={onRemove} onSave={onSave}>
+          onSelect={onSelect} onAdd={onAdd} onStop={onStop} onRemove={onRemove}>
           {sol && sheets.length > 0 && <InfoTabs sol={sol} sheets={sheets} sheetNo={sheetNo} parts={byId} jobParts={parts} />}
         </SolutionsPanel>
       </aside>
@@ -135,11 +134,11 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
   );
 }
 
-function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, onRemove, onSave, children }: {
+function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, onRemove, children }: {
   children?: React.ReactNode;
   solutions: Solution[]; current: string | null; sheetNo: number;
   onSelect: (s: NestSelection) => void; onAdd: (m: NestMode) => void; onStop: (id: string) => void;
-  onRemove: (id: string) => void; onSave: (id: string) => void;
+  onRemove: (id: string) => void;
 }) {
   const [menu, setMenu] = useState(false);
   const [, tick] = useState(0);
@@ -219,13 +218,8 @@ function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, 
                 <button type="button" className={`sol-box${on ? " is-on" : ""}`} onClick={() => onSelect({ sol: s.id, sheet: 0 })}
                   title={failed ? failed : `${sheets.length} ${sheets.length === 1 ? "sheet" : "sheets"} · ${hms(s.run?.seconds ?? 0)}${s.run?.state === "stopped" ? " · stopped" : ""}`}>
                   <span className="sol-title">Solution {s.no}</span>
-                  {s.saved && <span className="sol-saved" title="Kept for the job">✓</span>}
                   <span className={`sol-badge${failed ? " is-error" : ""}`}>{failed ? "FAILED" : MODE_SHORT[s.mode]}</span>
                 </button>
-                {sheets.length > 0 && (
-                  <button type="button" className={`sol-btn sol-save${s.saved ? " is-saved" : ""}`} onClick={() => onSave(s.id)}
-                    title={s.saved ? "This solution is kept for the job (click to undo)" : "Keep this solution for the job"}>{s.saved ? "SAVED" : "SAVE"}</button>
-                )}
                 <button type="button" className="sol-x" onClick={() => onRemove(s.id)} title={`Remove solution ${s.no}`} aria-label={`Remove solution ${s.no}`}>
                   <IconClose size={16} />
                 </button>

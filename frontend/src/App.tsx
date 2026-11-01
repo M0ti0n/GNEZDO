@@ -24,7 +24,7 @@ import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
-import { buildRequest, isFinished, nestApi, nestProblem, savedOfSolution, solutionFromSaved, type NestMode, type NestRun, type Solution } from "./job/nest";
+import { buildRequest, isFinished, nestApi, nestProblem, nestsOfJob, solutionsFromSaved, type NestMode, type NestRun, type Solution } from "./job/nest";
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type NestSelection } from "./components/NestView";
 import { loadMachineSettings, saveMachineSettings, type MachineSettings } from "./job/machine";
@@ -96,12 +96,12 @@ export function App() {
     if (id.startsWith("new-")) setJobParts((m) => ({ ...m, [id]: [] }));
     else {
       api.jobParts(id).then((p) => setJobParts((m) => ({ ...m, [id]: p.map((jp, i) => ({ ...jp, no: jp.no || i + 1, qtyMax: Math.max(jp.qty, jp.qtyMax ?? jp.qty) })) })));
-      // a saved job brings its stock sheets and its saved solution back
+      // a saved job brings its stock sheets and its solutions back
       api.job(id).then((d) => {
         if (!d) return;
         if (Array.isArray(d.stock)) setJobStock((m) => ({ ...m, [id]: d.stock as StockSheet[] }));
-        const sol = solutionFromSaved(d.nest);
-        if (sol) setJobSol((m) => ({ ...m, [id]: { list: [sol], sel: { sol: sol.id, sheet: 0 } } }));
+        const sols = solutionsFromSaved(d.nest);
+        if (sols) setJobSol((m) => ({ ...m, [id]: sols }));
       }).catch(() => { /* an older server without job details: parts only */ });
     }
   }, [active, jobParts]);
@@ -330,7 +330,7 @@ export function App() {
   const job = activeTab?.kind === "job" && activeTab.jobId ? { id: activeTab.jobId, title: activeTab.title } : null;
 
   // Nesting: every run is a solution of the job tab. Start one, ask the server how it goes once a
-  // second, show it in the SOLUTIONS panel; Qty nested follows the saved solution (else the one shown).
+  // second, show it in the SOLUTIONS panel; Qty nested follows the solution shown.
   const solsOf = (jobId: string) => jobSol[jobId] ?? { list: [], sel: { sol: null, sheet: 0 } };
   const setSols = (jobId: string, f: (s: { list: Solution[]; sel: NestSelection }) => { list: Solution[]; sel: NestSelection }) =>
     setJobSol((m) => ({ ...m, [jobId]: f(m[jobId] ?? { list: [], sel: { sol: null, sheet: 0 } }) }));
@@ -380,16 +380,16 @@ export function App() {
     patchSol(jobId, solId, (x) => (x.run ? { ...x, run: { ...x.run, stopAsked: true } } : x));
     try { await nestApi.stop(runId); } catch (e) { setToast((e as Error).message); }
   };
-  // Saving a job (Work parts SAVE; until that button exists, Ctrl+S): parts with their quantities,
-  // the stock sheets and the SAVED solution. A new job gets its database id on the first save.
+  // Saving a job (Work parts SAVE / SAVE AS; until those buttons exist, Ctrl+S): parts with their
+  // quantities, the stock sheets and every finished solution. A new job gets its database id on the first save.
   const [jobServerId, setJobServerId] = useState<Record<string, string>>({});
   const saveJob = async (jobId: string, title: string) => {
     const parts = jobParts[jobId];
     if (!parts) return;
     const serverId = jobId.startsWith("new-") ? jobServerId[jobId] ?? null : jobId;
-    const saved = solsOf(jobId).list.find((x) => x.saved && x.run?.result);
+    const st = solsOf(jobId);
     try {
-      const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: saved ? savedOfSolution(saved) : null, modifiedBy: USER_NAME });
+      const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: USER_NAME });
       if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
       setToast(`Job saved${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}`);
     } catch (e) {
@@ -406,12 +406,12 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  /** Pieces per part of the solution that counts: the saved one, else the one shown. */
+  /** Pieces per part of the solution shown. */
   const nestedCounts = (jobId: string): Record<string, number> | null => {
     const st = jobSol[jobId];
     if (!st) return null;
     const done = (x: Solution) => !!x.run?.result && (x.run.state === "done" || x.run.state === "stopped");
-    const sol = st.list.find((x) => x.saved && done(x)) ?? st.list.find((x) => x.id === st.sel.sol && done(x));
+    const sol = st.list.find((x) => x.id === st.sel.sol && done(x));
     return sol?.run?.result?.nested ?? null;
   };
   const onJobTool = (_section: string, tool: string, custom?: CustomNestSettings) => {
@@ -461,7 +461,6 @@ export function App() {
                 onRemove={(id) => setSols(job.id, (st) => ({ list: st.list.filter((x) => x.id !== id),
                   sel: st.sel.sol === id ? { sol: st.list.filter((x) => x.id !== id).at(-1)?.id ?? null, sheet: 0 } : st.sel }))}
                 onToggleLock={(id, i) => patchSol(job.id, id, (x) => ({ ...x, locked: x.locked.includes(i) ? x.locked.filter((n) => n !== i) : [...x.locked, i] }))}
-                onSave={(id) => setSols(job.id, (st) => ({ ...st, list: st.list.map((x) => ({ ...x, saved: x.id === id ? !x.saved : false })) }))}
               />
             )}
             {active.kind === "job" && job && jobScreen[job.id] !== "nest" && (

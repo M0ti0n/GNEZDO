@@ -9,8 +9,9 @@ namespace Gnezdo.Api.Endpoints;
 public record JobPartSave(string PartId, int Qty, int? QtyMax, int? No);
 
 /// <summary>
-/// A job as the job tab saves it (Work parts SAVE): name, parts with quantities, the stock sheets
-/// and the saved nest solution (both as the tab keeps them; null nest = not nested).
+/// A job as the job tab saves it (Work parts SAVE / SAVE AS): name, parts with quantities, the stock
+/// sheets and its nesting, as the tab keeps them: { selected, solutions: [{ id, ..., result: { sheets } }] }
+/// (null = not nested). The solution chosen for Process is picked there later.
 /// </summary>
 public record JobSaveRequest(string Name, IReadOnlyList<JobPartSave> Parts, JsonArray? Stock, JsonObject? Nest, string? ModifiedBy);
 
@@ -33,6 +34,18 @@ public static class JobSave
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         try { return JsonNode.Parse(json); } catch (JsonException) { return null; }
+    }
+
+    /// <summary>Sheets of the solution shown (else the last one); also { sheets } or { result: { sheets } }.</summary>
+    private static int SheetCount(JsonObject? nest)
+    {
+        if (nest is null) return 0;
+        if (nest["sheets"] is JsonArray direct) return direct.Count;
+        if (nest["result"]?["sheets"] is JsonArray single) return single.Count;
+        if (nest["solutions"] is not JsonArray { Count: > 0 } all) return 0;
+        var selected = nest["selected"]?.GetValueKind() == JsonValueKind.String ? nest["selected"]!.GetValue<string>() : null;
+        var shown = all.FirstOrDefault(s => s?["id"]?.GetValueKind() == JsonValueKind.String && s["id"]!.GetValue<string>() == selected) ?? all[^1];
+        return shown?["result"]?["sheets"] is JsonArray a ? a.Count : 0;
     }
 
     /// <summary>GET /api/jobs/{id}</summary>
@@ -89,7 +102,7 @@ public static class JobSave
             job.Parts.Add(new JobPart { PartId = pid, Qty = p.Qty, QtyMax = Math.Max(p.Qty, p.QtyMax ?? p.Qty), No = p.No is > 0 ? p.No.Value : n });
         }
         job.Stock = r.Stock?.ToJsonString() ?? "";
-        var sheets = r.Nest?["sheets"] is JsonArray a ? a.Count : 0;
+        var sheets = SheetCount(r.Nest);
         if (r.Nest is not null && sheets > 0)
         {
             if (job.Nest != r.Nest.ToJsonString()) job.NestedAt = now;

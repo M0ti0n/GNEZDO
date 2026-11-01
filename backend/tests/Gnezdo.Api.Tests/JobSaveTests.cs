@@ -85,6 +85,24 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
     }
 
     [Fact]
+    public async Task All_solutions_are_kept_and_the_one_shown_gives_the_sheet_count()
+    {
+        var ids = await PartIds(1);
+        JsonObject Sol(string id, int sheets) => new() { ["id"] = id, ["mode"] = "fast", ["result"] = new JsonObject { ["sheets"] = Nest(sheets)["sheets"]!.DeepClone() } };
+        var res = await api.Client.PostAsJsonAsync("/api/jobs", new
+        {
+            name = "Test job 3",
+            parts = new[] { new { partId = ids[0], qty = 2 } },
+            nest = new JsonObject { ["selected"] = "b", ["solutions"] = new JsonArray(Sol("a", 1), Sol("b", 3), Sol("c", 2)) },
+        });
+        var saved = (await res.Content.ReadFromJsonAsync<JobSavedDto>())!;
+        Assert.Equal(3, saved.SheetCount);
+        Assert.Equal("nested", saved.Status);
+        var detail = (await api.Client.GetFromJsonAsync<JsonObject>($"/api/jobs/{saved.Id}"))!;
+        Assert.Equal(3, detail["nest"]!["solutions"]!.AsArray().Count);
+    }
+
+    [Fact]
     public async Task Bad_jobs_are_refused()
     {
         var ids = await PartIds(1);
