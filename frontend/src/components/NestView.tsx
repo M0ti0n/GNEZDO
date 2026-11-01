@@ -176,6 +176,8 @@ function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, 
   onRemove: (id: string) => void;
 }) {
   const [menu, setMenu] = useState(false);
+  // sheet lists opened / closed by the arrow (the solution shown is open until closed)
+  const [fold, setFold] = useState<Record<string, boolean>>({});
   const [, tick] = useState(0);
   const running = solutions.some((s) => !isFinished(s.run) && !s.error);
   useEffect(() => {
@@ -246,28 +248,38 @@ function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, 
               </div>
             );
           }
-          // finished: name and mode in one box, remove beside it, the sheets as a tree below
+          // finished: name and mode in one box with its arrow, remove beside it, the sheets as a tree below
+          const open = fold[s.id] ?? on;
           return (
             <div key={s.id} data-sol={s.id} className="sol">
               <div className="sol-row">
-                <button type="button" className={`sol-box${on ? " is-on" : ""}`} onClick={() => onSelect({ sol: s.id, sheet: 0 })}
-                  title={failed ? failed : `${sheets.length} ${sheets.length === 1 ? "sheet" : "sheets"} · ${hms(s.run?.seconds ?? 0)}${s.run?.state === "stopped" ? " · stopped" : ""}`}>
-                  <span className="sol-title">Solution {s.no}</span>
-                  <span className={`sol-badge${failed || s.outdated ? " is-error" : ""}`}
-                    title={s.outdated ? "Nested for a machine of another technology: nest the job again" : undefined}>
-                    {failed ? "FAILED" : s.outdated ? "OUT OF DATE" : MODE_SHORT[s.mode]}</span>
-                </button>
+                <div className={`sol-box${on ? " is-on" : ""}`}>
+                  <button type="button" className="sol-pick" onClick={() => { onSelect({ sol: s.id, sheet: 0 }); setFold((f) => ({ ...f, [s.id]: true })); }}
+                    title={failed ? failed : `${sheets.length} ${sheets.length === 1 ? "sheet" : "sheets"} · ${hms(s.run?.seconds ?? 0)}${s.run?.state === "stopped" ? " · stopped" : ""}`}>
+                    <span className="sol-title">Solution {s.no}</span>
+                    <span className={`sol-badge${failed || s.outdated ? " is-error" : ""}`}
+                      title={s.outdated ? "Nested for a machine of another technology: nest the job again" : undefined}>
+                      {failed ? "FAILED" : s.outdated ? "OUT OF DATE" : MODE_SHORT[s.mode]}</span>
+                  </button>
+                  {sheets.length > 0 && (
+                    <button type="button" className={`sol-fold${open ? " is-open" : ""}`} aria-expanded={open}
+                      title={open ? "Hide its sheets" : "Show its sheets"} aria-label={`${open ? "Hide" : "Show"} the sheets of solution ${s.no}`}
+                      onClick={() => setFold((f) => ({ ...f, [s.id]: !open }))}>
+                      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </button>
+                  )}
+                </div>
                 <button type="button" className="sol-x" onClick={() => onRemove(s.id)} title={`Remove solution ${s.no}`} aria-label={`Remove solution ${s.no}`}>
                   <IconClose size={16} />
                 </button>
               </div>
               {failed && on && <p className="sol-err">{failed}</p>}
               {skipped > 0 && on && <p className="sol-err">{skipped} {skipped === 1 ? "part" : "parts"} not nested: {s.run!.result!.skipped[0].reason}</p>}
-              {on && sheets.length > 0 && (
+              {open && sheets.length > 0 && (
                 <ol className="sol-tree">
                   {sheets.map((_, i) => (
                     <li key={i}>
-                      <button type="button" className={i === sheetNo ? "is-on" : ""} onClick={() => onSelect({ sol: s.id, sheet: i })}>
+                      <button type="button" className={on && i === sheetNo ? "is-on" : ""} onClick={() => onSelect({ sol: s.id, sheet: i })}>
                         Sheet {i + 1}
                       </button>
                     </li>

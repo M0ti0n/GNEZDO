@@ -151,4 +151,8 @@ public class JobPart
     public int QtyMax { get; set; }
     /// <summary>The part's ID number in the job (the work part list's ID column).</summary>
     public int No { get; set; }
+    /// <summary>Material in this job only (null = the part's own); the part in the database is not changed.</summary>
+    public string? Material { get; set; }
+    /// <summary>Thickness in this job only (null = the part's own).</summary>
+    public decimal? ThicknessMm { get; set; }
 }

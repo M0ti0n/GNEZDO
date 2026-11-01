@@ -140,4 +140,26 @@ export interface JobPart {
   no?: number;
   /** QTY NESTED: copies on the current nest (0 until nesting exists). */
   nested?: number;
+  /**
+   * The part's material / thickness in the database, kept when this job uses others (part.material /
+   * part.thicknessMm are then the job's: the list, the stock and nesting use them).
+   */
+  dbMaterial?: string;
+  dbThicknessMm?: number;
 }
+
+/** The job's material / thickness of a part; the database's stays in dbMaterial / dbThicknessMm. */
+export function withMaterial(jp: JobPart, patch: { material?: string; thicknessMm?: number }): JobPart {
+  return {
+    ...jp,
+    dbMaterial: jp.dbMaterial ?? jp.part.material,
+    dbThicknessMm: jp.dbThicknessMm ?? jp.part.thicknessMm,
+    part: { ...jp.part, ...patch },
+  };
+}
+
+/** What this job sets differently from the database (null: the part's own). */
+export const jobOwn = (jp: JobPart) => ({
+  material: jp.dbMaterial !== undefined && jp.part.material !== jp.dbMaterial ? jp.part.material : null,
+  thicknessMm: jp.dbThicknessMm !== undefined && jp.part.thicknessMm !== jp.dbThicknessMm ? jp.part.thicknessMm : null,
+});

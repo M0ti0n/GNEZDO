@@ -103,6 +103,34 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
     }
 
     [Fact]
+    public async Task Material_and_thickness_can_be_set_for_the_job_only()
+    {
+        var ids = await PartIds(2);
+        var before = (await api.Client.GetFromJsonAsync<List<PartDto>>("/api/parts"))!.Single(p => p.Id == ids[0]);
+        var req = new
+        {
+            name = "Job with its own material",
+            parts = new object[] { new { partId = ids[0], qty = 2, material = "HARDOX 450", thicknessMm = 6.5m }, new { partId = ids[1], qty = 1 } },
+            stock = new JsonArray(), nest = (JsonObject?)null, modifiedBy = "Fab",
+        };
+        var res = await api.Client.PostAsJsonAsync("/api/jobs", req);
+        Assert.Equal(HttpStatusCode.Created, res.StatusCode);
+        var saved = (await res.Content.ReadFromJsonAsync<JobSavedDto>())!;
+        var parts = (await api.Client.GetFromJsonAsync<List<JobPartDto>>($"/api/jobs/{saved.Id}/parts"))!;
+        var p0 = parts.Single(p => p.Part.Id == ids[0]);
+        Assert.Equal("HARDOX 450", p0.Material);
+        Assert.Equal(6.5m, p0.ThicknessMm);
+        Assert.Equal(before.Material, p0.Part.Material);          // the part itself keeps its own
+        Assert.Null(parts.Single(p => p.Part.Id == ids[1]).Material);
+        var after = (await api.Client.GetFromJsonAsync<List<PartDto>>("/api/parts"))!.Single(p => p.Id == ids[0]);
+        Assert.Equal(before.Material, after.Material);
+        Assert.Equal(before.ThicknessMm, after.ThicknessMm);
+
+        var bad = await api.Client.PostAsJsonAsync("/api/jobs", new { name = "x", parts = new[] { new { partId = ids[0], qty = 1, thicknessMm = -1m } } });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+    }
+
+    [Fact]
     public async Task Bad_jobs_are_refused()
     {
         var ids = await PartIds(1);

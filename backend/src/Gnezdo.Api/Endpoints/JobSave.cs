@@ -6,7 +6,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Gnezdo.Api.Endpoints;
 
 /// <summary>One part of a job to save.</summary>
-public record JobPartSave(string PartId, int Qty, int? QtyMax, int? No);
+/// <summary>Material / ThicknessMm: in this job only (null or missing = the part's own).</summary>
+public record JobPartSave(string PartId, int Qty, int? QtyMax, int? No, string? Material = null, decimal? ThicknessMm = null);
 
 /// <summary>
 /// A job as the job tab saves it (Work parts SAVE / SAVE AS): name, parts with quantities, the stock
@@ -73,6 +74,8 @@ public static class JobSave
         }
         if (ids.Count != ids.Distinct().Count()) errors["parts"] = ["A part is in the list twice."];
         if (parts.Any(p => p.Qty < 0)) errors["qty"] = ["Qty req cannot be negative."];
+        if (parts.Any(p => p.ThicknessMm is <= 0 or > 1000)) errors["thicknessMm"] = ["Thickness must be between 0 and 1000 mm."];
+        if (parts.Any(p => p.Material is { Length: > 100 })) errors["material"] = ["Material is longer than 100 characters."];
         if (errors.Count > 0) return Results.ValidationProblem(errors);
 
         // deleted parts are allowed: a job keeps the parts it was made with
@@ -99,7 +102,12 @@ public static class JobSave
         foreach (var (p, pid) in parts.Zip(ids))
         {
             n++;
-            job.Parts.Add(new JobPart { PartId = pid, Qty = p.Qty, QtyMax = Math.Max(p.Qty, p.QtyMax ?? p.Qty), No = p.No is > 0 ? p.No.Value : n });
+            job.Parts.Add(new JobPart
+            {
+                PartId = pid, Qty = p.Qty, QtyMax = Math.Max(p.Qty, p.QtyMax ?? p.Qty), No = p.No is > 0 ? p.No.Value : n,
+                Material = string.IsNullOrWhiteSpace(p.Material) ? null : p.Material.Trim(),
+                ThicknessMm = p.ThicknessMm,
+            });
         }
         job.Stock = r.Stock?.ToJsonString() ?? "";
         if (r.Machine is not null) job.Machine = r.Machine.Trim() is var m && m.Length > 50 ? m[..50] : r.Machine.Trim();

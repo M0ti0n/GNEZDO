@@ -24,7 +24,8 @@ public record JobSummaryDto(
     IReadOnlyList<decimal> Thicknesses);
 
 /// <summary>A part of a job: Qty req, Qty max and its ID number in the job's part list.</summary>
-public record JobPartDto(PartDto Part, int Qty, int QtyMax = 0, int No = 0);
+/// <summary>A part of a job. Material / ThicknessMm: set in this job only (null = the part's own, in Part).</summary>
+public record JobPartDto(PartDto Part, int Qty, int QtyMax = 0, int No = 0, string? Material = null, decimal? ThicknessMm = null);
 
 public record ImportSummaryDto(
     string Id, string Source, string Project, int PartCount, IReadOnlyList<string> Materials,

@@ -42,7 +42,7 @@ const USER_NAME = "Fab"; // until sign-in exists
 
 /** What saving a job keeps, as text: the same text means nothing to save. */
 const snapOf = (parts: JobPart[], stock: StockSheet[], sols: Solution[], machine: string) =>
-  JSON.stringify({ p: parts.map((jp) => [jp.part.id, jp.qty, jp.qtyMax, jp.no]), stock, n: nestsOfJob(sols, null)?.solutions ?? [], machine });
+  JSON.stringify({ p: parts.map((jp) => [jp.part.id, jp.qty, jp.qtyMax, jp.no, jp.part.material, jp.part.thicknessMm]), stock, n: nestsOfJob(sols, null)?.solutions ?? [], machine });
 
 export function App() {
   const [state, dispatch] = useReducer(shellReducer, initialShell);

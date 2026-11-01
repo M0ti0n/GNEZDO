@@ -92,6 +92,8 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
             e.HasKey(x => new { x.JobId, x.PartId });
             e.HasOne(x => x.Job).WithMany(x => x.Parts).HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Part).WithMany().HasForeignKey(x => x.PartId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.Material).HasMaxLength(100);
+            e.Property(x => x.ThicknessMm).HasPrecision(8, 2);
         });
     }
 }
