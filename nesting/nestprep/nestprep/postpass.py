@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 
 from . import geom, psrun
 from .freemap import FreeMap, Pocket, cell_size
+from .push import push_sheet
 from .geom import Xf
 
 
@@ -44,6 +45,7 @@ class PostOptions:
     empty: bool = True           # the last sheet's parts into the earlier sheets, again while sheets go
     empty_time: float = 2.0      # per sheet
     empty_first: bool = True     # also before fill (Thorough); Fast has the time for one run only
+    push: bool = True            # parts pushed towards 0,0 at the start and after every step (push.py)
     tail: bool = True            # the last sheets nested again together, to need one sheet less
     tail_time: float = 6.0       # per sheet of the tail
     chain: bool = True
@@ -728,29 +730,57 @@ class PostPass:
             done = 1
         self.note("compact", time.perf_counter() - t, done)
 
+    def push_all(self) -> int:
+        """Every sheet that changed since it was last pushed: its parts towards 0,0 (the free
+        space gathers at the far side, so the next step finds bigger pockets)."""
+        if not self.opt.push:
+            return 0
+        if not hasattr(self, "_pushed"):
+            self._pushed = {}
+        t = time.perf_counter()
+        moves = 0
+        for sh in self.sheets:
+            box = self.rect_bin(sh.bin_type)
+            if box is None or self._pushed.get(id(sh)) == self.fingerprint(sh):
+                continue
+            edge = float(self.inst["bin_types"][sh.bin_type].get("item_bin_minimum_spacing", 0.0))
+            moves += push_sheet(sh.items, self.shapes, box, self.spacing, edge=edge)
+            self._pushed[id(sh)] = self.fingerprint(sh)
+        dt = time.perf_counter() - t
+        self.opt.budget += dt      # on top of the steps' time: they keep all of theirs
+        if moves:
+            self.note("push", dt, moves)
+        return moves
+
     def run(self) -> dict:
         self.note("start", 0.0, 0)
+        steps = []
         if self.opt.gap and len(self.sheets) > 1:
-            self.step_gap()
-        # sheet pairs first: on the test jobs they gave most of the gain, the chain after them
-        # uses the gaps they open; the chain alone rarely shortened the last sheet
+            steps.append(self.step_gap)
         if self.pool:
-            self.step_pool()
+            steps.append(self.step_pool)
         # the tail first (quick: only the last sheet's parts), then the gaps, then the tail again
-        if self.opt.empty and self.opt.empty_first and len(self.sheets) > 1:
-            self.step_empty()
-        if self.opt.fill and len(self.sheets) > 1:
-            self.step_fill()
-        if self.opt.empty and len(self.sheets) > 1:
-            self.step_empty()
-        if self.opt.tail and len(self.sheets) > 1:
-            self.step_tail()
-        if self.opt.pairs and len(self.sheets) > 1:
-            self.step_pairs()
-        if self.opt.chain and len(self.sheets) > 1 and self.left() > 1.0:
-            self.step_chain()
+        if self.opt.empty and self.opt.empty_first:
+            steps.append(self.step_empty)
+        if self.opt.fill:
+            steps.append(self.step_fill)
+        if self.opt.empty:
+            steps.append(self.step_empty)
+        if self.opt.tail:
+            steps.append(self.step_tail)
+        # sheet pairs and the chain from what time is left
+        if self.opt.pairs:
+            steps.append(self.step_pairs)
+        if self.opt.chain:
+            steps.append(lambda: self.left() > 1.0 and self.step_chain())
+        self.push_all()
+        for step in steps:
+            if len(self.sheets) > 1 or step == self.step_pool:
+                step()
+                self.push_all()
         if self.opt.compact and self.sheets:
             self.step_compact()
+            self.push_all()
         return self.solution()
 
     def solution(self) -> dict:
