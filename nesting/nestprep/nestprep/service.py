@@ -331,7 +331,9 @@ class Run:
                 self.write_best(i, self.sheets_of(i, layout))
             self.progress()
         stop_after = self.req.get("stopAfterMinutes")
-        workers = max(2, (os.cpu_count() or 2) // self.parallel)
+        # PackingSolver runs ~2 threads itself: about one solver process per two CPU threads (an i3
+        # with 4 threads: 2; 16 threads: 8). More only made every process slower and its answers worse.
+        workers = max(2, (os.cpu_count() or 2) // 2 // self.parallel)
         try:
             job = run_job(g["instance"], self.bin, level, Options(workers=workers, verbose=False),
                           os.path.join(self.dir, f"group{i + 1}"), quiet=True,
