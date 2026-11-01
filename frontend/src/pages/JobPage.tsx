@@ -8,7 +8,10 @@ import { PartPropertiesDialog } from "../components/PartPropertiesDialog";
 import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PARTS_MIME } from "../shell/Drawer";
 import { readDxf } from "../import/dxf";
-import { boxOf, union } from "../import/geometry";
+import { boxOf, checkGeometry, union, type Entity } from "../import/geometry";
+import { loopPoints } from "../import/toPart";
+import { SheetPropertiesDialog } from "../components/SheetPropertiesDialog";
+import type { Origin } from "../job/machine";
 import { partColor } from "../job/nest";
 import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
 
@@ -23,6 +26,8 @@ interface Props {
   onRemove: (partId: string) => void;
   onOpenParts: () => void;
   onNotice: (text: string) => void;
+  /** The machine's 0,0 corner (Settings -> Machine), shown on the sheet in Sheet properties. */
+  origin: Origin;
 }
 
 /** Nested count against the part's range: short of Qty req, within Qty req..Qty max, or over Qty max. */
@@ -58,7 +63,7 @@ const value = (jp: JobPart, c: Col): string | number => {
 };
 
 // Work parts screen of a job: the job part list (left) and the stock sheets (right).
-export function JobPage({ title, parts, stock, stockSettings, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice }: Props) {
+export function JobPage({ title, parts, stock, stockSettings, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice, origin }: Props) {
   const [over, setOver] = useState(false);
 
   // the part's pop-up (double-click its name), and its versions
@@ -227,7 +232,7 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
           onRestored={(now) => { onPart(now.id, { part: now }); setHistory(now); }} />
       )}
 
-      <StockPanel parts={parts ?? []} stock={stock} settings={stockSettings} onStock={onStock} onNotice={onNotice} />
+      <StockPanel parts={parts ?? []} stock={stock} settings={stockSettings} onStock={onStock} onNotice={onNotice} origin={origin} />
     </div>
   );
 }
@@ -239,9 +244,10 @@ const optionLabel = (id: StockSource, label: string, st: StockSettings) => {
   return `${label}: ${[sl.material.trim(), `${sl.lengthMm} × ${sl.widthMm}`].filter(Boolean).join(" ")}`;
 };
 
-function StockPanel({ parts, stock, settings, onStock, onNotice }: {
-  parts: JobPart[]; stock: StockSheet[]; settings: StockSettings; onStock: (s: StockSheet[]) => void; onNotice: (t: string) => void;
+function StockPanel({ parts, stock, settings, onStock, onNotice, origin }: {
+  parts: JobPart[]; stock: StockSheet[]; settings: StockSettings; onStock: (s: StockSheet[]) => void; onNotice: (t: string) => void; origin: Origin;
 }) {
+  const [props, setProps] = useState<number | null>(null);   // sheet shown in Sheet properties
   const [from, setFrom] = useState<StockSource>("parts");
   const file = useRef<HTMLInputElement>(null);
   const [tooBig, setTooBig] = useState<{ file: string; l: number; w: number } | null>(null);
@@ -297,7 +303,7 @@ function StockPanel({ parts, stock, settings, onStock, onNotice }: {
       if (!fitsMachine(l, w)) { setTooBig({ file: f.name, l, w }); return; }
       onStock([...stock, newSheet({
         source: "dxf", ...nextPair(), lengthMm: l, widthMm: w, qty: 1, unlimited: false,
-        fileName: f.name.replace(/\.dxf$/i, ""),
+        fileName: f.name.replace(/\.dxf$/i, ""), outline: dxfOutline(drawing.entities, b),
       })]);
     } catch (e) {
       onNotice(`${f.name}: ${(e as Error).message}`);
@@ -305,7 +311,7 @@ function StockPanel({ parts, stock, settings, onStock, onNotice }: {
   };
 
   const set = (id: string, patch: Partial<StockSheet>) => onStock(stock.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  const details = () => onNotice("Sheet properties: coming next");
+
 
   return (
     <aside className="stock" aria-label="Stock">
@@ -330,9 +336,9 @@ function StockPanel({ parts, stock, settings, onStock, onNotice }: {
         {stock.map((s, i) => (
           <div key={s.id} className="sheet-card">
             <div className="sheet-row">
-              <span className="sheet-name" onDoubleClick={details} title={s.fileName ? `From ${s.fileName}.dxf` : s.source === "remnant" ? "Remnant" : undefined}>
+              <span className="sheet-name" onDoubleClick={() => setProps(i)} title={s.fileName ? `From ${s.fileName}.dxf` : s.source === "remnant" ? "Remnant" : undefined}>
                 Sheet {i + 1}
-                <button type="button" className="sheet-info" onClick={details} aria-label={`Properties of sheet ${i + 1}`} title="Sheet properties">i</button>
+                <button type="button" className="sheet-info" onClick={() => setProps(i)} aria-label={`Properties of sheet ${i + 1}`} title="Sheet properties">i</button>
               </span>
               <select className="field sheet-mat" value={s.material} aria-label={`Material of sheet ${i + 1}`}
                 onChange={(e) => set(s.id, { material: e.target.value })}>
@@ -373,6 +379,27 @@ function StockPanel({ parts, stock, settings, onStock, onNotice }: {
           {MACHINE_LIMIT.join(" × ")} mm, so it was not added.
         </ConfirmDialog>
       )}
+      {props !== null && stock[props] && (
+        <SheetPropertiesDialog sheet={stock[props]} index={props} origin={origin}
+          onSave={(now) => onStock(stock.map((x) => (x.id === now.id ? now : x)))} onClose={() => setProps(null)} />
+      )}
     </aside>
   );
+}
+
+/**
+ * A DXF sheet's own shape: its closed contours, mm, y down from the top-left of its extents; the
+ * largest is the outline, the others holes. Null for a plain rectangle (the size says it all).
+ */
+function dxfOutline(entities: Entity[], b: { minX: number; minY: number; maxX: number; maxY: number }): [number, number][][] | undefined {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const area = (p: { x: number; y: number }[]) => Math.abs(p.reduce((a, q, i) => { const r = p[(i + 1) % p.length]; return a + q.x * r.y - r.x * q.y; }, 0)) / 2;
+  const loops = checkGeometry(entities.map((e) => ({ ...e, role: "cut" as const }))).contours
+    .filter((c) => c.closed).map((c) => loopPoints(c, byId)).filter((p) => p.length > 2)
+    .sort((a, c) => area(c) - area(a));
+  if (!loops.length) return undefined;
+  const r = (v: number) => Math.round(v * 100) / 100;
+  const out = loops.map((p) => p.map((q) => [r(q.x - b.minX), r(b.maxY - q.y)] as [number, number]));
+  const rect = out.length === 1 && out[0].length === 4 && area(loops[0]) >= 0.999 * (b.maxX - b.minX) * (b.maxY - b.minY);
+  return rect ? undefined : out;
 }
