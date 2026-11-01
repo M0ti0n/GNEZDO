@@ -24,10 +24,13 @@ from __future__ import annotations
 import copy
 import time
 from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np
 from collections import Counter
 from dataclasses import dataclass, field
 
 from . import geom, psrun
+from .freemap import FreeMap, Pocket, cell_size
 from .geom import Xf
 
 
@@ -54,11 +57,42 @@ class PostOptions:
     # "anytime" uses every second it is given; "not-anytime-deterministic" returns when its search
     # is done (usually well inside the limit)
     solve_mode: str = "anytime"
+    # empty goes by the free pockets of a free-space map (freemap), the biggest usable first, each
+    # solved in a small window around the pocket (on the same layouts: the same sheets in about 70 %
+    # of the time). fill stays sheet by sheet: one whole-sheet solve fills all of a sheet's pockets
+    # at once, and moved more parts in the same time (370 against 113 on a 25-sheet nest)
+    pockets: bool = True
+    pocket_time: float = 1.0     # per pocket
     workers: int = 1             # solver processes at the same time (fills of different sheets)
     pool_time: float = 2.0       # two-phase nest: per sheet, placing the small parts into its gaps
     pool_rounds: int = 2
     budget: float = 120.0        # whole post-pass [s]; steps stop when it runs out
     quiet: bool = False
+
+
+def clip_rect(poly: np.ndarray, x0: float, y0: float, x1: float, y1: float) -> np.ndarray | None:
+    """A polygon cut to a rectangle (Sutherland-Hodgman); None when nothing is left."""
+    pts = [tuple(p) for p in poly]
+    sides = [(lambda p: p[0] >= x0, lambda a, b: (x0, a[1] + (b[1] - a[1]) * (x0 - a[0]) / (b[0] - a[0]))),
+             (lambda p: p[0] <= x1, lambda a, b: (x1, a[1] + (b[1] - a[1]) * (x1 - a[0]) / (b[0] - a[0]))),
+             (lambda p: p[1] >= y0, lambda a, b: (a[0] + (b[0] - a[0]) * (y0 - a[1]) / (b[1] - a[1]), y0)),
+             (lambda p: p[1] <= y1, lambda a, b: (a[0] + (b[0] - a[0]) * (y1 - a[1]) / (b[1] - a[1]), y1))]
+    for inside, cut in sides:
+        out = []
+        for i in range(len(pts)):
+            a, b = pts[i - 1], pts[i]
+            ia, ib = inside(a), inside(b)
+            if ib:
+                if not ia:
+                    out.append(cut(a, b))
+                out.append(b)
+            elif ia:
+                out.append(cut(a, b))
+        pts = out
+        if len(pts) < 3:
+            return None
+    q = np.array(pts, dtype=float)
+    return q if abs(geom.polygon_area(q)) > 1.0 else None
 
 
 @dataclass
@@ -135,6 +169,26 @@ class PostPass:
         out["profit"] = self.area(tid)
         return out
 
+    @staticmethod
+    def obstacle(shape: dict, p: "Placed", gap: float, clip: tuple | None = None) -> dict | None:
+        """A placed part as an obstacle: outline and holes as polygons running counter-clockwise
+        (a mirrored part runs the other way, and PackingSolver then misreads its holes).
+        clip: (x0, y0, x1, y1) to cut it to (a window: an obstacle reaching far out of it made
+        PackingSolver answer with copies on top of each other); a hole the cut crosses counts as solid."""
+        ps = geom.shape_to_poly(geom.transform_shape(shape, p.xf))
+        outer, holes = ps.outer, list(ps.holes)
+        if clip is not None:
+            outer = clip_rect(outer, *clip)
+            if outer is None:
+                return None
+            x0, y0, x1, y1 = clip
+            holes = [h for h in holes if h[:, 0].min() > x0 and h[:, 0].max() < x1 and h[:, 1].min() > y0 and h[:, 1].max() < y1]
+        d = {"type": "general", "elements": geom.polygon_to_elements(geom.ccw(outer))}
+        if holes:
+            d["holes"] = [{"type": "general", "elements": geom.polygon_to_elements(geom.ccw(h))} for h in holes]
+        d["item_defect_minimum_spacing"] = gap
+        return d
+
     def bin_json(self, bt: int, obstacles: list[Placed]) -> dict:
         b = copy.deepcopy(self.inst["bin_types"][bt])
         b["copies"] = 1
@@ -143,20 +197,20 @@ class PostPass:
         defects = list(b.get("defects", []))
         for p in obstacles:
             for s in self.shapes(p.id):
-                d = geom.transform_shape(s, p.xf)
-                d["item_defect_minimum_spacing"] = self.spacing
-                defects.append(d)
+                defects.append(self.obstacle(s, p, self.spacing))
         if defects:
             b["defects"] = defects
         return b
 
-    def solve(self, objective: str, bt: int, obstacles: list[Placed], cands: Counter, t: float) -> list[Placed]:
-        """Places as many of `cands` as it can (knapsack) or all of them (open-dimension-x)."""
+    def solve(self, objective: str, bt: int, obstacles: list[Placed], cands: Counter, t: float,
+              bin_json: dict | None = None) -> list[Placed]:
+        """Places as many of `cands` as it can (knapsack) or all of them (open-dimension-x).
+        bin_json: a bin of its own (a window around a pocket) instead of the sheet with `obstacles`."""
         ids = sorted(cands)
         inst = {
             "objective": objective,
             "parameters": dict(self.inst.get("parameters", {})),
-            "bin_types": [self.bin_json(bt, obstacles)],
+            "bin_types": [bin_json if bin_json is not None else self.bin_json(bt, obstacles)],
             "item_types": [self.item_json(tid, cands[tid]) for tid in ids],
         }
         try:
@@ -353,6 +407,180 @@ class PostPass:
                 break
         self.note("pool-new-sheets", time.perf_counter() - t, n - sum(self.pool.values()))
 
+    # -- free pockets ---------------------------------------------------------
+    def short_side(self, tid: int) -> float:
+        if not hasattr(self, "_short"):
+            self._short = {}
+        if tid not in self._short:
+            boxes = [geom.shape_to_poly(s).bbox for s in self.shapes(tid)]
+            self._short[tid] = min(max(b[2] for b in boxes) - min(b[0] for b in boxes),
+                                   max(b[3] for b in boxes) - min(b[1] for b in boxes))
+        return self._short[tid]
+
+    def cell(self) -> float:
+        if not hasattr(self, "_cell"):
+            self._cell = cell_size(self.spacing, min(self.short_side(t) for t in range(len(self.inst["item_types"]))))
+        return self._cell
+
+    def rect_bin(self, bt: int):
+        """The bin's box when it is a plain rectangle (the windows need that), else None."""
+        b = self.inst["bin_types"][bt]
+        if b.get("defects") or b.get("type") not in (None, "general", "rectangle"):
+            return None
+        if b.get("type") == "rectangle":
+            return (0.0, 0.0, float(b["width"]), float(b["height"]))
+        if len(b.get("elements", [])) != 4:
+            return None
+        return geom.bbox(geom.shape_to_poly(b).outer)
+
+    @staticmethod
+    def fingerprint(sh: Sheet):
+        return (len(sh.items), round(sum(p.xf.x * 1.000003 + p.xf.y for p in sh.items), 3))
+
+    def freemap(self, sh: Sheet) -> FreeMap:
+        if not hasattr(self, "_maps"):
+            self._maps = {}
+        key = (id(sh), self.fingerprint(sh))
+        m = self._maps.get(id(sh))
+        if m is None or m[0] != key:
+            placed = [geom.transform_shape(s, p.xf) for p in sh.items for s in self.shapes(p.id)]
+            m = (key, FreeMap(self.inst["bin_types"][sh.bin_type], placed, self.spacing, self.cell()))
+            self._maps[id(sh)] = m
+        return m[1]
+
+    def avail_for(self, k: int, source: str) -> Counter:
+        if source == "pool":
+            return Counter(+self.pool)
+        if k >= len(self.sheets) - 1:
+            return Counter()
+        return Counter(p.id for x in (self.sheets[-1:] if source == "last" else self.sheets[k + 1:]) for p in x.items)
+
+    def window(self, sh: Sheet, pk: Pocket) -> dict:
+        """The pocket's box plus a margin, inside the sheet, with the parts near it as obstacles."""
+        bx0, by0, bx1, by1 = self.rect_bin(sh.bin_type)
+        m = self.spacing + self.cell()
+        x0, y0 = max(bx0, pk.box[0] - m), max(by0, pk.box[1] - m)
+        x1, y1 = min(bx1, pk.box[2] + m), min(by1, pk.box[3] + m)
+        src = self.inst["bin_types"][sh.bin_type]
+        b = {"type": "general", "copies": 1,
+             "elements": geom.polygon_to_elements(np.array([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], dtype=float)),
+             "item_bin_minimum_spacing": float(src.get("item_bin_minimum_spacing", 0.0))}
+        g = self.spacing
+        defects = []
+        for p in sh.items:
+            for s0 in self.shapes(p.id):
+                qx0, qy0, qx1, qy1 = geom.shape_to_poly(geom.transform_shape(s0, p.xf)).bbox
+                if qx1 + g < x0 or qx0 - g > x1 or qy1 + g < y0 or qy0 - g > y1:
+                    continue
+                d = self.obstacle(s0, p, g, clip=(x0 - g - 1.0, y0 - g - 1.0, x1 + g + 1.0, y1 + g + 1.0))
+                if d is not None:
+                    defects.append(d)
+        if defects:
+            b["defects"] = defects
+        return b
+
+    def checked(self, placed: list[Placed], window: dict) -> list[Placed]:
+        """The placements that really keep the gap: inside the window, clear of every obstacle and
+        of each other (exact outlines). PackingSolver now and then answers a window with copies on
+        top of each other, outside it, when obstacles reach far out of the window."""
+        wx0, wy0, wx1, wy1 = geom.shape_to_poly(window).bbox
+        obst = [geom.shape_to_poly(d) for d in window.get("defects", [])]
+        g = self.spacing - 0.05
+        ok, polys = [], []
+        for p in placed:
+            mine = [geom.shape_to_poly(geom.transform_shape(s0, p.xf)) for s0 in self.shapes(p.id)]
+            if any(q.bbox[0] < wx0 - 0.1 or q.bbox[1] < wy0 - 0.1 or q.bbox[2] > wx1 + 0.1 or q.bbox[3] > wy1 + 0.1 for q in mine):
+                continue
+            def clear(a, b):
+                if a.bbox[0] > b.bbox[2] + g or b.bbox[0] > a.bbox[2] + g or a.bbox[1] > b.bbox[3] + g or b.bbox[1] > a.bbox[3] + g:
+                    return True
+                if geom.point_in_material(*a.outer[0], b) or geom.point_in_material(*b.outer[0], a):
+                    return False
+                return min(geom.contour_distance(x, y) for x in a.contours() for y in b.contours()) >= g
+            if all(clear(a, b) for a in mine for b in obst + polys):
+                ok.append(p)
+                polys += mine
+        if len(ok) < len(placed):
+            self.stats_dropped = getattr(self, "stats_dropped", 0) + len(placed) - len(ok)
+        return ok
+
+    def pockets_ok(self) -> bool:
+        return self.opt.pockets and all(self.rect_bin(x.bin_type) is not None for x in self.sheets)
+
+    def pocket_round(self, source: str, t: float, tried: set) -> int:
+        """One pass over the free pockets of the sheets before the last, the biggest usable first:
+        each gets the parts that could fit it (from `source`), solved in a window around it.
+        Pockets solved at the same time are on different sheets; a sheet that changed is mapped
+        again in the next pass. Pockets that took nothing are not tried again unless their sheet changes."""
+        c = self.cell()
+        found = []
+        for sh in self.sheets[:-1]:
+            k = self.index_of(sh)
+            avail = self.avail_for(k, source)
+            if not avail:
+                continue
+            smin = min(self.short_side(tid) for tid in avail)
+            fp = self.fingerprint(sh)
+            for pk in self.freemap(sh).pockets(min_fit=smin - 2 * c):
+                key = (id(sh), fp, pk.box)
+                if key not in tried:
+                    found.append((pk, sh, key))
+        found.sort(key=lambda x: (-x[0].fit, -x[0].area))
+        moved = 0
+        w = max(1, self.opt.workers)
+        while found and self.left() > 1.0:
+            batch, rest, used = [], [], set()
+            for item in found:
+                if id(item[1]) in used or len(batch) >= w:
+                    rest.append(item)
+                else:
+                    batch.append(item)
+                    used.add(id(item[1]))
+            found = rest
+            jobs = []
+            for pk, sh, key in batch:
+                k = self.index_of(sh)
+                if k is None or k >= len(self.sheets) - 1 or self.fingerprint(sh) != key[1]:
+                    continue
+                avail = self.avail_for(k, source)
+                cands = Counter({tid: min(n, max(1, int(1.3 * pk.area / max(self.area(tid), 1.0))))
+                                 for tid, n in avail.items()
+                                 if n > 0 and self.short_side(tid) <= pk.fit + 2 * c and self.area(tid) <= 1.3 * pk.area})
+                if not cands:
+                    tried.add(key)
+                    continue
+                jobs.append((sh, key, self.window(sh, pk), cands))
+            if not jobs:
+                continue
+            tt = min(t, max(0.5, self.left()))
+            run = lambda j: self.solve("knapsack", j[0].bin_type, [], j[3], tt, bin_json=j[2])
+            if w > 1 and len(jobs) > 1:
+                with ThreadPoolExecutor(max_workers=w) as ex:
+                    results = list(ex.map(run, jobs))
+            else:
+                results = [run(j) for j in jobs]
+            for (sh, key, win, _), placed in zip(jobs, results):
+                k = self.index_of(sh)
+                if k is None or k >= len(self.sheets) - 1:
+                    continue
+                placed = self.checked(placed, win)
+                avail = self.avail_for(k, source)
+                keep, took = [], Counter()
+                for p in placed:
+                    if took[p.id] < avail[p.id]:
+                        keep.append(p)
+                        took[p.id] += 1
+                if not keep:
+                    tried.add(key)
+                    continue
+                sh.items += keep
+                if source == "pool":
+                    self.pool -= took
+                else:
+                    self.take_from_latest(keep, k)
+                moved += len(keep)
+        return moved
+
     def step_fill(self):
         """The emptiest sheets first: their gaps get parts from the sheets after them (taken from the
         latest sheet first, so the tail gets shorter and a sheet may go). Rounds repeat while parts move."""
@@ -378,6 +606,18 @@ class PostPass:
         t = time.perf_counter()
         self._empty_runs += 1   # the second run may use the time kept for it
         moved, gone = 0, 0
+        while len(self.sheets) > 1 and self.left() > 1.0 and self.pockets_ok():
+            last = self.sheets[-1]
+            tried: set = set()
+            while self.index_of(last) is not None and self.left() > 1.0:
+                m = self.pocket_round("last", self.opt.pocket_time, tried)
+                moved += m
+                if not m:
+                    break
+            if self.index_of(last) is not None:
+                self.note("empty", time.perf_counter() - t, moved)
+                return     # the last sheet stays (shorter, maybe): done
+            gone += 1
         while len(self.sheets) > 1 and self.left() > 1.0:
             last = self.sheets[-1]
             before = len(last.items)
