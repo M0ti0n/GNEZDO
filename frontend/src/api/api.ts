@@ -6,6 +6,7 @@ import type {
   ImportSummary, JobFilter, JobPart, JobStatus, JobSummary, PartFilter, PartSummary, PartVersion, ProjectSummary,
 } from "./types";
 import { otherParts, testJobParts } from "./sampleParts";
+import type { Entity } from "../import/geometry";
 
 // Until the backend exists, the app runs on sample data.
 // Set VITE_USE_API=true (e.g. in .env.local) to call the real server instead.
@@ -255,6 +256,9 @@ const knownProject = (code: string) =>
   !code.trim() || sampleProjects.some((s) => s.code.toLowerCase() === code.trim().toLowerCase());
 
 /** Sample mode: saved parts go into the sample library, so Parts search finds them. */
+// sample mode: drawings of the parts saved in this tab (sample parts have none: their outline is used)
+const mockGeometry = new Map<string, string>();
+
 function mockSave(parts: SavePart[]): SavedPart[] {
   const unknown = parts.find((p) => !knownProject(p.project));
   if (unknown) throw new Error(`Project ${unknown.project.trim()} is not in the database. Save the project first.`);
@@ -272,6 +276,7 @@ function mockSave(parts: SavePart[]): SavedPart[] {
       revision: i >= 0 ? sampleParts[i].revision + 1 : 1,
     };
     extra.set(row.id, { rotations: p.rotations, mirror: p.mirror, filler: p.filler, sourceFile: p.sourceFile });
+    mockGeometry.set(row.id, p.geometry);
     if (i >= 0) sampleParts[i] = row; else sampleParts.unshift(row);
     return { name: row.name, project: row.project, id: row.id, status: i >= 0 ? "replaced" : "created" };
   });
@@ -340,6 +345,12 @@ function mockSaveJob(id: string | null, d: JobSaveData): JobSaved {
 }
 
 export const api = {
+  /** A saved part's drawing (entities with roles, mm, y up); null when it was saved without one. */
+  partGeometry: async (id: string): Promise<{ entities: Entity[] } | null> => {
+    const raw = useApi ? await get<{ entities?: Entity[] } | Entity[] | null>(`/api/parts/${id}/geometry`) : JSON.parse(mockGeometry.get(id) ?? "null");
+    const entities = Array.isArray(raw) ? raw : raw?.entities;  // a bare list (early saves) or { format, entities, ... }
+    return entities?.length ? { entities } : null;
+  },
   /** Saves a job: new (id null) or over the saved one. */
   saveJob: (id: string | null, d: JobSaveData): Promise<JobSaved> => {
     if (!useApi) return delay(0).then(() => mockSaveJob(id, d));

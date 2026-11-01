@@ -32,6 +32,17 @@ public sealed class PartSaveTests(ApiFixture api)
         return (await res.Content.ReadFromJsonAsync<List<SavedPartDto>>())!;
     }
 
+    [Fact]
+    public async Task The_saved_drawing_comes_back_for_edit_and_export()
+    {
+        var saved = (await Save(Part("GEOMETRY_BACK", "26-0901")))[0];
+        var res = await api.Client.GetAsync($"/api/parts/{saved.Id}/geometry");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var g = System.Text.Json.Nodes.JsonNode.Parse(await res.Content.ReadAsStringAsync())!;
+        Assert.Equal("circle", g[0]!["kind"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.NotFound, (await api.Client.GetAsync("/api/parts/999999/geometry")).StatusCode);
+    }
+
     private async Task<List<ExistingPartDto>> Existing(params PartKey[] keys)
     {
         var res = await api.Client.PostAsJsonAsync("/api/parts/existing", keys);

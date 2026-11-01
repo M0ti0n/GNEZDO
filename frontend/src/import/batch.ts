@@ -17,6 +17,9 @@ export interface ImportItem {
   processed: boolean;
   /** Process all found a part with the same project and name in the database; process it by hand to replace it. */
   duplicate?: boolean;
+  /** Opened from the database (EDIT): the part's own properties, used by Process instead of the batch's. */
+  source?: { partId: string; name: string; project: string; description: string; material: string; thicknessMm: string;
+    rotations: Rotation[]; mirror: boolean; filler: boolean };
   /** Rotations and mirror the part got when it was processed. */
   applied?: { rotations: Rotation[]; mirror: boolean; filler: boolean };
 }
