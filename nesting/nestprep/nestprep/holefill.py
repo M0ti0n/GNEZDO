@@ -155,7 +155,9 @@ class Options:
     min_hole: float = 60.0              # min short side of a usable hole [mm]
     sub_time: float = 1.0               # time limit per hole sub-solve [s]
     sub_mode: str = "not-anytime-deterministic"
-    max_rounds_per_host: int = 6
+    # every round fills as many host copies as the scarcest filler allows; a part with ten copies
+    # and mixed fillers can need more than six (the tenth copy was left empty)
+    max_rounds_per_host: int = 50
     min_fill_area: float = 0.0          # ignore fills smaller than this [mm2]
     pairing: bool = True
     pair_max_fill: float = 0.80         # only try pairing below this bbox fill
@@ -388,7 +390,7 @@ class PrePass:
                 self.parts.append(comp)
                 desc = ", ".join(f"{n}x{self.label(pid)}" for pid, n in need.items())
                 self.say(f"  host {self.label(host.pid)} x{k}: holes get {desc} "
-                         f"(+{farea / 1e3:.0f} cm2 each)")
+                         f"(+{farea / 1e2:.0f} cm2 each)")
 
     # -- pairing -------------------------------------------------------------
     def bbox_fill(self, p: Part) -> float:

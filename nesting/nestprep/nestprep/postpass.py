@@ -33,6 +33,12 @@ from .geom import Xf
 @dataclass
 class PostOptions:
     gap: bool = False            # step 1; the chain's first round does the same (kept for adding parts)
+    fill: bool = True            # gaps of the emptiest sheets first, from the parts of later sheets
+    fill_time: float = 3.0       # per sheet
+    fill_rounds: int = 3
+    fill_below: float = 0.86     # sheets fuller than this (parts area / sheet area) are left alone
+    tail: bool = True            # the last sheets nested again together, to need one sheet less
+    tail_time: float = 6.0       # per sheet of the tail
     chain: bool = True
     pairs: bool = True
     compact: bool = True
@@ -71,6 +77,7 @@ class PostPass:
                     Placed(it["id"], Xf(geom.norm_angle(it["angle"]), bool(it.get("mirror", False)), it["x"], it["y"]))
                     for it in b["items"]]))
         self._area = {}
+        self._in_tail = False
         self.log: list[dict] = []
         self.t0 = time.perf_counter()
 
@@ -81,7 +88,7 @@ class PostPass:
 
     def left(self) -> float:
         """Time left for the steps before the compaction (its time is kept aside)."""
-        reserve = self.opt.compact_time if self.opt.compact else 0.0
+        reserve = (self.opt.compact_time if self.opt.compact else 0.0) + (self.opt.tail_time * 2 if self.opt.tail and not self._in_tail else 0.0)
         return self.opt.budget - reserve - (time.perf_counter() - self.t0)
 
     def left_total(self) -> float:
@@ -203,6 +210,80 @@ class PostPass:
             moved += self.fill(k, Counter(p.id for p in last.items), self.opt.gap_time)
         self.note("gap", time.perf_counter() - t, moved)
 
+    def fullness(self, sh: Sheet) -> float:
+        b = self.inst["bin_types"][sh.bin_type]
+        if not hasattr(self, "_bin_area"):
+            self._bin_area = {}
+        if sh.bin_type not in self._bin_area:
+            self._bin_area[sh.bin_type] = geom.shape_to_poly(b).area if "elements" in b else float(b["width"]) * float(b["height"])
+        return self.sheet_area(sh) / self._bin_area[sh.bin_type]
+
+    def step_fill(self):
+        """The emptiest sheets first: their gaps get parts from the sheets after them (taken from the
+        latest sheet first, so the tail gets shorter and a sheet may go). Rounds repeat while parts move."""
+        t = time.perf_counter()
+        total = 0
+        for _ in range(self.opt.fill_rounds):
+            moved = 0
+            n = len(self.sheets)
+            order = sorted((k for k in range(n - 1) if self.fullness(self.sheets[k]) < self.opt.fill_below),
+                           key=lambda k: self.fullness(self.sheets[k]))
+            done = set()
+            for k0 in order:
+                if self.left() < 1.0:
+                    break
+                # sheets may have gone since the order was made: find the same sheet again
+                sh = self.sheets[k0] if k0 < len(self.sheets) else None
+                if sh is None or id(sh) in done:
+                    continue
+                k = next((i for i, x in enumerate(self.sheets) if x is sh), None)
+                if k is None or k >= len(self.sheets) - 1:
+                    continue
+                done.add(id(sh))
+                later = Counter(p.id for x in self.sheets[k + 1:] for p in x.items)
+                free = (1.0 - self.fullness(sh)) * self._bin_area[sh.bin_type]
+                cands = Counter({tid: c for tid, c in later.items() if self.area(tid) <= free})
+                moved += self.fill(k, cands, self.opt.fill_time)
+            total += moved
+            if not moved or self.left() < 1.0:
+                break
+        self.note("fill", time.perf_counter() - t, total)
+
+    def step_tail(self):
+        """The last sheets when their parts could fit on one sheet less: nested again together,
+        sheet by sheet (as much as possible on each). Kept only when a sheet goes. The last two
+        are tried first (most likely), then three, four; again while sheets go."""
+        t = time.perf_counter()
+        self._in_tail = True
+        done = 0
+        size = 2
+        while size <= min(4, len(self.sheets)) and self.left_total() > 2.0:
+            n = len(self.sheets)
+            tail = self.sheets[n - size:]
+            if len({x.bin_type for x in tail}) != 1 or sum(self.fullness(x) for x in tail) > (size - 1) * 0.88:
+                size += 1
+                continue
+            bt = tail[0].bin_type
+            rest = Counter(p.id for x in tail for p in x.items)
+            new: list[Sheet] = []
+            for j in range(size - 1):
+                if not +rest or self.left_total() < 1.5:
+                    break
+                tt = min(self.opt.tail_time, max(1.0, self.left_total() - 1.0))
+                placed = self.solve("knapsack", bt, [], rest, tt)
+                if not placed:
+                    break
+                new.append(Sheet(bt, placed))
+                rest -= Counter(p.id for p in placed)
+            if not +rest and len(new) < size:
+                self.sheets[n - size:] = new
+                done += size - len(new)
+                size = 2   # a sheet went: the new last two may merge again
+            else:
+                size += 1
+        self._in_tail = False
+        self.note("tail", time.perf_counter() - t, done)
+
     def step_chain(self):
         t = time.perf_counter()
         total = 0
@@ -271,6 +352,10 @@ class PostPass:
             self.step_gap()
         # sheet pairs first: on the test jobs they gave most of the gain, the chain after them
         # uses the gaps they open; the chain alone rarely shortened the last sheet
+        if self.opt.fill and len(self.sheets) > 1:
+            self.step_fill()
+        if self.opt.tail and len(self.sheets) > 1:
+            self.step_tail()
         if self.opt.pairs and len(self.sheets) > 1:
             self.step_pairs()
         if self.opt.chain and len(self.sheets) > 1 and self.left() > 1.0:
