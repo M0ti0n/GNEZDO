@@ -28,6 +28,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
   const DEFAULT_PART_GAP_MM = machine.partGapMm;
   const [s, setS] = useState<StockSheet>(() => ({ ...sheet, trims: sheet.trims ?? defaultTrims(), partGapMm: sheet.partGapMm ?? DEFAULT_PART_GAP_MM }));
   const lists = usePickLists(s.material);
+  const [turnError, setTurnError] = useState<string | null>(null);
   const set = (patch: Partial<StockSheet>) => setS((x) => ({ ...x, ...patch }));
   const setTrim = (k: keyof Trims, v: number) => setS((x) => ({ ...x, trims: { ...(x.trims ?? defaultTrims()), [k]: v } }));
   const trims = s.trims ?? defaultTrims();
@@ -74,7 +75,15 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
             <div className="proc-size">{s.lengthMm || "–"} × {s.widthMm || "–"} mm</div>
             <div className={`sp-turn${nested ? " is-off" : ""}`} role="group" aria-label="Turn and mirror the sheet"
               title={nested ? "The parts are placed on this sheet: turn or mirror the stock sheet before nesting" : undefined}>
-              <button type="button" className="sp-turn-btn" disabled={nested} onClick={() => setS(rotateSheet)} title="Turn the sheet 90° clockwise (length and width swap)">
+              <button type="button" className="sp-turn-btn" disabled={nested} onClick={() => {
+                  const r = rotateSheet(s);
+                  if (r.lengthMm > 0 && r.widthMm > 0 && !fitsMachine(r.lengthMm, r.widthMm)) {
+                    setTurnError(`Turned it would be ${r.lengthMm} × ${r.widthMm} mm: outside the machine's cutting area (X ${MACHINE_LIMIT[0]} × Y ${MACHINE_LIMIT[1]} mm)`);
+                    return;
+                  }
+                  setTurnError(null);
+                  setS(r);
+                }} title="Turn the sheet 90° clockwise (length and width swap)">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" /></svg>
                 Rotate 90°
               </button>
@@ -87,6 +96,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
                 Mirror Y
               </button>
             </div>
+            {turnError && <p className="sp-warn" role="alert">{turnError}</p>}
             <p className="sp-hint">{nested
               ? "A bit more size or less trim lets a part that is a few mm too big fit (real sheets are often 3002 × 1505). The parts stay where they are; the sheet shows a warning if one no longer fits."
               : "Turn a remnant so its long, straight edges are at the machine's 0,0 (red dot): easier for the operator and for nesting."}</p>

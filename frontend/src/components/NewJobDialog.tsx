@@ -52,3 +52,32 @@ export function NewJobDialog({ defaultName, machines, onCreate, onCancel }: {
     </div>
   );
 }
+
+/** SAVE AS: the job saved as a new job under another name; the tab goes on as the new job. */
+export function SaveAsDialog({ name, onSave, onCancel }: { name: string; onSave: (name: string) => void; onCancel: () => void }) {
+  const [v, setV] = useState(name);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+  return (
+    <div className="dlg-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <form className="dlg nj-dlg" role="dialog" aria-modal="true" aria-labelledby="sa-title" onSubmit={(e) => { e.preventDefault(); if (v.trim()) onSave(v.trim()); }}>
+        <header className="dlg-head">
+          <div className="dlg-title"><h2 id="sa-title">Save job as</h2><p>A new job with this name; the job you opened stays as it was saved.</p></div>
+          <button type="button" className="icon-btn dlg-close" onClick={onCancel} aria-label="Close" title="Close (Esc)"><IconClose size={16} /></button>
+        </header>
+        <div className="nj-body">
+          <label className="proc-group"><span className="proc-label">Job name</span>
+            <input className="field" value={v} autoFocus onFocus={(e) => e.target.select()} onChange={(e) => setV(e.target.value)} /></label>
+        </div>
+        <footer className="dlg-foot">
+          <span className="proc-missing" />
+          <button type="button" className="btn btn-plain" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="btn btn-save" disabled={!v.trim()}>Save as</button>
+        </footer>
+      </form>
+    </div>
+  );
+}

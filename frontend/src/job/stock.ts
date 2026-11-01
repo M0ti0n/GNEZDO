@@ -124,8 +124,8 @@ export function setMachineLimit(l: number, w: number) {
   if (l > 0 && w > 0) { MACHINE_LIMIT[0] = l; MACHINE_LIMIT[1] = w; }
 }
 
-/** Does a sheet fit the machine's cutting area (either way round)? */
+/** Does a sheet fit the machine's cutting area as it lies: length within X, width within Y? */
 export const fitsMachine = (l: number, w: number) => {
   const [L, W] = MACHINE_LIMIT;
-  return (l <= L && w <= W) || (l <= W && w <= L);
+  return l <= L && w <= W;
 };
