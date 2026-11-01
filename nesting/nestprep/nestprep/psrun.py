@@ -130,8 +130,10 @@ def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
         break
     if proc.returncode not in (0, None) and sol is None and proc.returncode > 0 and not stopped:
         raise RuntimeError(f"solver failed ({proc.returncode}): {proc.stderr.read()[-2000:]}")
-    if sol is None or (not stopped and proc.returncode == 0):
-        sol = read() or sol
+    # the solver may write a better layout just before it ends or is ended: the file has the last word
+    final = read()
+    if final and (sol is None or sum(int(b.get("copies", 1)) for b in final["bins"]) <= sum(int(b.get("copies", 1)) for b in sol["bins"])):
+        sol = final
     out = {}
     try:
         with open(out_p) as f:

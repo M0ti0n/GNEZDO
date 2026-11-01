@@ -32,6 +32,7 @@ part by `pair_min_gain` and reaches `pair_min_fill`.
 from __future__ import annotations
 
 import copy
+import time
 import math
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -238,41 +239,80 @@ class PrePass:
             out.append(p)
         return out
 
-    def solve_hole(self, hole: np.ndarray, cands: list[Part], avail: dict[int, int]):
-        """Knapsack of `cands` into one hole. Returns [(pid, Xf in hole coords)]."""
-        x0, y0, _, _ = geom.bbox(hole)
+    def hole_job(self, hole: np.ndarray, cands: list[Part], avail: dict[int, int]):
         harea = abs(geom.polygon_area(hole))
         caps = {p.pid: min(avail[p.pid], max(1, int(harea // max(p.area, 1.0))))
                 for p in cands}
-        key = (self.hole_key(hole), tuple(sorted(caps.items())))
-        if key in self.cache:
+        # one answer per hole shape: reused as long as the parts it uses are still there
+        return self.hole_key(hole), caps
+
+    def prefetch(self, hosts: list[Part]):
+        """Every distinct hole of every host solved up front, at the same time (`workers` solver
+        processes), with the parts as they are now. The pass over the hosts then finds most of them
+        ready; a hole whose candidates changed meanwhile is solved again there."""
+        if self.opt.workers <= 1:
+            return
+        jobs = {}
+        for host in hosts:
+            avail = {p.pid: p.remaining for p in self.parts}
+            avail[host.pid] -= 1
+            for h in self.usable_holes(host):
+                cands = self.candidates(h, avail, host)
+                if not cands:
+                    continue
+                key, caps = self.hole_job(h, cands, avail)
+                if key not in self.cache and key not in jobs:
+                    jobs[key] = (h, cands, caps)
+        if not jobs:
+            return
+        keys = list(jobs)
+        with ThreadPoolExecutor(max_workers=self.opt.workers) as ex:
+            results = list(ex.map(lambda k: self.sub_solve(*jobs[k]), keys))
+        for k, res in zip(keys, results):
+            self.cache[k] = res
+        self.stats["prefetched"] += len(keys)
+
+    def sub_solve(self, hole: np.ndarray, cands: list[Part], caps: dict[int, int]):
+        """The knapsack of one hole, in the hole's own frame (its box corner at 0,0)."""
+        x0, y0, _, _ = geom.bbox(hole)
+        loc = hole - [x0, y0]
+        sub = {
+            "objective": "knapsack",
+            "parameters": {"item_item_minimum_spacing": self.s},
+            "bin_types": [{"type": "general",
+                           "elements": geom.polygon_to_elements(loc),
+                           "copies": 1,
+                           "item_bin_minimum_spacing": self.s}],
+            "item_types": [{"shapes": p.shapes, "copies": caps[p.pid],
+                            "profit": p.area,
+                            "allowed_rotations": p.rotations_json()}
+                           for p in cands],
+        }
+        r = solve(sub, self.bin, self.opt.sub_time, self.opt.sub_mode)
+        self.stats["sub_solves"] += 1
+        self.stats["sub_time"] += r["time"]
+        res = []
+        for b in (r["solution"] or {}).get("bins", []):
+            for it in b["items"]:
+                cand = cands[it["id"]]
+                xf = Xf(geom.norm_angle(it["angle"]), bool(it.get("mirror", False)),
+                        it["x"], it["y"])
+                self.check_against_solver(cand, xf, it)
+                res.append((cand.pid, xf))
+        return res
+
+    def solve_hole(self, hole: np.ndarray, cands: list[Part], avail: dict[int, int]):
+        """Knapsack of `cands` into one hole. Returns [(pid, Xf in hole coords)]."""
+        x0, y0, _, _ = geom.bbox(hole)
+        key, caps = self.hole_job(hole, cands, avail)
+        cand_ids = {p.pid for p in cands}
+        cached = self.cache.get(key)
+        if cached is not None and all(pid in cand_ids for pid, _ in cached) and \
+                all(avail.get(pid, 0) >= n for pid, n in Counter(pid for pid, _ in cached).items()):
             self.stats["cache_hits"] += 1
-            res = self.cache[key]
+            res = cached
         else:
-            loc = hole - [x0, y0]
-            sub = {
-                "objective": "knapsack",
-                "parameters": {"item_item_minimum_spacing": self.s},
-                "bin_types": [{"type": "general",
-                               "elements": geom.polygon_to_elements(loc),
-                               "copies": 1,
-                               "item_bin_minimum_spacing": self.s}],
-                "item_types": [{"shapes": p.shapes, "copies": caps[p.pid],
-                                "profit": p.area,
-                                "allowed_rotations": p.rotations_json()}
-                               for p in cands],
-            }
-            r = solve(sub, self.bin, self.opt.sub_time, self.opt.sub_mode)
-            self.stats["sub_solves"] += 1
-            self.stats["sub_time"] += r["time"]
-            res = []
-            for b in (r["solution"] or {}).get("bins", []):
-                for it in b["items"]:
-                    cand = cands[it["id"]]
-                    xf = Xf(geom.norm_angle(it["angle"]), bool(it.get("mirror", False)),
-                            it["x"], it["y"])
-                    self.check_against_solver(cand, xf, it)
-                    res.append((cand.pid, xf))
+            res = self.sub_solve(hole, cands, caps)
             self.cache[key] = res
         # shift back to host coords
         return [(pid, Xf(xf.angle, xf.mirror, xf.x + x0, xf.y + y0)) for pid, xf in res]
@@ -350,6 +390,7 @@ class PrePass:
             if hs:
                 hosts.append((max(abs(geom.polygon_area(h)) for h in hs), p))
         hosts.sort(key=lambda t: t[0])
+        self.prefetch([h for _, h in hosts])
         for _, host in hosts:
             rounds = 0
             strict = False
@@ -397,11 +438,19 @@ class PrePass:
         w, h = p.dims()
         return p.area / (w * h)
 
+    def outline_fill(self, p: Part) -> float:
+        """How much of its bounding box the part's outer outline fills (holes ignored)."""
+        w, h = p.dims()
+        outer = sum(abs(geom.polygon_area(q.outer)) for q in p.polys)
+        return outer / (w * h) if w > 0 and h > 0 else 1.0
+
     def run_pairing(self):
         # 1. build every strip sub-problem (2 copies, a few candidate heights)
         jobs = []
         for p in list(self.parts[: self.n_orig]):
-            if p.remaining < 2 or self.bbox_fill(p) >= self.opt.pair_max_fill:
+            # judged by the outline: holes do not matter for how two copies lie side by side (a
+            # rectangle with holes never pairs better; a triangle or an L can)
+            if p.remaining < 2 or self.outline_fill(p) >= self.opt.pair_max_fill:
                 continue
             w, h = p.dims()
             for H in sorted({round(v, 3) for v in (w, h, w + 2 * self.s, h + 2 * self.s)}):
@@ -479,11 +528,15 @@ class PrePass:
             "+".join(f"{n}x#{t}" for t, n in sorted(inner.items())) + "]"
 
     def build(self) -> tuple[dict, dict]:
+        t = time.perf_counter()
         if self.opt.pairing:
             self.say("Pairing:")
             self.run_pairing()
+        self.stats["pairing_s"] = round(time.perf_counter() - t, 1)
+        t = time.perf_counter()
         self.say("Hole filling:")
         self.run_holefill()
+        self.stats["holefill_s"] = round(time.perf_counter() - t, 1)
         out = {k: v for k, v in self.inst.items() if k != "item_types"}
         out["item_types"] = []
         mapping = {"format": "nestprep-composites", "version": 1,
