@@ -158,7 +158,6 @@ export interface Solution extends JobNest {
   no: number;
   /** sheets (by index) locked against changes; an unlocked sheet of a finished solution can be edited */
   locked: number[];
-  saved?: boolean;
   /** the corner the parts were packed towards */
   origin?: Origin;
 }
@@ -260,24 +259,38 @@ export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string
 }
 
 
-/** The SAVED solution as it is stored with the job. */
-export interface SavedNest {
-  mode: NestMode; custom?: CustomNestSettings; origin?: Origin;
-  state: "done" | "stopped"; seconds: number; result: NestResult; savedAt: string;
+/** A finished solution as it is stored with the job. */
+export interface SavedSolution {
+  id: string; no: number; mode: NestMode; custom?: CustomNestSettings; origin?: Origin;
+  state: "done" | "stopped"; seconds: number; locked: number[]; result: NestResult;
 }
 
-export const savedOfSolution = (s: Solution): SavedNest => ({
-  mode: s.mode, custom: s.custom, origin: s.origin,
-  state: s.run?.state === "stopped" ? "stopped" : "done", seconds: s.run?.seconds ?? 0,
-  result: s.run!.result!, savedAt: new Date().toISOString(),
-});
+/** What a job stores of its nesting: every finished solution and the one shown (later: post-processed in Process). */
+export interface JobNests { selected: string | null; solutions: SavedSolution[] }
 
-/** A job's saved nest back as a solution (shown as Solution 1, SAVED); null when there is none. */
-export function solutionFromSaved(nest: unknown): Solution | null {
-  const n = nest as SavedNest | null;
-  if (!n?.result?.sheets?.length) return null;
+/** The job's solutions to save: the finished ones (running and failed ones are not kept). */
+export function nestsOfJob(list: Solution[], selected: string | null): JobNests | null {
+  const done = list.filter((s) => s.run?.result && (s.run.state === "done" || s.run.state === "stopped"));
+  if (!done.length) return null;
   return {
-    id: "saved", no: 1, mode: n.mode ?? "fast", custom: n.custom, origin: n.origin, saved: true, locked: [], startedAt: 0,
-    run: { id: "saved", state: n.state ?? "done", stopAsked: false, seconds: n.seconds ?? 0, result: n.result },
+    selected: done.some((s) => s.id === selected) ? selected : done[done.length - 1].id,
+    solutions: done.map((s) => ({
+      id: s.id, no: s.no, mode: s.mode, custom: s.custom, origin: s.origin,
+      state: s.run!.state === "stopped" ? "stopped" : "done", seconds: s.run!.seconds, locked: s.locked, result: s.run!.result!,
+    })),
   };
+}
+
+/** A saved job's solutions back in the SOLUTIONS panel; null when it has none. */
+export function solutionsFromSaved(nest: unknown): { list: Solution[]; sel: { sol: string | null; sheet: number } } | null {
+  const n = nest as Partial<JobNests> & Partial<SavedSolution> | null;
+  // a job saved with one solution only (before all solutions were kept)
+  const saved: SavedSolution[] = n?.solutions ?? (n?.result ? [{ ...(n as SavedSolution), id: "saved", no: 1, locked: [] }] : []);
+  const list: Solution[] = saved.filter((x) => x.result?.sheets?.length).map((x) => ({
+    id: x.id, no: x.no, mode: x.mode ?? "fast", custom: x.custom, origin: x.origin, locked: x.locked ?? [], startedAt: 0,
+    run: { id: x.id, state: x.state ?? "done", stopAsked: false, seconds: x.seconds ?? 0, result: x.result },
+  }));
+  if (!list.length) return null;
+  const sel = list.some((x) => x.id === n?.selected) ? n!.selected! : list[list.length - 1].id;
+  return { list, sel: { sol: sel, sheet: 0 } };
 }

@@ -316,7 +316,10 @@ export interface JobDetail { id: string; name: string; status: JobStatus; sheetC
 const savedJobDetails = new Map<string, JobDetail>();
 function mockSaveJob(id: string | null, d: JobSaveData): JobSaved {
   const now = new Date().toISOString();
-  const sheets = (d.nest as { result?: { sheets?: unknown[] } } | null)?.result?.sheets?.length ?? 0;
+  type Sol = { id: string; result?: { sheets?: unknown[] } };
+  const n = d.nest as { selected?: string | null; solutions?: Sol[] } | null;
+  const shown = n?.solutions?.find((x) => x.id === n.selected) ?? n?.solutions?.at(-1);
+  const sheets = shown?.result?.sheets?.length ?? 0;
   const status: JobStatus = sheets ? "nested" : "draft";
   const jobId = id ?? `j-${Date.now().toString(36)}`;
   const lines = d.parts.map((jp, i) => ({ ...jp, qtyMax: Math.max(jp.qty, jp.qtyMax ?? jp.qty), no: jp.no ?? i + 1, nested: undefined }));

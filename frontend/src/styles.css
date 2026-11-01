@@ -1386,12 +1386,10 @@ th.num .th-sort { flex-direction: row-reverse; }
 .sol-box .sol-badge { margin-left: auto; }
 .sol-box:hover { border-color: var(--green); }
 .sol-box.is-on { border-color: var(--green); background: var(--green-tint); }
-.sol-saved { color: var(--green-ink); font-weight: 700; }
 .sol-btn { display: inline-grid; place-items: center; text-align: center; height: 32px; padding: 0 10px; border-radius: 7px; font-weight: 600; font-size: 13px; letter-spacing: .03em;
   border: 1.5px solid var(--green-ink); background: var(--green-tint); color: var(--green-ink); }
 .sol-btn:hover:not(:disabled) { background: #d3ecc6; }
 .sol-btn:disabled { opacity: .45; cursor: default; }
-.sol-save.is-saved { background: var(--green); color: #fff; border-color: var(--green); }
 .sol-x { margin-left: auto; display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-2); background: #fff; }
 .sol-x:hover { background: #fde8e7; border-color: #e7a9a4; color: #c62828; }
 .sol-err { margin: 6px 0 0; font-size: 13px; }
