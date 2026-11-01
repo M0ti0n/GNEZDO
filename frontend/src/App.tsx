@@ -31,6 +31,7 @@ import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
 import { loadLocalMachines, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
 import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
 import { setMachineLimit } from "./job/stock";
+import { exportSolutionDxf } from "./job/exportNest";
 import { loadStockSettings, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
@@ -583,6 +584,24 @@ export function App() {
     // every sheet's parts times its cut number (how many times that layout is cut)
     return sol?.run?.result ? countsOf(sol.run.result.sheets) : null;
   };
+  // GNEZDO menu -> Export solution to DXF: the solution shown in the job tab, every sheet in one file
+  const shownSolution = () => {
+    if (!job) return null;
+    const st = jobSol[job.id];
+    const sol = st?.list.find((x) => x.id === st.sel.sol);
+    return sol?.run?.result?.sheets.length && (sol.run.state === "done" || sol.run.state === "stopped") ? sol : null;
+  };
+  const exportProblem = () => (!job ? "Open a job to export its solution" : !shownSolution() ? "Nest the job first: the solution shown is exported" : null);
+  const exportDxf = async () => {
+    const sol = shownSolution();
+    if (!job || !sol) return;
+    try {
+      await exportSolutionDxf({ jobName: job.title, solutionNo: sol.no, sheets: sol.run!.result!.sheets, parts: jobParts[job.id] ?? [], origin: sol.origin ?? machineFor(job.id).origin });
+      setToast(`Solution ${sol.no} exported to DXF`);
+    } catch (e) {
+      setToast(`Not exported: ${(e as Error).message}`);
+    }
+  };
   const onJobTool = (_section: string, tool: string, custom?: CustomNestSettings) => {
     if (!job) return;
     if (tool === "fastNest") void startNest(job.id, "fast");
@@ -598,7 +617,8 @@ export function App() {
         userName={USER_NAME}
         onActivate={(id) => dispatch({ type: "activate", id })}
         onClose={(id) => requestClose(id)}
-        onMenu={(id) => showView(id)}
+        onMenu={(id) => (id === "exportDxf" ? void exportDxf() : showView(id))}
+        menuOff={{ exportDxf: exportProblem() ?? undefined }}
         undo={undoState}
         save={job ? { onSave: () => void saveJob(job.id, job.title), onSaveAs: () => setSaveAsFor({ jobId: job.id, name: `${job.title} copy` }) } : null}
       />
