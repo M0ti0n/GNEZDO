@@ -83,6 +83,7 @@ public sealed class NestRunner : IDisposable
 
     public string Start(JsonObject request)
     {
+        Prune();
         var id = Guid.NewGuid().ToString("N")[..12];
         var dir = Path.Combine(_runsDir, id);
         Directory.CreateDirectory(dir);
@@ -198,6 +199,17 @@ public sealed class NestRunner : IDisposable
             catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { Thread.Sleep(30); }
         }
         return null;
+    }
+
+    /// <summary>Runs finished more than a day ago leave memory and disk (the server may run for months).</summary>
+    private void Prune()
+    {
+        var old = _clock.GetUtcNow().AddDays(-1);
+        foreach (var r in _runs.Values.Where(r => r.Finished is { } f && f < old).ToList())
+        {
+            _runs.TryRemove(r.Id, out _);
+            try { Directory.Delete(r.Dir, true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     private void CleanOld()

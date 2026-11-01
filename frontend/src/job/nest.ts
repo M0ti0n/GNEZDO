@@ -3,7 +3,7 @@
 import { api } from "../api/api";
 import type { JobPart } from "../api/types";
 import type { CustomNestSettings } from "../components/CustomNestDialog";
-import { DEFAULT_PART_GAP_MM, defaultTrims, type StockSheet } from "./stock";
+import { DEFAULT_PART_GAP_MM, MACHINE_LIMIT, defaultTrims, fitsMachine, type StockSheet } from "./stock";
 import type { Origin } from "./machine";
 
 export type NestMode = "fast" | "thorough" | "custom";
@@ -160,6 +160,10 @@ export function nestProblem(parts: JobPart[] | undefined, stock: StockSheet[]): 
   const withQty = parts.filter((jp) => jp.qty > 0);
   if (!withQty.length) return "Set Qty req for the parts to nest.";
   if (!stock.length) return "Add stock sheets first (STOCK panel, Add from).";
+  const n = stock.findIndex((s) => s.lengthMm > 0 && s.widthMm > 0 && !fitsMachine(s.lengthMm, s.widthMm));
+  if (n >= 0) return `Sheet ${n + 1} (${stock[n].lengthMm} × ${stock[n].widthMm} mm) is bigger than the machine's cutting area (${MACHINE_LIMIT.join(" × ")} mm): change or turn it first.`;
+  const z = stock.findIndex((s) => !(s.lengthMm > 0 && s.widthMm > 0));
+  if (z >= 0 && stock.every((s) => !(s.lengthMm > 0 && s.widthMm > 0))) return `Sheet ${z + 1} has no size: fill in its length and width.`;
   const usable = withQty.filter((jp) => stock.some((s) => sameKey(s.material, s.thicknessMm, jp.part.material, jp.part.thicknessMm)));
   if (!usable.length) return "No stock sheet matches the parts' material and thickness.";
   return null;

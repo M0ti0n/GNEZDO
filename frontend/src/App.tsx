@@ -39,6 +39,10 @@ import { VIEW_TITLE, drawingTab, initialShell, jobTab, shellReducer, type PageKi
 
 const USER_NAME = "Fab"; // until sign-in exists
 
+/** What saving a job keeps, as text: the same text means nothing to save. */
+const snapOf = (parts: JobPart[], stock: StockSheet[], sols: Solution[], machine: string) =>
+  JSON.stringify({ p: parts.map((jp) => [jp.part.id, jp.qty, jp.qtyMax, jp.no]), stock, n: nestsOfJob(sols, null)?.solutions ?? [], machine });
+
 export function App() {
   const [state, dispatch] = useReducer(shellReducer, initialShell);
   const [drawer, setDrawer] = useState<DrawerMode | null>(null);
@@ -67,6 +71,8 @@ export function App() {
   }, []);
   // the machine each job tab is nested for
   const [jobMachine, setJobMachine] = useState<Record<string, string>>({});
+  // each job tab as it was opened or last saved, to tell unsaved changes on closing
+  const [savedSnap, setSavedSnap] = useState<Record<string, string>>({});
   const machineFor = (jobId: string | undefined) => machineOf(machines, jobId ? jobMachine[jobId] : undefined);
   const [newJobOpen, setNewJobOpen] = useState<string | null>(null);   // the name offered
   const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); saveStockSettings(s); };
@@ -113,15 +119,22 @@ export function App() {
     setJobParts((m) => ({ ...m, [id]: undefined }));
     if (id.startsWith("new-")) setJobParts((m) => ({ ...m, [id]: [] }));
     else {
-      api.jobParts(id).then((p) => setJobParts((m) => ({ ...m, [id]: p.map((jp, i) => ({ ...jp, no: jp.no || i + 1, qtyMax: Math.max(jp.qty, jp.qtyMax ?? jp.qty) })) })));
-      // a saved job brings its stock sheets and its solutions back
-      api.job(id).then((d) => {
-        if (!d) return;
-        if (Array.isArray(d.stock)) setJobStock((m) => ({ ...m, [id]: d.stock as StockSheet[] }));
-        if (d.machine) setJobMachine((m) => ({ ...m, [id]: d.machine! }));
-        const sols = solutionsFromSaved(d.nest);
+      // a saved job brings its stock sheets, machine and solutions back (an older server: parts only)
+      Promise.all([api.jobParts(id), api.job(id).catch(() => null)]).then(([p, d]) => {
+        const parts = p.map((jp, i) => ({ ...jp, no: jp.no || i + 1, qtyMax: Math.max(jp.qty, jp.qtyMax ?? jp.qty) }));
+        const stock = d && Array.isArray(d.stock) ? d.stock as StockSheet[] : [];
+        const sols = d ? solutionsFromSaved(d.nest) : null;
+        let machine = d?.machine || undefined;
+        if (machine && !machines.list.some((x) => x.id === machine)) {
+          setToast(`This job was nested for a machine that is no longer in Settings: it shows ${machineOf(machines, undefined).name}`);
+          machine = undefined;
+        }
+        setJobParts((m) => ({ ...m, [id]: parts }));
+        setJobStock((m) => ({ ...m, [id]: stock }));
+        if (machine) setJobMachine((m) => ({ ...m, [id]: machine! }));
         if (sols) setJobSol((m) => ({ ...m, [id]: sols }));
-      }).catch(() => { /* an older server without job details: parts only */ });
+        setSavedSnap((m) => ({ ...m, [id]: snapOf(parts, stock, sols?.list ?? [], machineOf(machines, machine).id) }));
+      }).catch((e) => setToast(`Could not open the job: ${(e as Error).message}`));
     }
   }, [active, jobParts]);
 
@@ -305,7 +318,7 @@ export function App() {
   // to how it was imported and its Undo history ends; an unchanged part just closes.
   const [closing, setClosing] = useState<string | null>(null);   // import item id
   const closingItem = closing ? imports.find((i) => i.id === closing) : undefined;
-  const requestClose = (tabId: string) => {
+  const requestClose = (tabId: string, force = false) => {
     const t = state.tabs.find((x) => x.id === tabId);
     const itemId = t?.kind === "drawing" ? t.drawingId : undefined;
     if (itemId && history.changed(itemId)) {
@@ -314,11 +327,18 @@ export function App() {
       return;
     }
     if (itemId) history.forget(itemId);
-    // a closed job tab forgets what it held: opened again, it shows the job as saved
     const jid = t?.kind === "job" ? t.jobId : undefined;
+    if (jid && !force && jobDirty(jid)) {
+      dispatch({ type: "activate", id: tabId });
+      setClosingJob({ jobId: jid, title: t!.title });
+      return;
+    }
+    // a closed job tab forgets what it held: opened again, it shows the job as saved; its running
+    // nest stops (nothing would show or keep its result)
     if (jid) {
+      for (const x of solsOf(jid).list) if (x.run && !isFinished(x.run) && !x.error) void nestApi.stop(x.run.id).catch(() => {});
       const drop = <T,>(m: Record<string, T>) => { const n = { ...m }; delete n[jid]; return n; };
-      setJobParts(drop); setJobStock(drop); setJobSol(drop); setJobScreen(drop); setJobServerId(drop); setJobMachine(drop);
+      setJobParts(drop); setJobStock(drop); setJobSol(drop); setJobScreen(drop); setJobServerId(drop); setJobMachine(drop); setSavedSnap(drop);
     }
     dispatch({ type: "close", id: tabId });
   };
@@ -391,10 +411,12 @@ export function App() {
   const patchSol = (jobId: string, id: string, f: (s: Solution) => Solution) =>
     setSols(jobId, (st) => ({ ...st, list: st.list.map((x) => (x.id === id ? f(x) : x)) }));
   const pollNest = async (jobId: string, solId: string, runId: string) => {
-    for (;;) {
+    for (let fails = 0; ;) {
       await new Promise((r) => setTimeout(r, 1000));
       let run: NestRun;
-      try { run = await nestApi.get(runId); } catch (e) {
+      try { run = await nestApi.get(runId); fails = 0; } catch (e) {
+        // a moment without the server (busy, restarting) is not a failed nest: give up after 10 tries
+        if (++fails < 10) continue;
         patchSol(jobId, solId, (x) => ({ ...x, error: (e as Error).message }));
         return;
       }
@@ -437,11 +459,21 @@ export function App() {
   // Saving a job (Work parts SAVE / SAVE AS; until those buttons exist, Ctrl+S): parts with their
   // quantities, the stock sheets and every finished solution. A new job gets its database id on the first save.
   const [jobServerId, setJobServerId] = useState<Record<string, string>>({});
+  const [closingJob, setClosingJob] = useState<{ jobId: string; title: string } | null>(null);
+  const [removingSol, setRemovingSol] = useState<{ jobId: string; id: string } | null>(null);
+  /** Unsaved changes: the job differs from how it was opened or last saved (a new job: once it has parts). */
+  const jobDirty = (jobId: string) => {
+    const parts = jobParts[jobId];
+    if (!parts) return false;
+    const now = snapOf(parts, jobStock[jobId] ?? [], solsOf(jobId).list, machineFor(jobId).id);
+    const saved = savedSnap[jobId];
+    return saved === undefined ? parts.length > 0 || (jobStock[jobId] ?? []).length > 0 : saved !== now;
+  };
   // SAVE writes over the job (a new one is created on its first save); SAVE AS makes a new job under
   // another name, and the tab goes on as that new job.
   const saveJob = async (jobId: string, title: string, asNew = false) => {
     const parts = jobParts[jobId];
-    if (!parts) return;
+    if (!parts) { setToast("The job is still loading"); return false; }
     const known = jobServerId[jobId] ?? (jobId.startsWith("new-") ? null : jobId);
     const serverId = asNew ? null : known;
     const st = solsOf(jobId);
@@ -449,10 +481,13 @@ export function App() {
       const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: USER_NAME, machine: machineFor(jobId).id });
       if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
       if (asNew) dispatch({ type: "rename", id: `job:${jobId}`, title });
+      setSavedSnap((m) => ({ ...m, [jobId]: snapOf(parts, jobStock[jobId] ?? [], st.list, machineFor(jobId).id) }));
       setToast(`${asNew ? `Saved as ${title}` : "Job saved"}${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}`);
     } catch (e) {
       setToast(`Not saved: ${(e as Error).message}`);
+      return false;
     }
+    return true;
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -480,15 +515,33 @@ export function App() {
     setJobScreen((m) => ({ ...m, [jobId]: "parts" }));
     setMachineAsk(null);
   };
+  // closing the browser window with unsaved jobs: the browser asks first
+  useEffect(() => {
+    const onLeave = (e: BeforeUnloadEvent) => {
+      if (!state.tabs.some((t) => t.kind === "job" && t.jobId && jobDirty(t.jobId))) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onLeave);
+    return () => window.removeEventListener("beforeunload", onLeave);
+  });
   const [saveAsFor, setSaveAsFor] = useState<{ jobId: string; name: string } | null>(null);
   // the cutting area that the STOCK panel checks: the shown job's machine
-  useEffect(() => { const m = machineFor(job?.id); setMachineLimit(m.cutLengthMm, m.cutWidthMm); });
+  // (set while rendering, before the STOCK panel and the dialogs check sizes against it)
+  { const m = machineFor(job?.id); setMachineLimit(m.cutLengthMm, m.cutWidthMm); }
 
   // One nested sheet changed by hand (its own size, trims, gap, cut number): only that sheet changes.
-  const editSheet = (jobId: string, solId: string, index: number, patch: Partial<NestedSheet>) =>
+  const editSheet = (jobId: string, solId: string, index: number, patch: Partial<NestedSheet>) => {
+    const sheets = solsOf(jobId).list.find((x) => x.id === solId)?.run?.result?.sheets;
+    const stockOf = sheets?.[index] && (jobStock[jobId] ?? []).find((s) => s.id === sheets[index].sheetId);
+    if (sheets && stockOf && !stockOf.unlimited && patch.cutNumber !== undefined) {
+      const used = sheets.reduce((n, sh, i) => n + (sh.sheetId === stockOf.id ? (i === index ? patch.cutNumber! : sh.cutNumber ?? 1) : 0), 0);
+      if (used > stockOf.qty) setToast(`The layouts now need ${used} of this stock sheet; the stock has ${stockOf.qty}`);
+    }
     patchSol(jobId, solId, (x) => x.run?.result ? {
       ...x, run: { ...x.run, result: { ...x.run.result, sheets: x.run.result.sheets.map((sh, i) => (i === index ? { ...sh, ...patch } : sh)) } },
     } : x);
+  };
   // Re-nest this sheet: its parts nested again on it alone (the other sheets stay as they are)
   const [renesting, setRenesting] = useState<string | null>(null);   // "solId:index"
   const renestSheet = async (jobId: string, solId: string, index: number) => {
@@ -544,7 +597,7 @@ export function App() {
         activeId={state.activeId}
         userName={USER_NAME}
         onActivate={(id) => dispatch({ type: "activate", id })}
-        onClose={requestClose}
+        onClose={(id) => requestClose(id)}
         onMenu={(id) => showView(id)}
         undo={undoState}
         save={job ? { onSave: () => void saveJob(job.id, job.title), onSaveAs: () => setSaveAsFor({ jobId: job.id, name: `${job.title} copy` }) } : null}
@@ -575,8 +628,7 @@ export function App() {
                 onSelect={(sel) => setSols(job.id, (st) => ({ ...st, sel }))}
                 onAdd={(mode) => (mode === "custom" ? setCustomFor(job.id) : void startNest(job.id, mode))}
                 onStop={(id) => void stopNest(job.id, id)}
-                onRemove={(id) => setSols(job.id, (st) => ({ list: st.list.filter((x) => x.id !== id),
-                  sel: st.sel.sol === id ? { sol: st.list.filter((x) => x.id !== id).at(-1)?.id ?? null, sheet: 0 } : st.sel }))}
+                onRemove={(id) => setRemovingSol({ jobId: job.id, id })}
                 machine={machineFor(job.id)}
                 stock={jobStock[job.id] ?? []}
                 renesting={renesting}
@@ -613,6 +665,35 @@ export function App() {
                 onCancel={() => setMachineAsk(null)} onConfirm={() => changeMachine(machineAsk.jobId, machineAsk.id, true)}>
                 Gaps, cutting area, materials and thicknesses come from the machine, so the <b>stock sheets and all solutions</b> of this job are cleared
                 and it has to be nested again. The job name and the work part list stay.
+              </ConfirmDialog>
+            )}
+            {closingJob && (
+              <div className="dlg-backdrop" role="presentation">
+                <div className="dlg close-dlg" role="alertdialog" aria-modal="true" aria-labelledby="cj-title">
+                  <header className="dlg-head"><span className="dlg-icon close-dlg-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 2 20h20L12 3z" /><path d="M12 10v4" /><circle cx="12" cy="17" r=".6" fill="currentColor" /></svg></span><div className="dlg-title"><h2 id="cj-title">Close without saving?</h2></div></header>
+                  <p className="close-dlg-text"><b>{closingJob.title}</b> has changes that are not saved: parts, stock, machine or solutions.
+                    {solsOf(closingJob.jobId).list.some((x) => !isFinished(x.run) && !x.error) ? " Its running nest stops." : ""}</p>
+                  <footer className="dlg-foot">
+                    <span className="proc-missing" />
+                    <button type="button" className="btn btn-plain" onClick={() => setClosingJob(null)}>Cancel</button>
+                    <button type="button" className="btn btn-plain" onClick={() => { const c = closingJob; setClosingJob(null); requestClose(`job:${c.jobId}`, true); }}>Don't save</button>
+                    <button type="button" className="btn btn-save" autoFocus onClick={async () => {
+                      const c = closingJob; setClosingJob(null);
+                      if (await saveJob(c.jobId, c.title)) requestClose(`job:${c.jobId}`, true);
+                    }}>Save and close</button>
+                  </footer>
+                </div>
+              </div>
+            )}
+            {removingSol && (
+              <ConfirmDialog title={`Remove solution ${solsOf(removingSol.jobId).list.find((x) => x.id === removingSol.id)?.no ?? ""}?`} confirmLabel="Remove"
+                onCancel={() => setRemovingSol(null)}
+                onConfirm={() => {
+                  const { jobId, id } = removingSol; setRemovingSol(null);
+                  setSols(jobId, (st) => ({ list: st.list.filter((x) => x.id !== id),
+                    sel: st.sel.sol === id ? { sol: st.list.filter((x) => x.id !== id).at(-1)?.id ?? null, sheet: 0 } : st.sel }));
+                }}>
+                Its sheets are gone from the job (the saved job keeps it until the job is saved again).
               </ConfirmDialog>
             )}
             {saveAsFor && (
