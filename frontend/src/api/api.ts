@@ -312,10 +312,10 @@ const detailOf = (p: PartSummary): PartDetail =>
     filler: extra.get(p.id)?.filler ?? false, sourceFile: extra.get(p.id)?.sourceFile ?? "" });
 
 /** What a job tab saves (Work parts SAVE). The stock and nest are kept as the tab has them. */
-export interface JobSaveData { name: string; parts: JobPart[]; stock: unknown[]; nest: unknown | null; modifiedBy?: string }
+export interface JobSaveData { name: string; parts: JobPart[]; stock: unknown[]; nest: unknown | null; modifiedBy?: string; machine?: string }
 export interface JobSaved { id: string; name: string; status: JobStatus; sheetCount: number; modifiedAt: string }
 /** A saved job's stock sheets and saved nest (its parts: jobParts). */
-export interface JobDetail { id: string; name: string; status: JobStatus; sheetCount: number; stock: unknown[] | null; nest: unknown | null }
+export interface JobDetail { id: string; name: string; status: JobStatus; sheetCount: number; stock: unknown[] | null; nest: unknown | null; machine?: string }
 
 // sample mode: saved jobs live in this tab
 const savedJobDetails = new Map<string, JobDetail>();
@@ -340,11 +340,16 @@ function mockSaveJob(id: string | null, d: JobSaveData): JobSaved {
   const i = sampleJobs.findIndex((j) => j.id === jobId);
   if (i >= 0) sampleJobs.splice(i, 1, { ...sampleJobs[i], ...row, createdAt: sampleJobs[i].createdAt });
   else sampleJobs.unshift(row as (typeof sampleJobs)[number]);
-  savedJobDetails.set(jobId, { id: jobId, name: d.name, status, sheetCount: sheets, stock: d.stock, nest: d.nest });
+  savedJobDetails.set(jobId, { id: jobId, name: d.name, status, sheetCount: sheets, stock: d.stock, nest: d.nest, machine: d.machine });
   return { id: jobId, name: d.name, status, sheetCount: sheets, modifiedAt: now };
 }
 
 export const api = {
+  /** A setting shared by everyone (on the server); null when it was never saved, or in the demo. */
+  setting: async <T,>(key: string): Promise<T | null> => (useApi ? get<T | null>(`/api/settings/${key}`) : null),
+  saveSetting: async <T,>(key: string, value: T): Promise<void> => {
+    if (useApi) await post<unknown>(`/api/settings/${key}`, { value, modifiedBy: "" }, "PUT");
+  },
   /** A saved part's drawing (entities with roles, mm, y up); null when it was saved without one. */
   partGeometry: async (id: string): Promise<{ entities: Entity[] } | null> => {
     const raw = useApi ? await get<{ entities?: Entity[] } | Entity[] | null>(`/api/parts/${id}/geometry`) : JSON.parse(mockGeometry.get(id) ?? "null");
@@ -355,7 +360,7 @@ export const api = {
   saveJob: (id: string | null, d: JobSaveData): Promise<JobSaved> => {
     if (!useApi) return delay(0).then(() => mockSaveJob(id, d));
     const body = {
-      name: d.name, stock: d.stock, nest: d.nest, modifiedBy: d.modifiedBy ?? "",
+      name: d.name, stock: d.stock, nest: d.nest, modifiedBy: d.modifiedBy ?? "", machine: d.machine ?? "",
       parts: d.parts.map((jp) => ({ partId: jp.part.id, qty: jp.qty, qtyMax: jp.qtyMax ?? jp.qty, no: jp.no })),
     };
     return id ? post<JobSaved>(`/api/jobs/${id}`, body, "PUT") : post<JobSaved>("/api/jobs", body);

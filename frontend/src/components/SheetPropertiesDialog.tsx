@@ -5,10 +5,10 @@ import { Combobox } from "./Combobox";
 import { NumInput } from "./NumInput";
 import { usePickLists } from "./pickLists";
 import {
-  DEFAULT_PART_GAP_MM, defaultTrims, fitsMachine, mirrorSheet, rotateSheet, sheetLoops, MACHINE_LIMIT,
+  fitsMachine, mirrorSheet, rotateSheet, sheetLoops, MACHINE_LIMIT,
   type StockSheet, type Trims,
 } from "../job/stock";
-import type { Origin } from "../job/machine";
+import type { Machine, Origin } from "../job/machine";
 
 const SOURCE: Record<string, string> = {
   parts: "From the job part list", default1: "Default 1", default2: "Default 2", default3: "Default 3", remnant: "Remnant", dxf: "From a DXF file",
@@ -17,9 +17,13 @@ const SOURCE: Record<string, string> = {
 // Properties of a stock sheet (STOCK panel: [i] or double click on its name), laid out like Part
 // properties: the sheet's shape with the machine's 0,0, rotate / mirror under it; size, trims (gap from
 // each edge to the parts, by the machine's axes), part gap, cut number and cut diameter on the right.
-export function SheetPropertiesDialog({ sheet, index, origin, onSave, onClose }: {
-  sheet: StockSheet; index: number; origin: Origin; onSave: (s: StockSheet) => void; onClose: () => void;
+export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose }: {
+  sheet: StockSheet; index: number; machine: Machine; onSave: (s: StockSheet) => void; onClose: () => void;
 }) {
+  const origin = machine.origin;
+  // the machine's gaps are the defaults (RESET, and for a sheet that has none of its own)
+  const defaultTrims = () => ({ ...machine.trims });
+  const DEFAULT_PART_GAP_MM = machine.partGapMm;
   const [s, setS] = useState<StockSheet>(() => ({ ...sheet, trims: sheet.trims ?? defaultTrims(), partGapMm: sheet.partGapMm ?? DEFAULT_PART_GAP_MM }));
   const lists = usePickLists(s.material);
   const set = (patch: Partial<StockSheet>) => setS((x) => ({ ...x, ...patch }));
@@ -38,7 +42,7 @@ export function SheetPropertiesDialog({ sheet, index, origin, onSave, onClose }:
   /** RESET: size and shape as added, default trims and gap, no cut diameter. */
   const reset = () => setS((x) => ({
     ...x, lengthMm: x.original?.lengthMm ?? x.lengthMm, widthMm: x.original?.widthMm ?? x.widthMm, outline: x.original?.outline,
-    trims: defaultTrims(), partGapMm: DEFAULT_PART_GAP_MM, kerfMm: undefined,
+    trims: defaultTrims(), partGapMm: DEFAULT_PART_GAP_MM, kerfMm: machine.kerfMm || undefined,
   }));
 
   const tooBig = s.lengthMm > 0 && s.widthMm > 0 && !fitsMachine(s.lengthMm, s.widthMm);
@@ -127,7 +131,7 @@ export function SheetPropertiesDialog({ sheet, index, origin, onSave, onClose }:
         </div>
 
         <footer className="dlg-foot">
-          <button type="button" className="btn btn-plain" onClick={reset} title="Size and shape as added, default trims and parts gap">Reset</button>
+          <button type="button" className="btn btn-plain" onClick={reset} title={`Size and shape as added; trims, parts gap and cut diameter of ${machine.name}`}>Reset</button>
           <span className="proc-missing">{changed ? "Saved with the job's stock." : ""}</span>
           <button type="button" className="btn btn-plain" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-save" disabled={!changed}>Save</button>

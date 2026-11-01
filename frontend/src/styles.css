@@ -1481,3 +1481,30 @@ th.num .th-sort { flex-direction: row-reverse; }
 .sp-unlimited { font-size: 14px; }
 .sp-warn { margin: 10px 0 0; color: #b3261e; font-size: 13.5px; }
 .sp-note { margin: 10px 0 0; color: var(--ink-3); font-size: 13px; }
+
+/* New job: name and machine */
+.nj-dlg { width: min(560px, 100%); display: flex; flex-direction: column; }
+.nj-icon { color: var(--green-ink); background: var(--green-tint); }
+.nj-body { padding: 16px 20px 8px; display: flex; flex-direction: column; gap: 14px; }
+.nj-machines { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.nj-machine { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; text-align: left; }
+.nj-machine b { font-family: var(--font-cond); font-weight: 600; font-size: 17px; text-transform: uppercase; letter-spacing: .03em; }
+.nj-machine span { font-size: 13px; color: var(--ink-2); }
+.nj-machine:hover { border-color: var(--green); }
+.nj-machine.is-on { border-color: var(--green); background: var(--green-tint); }
+
+/* Settings -> Machines */
+.mc-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.mc-tab { height: 36px; padding: 0 14px; border: 1.5px solid var(--line); border-radius: 7px; background: #fff; font-weight: 600; }
+.mc-tab:hover { border-color: var(--green); }
+.mc-tab.is-on { border-color: var(--green); background: var(--green-tint); color: var(--green-ink); }
+.mc-default { margin-left: 6px; color: #c89400; }
+.mc-add { height: 36px; padding: 0 14px; border: 1.5px dashed var(--green); border-radius: 7px; background: transparent; color: var(--green-ink); font-weight: 600; }
+.mc-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 8px; }
+.mc-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+.mc-field .field { width: 240px; height: 36px; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink); font-size: 14px; }
+.mc-gaps { display: grid; grid-template-columns: repeat(4, minmax(90px, 140px)); gap: 8px 14px; margin-top: 8px; }
+.mc-gaps .mc-wide { grid-column: span 2; }
+.mc-lbl { width: auto !important; min-width: 90px; font-size: 13px; }
+.work-machine { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+.work-machine .field { height: 30px; text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 600; color: var(--ink); }

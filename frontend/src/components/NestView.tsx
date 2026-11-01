@@ -220,7 +220,9 @@ function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, 
                 <button type="button" className={`sol-box${on ? " is-on" : ""}`} onClick={() => onSelect({ sol: s.id, sheet: 0 })}
                   title={failed ? failed : `${sheets.length} ${sheets.length === 1 ? "sheet" : "sheets"} · ${hms(s.run?.seconds ?? 0)}${s.run?.state === "stopped" ? " · stopped" : ""}`}>
                   <span className="sol-title">Solution {s.no}</span>
-                  <span className={`sol-badge${failed ? " is-error" : ""}`}>{failed ? "FAILED" : MODE_SHORT[s.mode]}</span>
+                  <span className={`sol-badge${failed || s.outdated ? " is-error" : ""}`}
+                    title={s.outdated ? "Nested for a machine of another technology: nest the job again" : undefined}>
+                    {failed ? "FAILED" : s.outdated ? "OUT OF DATE" : MODE_SHORT[s.mode]}</span>
                 </button>
                 <button type="button" className="sol-x" onClick={() => onRemove(s.id)} title={`Remove solution ${s.no}`} aria-label={`Remove solution ${s.no}`}>
                   <IconClose size={16} />

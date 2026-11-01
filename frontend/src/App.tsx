@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { api } from "./api/api";
+import { api, demoMode } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
 import { sampleDrawings } from "./import/sampleDrawing";
@@ -28,7 +28,8 @@ import { buildRequest, isFinished, nestApi, nestProblem, nestsOfJob, solutionsFr
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
-import { loadMachineSettings, saveMachineSettings, type MachineSettings } from "./job/machine";
+import { loadLocalMachines, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
+import { NewJobDialog } from "./components/NewJobDialog";
 import { setMachineLimit } from "./job/stock";
 import { loadStockSettings, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -49,9 +50,25 @@ export function App() {
   const [jobScreen, setJobScreen] = useState<Record<string, "parts" | "nest" | undefined>>({});
   const [customFor, setCustomFor] = useState<string | null>(null);
   const [stockSettings, setStockSettingsState] = useState<StockSettings>(loadStockSettings);
-  const [machine, setMachineState] = useState<MachineSettings>(loadMachineSettings);
-  const setMachine = (m: MachineSettings) => { setMachineLimit(m.cutLengthMm, m.cutWidthMm); setMachineState(m); saveMachineSettings(m); };
-  useState(() => setMachineLimit(machine.cutLengthMm, machine.cutWidthMm));  // once, at start
+  // machines: shared on the server (the browser keeps a copy, and is all there is in the demo)
+  const [machines, setMachinesState] = useState<MachineList>(loadLocalMachines);
+  const setMachines = (m: MachineList) => {
+    setMachinesState(m);
+    saveLocalMachines(m);
+    api.saveSetting("machines", m).catch((e) => setToast(`Machines not saved on the server: ${(e as Error).message}`));
+  };
+  useEffect(() => {
+    api.setting<MachineList>("machines").then((v) => {
+      const m = normalizeMachines(v);
+      if (m) { setMachinesState(m); saveLocalMachines(m); }
+      else if (!demoMode) void api.saveSetting("machines", machines).catch(() => {});  // first time: this browser's list
+    }).catch(() => { /* server without settings: the browser's list */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // the machine each job tab is nested for
+  const [jobMachine, setJobMachine] = useState<Record<string, string>>({});
+  const machineFor = (jobId: string | undefined) => machineOf(machines, jobId ? jobMachine[jobId] : undefined);
+  const [newJobOpen, setNewJobOpen] = useState<string | null>(null);   // the name offered
   const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); saveStockSettings(s); };
   // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
   const [imports, setImports] = useState<ImportItem[]>([]);
@@ -101,6 +118,7 @@ export function App() {
       api.job(id).then((d) => {
         if (!d) return;
         if (Array.isArray(d.stock)) setJobStock((m) => ({ ...m, [id]: d.stock as StockSheet[] }));
+        if (d.machine) setJobMachine((m) => ({ ...m, [id]: d.machine! }));
         const sols = solutionsFromSaved(d.nest);
         if (sols) setJobSol((m) => ({ ...m, [id]: sols }));
       }).catch(() => { /* an older server without job details: parts only */ });
@@ -113,11 +131,18 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // New job: a pop-up asks for its name and machine first
   const newJob = useCallback(() => {
-    newJobCount.current += 1;
-    const n = newJobCount.current;
-    dispatch({ type: "open", tab: jobTab(`new-${n}`, n === 1 ? "New job" : `New job ${n}`) });
+    const n = newJobCount.current + 1;
+    setNewJobOpen(n === 1 ? "New job" : `New job ${n}`);
   }, []);
+  const createJob = (name: string, machineId: string) => {
+    newJobCount.current += 1;
+    const id = `new-${newJobCount.current}`;
+    setJobMachine((m) => ({ ...m, [id]: machineId }));
+    setNewJobOpen(null);
+    dispatch({ type: "open", tab: jobTab(id, name) });
+  };
 
   const openImport = () => setDrawer("import");
 
@@ -293,7 +318,7 @@ export function App() {
     const jid = t?.kind === "job" ? t.jobId : undefined;
     if (jid) {
       const drop = <T,>(m: Record<string, T>) => { const n = { ...m }; delete n[jid]; return n; };
-      setJobParts(drop); setJobStock(drop); setJobSol(drop); setJobScreen(drop); setJobServerId(drop);
+      setJobParts(drop); setJobStock(drop); setJobSol(drop); setJobScreen(drop); setJobServerId(drop); setJobMachine(drop);
     }
     dispatch({ type: "close", id: tabId });
   };
@@ -391,11 +416,11 @@ export function App() {
     // the sheets shown stay until the new solution has some
     setSols(jobId, (s0) => {
       const shown = s0.list.find((x) => x.id === s0.sel.sol)?.run?.result?.sheets.length;
-      return { list: [...s0.list, { id, no, mode, custom, run: null, startedAt: Date.now(), locked: [], origin: machine.origin }], sel: shown ? s0.sel : { sol: id, sheet: 0 } };
+      return { list: [...s0.list, { id, no, mode, custom, run: null, startedAt: Date.now(), locked: [], origin: machineFor(jobId).origin, machine: machineFor(jobId).id }], sel: shown ? s0.sel : { sol: id, sheet: 0 } };
     });
     setJobScreen((m) => ({ ...m, [jobId]: "nest" }));
     try {
-      const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom, machine.origin);
+      const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom, machineFor(jobId).origin);
       const run = await nestApi.start(req);
       patchSol(jobId, id, (x) => ({ ...x, run }));
       void pollNest(jobId, id, run.id);
@@ -418,7 +443,7 @@ export function App() {
     const serverId = jobId.startsWith("new-") ? jobServerId[jobId] ?? null : jobId;
     const st = solsOf(jobId);
     try {
-      const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: USER_NAME });
+      const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: USER_NAME, machine: machineFor(jobId).id });
       if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
       setToast(`Job saved${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}`);
     } catch (e) {
@@ -434,6 +459,29 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  // Another machine for a job: of another technology (laser -> plasma, ...) its solutions are out of
+  // date and it has to be nested again; of the same one they stay, with a reminder to check the gaps.
+  const changeMachine = (jobId: string, id: string) => {
+    const from = machineFor(jobId), to = machineOf(machines, id);
+    if (from.id === to.id) return;
+    setJobMachine((m) => ({ ...m, [jobId]: id }));
+    // stock sheets still on the old machine's gaps take the new one's (sheets changed by hand keep theirs)
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    setJobStock((m) => ({ ...m, [jobId]: (m[jobId] ?? []).map((sh) =>
+      same(sh.trims ?? from.trims, from.trims) && (sh.partGapMm ?? from.partGapMm) === from.partGapMm
+        ? { ...sh, trims: { ...to.trims }, partGapMm: to.partGapMm, kerfMm: to.kerfMm || undefined } : sh) }));
+    const sols = solsOf(jobId).list;
+    if (!sols.length) return;
+    if (from.technology !== to.technology) {
+      setSols(jobId, (st) => ({ ...st, list: st.list.map((x) => ({ ...x, outdated: true })) }));
+      setToast(`Nested for ${from.name}: the solutions are out of date, nest the job again for ${to.name}`);
+    } else {
+      setToast(`Solutions kept: check the gaps of ${to.name}`);
+    }
+  };
+  // the cutting area that the STOCK panel checks: the shown job's machine
+  useEffect(() => { const m = machineFor(job?.id); setMachineLimit(m.cutLengthMm, m.cutWidthMm); });
 
   /** Pieces per part of the solution shown. */
   const nestedCounts = (jobId: string): Record<string, number> | null => {
@@ -508,11 +556,14 @@ export function App() {
                   ...m, [job.id]: (m[job.id] ?? []).map((jp) => (jp.part.id === pid ? { ...jp, ...patch } : jp)),
                 }))}
                 onNotice={setToast}
-                origin={machine.origin}
+                machine={machineFor(job.id)}
+                machines={machines}
+                onMachine={(id) => changeMachine(job.id, id)}
                 onRemove={(pid) => setJobParts((m) => ({ ...m, [job.id]: (m[job.id] ?? []).filter((jp) => jp.part.id !== pid) }))}
                 onOpenParts={() => setDrawer("parts")}
               />
             )}
+            {newJobOpen && <NewJobDialog defaultName={newJobOpen} machines={machines} onCreate={createJob} onCancel={() => setNewJobOpen(null)} />}
             {customFor && (
               <CustomNestDialog onCancel={() => setCustomFor(null)}
                 onStart={(c) => { const id = customFor; setCustomFor(null); void startNest(id, "custom", c); }} />
@@ -547,7 +598,7 @@ export function App() {
               // a list that has not been touched yet follows the new defaults
               if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller }));
             }} />}
-            {active.kind === "settings" && <SettingsPage stock={stockSettings} onStock={setStockSettings} machine={machine} onMachine={setMachine} />}
+            {active.kind === "settings" && <SettingsPage stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
           </main>
         </div>

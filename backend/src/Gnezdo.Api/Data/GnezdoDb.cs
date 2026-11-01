@@ -11,6 +11,7 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
     public DbSet<PartRevision> PartRevisions => Set<PartRevision>();
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobPart> JobParts => Set<JobPart>();
+    public DbSet<AppSetting> Settings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -73,9 +74,17 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
         {
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.ModifiedBy).HasMaxLength(100);
+            e.Property(x => x.Machine).HasMaxLength(50);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => x.ModifiedAt);
+        });
+
+        b.Entity<AppSetting>(e =>
+        {
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(100);
+            e.Property(x => x.ModifiedBy).HasMaxLength(100);
         });
 
         b.Entity<JobPart>(e =>

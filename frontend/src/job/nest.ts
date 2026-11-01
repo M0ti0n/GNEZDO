@@ -169,6 +169,10 @@ export interface Solution extends JobNest {
   locked: number[];
   /** the corner the parts were packed towards */
   origin?: Origin;
+  /** the machine it was nested for */
+  machine?: string;
+  /** nested for a machine of another technology than the job's now: nest again */
+  outdated?: boolean;
 }
 
 export const hms = (s: number) => {
@@ -275,6 +279,7 @@ export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string
 export interface SavedSolution {
   id: string; no: number; mode: NestMode; custom?: CustomNestSettings; origin?: Origin;
   state: "done" | "stopped"; seconds: number; locked: number[]; result: NestResult;
+  machine?: string; outdated?: boolean;
 }
 
 /** What a job stores of its nesting: every finished solution and the one shown (later: post-processed in Process). */
@@ -287,7 +292,7 @@ export function nestsOfJob(list: Solution[], selected: string | null): JobNests 
   return {
     selected: done.some((s) => s.id === selected) ? selected : done[done.length - 1].id,
     solutions: done.map((s) => ({
-      id: s.id, no: s.no, mode: s.mode, custom: s.custom, origin: s.origin,
+      id: s.id, no: s.no, mode: s.mode, custom: s.custom, origin: s.origin, machine: s.machine, outdated: s.outdated,
       state: s.run!.state === "stopped" ? "stopped" : "done", seconds: s.run!.seconds, locked: s.locked, result: s.run!.result!,
     })),
   };
@@ -299,7 +304,7 @@ export function solutionsFromSaved(nest: unknown): { list: Solution[]; sel: { so
   // a job saved with one solution only (before all solutions were kept)
   const saved: SavedSolution[] = n?.solutions ?? (n?.result ? [{ ...(n as SavedSolution), id: "saved", no: 1, locked: [] }] : []);
   const list: Solution[] = saved.filter((x) => x.result?.sheets?.length).map((x) => ({
-    id: x.id, no: x.no, mode: x.mode ?? "fast", custom: x.custom, origin: x.origin, locked: x.locked ?? [], startedAt: 0,
+    id: x.id, no: x.no, mode: x.mode ?? "fast", custom: x.custom, origin: x.origin, machine: x.machine, outdated: x.outdated, locked: x.locked ?? [], startedAt: 0,
     run: { id: x.id, state: x.state ?? "done", stopAsked: false, seconds: x.seconds ?? 0, result: x.result },
   }));
   if (!list.length) return null;

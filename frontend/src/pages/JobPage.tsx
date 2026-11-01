@@ -11,7 +11,7 @@ import { readDxf } from "../import/dxf";
 import { boxOf, checkGeometry, union, type Entity } from "../import/geometry";
 import { loopPoints } from "../import/toPart";
 import { SheetPropertiesDialog } from "../components/SheetPropertiesDialog";
-import type { Origin } from "../job/machine";
+import type { Machine, MachineList } from "../job/machine";
 import { partColor } from "../job/nest";
 import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
 
@@ -26,8 +26,10 @@ interface Props {
   onRemove: (partId: string) => void;
   onOpenParts: () => void;
   onNotice: (text: string) => void;
-  /** The machine's 0,0 corner (Settings -> Machine), shown on the sheet in Sheet properties. */
-  origin: Origin;
+  /** The machine the job is nested for: gaps of new sheets, 0,0, cutting area. */
+  machine: Machine;
+  machines: MachineList;
+  onMachine: (id: string) => void;
 }
 
 /** Nested count against the part's range: short of Qty req, within Qty req..Qty max, or over Qty max. */
@@ -63,7 +65,7 @@ const value = (jp: JobPart, c: Col): string | number => {
 };
 
 // Work parts screen of a job: the job part list (left) and the stock sheets (right).
-export function JobPage({ title, parts, stock, stockSettings, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice, origin }: Props) {
+export function JobPage({ title, parts, stock, stockSettings, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice, machine, machines, onMachine }: Props) {
   const [over, setOver] = useState(false);
 
   // the part's pop-up (double-click its name), and its versions
@@ -142,6 +144,12 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
         <header className="work-head">
           <h2>Job part list</h2>
           <span className="work-sum">{title}{parts && parts.length > 0 && ` · ${parts.length} ${parts.length === 1 ? "part" : "parts"}`}</span>
+          <label className="work-machine" title="The machine this job is nested for">
+            <span>Machine</span>
+            <select className="field" value={machine.id} onChange={(e) => onMachine(e.target.value)} aria-label="Machine">
+              {machines.list.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </label>
           {parts && parts.length > 0 && (
             <span className={`work-pcs ${allNested ? "is-done" : "is-short"}`}
               title="Pieces nested / pieces required (green when every part is between its Qty req and Qty max)">{nestedTotal} / {total} PCS</span>
@@ -232,7 +240,7 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
           onRestored={(now) => { onPart(now.id, { part: now }); setHistory(now); }} />
       )}
 
-      <StockPanel parts={parts ?? []} stock={stock} settings={stockSettings} onStock={onStock} onNotice={onNotice} origin={origin} />
+      <StockPanel parts={parts ?? []} stock={stock} settings={stockSettings} onStock={onStock} onNotice={onNotice} machine={machine} />
     </div>
   );
 }
@@ -244,9 +252,11 @@ const optionLabel = (id: StockSource, label: string, st: StockSettings) => {
   return `${label}: ${[sl.material.trim(), `${sl.lengthMm} × ${sl.widthMm}`].filter(Boolean).join(" ")}`;
 };
 
-function StockPanel({ parts, stock, settings, onStock, onNotice, origin }: {
-  parts: JobPart[]; stock: StockSheet[]; settings: StockSettings; onStock: (s: StockSheet[]) => void; onNotice: (t: string) => void; origin: Origin;
+function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
+  parts: JobPart[]; stock: StockSheet[]; settings: StockSettings; onStock: (s: StockSheet[]) => void; onNotice: (t: string) => void; machine: Machine;
 }) {
+  // a new sheet starts with the job's machine's gaps
+  const gaps = { trims: { ...machine.trims }, partGapMm: machine.partGapMm, kerfMm: machine.kerfMm || undefined };
   const [props, setProps] = useState<number | null>(null);   // sheet shown in Sheet properties
   const [from, setFrom] = useState<StockSource>("parts");
   const file = useRef<HTMLInputElement>(null);
@@ -271,13 +281,13 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, origin }: {
       if (!missing.length) { onNotice("Every material and thickness of the part list has a sheet already"); return; }
       // one sheet per material and thickness of the list, at the global sheet size (Settings -> Stock)
       const l = settings.globalLengthMm, w = settings.globalWidthMm;
-      onStock([...stock, ...missing.map((p) => newSheet({ source: "parts", ...p, lengthMm: l, widthMm: w, qty: 1, unlimited: true }))]);
+      onStock([...stock, ...missing.map((p) => newSheet({ ...gaps, source: "parts", ...p, lengthMm: l, widthMm: w, qty: 1, unlimited: true }))]);
       return;
     }
     if (from === "dxf") { file.current?.click(); return; }
     if (from === "remnant") {
       // until the remnant store exists: a sheet to fill in, one piece
-      onStock([...stock, newSheet({ source: "remnant", ...nextPair(), lengthMm: 0, widthMm: 0, qty: 1, unlimited: false })]);
+      onStock([...stock, newSheet({ ...gaps, source: "remnant", ...nextPair(), lengthMm: 0, widthMm: 0, qty: 1, unlimited: false })]);
       return;
     }
     // a default slot: its size and material; the thickness from the part list (first one of that
@@ -290,7 +300,7 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, origin }: {
       const t = (same.find((p) => !covered.has(sheetKey(p.material, p.thicknessMm))) ?? same[0])?.thicknessMm ?? 0;
       pair = { material: slot.material.trim(), thicknessMm: t };
     }
-    onStock([...stock, newSheet({ source: from, ...pair, lengthMm: slot.lengthMm, widthMm: slot.widthMm, qty: 1, unlimited: true })]);
+    onStock([...stock, newSheet({ ...gaps, source: from, ...pair, lengthMm: slot.lengthMm, widthMm: slot.widthMm, qty: 1, unlimited: true })]);
   };
 
   const fromDxf = async (f: File) => {
@@ -302,7 +312,7 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, origin }: {
       const l = r(b.maxX - b.minX), w = r(b.maxY - b.minY);
       if (!fitsMachine(l, w)) { setTooBig({ file: f.name, l, w }); return; }
       onStock([...stock, newSheet({
-        source: "dxf", ...nextPair(), lengthMm: l, widthMm: w, qty: 1, unlimited: false,
+        ...gaps, source: "dxf", ...nextPair(), lengthMm: l, widthMm: w, qty: 1, unlimited: false,
         fileName: f.name.replace(/\.dxf$/i, ""), outline: dxfOutline(drawing.entities, b),
       })]);
     } catch (e) {
@@ -380,7 +390,7 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, origin }: {
         </ConfirmDialog>
       )}
       {props !== null && stock[props] && (
-        <SheetPropertiesDialog sheet={stock[props]} index={props} origin={origin}
+        <SheetPropertiesDialog sheet={stock[props]} index={props} machine={machine}
           onSave={(now) => onStock(stock.map((x) => (x.id === now.id ? now : x)))} onClose={() => setProps(null)} />
       )}
     </aside>
