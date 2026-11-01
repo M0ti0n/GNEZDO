@@ -4,11 +4,13 @@ import { NumInput } from "../components/NumInput";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
 import { ORIGINS, TECHNOLOGIES, newMachine, type Machine, type MachineList } from "../job/machine";
+import { DEFAULT_KEYS, KEY_ACTIONS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 
-type Section = "stock" | "machine";
+type Section = "stock" | "machine" | "keys";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock", ready: true },
   { id: "machine", label: "Machines", ready: true },
+  { id: "keys", label: "Manual nest keys", ready: true },
 ];
 
 // GNEZDO menu -> Settings. Stock: the global sheet size and the three default sheet slots.
@@ -53,6 +55,8 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared }: {
           </button>
         ))}
       </nav>
+
+      {section === "keys" && <KeysSettings />}
 
       {section === "machine" && (
       <div className="settings-main">
@@ -178,6 +182,62 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared }: {
         </footer>
       </div>
       )}
+    </div>
+  );
+}
+
+/** Manual nest keys: two per action; click a key and press the new one (Esc: keep, Backspace: none). */
+function KeysSettings() {
+  const [keys, setKeysState] = useState<KeyMap>(loadKeys);
+  const [wait, setWait] = useState<{ a: KeyAction; k: 0 | 1 } | null>(null);
+  const setKeys = (k: KeyMap) => { setKeysState(k); saveKeys(k); };
+  const capture = (e: React.KeyboardEvent) => {
+    if (!wait) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === "Escape") { setWait(null); return; }
+    const code = e.key === "Backspace" ? "" : e.code;
+    const next = { ...keys } as KeyMap;
+    // a key does one thing: taken from another action first
+    if (code) for (const a of KEY_ACTIONS) next[a.id] = next[a.id].map((c) => (c === code ? "" : c)) as [string, string];
+    const pair = [...next[wait.a]] as [string, string];
+    pair[wait.k] = code;
+    next[wait.a] = pair;
+    setKeys(next);
+    setWait(null);
+  };
+  return (
+    <div className="settings-main">
+      <header className="settings-head">
+        <h2>Manual nest keys</h2>
+        <p>Keys that move and turn the selected parts in manual nesting: a press moves 1 mm or turns 1°, held down 10 steps a second.
+          Ctrl + a move key slides the parts up to the next part or the edge (keeping the gaps). Kept in this browser.</p>
+      </header>
+      <section className="rule">
+        <div className="keys-table" role="table" aria-label="Manual nest keys">
+          <div className="keys-head" role="row"><span>Action</span><span>Key</span><span>Second key</span></div>
+          {KEY_ACTIONS.map((a) => (
+            <div key={a.id} className="keys-row" role="row">
+              <span>{a.label}</span>
+              {([0, 1] as const).map((k) => {
+                const on = wait?.a === a.id && wait.k === k;
+                return (
+                  <button key={k} type="button" className={`key-cap${on ? " is-wait" : ""}${keys[a.id][k] ? "" : " is-empty"}`}
+                    onClick={() => setWait(on ? null : { a: a.id, k })} onKeyDown={capture} onBlur={() => on && setWait(null)}
+                    aria-label={`${a.label}: ${k ? "second key" : "key"} ${keyLabel(keys[a.id][k])}. Click and press a key to change`}>
+                    {on ? "Press a key…" : keyLabel(keys[a.id][k])}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <p className="rule-help">Delete removes the selected parts, Ctrl+A selects all, Ctrl+Z / Ctrl+Y undo and redo, Esc clears the selection.
+          Numpad keys work with Num Lock on or off.</p>
+      </section>
+      <footer className="settings-foot">
+        <button type="button" className="btn btn-plain" onClick={() => setKeys(DEFAULT_KEYS)}>Reset to defaults</button>
+      </footer>
     </div>
   );
 }
