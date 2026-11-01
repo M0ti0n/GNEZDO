@@ -17,8 +17,10 @@ const SOURCE: Record<string, string> = {
 // Properties of a stock sheet (STOCK panel: [i] or double click on its name), laid out like Part
 // properties: the sheet's shape with the machine's 0,0, rotate / mirror under it; size, trims (gap from
 // each edge to the parts, by the machine's axes), part gap, cut number and cut diameter on the right.
-export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose }: {
+export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, nested = false }: {
   sheet: StockSheet; index: number; machine: Machine; onSave: (s: StockSheet) => void; onClose: () => void;
+  /** A sheet of a nest (not the stock): only this sheet changes; the parts stay where they are. */
+  nested?: boolean;
 }) {
   const origin = machine.origin;
   // the machine's gaps are the defaults (RESET, and for a sheet that has none of its own)
@@ -61,7 +63,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose }
           </span>
           <div className="dlg-title">
             <h2 id="sp-title">Sheet properties</h2>
-            <p>Sheet {index + 1} · {SOURCE[s.source] ?? s.source}{s.fileName ? ` (${s.fileName}.dxf)` : ""}</p>
+            <p>{nested ? `Nested sheet ${index + 1}: changes apply to this sheet only` : `Sheet ${index + 1} · ${SOURCE[s.source] ?? s.source}${s.fileName ? ` (${s.fileName}.dxf)` : ""}`}</p>
           </div>
           <button type="button" className="icon-btn dlg-close" onClick={onClose} aria-label="Close" title="Close (Esc)"><IconClose size={16} /></button>
         </header>
@@ -70,30 +72,33 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose }
           <figure className="proc-image pp-image">
             <div className="pp-thumb sp-thumb"><SheetPreview sheet={s} origin={origin} trims={trims} /></div>
             <div className="proc-size">{s.lengthMm || "–"} × {s.widthMm || "–"} mm</div>
-            <div className="sp-turn" role="group" aria-label="Turn and mirror the sheet">
-              <button type="button" className="sp-turn-btn" onClick={() => setS(rotateSheet)} title="Turn the sheet 90° clockwise (length and width swap)">
+            <div className={`sp-turn${nested ? " is-off" : ""}`} role="group" aria-label="Turn and mirror the sheet"
+              title={nested ? "The parts are placed on this sheet: turn or mirror the stock sheet before nesting" : undefined}>
+              <button type="button" className="sp-turn-btn" disabled={nested} onClick={() => setS(rotateSheet)} title="Turn the sheet 90° clockwise (length and width swap)">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7" /><path d="M20 4v7h-7" /></svg>
                 Rotate 90°
               </button>
-              <button type="button" className="sp-turn-btn" onClick={() => setS((x) => mirrorSheet(x, "x"))} title="Mirror left to right">
+              <button type="button" className="sp-turn-btn" disabled={nested} onClick={() => setS((x) => mirrorSheet(x, "x"))} title="Mirror left to right">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M12 3v18" strokeDasharray="2 2" /><path d="M9 6 3 18h6zM15 6l6 12h-6z" /></svg>
                 Mirror X
               </button>
-              <button type="button" className="sp-turn-btn" onClick={() => setS((x) => mirrorSheet(x, "y"))} title="Mirror top to bottom">
+              <button type="button" className="sp-turn-btn" disabled={nested} onClick={() => setS((x) => mirrorSheet(x, "y"))} title="Mirror top to bottom">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M3 12h18" strokeDasharray="2 2" /><path d="M6 9 18 3v6zM6 15l12 6v-6z" /></svg>
                 Mirror Y
               </button>
             </div>
-            <p className="sp-hint">Turn a remnant so its long, straight edges are at the machine's 0,0 (red dot): easier for the operator and for nesting.</p>
+            <p className="sp-hint">{nested
+              ? "A bit more size or less trim lets a part that is a few mm too big fit (real sheets are often 3002 × 1505). The parts stay where they are; the sheet shows a warning if one no longer fits."
+              : "Turn a remnant so its long, straight edges are at the machine's 0,0 (red dot): easier for the operator and for nesting."}</p>
           </figure>
 
           <div className="proc-form">
             <div className="proc-group">
               <span className="proc-label">Material and thickness</span>
               <div className="filter-pair">
-                <Combobox value={s.material} onChange={(material) => set({ material })} options={lists.materials} placeholder="Material" ariaLabel="Material" newHint="a new material" />
+                <Combobox value={s.material} onChange={(material) => set({ material })} options={lists.materials} placeholder="Material" ariaLabel="Material" newHint="a new material" readOnly={nested} />
                 <Combobox value={s.thicknessMm ? String(s.thicknessMm) : ""} onChange={(t) => set({ thicknessMm: Number(t.replace(",", ".").replace(/[^\d.]/g, "")) || 0 })}
-                  options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
+                  options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" readOnly={nested} />
               </div>
             </div>
 
@@ -115,11 +120,12 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose }
               <label className="sp-field"><NumInput value={s.partGapMm ?? DEFAULT_PART_GAP_MM} min={0} aria-label="Parts gap (mm)" onCommit={(n) => set({ partGapMm: n })} /><span className="sp-unit">mm</span></label>
               <span />
 
-              <span className="sp-label" title="How many of this sheet there are to cut">Cut number</span>
+              <span className="sp-label" title={nested ? "How many times this layout is cut" : "How many of this sheet there are to cut"}>Cut number</span>
               <label className="sp-field">
                 <NumInput value={s.unlimited ? 0 : s.qty} min={1} int aria-label="Cut number" disabled={s.unlimited} placeholder="∞" onCommit={(n) => set({ qty: n })} />
               </label>
-              <label className="chk sp-unlimited"><input type="checkbox" checked={s.unlimited} onChange={(e) => set({ unlimited: e.target.checked })} /> Unlimited</label>
+              {nested ? <span className="sp-unit">times this layout</span>
+                : <label className="chk sp-unlimited"><input type="checkbox" checked={s.unlimited} onChange={(e) => set({ unlimited: e.target.checked })} /> Unlimited</label>}
 
               <span className="sp-label" title="Diameter of the cutting beam (kerf), for the post-processor">Cut diameter</span>
               <label className="sp-field"><NumInput value={s.kerfMm ?? 0} min={0} aria-label="Cut diameter (mm)" placeholder="–" onCommit={(n) => set({ kerfMm: n || undefined })} /><span className="sp-unit">mm</span></label>
@@ -132,7 +138,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose }
 
         <footer className="dlg-foot">
           <button type="button" className="btn btn-plain" onClick={reset} title={`Size and shape as added; trims, parts gap and cut diameter of ${machine.name}`}>Reset</button>
-          <span className="proc-missing">{changed ? "Saved with the job's stock." : ""}</span>
+          <span className="proc-missing">{changed ? (nested ? "Only this sheet changes." : "Every sheet nested from this stock gets it.") : ""}</span>
           <button type="button" className="btn btn-plain" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn btn-save" disabled={!changed}>Save</button>
         </footer>

@@ -49,7 +49,41 @@ export interface NestedSheet {
   sheetId: string; lengthMm: number; widthMm: number; material: string; thicknessMm: number;
   /** a shaped sheet: its loops (y down), first the outline */
   outline?: [number, number][][];
+  /** its own gaps (from its stock sheet, or changed on this sheet) */
+  trims?: { xMinus: number; xPlus: number; yMinus: number; yPlus: number };
+  partGapMm?: number;
+  kerfMm?: number;
+  /** how many times this layout is cut (1 when missing) */
+  cutNumber?: number;
   parts: PlacedPart[];
+}
+
+/** Pieces per part of a solution: every sheet's parts times its cut number. */
+export function countsOf(sheets: NestedSheet[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const sh of sheets) for (const p of sh.parts) out[p.partId] = (out[p.partId] ?? 0) + (sh.cutNumber ?? 1);
+  return out;
+}
+
+/**
+ * What no longer fits on a sheet after its size or trims were changed by hand: parts reaching past
+ * the trims (by the machine's axes, from the origin corner) or off the sheet.
+ */
+export function sheetProblems(sheet: NestedSheet, parts: Map<string, { path: string }>, origin: Origin = "top-left"): { outside: number } {
+  const t = sheet.trims;
+  const right = origin.endsWith("right"), bottom = origin.startsWith("bottom");
+  // trims on screen: X- / Y- are at the origin corner
+  const left = t ? (right ? t.xPlus : t.xMinus) : 0, rgt = t ? (right ? t.xMinus : t.xPlus) : 0;
+  const top = t ? (bottom ? t.yPlus : t.yMinus) : 0, bot = t ? (bottom ? t.yMinus : t.yPlus) : 0;
+  const tol = 0.05;
+  let outside = 0;
+  for (const p of sheet.parts) {
+    const part = parts.get(p.partId);
+    if (!part) continue;
+    const e = placedExtentOf(part.path, p);
+    if (e.minX < left - tol || e.minY < top - tol || e.maxX > sheet.lengthMm - rgt + tol || e.maxY > sheet.widthMm - bot + tol) outside++;
+  }
+  return { outside };
 }
 
 export interface NestResult {
@@ -215,6 +249,8 @@ const perimeter = (pts: [number, number][]) =>
   pts.reduce((s, p, i) => { const q = pts[(i + 1) % pts.length]; return s + Math.hypot(q[0] - p[0], q[1] - p[1]); }, 0);
 
 /** The parts' extents on a sheet: placed outline points, transformed as the engine placed them. */
+export const placedExtentOf = (path: string, p: PlacedPart) => placedExtent(path, p);
+
 function placedExtent(path: string, p: PlacedPart) {
   const a = (p.angle * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
