@@ -367,14 +367,15 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
                 aria-label={`Remove sheet ${i + 1}`} title="Remove sheet"><IconClose size={15} /></button>
             </div>
             <div className={`sheet-row sheet-dims${s.lengthMm && s.widthMm && !fitsMachine(s.lengthMm, s.widthMm) ? " is-too-big" : ""}`}
-              title={s.lengthMm && s.widthMm && !fitsMachine(s.lengthMm, s.widthMm) ? `Bigger than the machine can cut (${MACHINE_LIMIT.join(" × ")} mm)` : undefined}>
+              title={s.lengthMm && s.widthMm && !fitsMachine(s.lengthMm, s.widthMm) ? `Bigger than the machine can cut (${MACHINE_LIMIT.join(" × ")} mm)`
+                : s.outline ? "Shaped sheet from a DXF: its size follows the shape (Sheet properties turns it)" : undefined}>
               <NumInput className="field sheet-t" value={s.thicknessMm} placeholder="t" aria-label={`Thickness of sheet ${i + 1} (mm)`}
                 title="Thickness [mm]" onCommit={(n) => set(s.id, { thicknessMm: n })} />
               <span className="sheet-x">×</span>
-              <NumInput value={s.lengthMm} placeholder="length" aria-label={`Length of sheet ${i + 1} (mm)`}
+              <NumInput value={s.lengthMm} placeholder="length" aria-label={`Length of sheet ${i + 1} (mm)`} disabled={!!s.outline}
                 title="Length [mm]" onCommit={(n) => set(s.id, { lengthMm: n })} />
               <span className="sheet-x">×</span>
-              <NumInput value={s.widthMm} placeholder="width" aria-label={`Width of sheet ${i + 1} (mm)`}
+              <NumInput value={s.widthMm} placeholder="width" aria-label={`Width of sheet ${i + 1} (mm)`} disabled={!!s.outline}
                 title="Width [mm]" onCommit={(n) => set(s.id, { widthMm: n })} />
             </div>
             <div className="sheet-row sheet-qty">
