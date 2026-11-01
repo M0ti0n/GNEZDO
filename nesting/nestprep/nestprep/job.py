@@ -28,7 +28,7 @@ LEVELS = {
     "quick": dict(total=30.0, post=10.0, post_per_sheet=0.6, post_max=40.0, grace=15.0, min_nest=10.0, max_nest=30.0,
                   stop_after=5.0, two_phase=False,
                   pre_opts=dict(pair_max_fill=0.75),
-                  post_opts=dict(pool_time=1.5, fill_time=1.5, fill_rounds=2, tail_time=4.0, pairs=False, chain=False, compact_time=5.0)),
+                  post_opts=dict(pool_time=1.5, fill_time=1.5, fill_rounds=2, tail_time=4.0, empty=False, pairs=False, chain=False, compact_time=5.0)),
     # the nest is capped at 30 s: on the test jobs a longer nest gave the same layout, the time is
     # worth more in the post-pass
     "thorough": dict(total=90.0, post=30.0, post_per_sheet=2.5, post_max=150.0, grace=30.0, min_nest=20.0, max_nest=30.0,

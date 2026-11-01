@@ -38,6 +38,9 @@ class PostOptions:
     fill_time: float = 3.0       # per sheet
     fill_rounds: int = 3
     fill_below: float = 0.86     # sheets fuller than this (parts area / sheet area) are left alone
+    empty: bool = True           # the last sheet's parts into the earlier sheets, again while sheets go
+    empty_time: float = 2.0      # per sheet
+    empty_first: bool = True     # also before fill (Thorough); Fast has the time for one run only
     tail: bool = True            # the last sheets nested again together, to need one sheet less
     tail_time: float = 6.0       # per sheet of the tail
     chain: bool = True
@@ -89,6 +92,7 @@ class PostPass:
                     for it in b["items"]]))
         self._area = {}
         self._in_tail = False
+        self._empty_runs = 0
         self.log: list[dict] = []
         self.t0 = time.perf_counter()
 
@@ -99,7 +103,8 @@ class PostPass:
 
     def left(self) -> float:
         """Time left for the steps before the compaction (its time is kept aside)."""
-        reserve = (self.opt.compact_time if self.opt.compact else 0.0) + (self.opt.tail_time * 2 if self.opt.tail and not self._in_tail else 0.0)
+        reserve = (self.opt.compact_time if self.opt.compact else 0.0) + (self.opt.tail_time * 2 if self.opt.tail and not self._in_tail else 0.0) \
+            + (self.opt.empty_time * 3 if self.opt.empty and self._empty_runs < (2 if self.opt.empty_first else 1) else 0.0)
         return self.opt.budget - reserve - (time.perf_counter() - self.t0)
 
     def left_total(self) -> float:
@@ -248,7 +253,7 @@ class PostPass:
             else:
                 if k >= len(self.sheets) - 1:
                     continue
-                avail = Counter(p.id for x in self.sheets[k + 1:] for p in x.items)
+                avail = Counter(p.id for x in (self.sheets[-1:] if source == "last" else self.sheets[k + 1:]) for p in x.items)
             free = self.free_area(sh)
             fit = [tid for tid, c in avail.items() if c > 0 and self.area(tid) <= free]
             # each type at most its share of the free area: with hundreds of copies on offer the solver
@@ -276,7 +281,9 @@ class PostPass:
             if source == "pool":
                 avail = self.pool
             else:
-                avail = Counter(p.id for x in self.sheets[k + 1:] for p in x.items)
+                if k >= len(self.sheets) - 1:
+                    continue
+                avail = Counter(p.id for x in (self.sheets[-1:] if source == "last" else self.sheets[k + 1:]) for p in x.items)
             keep, took = [], Counter()
             for p in placed:
                 if took[p.id] < avail[p.id]:
@@ -362,6 +369,27 @@ class PostPass:
             if not moved or self.left() < 1.0:
                 break
         self.note("fill", time.perf_counter() - t, total)
+
+    def step_empty(self):
+        """What a person does by hand: the last sheet's parts into the gaps of the earlier sheets,
+        the sheets with the most free area first. When the last sheet goes, the new last one is
+        tried too; stops when a sheet stays or the time is up. (fill offers each sheet the parts
+        of every later sheet, biggest first; this empties the tail.)"""
+        t = time.perf_counter()
+        self._empty_runs += 1   # the second run may use the time kept for it
+        moved, gone = 0, 0
+        while len(self.sheets) > 1 and self.left() > 1.0:
+            last = self.sheets[-1]
+            before = len(last.items)
+            order = sorted(self.sheets[:-1], key=self.free_area, reverse=True)
+            for batch in self.batches(order):
+                if self.index_of(last) is None or self.left() < 1.0:
+                    break
+                moved += self.fill_batch(batch, "last", self.opt.empty_time)
+            if self.index_of(last) is not None:
+                break          # the last sheet stays (shorter, maybe): done
+            gone += 1
+        self.note("empty", time.perf_counter() - t, moved)
 
     def step_tail(self):
         """The last sheets when their parts could fit on one sheet less: nested again together,
@@ -468,8 +496,13 @@ class PostPass:
         # uses the gaps they open; the chain alone rarely shortened the last sheet
         if self.pool:
             self.step_pool()
+        # the tail first (quick: only the last sheet's parts), then the gaps, then the tail again
+        if self.opt.empty and self.opt.empty_first and len(self.sheets) > 1:
+            self.step_empty()
         if self.opt.fill and len(self.sheets) > 1:
             self.step_fill()
+        if self.opt.empty and len(self.sheets) > 1:
+            self.step_empty()
         if self.opt.tail and len(self.sheets) > 1:
             self.step_tail()
         if self.opt.pairs and len(self.sheets) > 1:

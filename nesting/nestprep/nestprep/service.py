@@ -359,7 +359,7 @@ class Run:
             self.status[i].update(stage="done", sheets=len(sheets), stopped=job["stopped"])
         self.progress()
         return {"sheets": sheets, "valid": v["ok"], "errors": v["errors"][:10],
-                "sheetEquivalents": m.get("sheet_equivalents"), "seconds": job["seconds"],
+                "sheetEquivalents": m.get("sheet_equivalents"), "seconds": job["seconds"], "steps": job["steps"],
                 "tooBig": [{"partId": g["partIds"][n], "reason": f"Bigger than every stock sheet ({t})"}
                            for n, t in job["skipped"]],
                 "counts": {g["partIds"][t]: c for t, c in counts.items()}}
@@ -384,7 +384,7 @@ class Run:
                   "sheets": sheets, "nested": dict(nested), "skipped": skipped,
                   "valid": valid, "errors": errors,
                   "groups": [{"material": g["material"], "thicknessMm": g["thicknessMm"],
-                              **{k: r.get(k) for k in ("sheetEquivalents", "seconds", "valid", "error")}}
+                              **{k: r.get(k) for k in ("sheetEquivalents", "seconds", "valid", "error", "steps")}}
                              for g, r in zip(self.groups, results)]}
         self.write("result.json", result)
         self.progress("finished")
