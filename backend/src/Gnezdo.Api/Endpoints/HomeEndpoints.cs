@@ -196,11 +196,11 @@ public static class HomeEndpoints
                     jp.Part.AreaMm2, jp.Part.OutlinePath, jp.Part.Description, jp.Part.Engraved,
                     jp.Part.ImportBatchId.ToString(), jp.Part.ImportBatch.ImportedAt, jp.Part.CreatedAt, jp.Part.ModifiedAt,
                     jp.Part.Revision),
-                jp.Qty, jp.QtyMax, jp.No,
+                jp.Qty, jp.QtyMax, jp.No, jp.Material, jp.ThicknessMm,
             })
             .ToListAsync(ct);
         // jobs saved before Qty max and ID numbers existed: max = req, numbers in name order
-        return Results.Ok(rows.Select((r, i) => new JobPartDto(r.Dto, r.Qty, Math.Max(r.QtyMax, r.Qty), r.No > 0 ? r.No : i + 1)).ToList());
+        return Results.Ok(rows.Select((r, i) => new JobPartDto(r.Dto, r.Qty, Math.Max(r.QtyMax, r.Qty), r.No > 0 ? r.No : i + 1, r.Material, r.ThicknessMm)).ToList());
     }
 
     // ---- projects ----------------------------------------------------------
