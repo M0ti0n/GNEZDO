@@ -85,6 +85,9 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 .menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px; border-radius: 6px; font-weight: 500; }
 .menu-item svg { color: var(--green-ink); }
 .menu-item:hover { background: var(--green-tint); }
+.menu-item:disabled { opacity: .45; cursor: default; background: none; }
+.menu-item.menu-sep { margin-top: 5px; position: relative; }
+.menu-item.menu-sep::before { content: ""; position: absolute; left: 8px; right: 8px; top: -3px; border-top: 1px solid var(--line, #e2e6e3); }
 .menu-foot { border-top: 1px solid var(--line); margin-top: 6px; padding: 8px 12px 4px; font-size: 12.5px; color: var(--ink-3); }
 
 /* Undo / Redo: right after the app menu, act on the open tab */
