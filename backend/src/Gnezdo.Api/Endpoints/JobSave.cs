@@ -13,13 +13,13 @@ public record JobPartSave(string PartId, int Qty, int? QtyMax, int? No);
 /// sheets and its nesting, as the tab keeps them: { selected, solutions: [{ id, ..., result: { sheets } }] }
 /// (null = not nested). The solution chosen for Process is picked there later.
 /// </summary>
-public record JobSaveRequest(string Name, IReadOnlyList<JobPartSave> Parts, JsonArray? Stock, JsonObject? Nest, string? ModifiedBy);
+public record JobSaveRequest(string Name, IReadOnlyList<JobPartSave> Parts, JsonArray? Stock, JsonObject? Nest, string? ModifiedBy, string? Machine = null);
 
 public record JobSavedDto(string Id, string Name, string Status, int SheetCount, DateTimeOffset ModifiedAt);
 
 /// <summary>A saved job with its stock sheets and saved nest (the parts come from GET /api/jobs/{id}/parts).</summary>
 public record JobDetailDto(string Id, string Name, string Status, int SheetCount, DateTimeOffset CreatedAt, DateTimeOffset ModifiedAt,
-    string ModifiedBy, JsonNode? Stock, JsonNode? Nest, DateTimeOffset? NestedAt);
+    string ModifiedBy, JsonNode? Stock, JsonNode? Nest, DateTimeOffset? NestedAt, string Machine = "");
 
 public static class JobSave
 {
@@ -54,7 +54,7 @@ public static class JobSave
         var j = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
         return j is null ? Results.NotFound() : Results.Ok(new JobDetailDto(
             j.Id.ToString(), j.Name, j.Status.ToString().ToLowerInvariant(), j.SheetCount, j.CreatedAt, j.ModifiedAt,
-            j.ModifiedBy, Parse(j.Stock), Parse(j.Nest), j.NestedAt));
+            j.ModifiedBy, Parse(j.Stock), Parse(j.Nest), j.NestedAt, j.Machine));
     }
 
     /// <summary>POST /api/jobs (new) and PUT /api/jobs/{id}: the whole job; its parts are replaced.</summary>
@@ -102,6 +102,7 @@ public static class JobSave
             job.Parts.Add(new JobPart { PartId = pid, Qty = p.Qty, QtyMax = Math.Max(p.Qty, p.QtyMax ?? p.Qty), No = p.No is > 0 ? p.No.Value : n });
         }
         job.Stock = r.Stock?.ToJsonString() ?? "";
+        if (r.Machine is not null) job.Machine = r.Machine.Trim() is var m && m.Length > 50 ? m[..50] : r.Machine.Trim();
         var sheets = SheetCount(r.Nest);
         if (r.Nest is not null && sheets > 0)
         {

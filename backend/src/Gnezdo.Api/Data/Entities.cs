@@ -106,6 +106,18 @@ public class PartRevision
     public DateTimeOffset ReplacedAt { get; set; }
 }
 
+/// <summary>
+/// A setting shared by everyone (machines, later materials, technology tables, ...): its value is JSON
+/// as the app keeps it, under a fixed key.
+/// </summary>
+public class AppSetting
+{
+    public required string Key { get; set; }
+    public string Value { get; set; } = "";
+    public DateTimeOffset ModifiedAt { get; set; }
+    public string ModifiedBy { get; set; } = "";
+}
+
 public enum JobStatus { Draft, Nested, Released, Cut }
 
 public class Job
@@ -117,6 +129,8 @@ public class Job
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ModifiedAt { get; set; }
     public string ModifiedBy { get; set; } = "";
+    /// <summary>The machine the job is nested for (id in the "machines" setting); empty = the default machine.</summary>
+    public string Machine { get; set; } = "";
     /// <summary>Stock sheets of the job (the STOCK panel), JSON array as the job tab keeps them.</summary>
     public string Stock { get; set; } = "";
     /// <summary>The saved nest solution (sheets with placed parts, counts, mode, origin), JSON; empty = not nested.</summary>
