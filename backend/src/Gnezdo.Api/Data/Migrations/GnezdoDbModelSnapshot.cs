@@ -146,6 +146,10 @@ namespace Gnezdo.Api.Data.Migrations
                     b.Property<int>("PartId")
                         .HasColumnType("int");
 
+                    b.Property<string>("Material")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<int>("No")
                         .HasColumnType("int");
 
@@ -154,6 +158,10 @@ namespace Gnezdo.Api.Data.Migrations
 
                     b.Property<int>("QtyMax")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("ThicknessMm")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)");
 
                     b.HasKey("JobId", "PartId");
 
