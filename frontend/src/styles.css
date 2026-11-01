@@ -1607,3 +1607,5 @@ th.num .th-sort { flex-direction: row-reverse; }
 .mn-gap { flex: 1; }
 .mn-lock { flex: none; width: 40px; height: 36px; }
 .mn-lock svg { width: 26px; height: 26px; }
+.mn-tile.is-done { background: #e6f6dc; border-color: #b7deA0; }
+.mn-tile.is-done:hover { border-color: var(--green); }
