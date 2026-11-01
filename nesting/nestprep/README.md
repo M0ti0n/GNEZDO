@@ -108,7 +108,7 @@ Gap filling, chain, sheet pairs and last-sheet compaction after the nest: see
 [../README.md](../README.md#post-pass-and-time-levels).
 
 ```bash
-python nestprep_cli.py nest job.json --level quick                # whole job in 30 s (thorough: 90 s)
+python nestprep_cli.py nest job.json --level quick                # quick: ~30 s + post-pass by sheets (thorough: longer, see LEVELS)
 python nestprep_cli.py post job.json solution.json -n job_pre.json -m job_composites.json --budget 30
 ```
 
