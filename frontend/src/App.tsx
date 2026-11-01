@@ -602,6 +602,10 @@ export function App() {
       setToast(`Not exported: ${(e as Error).message}`);
     }
   };
+  // manual nesting (EDIT / VIEW on a sheet) opens Manual nest on the toolbar, BACK Automatic nest;
+  // opening Automatic nest there leaves manual nesting
+  const [toolbarReq, setToolbarReq] = useState<{ section: "auto" | "manual" | null; n: number }>({ section: null, n: 0 });
+  const [leaveManual, setLeaveManual] = useState(0);
   const onJobTool = (_section: string, tool: string, custom?: CustomNestSettings) => {
     if (!job) return;
     if (tool === "fastNest") void startNest(job.id, "fast");
@@ -635,13 +639,18 @@ export function App() {
           importPanel={importPanel}
         />
         <div className="workspace">
-          {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool}
-            onSection={(sec) => job && sec && setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" ? "nest" : m[job.id] }))} />
+          {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq}
+            onSection={(sec) => {
+              if (sec === "auto" || sec === "work") setLeaveManual((n) => n + 1);
+              if (job && sec) setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" ? "nest" : m[job.id] }));
+            }} />
             : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
           <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && jobScreen[job.id] === "nest" && (
               <NestPage
+                onManual={(on) => setToolbarReq((r) => ({ section: on ? "manual" : "auto", n: r.n + 1 }))}
+                leaveManual={leaveManual}
                 parts={jobParts[job.id] ?? []}
                 solutions={solsOf(job.id).list}
                 selected={solsOf(job.id).sel}
