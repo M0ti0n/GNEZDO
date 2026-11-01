@@ -58,13 +58,16 @@ const SECTIONS: Section[] = [
   },
 ];
 
-export function JobToolbar({ onTool, onSection }: {
+export function JobToolbar({ onTool, onSection, request }: {
   onTool?: (section: SectionId, tool: string, custom?: CustomNestSettings) => void;
   /** a section was opened (null: closed) */
   onSection?: (section: SectionId | null) => void;
+  /** Opens a section from outside (EDIT / VIEW on a sheet: Manual nest); a new n each time. */
+  request?: { section: SectionId | null; n: number };
 }) {
   const [open, setOpenState] = useState<SectionId | null>(null);
   const setOpen = (s: SectionId | null) => { setOpenState(s); onSection?.(s); };
+  useEffect(() => { if (request?.n) setOpenState(request.section); }, [request?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open) return;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { JobPart } from "../api/types";
 import type { Origin } from "../job/machine";
 import { partColor, type NestedSheet, type PlacedPart, type Solution } from "../job/nest";
+import { Lock } from "./NestView";
 import { actionOf, loadKeys, type KeyAction } from "../job/manualKeys";
 import {
   inMaterial, partLoops, placed, problems, rotateGroup, slideDistance, unionBox, usableBox,
@@ -14,7 +15,8 @@ type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 // the mouse or the keys (Settings -> Manual nest), parts come from the JOB PARTS panel by drag and
 // drop, overlapping parts glow red. Every finished change goes to the solution at once; FINISH
 // goes back to the sheets.
-export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo }: {
+export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock }: {
+  locked: boolean; onToggleLock: () => void;
   sol: Solution; index: number; sheets: NestedSheet[]; jobParts: JobPart[]; parts: Map<string, PartRef>;
   /** false: the sheet is locked (VIEW): look only */
   edit: boolean;
@@ -369,8 +371,12 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           <span>Solution {sol.no} <span className="slash">/</span> Sheet {index + 1}</span>
           <button type="button" className="sheet-info" onClick={() => onInfo(index)} aria-label={`Properties of sheet ${index + 1}`} title="Sheet properties">i</button>
           <span className="mn-sheet">{sheet.material} {sheet.thicknessMm}x{sheet.lengthMm}x{sheet.widthMm}</span>
-          {!edit && <span className="mn-locked" title="The sheet is locked: unlock it on its card to change it">VIEW</span>}
-          <button type="button" className="btn btn-save mn-finish" onClick={onClose} title="Back to the sheets">FINISH</button>
+          <span className="mn-gap" />
+          {!edit && <span className="mn-locked" title={locked ? "The sheet is locked: unlock it to change it" : "Look only"}>VIEW</span>}
+          <button type="button" className="btn btn-save mn-finish" onClick={onClose} title="Back to the sheets (Automatic nest)">BACK</button>
+          <button type="button" className={`nest-lock mn-lock${locked ? " is-locked" : ""}`} aria-pressed={locked}
+            title={locked ? "Locked: kept as it is. Click to unlock (then it can be changed)" : "Unlocked: can be changed. Click to lock"}
+            onClick={onToggleLock}><Lock open={!locked} /></button>
         </div>
         <button type="button" className="mn-nav" disabled={index === sheets.length - 1} onClick={() => onIndex(index + 1)} aria-label="Next sheet" title="Next sheet">
           <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M7 4l11 8-11 8z" fill="currentColor" /></svg>

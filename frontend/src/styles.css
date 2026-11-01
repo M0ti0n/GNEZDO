@@ -1544,13 +1544,13 @@ th.num .th-sort { flex-direction: row-reverse; }
 .mn-nav { flex: none; width: 64px; display: grid; place-items: center; background: #fff; border: 1.5px solid var(--line); border-radius: 8px; color: var(--ink); }
 .mn-nav:hover:not(:disabled) { border-color: var(--green); color: var(--green-ink); background: var(--green-tint); }
 .mn-nav:disabled { opacity: .35; cursor: default; }
-.mn-title { flex: none; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 16px; background: #fff; border: 1.5px solid var(--line); border-radius: 8px;
+.mn-title { flex: 1.35 1 0; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0 10px 0 16px; background: #fff; border: 1.5px solid var(--line); border-radius: 8px;
   font-family: var(--font); font-weight: 600; font-size: 17px; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
 .mn-title .slash { color: var(--ink-3); margin: 0 4px; }
 .mn-sheet { font-family: var(--font-body, inherit); font-weight: 500; font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--ink-2); }
 .mn-locked { font-size: 11px; padding: 2px 7px; border-radius: 4px; background: var(--plate); color: var(--ink-2); letter-spacing: .06em; }
 .mn-finish { height: 34px; padding: 0 18px; letter-spacing: .06em; }
-.mn-info { flex: 1; min-width: 220px; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 14px;
+.mn-info { flex: 1 1 0; min-width: 200px; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 14px;
   background: #fff; border: 1.5px solid var(--line); border-radius: 8px; font-size: 13px; }
 .mn-info > div { display: flex; justify-content: space-between; gap: 12px; }
 .mn-info b { font-weight: 600; }
@@ -1603,3 +1603,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .key-cap:hover { border-color: var(--green); }
 .key-cap.is-empty { color: var(--ink-3); font-weight: 400; }
 .key-cap.is-wait { border-color: var(--yellow-ink); background: var(--yellow-tint); }
+
+.mn-gap { flex: 1; }
+.mn-lock { flex: none; width: 40px; height: 36px; }
+.mn-lock svg { width: 26px; height: 26px; }

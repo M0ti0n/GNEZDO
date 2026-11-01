@@ -32,6 +32,10 @@ interface Props {
   onEditSheet: (solId: string, sheet: number, patch: Partial<NestedSheet>) => void;
   /** Re-nest this sheet: its parts on it alone. */
   onRenestSheet: (solId: string, sheet: number) => void;
+  /** manual nesting opened (true) or left (false): the toolbar follows */
+  onManual?: (open: boolean) => void;
+  /** a new number: leave manual nesting (Automatic nest opened on the toolbar) */
+  leaveManual?: number;
   /** "solId:index" of the sheet being nested again */
   renesting: string | null;
 }
@@ -65,7 +69,7 @@ export function SheetSvg({ sheet, parts, titles }: { sheet: NestedSheet; parts: 
   );
 }
 
-const Lock = ({ open }: { open: boolean }) => (
+export const Lock = ({ open }: { open: boolean }) => (
   <svg viewBox="0 0 40 40" width="30" height="30" aria-hidden="true">
     <path d={open ? "M21 18V11a7.5 7.5 0 0 1 15 0v4" : "M8.5 18V11a7.5 7.5 0 0 1 15 0v7"} fill="none" stroke="currentColor" strokeWidth="4" />
     <rect x="3" y="17" width="26" height="21" rx="3" fill="currentColor" />
@@ -73,7 +77,7 @@ const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting }: Props) {
+export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -82,7 +86,9 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
   const sheets = sol?.run?.result?.sheets ?? sol?.run?.best?.sheets ?? [];
   const liveSheets = !!sol && !sol.run?.result && sheets.length > 0;
   const sheetNo = Math.min(selected.sheet, Math.max(0, sheets.length - 1));
-  const [full, setFull] = useState<number | null>(null);
+  const [full, setFullState] = useState<number | null>(null);
+  const setFull = (i: number | null) => { if ((i === null) !== (full === null)) onManual?.(i !== null); setFullState(i); };
+  useEffect(() => { if (leaveManual) setFullState(null); }, [leaveManual]);
   const grid = useRef<HTMLDivElement>(null);
 
   // the chosen sheet scrolls into view (chosen from the SOLUTIONS panel)
@@ -110,6 +116,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
           origin={sol.origin ?? machine.origin} counts={countsOf(sheets)}
           onIndex={(i) => { setFull(i); onSelect({ sol: sol.id, sheet: i }); }}
           onClose={() => setFull(null)}
+          locked={sol.locked.includes(full)} onToggleLock={() => onToggleLock(sol.id, full)}
           onChange={(i, list) => onEditSheet(sol.id, i, { parts: list })}
           onInfo={(i) => setProps(i)} />
         {propsDialog}
