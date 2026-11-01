@@ -1534,3 +1534,72 @@ th.num .th-sort { flex-direction: row-reverse; }
 .work-grid td.cell-mat.is-job-only .field { color: var(--blue-ink, #1565c0); font-weight: 600; background: var(--blue-tint, #e8f1fd); }
 .cell-reset { flex: none; width: 20px; height: 22px; border-radius: 4px; color: var(--blue-ink, #1565c0); font-size: 14px; line-height: 1; }
 .cell-reset:hover { background: var(--blue-tint, #e8f1fd); }
+
+/* -------------------------------------------------------------------
+   Manual nest (EDIT / VIEW on a sheet): header, canvas with rulers, JOB PARTS
+------------------------------------------------------------------- */
+.nest-page.is-manual { display: block; }
+.mn { display: grid; grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: auto minmax(0, 1fr); gap: 12px 14px; height: 100%; min-height: 520px; }
+.mn-top { display: flex; align-items: stretch; gap: 10px; min-width: 0; }
+.mn-nav { flex: none; width: 64px; display: grid; place-items: center; background: #fff; border: 1.5px solid var(--line); border-radius: 8px; color: var(--ink); }
+.mn-nav:hover:not(:disabled) { border-color: var(--green); color: var(--green-ink); background: var(--green-tint); }
+.mn-nav:disabled { opacity: .35; cursor: default; }
+.mn-title { flex: none; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 16px; background: #fff; border: 1.5px solid var(--line); border-radius: 8px;
+  font-family: var(--font); font-weight: 600; font-size: 17px; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
+.mn-title .slash { color: var(--ink-3); margin: 0 4px; }
+.mn-sheet { font-family: var(--font-body, inherit); font-weight: 500; font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--ink-2); }
+.mn-locked { font-size: 11px; padding: 2px 7px; border-radius: 4px; background: var(--plate); color: var(--ink-2); letter-spacing: .06em; }
+.mn-finish { height: 34px; padding: 0 18px; letter-spacing: .06em; }
+.mn-info { flex: 1; min-width: 220px; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 14px;
+  background: #fff; border: 1.5px solid var(--line); border-radius: 8px; font-size: 13px; }
+.mn-info > div { display: flex; justify-content: space-between; gap: 12px; }
+.mn-info b { font-weight: 600; }
+.mn-info span { white-space: nowrap; }
+.mn-info .mn-info-name { overflow: hidden; text-overflow: ellipsis; }
+.mn-info-none { color: var(--ink-3); font-style: italic; }
+.mn-stage { display: grid; grid-template-columns: 26px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 24px; gap: 4px; min-height: 0; min-width: 0; }
+.mn-canvas { position: relative; overflow: hidden; background: #fff; border: 1.5px solid var(--line); border-radius: 8px; cursor: default; touch-action: none; user-select: none; }
+.mn-canvas.is-over { cursor: move; }
+.mn-canvas svg { display: block; }
+.mn-plate { fill: #f1f4f2; stroke: #8d9a94; vector-effect: non-scaling-stroke; stroke-width: 1.2; }
+.mn-trim { fill: none; stroke: #9aa8a1; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
+.mn-part { cursor: pointer; }
+.mn-part.is-sel { stroke: var(--blue, #1e8db5); filter: drop-shadow(0 0 2px rgba(30, 141, 181, .8)); }
+.mn-part.is-bad { stroke: #d32f2f !important; filter: drop-shadow(0 0 3px rgba(211, 47, 47, .95)) drop-shadow(0 0 6px rgba(211, 47, 47, .6)); }
+.mn-origin { fill: #d32f2f; }
+.mn-warn { position: absolute; left: 10px; bottom: 10px; padding: 5px 10px; border-radius: 6px; background: #fde8e7; color: #b3261e; font-size: 12.5px; font-weight: 600; pointer-events: none; }
+.mn-ruler { display: block; background: #bfe6f2; border-radius: 4px; }
+.mn-ruler line { stroke: #2b6f86; stroke-width: 1; }
+.mn-ruler text { fill: #1f5567; font-size: 10px; font-family: var(--font-body, inherit); }
+.mn-parts { grid-row: 1 / span 2; grid-column: 2; display: flex; flex-direction: column; min-height: 0; background: #fff; border: 1.5px solid var(--line); border-radius: 8px; }
+.mn-parts-head { display: flex; align-items: baseline; justify-content: space-between; padding: 12px 14px 6px; }
+.mn-parts-head h2 { margin: 0; font-family: var(--font); font-size: 18px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+.mn-parts-head span { font-weight: 600; color: #c62828; }
+.mn-parts-head span.is-done { color: var(--green-ink); }
+.mn-parts-tools { display: flex; gap: 6px; padding: 0 12px 10px; border-bottom: 1px solid var(--line); }
+.mn-parts-tools .field { flex: 1; min-width: 0; height: 32px; font-size: 13px; }
+.mn-sortdir, .mn-filter { flex: none; width: 34px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink-2); }
+.mn-sortdir:hover, .mn-filter:hover, .mn-filter.is-open { border-color: var(--green); color: var(--green-ink); }
+.mn-menu-wrap { position: relative; }
+.mn-menu { position: absolute; right: 0; top: 36px; z-index: 5; display: flex; flex-direction: column; min-width: 250px; padding: 5px; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .12); }
+.mn-menu button { text-align: left; padding: 7px 10px; border-radius: 5px; font-size: 13px; }
+.mn-menu button:hover { background: var(--green-tint); }
+.mn-tiles { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px; align-content: start; }
+.mn-tile { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 6px 7px; border: 1.5px solid var(--line); border-radius: 7px; background: #fff; cursor: grab; font-size: 11px; text-align: center; }
+.mn-tile:hover { border-color: var(--green); }
+.mn-tile.is-off { cursor: default; opacity: .7; }
+.mn-tile svg { width: 100%; height: 70px; }
+.mn-tile-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--ink); }
+.mn-tile-qty { color: #c62828; font-weight: 600; }
+.mn-tile.is-done .mn-tile-qty { color: var(--green-ink); }
+.mn-tile-size { color: var(--ink-3); }
+.mn-none { grid-column: 1 / -1; color: var(--ink-3); font-size: 13px; font-style: italic; }
+
+/* Settings -> Manual nest keys */
+.keys-table { display: grid; gap: 6px; max-width: 620px; }
+.keys-head, .keys-row { display: grid; grid-template-columns: 1fr 140px 140px; gap: 10px; align-items: center; }
+.keys-head { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; }
+.key-cap { text-align: center; height: 32px; border: 1.5px solid var(--line); border-bottom-width: 3px; border-radius: 7px; background: #fff; font-weight: 600; font-size: 13px; }
+.key-cap:hover { border-color: var(--green); }
+.key-cap.is-empty { color: var(--ink-3); font-weight: 400; }
+.key-cap.is-wait { border-color: var(--yellow-ink); background: var(--yellow-tint); }

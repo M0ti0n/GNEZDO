@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { JobPart } from "../api/types";
 import { IconClose } from "./Icons";
 import {
-  NEST_MODE_LABEL, hms, isFinished, partColor, sheetProblems, sheetStats,
+  NEST_MODE_LABEL, countsOf, hms, isFinished, partColor, sheetProblems, sheetStats,
   type NestMode, type NestedSheet, type Solution,
 } from "../job/nest";
 import type { Machine, Origin } from "../job/machine";
 import type { StockSheet } from "../job/stock";
+import { ManualNest } from "./ManualNest";
 import { SheetPropertiesDialog } from "./SheetPropertiesDialog";
 
 // The nest screen of a job (after Fab's layout): the chosen solution's sheets, four to a screen
@@ -92,6 +93,30 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
   const finished = sol && isFinished(sol.run) && !sol.error;
   const editable = (i: number) => !!finished && !sol!.locked.includes(i);
 
+  const propsDialog = props !== null && sol && sheets[props] && (
+    <SheetPropertiesDialog nested index={props} machine={machine}
+      sheet={nestedAsStock(sheets[props], stock.find((s) => s.id === sheets[props].sheetId), machine)}
+      onSave={(s) => onEditSheet(sol.id, props, {
+        lengthMm: s.lengthMm, widthMm: s.widthMm, trims: s.trims, partGapMm: s.partGapMm, kerfMm: s.kerfMm, cutNumber: Math.max(1, s.qty || 1),
+      })}
+      onClose={() => setProps(null)} />
+  );
+
+  // EDIT / VIEW: manual nesting of the sheet, in place of the sheets
+  if (full !== null && sol && sheets[full] && finished) {
+    return (
+      <div className="nest-page is-manual">
+        <ManualNest sol={sol} index={full} sheets={sheets} jobParts={parts} parts={byId} edit={editable(full)}
+          origin={sol.origin ?? machine.origin} counts={countsOf(sheets)}
+          onIndex={(i) => { setFull(i); onSelect({ sol: sol.id, sheet: i }); }}
+          onClose={() => setFull(null)}
+          onChange={(i, list) => onEditSheet(sol.id, i, { parts: list })}
+          onInfo={(i) => setProps(i)} />
+        {propsDialog}
+      </div>
+    );
+  }
+
   return (
     <div className="nest-page">
       <div className="nest-grid" ref={grid} aria-label="Sheets">
@@ -153,18 +178,8 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
         </SolutionsPanel>
       </aside>
 
-      {props !== null && sol && sheets[props] && (
-        <SheetPropertiesDialog nested index={props} machine={machine}
-          sheet={nestedAsStock(sheets[props], stock.find((s) => s.id === sheets[props].sheetId), machine)}
-          onSave={(s) => onEditSheet(sol.id, props, {
-            lengthMm: s.lengthMm, widthMm: s.widthMm, trims: s.trims, partGapMm: s.partGapMm, kerfMm: s.kerfMm, cutNumber: Math.max(1, s.qty || 1),
-          })}
-          onClose={() => setProps(null)} />
-      )}
-      {full !== null && sol && sheets[full] && (
-        <FullView sol={sol} index={full} sheets={sheets} parts={byId} edit={editable(full)}
-          onIndex={(i) => { setFull(i); onSelect({ sol: sol.id, sheet: i }); }} onClose={() => setFull(null)} />
-      )}
+      {propsDialog}
+
     </div>
   );
 }
@@ -425,36 +440,6 @@ function PartsInfo({ sheet, parts }: { sheet: NestedSheet; parts: Map<string, Pa
       </tbody>
       <tfoot><tr><td /><td>Total</td><td className="num"><b>{sheet.parts.length}</b></td></tr></tfoot>
     </table>
-  );
-}
-
-function FullView({ sol, index, sheets, parts, edit, onIndex, onClose }: {
-  sol: Solution; index: number; sheets: NestedSheet[]; parts: Map<string, PartRef>; edit: boolean;
-  onIndex: (i: number) => void; onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "ArrowRight" && index < sheets.length - 1) onIndex(index + 1);
-      if (e.key === "ArrowLeft" && index > 0) onIndex(index - 1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [index, sheets.length, onClose, onIndex]);
-  const sh = sheets[index];
-  return (
-    <div className="full-view" role="dialog" aria-modal="true" aria-label={`Solution ${sol.no}, sheet ${index + 1}`}>
-      <header>
-        <b>Solution {sol.no} <span className="slash">/</span> Sheet {index + 1} of {sheets.length}</b>
-        <span>{sh.material} {sh.thicknessMm} mm · {sh.lengthMm} × {sh.widthMm} · {sh.parts.length} parts</span>
-        {edit && <span className="full-edit">EDIT · the manual nest tools for changing a sheet come next</span>}
-        <span className="nest-card-gap" />
-        <button type="button" className="full-nav" disabled={index === 0} onClick={() => onIndex(index - 1)} aria-label="Previous sheet">‹</button>
-        <button type="button" className="full-nav" disabled={index === sheets.length - 1} onClick={() => onIndex(index + 1)} aria-label="Next sheet">›</button>
-        <button type="button" className="icon-btn dlg-close" onClick={onClose} aria-label="Close" title="Close (Esc)"><IconClose size={16} /></button>
-      </header>
-      <div className="full-body"><SheetSvg sheet={sh} parts={parts} titles /></div>
-    </div>
   );
 }
 
