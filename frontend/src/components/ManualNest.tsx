@@ -8,6 +8,7 @@ import {
   inMaterial, partLoops, placed, problems, rotateGroup, slideDistance, unionBox, usableBox,
   type Box, type Dir, type Placed, type Pt,
 } from "../job/manualGeom";
+import { arrange, mirrorGroup, partRules, stack, type PartRules } from "../job/manualTools";
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 
@@ -15,8 +16,10 @@ type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 // the mouse or the keys (Settings -> Manual nest), parts come from the JOB PARTS panel by drag and
 // drop, overlapping parts glow red. Every finished change goes to the solution at once; FINISH
 // goes back to the sheets.
-export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock }: {
+export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool }: {
   locked: boolean; onToggleLock: () => void;
+  /** a Manual nest tool clicked on the toolbar (a new n each click) */
+  tool?: { tool: string; n: number };
   sol: Solution; index: number; sheets: NestedSheet[]; jobParts: JobPart[]; parts: Map<string, PartRef>;
   /** false: the sheet is locked (VIEW): look only */
   edit: boolean;
@@ -367,6 +370,59 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     setSel(me);
   };
 
+  // -- toolbar tools on the selection: Mirror V / H, Stack V / H / grid, Arrange -----------------------
+  const [note, setNote] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
+  useEffect(() => { if (!note || working) return; const t = window.setTimeout(() => setNote(null), 4000); return () => window.clearTimeout(t); }, [note, working]);
+  const toolSeen = useRef(tool?.n ?? 0);   // a click from before this screen opened is not for it
+  const partPath = (id: string) => byId.get(id)?.path;
+  const nameOf = (id: string) => byId.get(id)?.name ?? id;
+  const runTool = async (t: string) => {
+    if (working) return;
+    if (!edit) { setNote("The sheet is locked: unlock it to change it."); return; }
+    const before = itemsRef.current;
+    const ids = [...selRef.current].filter((i) => before[i] && partPath(before[i].partId)).sort((a, b) => a - b);
+    if (!ids.length) { setNote("Select parts first: click a part, or drag a window."); return; }
+    const uniq = [...new Set(ids.map((i) => before[i].partId))];
+    if (t === "mirrorV" || t === "mirrorH") {
+      const rules = await Promise.all(uniq.map(partRules));
+      const no = uniq.filter((_, k) => !rules[k].mirror);
+      if (no.length) { setNote(`Not mirrored: ${no.map(nameOf).join(", ")} may not be mirrored (part settings).`); return; }
+      if (itemsRef.current !== before) return;
+      const box = unionBox(ids.map((i) => geoOf(before, i)!.box));
+      commit(mirrorGroup(before, ids, box, t === "mirrorV" ? "v" : "h"), before);
+      return;
+    }
+    if (t === "stackV" || t === "stackH" || t === "stackGrid") {
+      const r = stack(before, ids, t === "stackV" ? "v" : t === "stackH" ? "h" : "grid", partPath, usable, gap, origin, outline);
+      if (!r.added) { setNote("No room for a copy: the edge or another part is in the way."); return; }
+      commit(r.list, before);
+      setNote(`${r.added} ${r.added === 1 ? "copy" : "copies"} added`);
+      return;
+    }
+    if (t === "arrange") {
+      setWorking(true);
+      setNote(`Arranging ${ids.length} ${ids.length === 1 ? "part" : "parts"}…`);
+      try {
+        const got = await Promise.all(uniq.map(partRules));
+        const rules = new Map<string, PartRules>(uniq.map((id, k) => [id, got[k]]));
+        await new Promise((r) => window.setTimeout(r, 30));   // the note shows before the work starts
+        if (itemsRef.current !== before) { setNote(null); return; }
+        const out = arrange({ list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable, outline, edgeGap, gap, origin });
+        if (!out) { setNote("No room to arrange these parts on this sheet."); return; }
+        commit(out, before);
+        setNote(`Arranged ${ids.length} ${ids.length === 1 ? "part" : "parts"}`);
+      } finally {
+        setWorking(false);
+      }
+    }
+  };
+  useEffect(() => {
+    if (!tool || tool.n === toolSeen.current) return;
+    toolSeen.current = tool.n;
+    void runTool(tool.tool);
+  }, [tool?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   // -- what is selected ---------------------------------------------------------------------------
   const selInfo = (() => {
     const idx = [...sel].filter((i) => geo[i]);
@@ -448,6 +504,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)} width={Math.abs(box.x1 - box.x0)} height={Math.abs(box.y1 - box.y0)} />
             )}
           </svg>
+          {note && <div className={`mn-note${working ? " is-working" : ""}`} role="status">{note}</div>}
           {bad.size > 0 && <div className="mn-warn">{bad.size} {bad.size === 1 ? "part overlaps or is" : "parts overlap or are"} too close (red)</div>}
         </div>
         <span />
