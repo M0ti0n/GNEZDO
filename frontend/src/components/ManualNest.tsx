@@ -415,6 +415,10 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       return;
     }
     if (t === "arrange") {
+      // a small nest: up to 20 parts in 1.5 s, up to 50 in 3 s; more is a job for Automatic nest
+      if (ids.length > 50) { setNote(`Arrange takes up to 50 parts (${ids.length} selected): select fewer, or use Automatic nest.`); return; }
+      const limit = ids.length <= 20 ? 1500 : 3000;
+      const t0 = performance.now();
       setWorking(true);
       setNote(`Arranging ${ids.length} ${ids.length === 1 ? "part" : "parts"}…`);
       try {
@@ -433,7 +437,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           };
         }
         const out = area.x1 > area.x0 && area.y1 > area.y0
-          ? arrange({ list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable: area, outline, edgeGap, gap, origin })
+          ? arrange({ list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable: area, outline, edgeGap, gap, origin,
+            budgetMs: limit - 60 - (performance.now() - t0) })
           : null;
         if (!out) { setNote(toOrigin ? "No room to arrange these parts on this sheet." : "No room to arrange these parts where they are."); return; }
         commit(out, before);
