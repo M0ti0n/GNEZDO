@@ -198,7 +198,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   useEffect(() => {
     const busy = (e: KeyboardEvent) => !!document.querySelector(".dlg") || !!(e.target as HTMLElement)?.closest("input, select, textarea");
     const onDown = (e: KeyboardEvent) => {
-      if (busy(e)) return;
+      if (busy(e) || workingRef.current) return;
       if (e.key === "Escape") { setSel(new Set()); return; }
       if (!edit) return;
       if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
@@ -264,6 +264,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [hover, setHover] = useState(-1);
   const onPointerDown = (e: React.PointerEvent) => {
+    if (working) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const p = local(e);
     if (e.button === 1 || e.button === 2) { pan.current = { x: e.clientX, y: e.clientY }; return; }
@@ -353,7 +354,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const onDrop = (e: React.DragEvent) => {
     const id = e.dataTransfer.getData("text/gnezdo-part");
     const ref = id ? byId.get(id) : undefined;
-    if (!edit || !ref) return;
+    if (!edit || !ref || working) return;
     e.preventDefault();
     const p = local(e);
     const [x, y] = toMm(p.x, p.y);
@@ -384,8 +385,19 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   // -- toolbar tools on the selection: Mirror V / H, Stack V / H / grid, Arrange -----------------------
   const [note, setNote] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
+  // the busy pointer everywhere while Arrange runs
+  useEffect(() => {
+    if (!working) return;
+    document.documentElement.classList.add("is-busy");
+    return () => document.documentElement.classList.remove("is-busy");
+  }, [working]);
   useEffect(() => { if (!note || working) return; const t = window.setTimeout(() => setNote(null), 4000); return () => window.clearTimeout(t); }, [note, working]);
-  const toolSeen = useRef(tool?.n ?? 0);   // a click from before this screen opened is not for it
+  const toolSeen = useRef(tool?.n ?? 0);
+  const alive = useRef<{ index: number } | null>({ index });
+  alive.current = { index };
+  useEffect(() => () => { alive.current = null; }, []);
+  const workingRef = useRef(false);
+  workingRef.current = working;   // a click from before this screen opened is not for it
   const partPath = (id: string) => byId.get(id)?.path;
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
   const runTool = async (t: string) => {
@@ -424,7 +436,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       try {
         const got = await Promise.all(uniq.map(partRules));
         const rules = new Map<string, PartRules>(uniq.map((id, k) => [id, got[k]]));
-        await new Promise((r) => window.setTimeout(r, 30));   // the note shows before the work starts
+        // the note and the spinning ring show before the work starts (the ring keeps turning on its own while it runs)
+        await new Promise((r) => window.setTimeout(r, 50));
         if (itemsRef.current !== before) { setNote(null); return; }
         // Rules -> Nesting rules: towards 0,0, or packed where they are (from the selection's corner nearest 0,0)
         const toOrigin = loadNestingRules().arrangeToOrigin;
@@ -437,9 +450,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           };
         }
         const out = area.x1 > area.x0 && area.y1 > area.y0
-          ? arrange({ list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable: area, outline, edgeGap, gap, origin,
+          ? await arrange({ list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable: area, outline, edgeGap, gap, origin,
             budgetMs: limit - 60 - (performance.now() - t0) })
           : null;
+        // left the sheet, or it changed meanwhile: not used
+        if (!alive.current || alive.current.index !== index || itemsRef.current !== before) { setNote(null); return; }
         if (!out) { setNote(toOrigin ? "No room to arrange these parts on this sheet." : "No room to arrange these parts where they are."); return; }
         commit(out, before);
         setNote(`Arranged ${ids.length} ${ids.length === 1 ? "part" : "parts"}`);
@@ -535,6 +550,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)} width={Math.abs(box.x1 - box.x0)} height={Math.abs(box.y1 - box.y0)} />
             )}
           </svg>
+          {working && <div className="mn-busy" aria-hidden="true"><span /></div>}
           {note && <div className={`mn-note${working ? " is-working" : ""}`} role="status">{note}</div>}
           {bad.size > 0 && (() => {
             const close = [...bad].filter((i) => !outside.has(i)).length;
