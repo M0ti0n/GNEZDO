@@ -8,6 +8,7 @@ import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { JobsPanel } from "./JobsPanel";
 import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PartPropertiesDialog } from "../components/PartPropertiesDialog";
+import { useListSelection } from "../components/useListSelection";
 import { editPart, exportPart } from "../import/partFile";
 import { ImportPanel, type ImportPanelProps } from "./ImportPanel";
 
@@ -124,7 +125,6 @@ function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "ta
   const [history, setHistory] = useState<PartSummary | null>(null);   // part whose versions are shown
   const [editing, setEditing] = useState<PartSummary | null>(null);   // part whose properties are shown
   const [menu, setMenu] = useState<{ x: number; y: number; part: PartSummary } | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [run, setRun] = useState(0);          // bumps on every Search press
   const [view, setView] = useState<PartView>(loadView);
   const [sort, setSort] = useState<SortOrder>(() => loadSort("parts", DEFAULT_SORT));
@@ -156,10 +156,9 @@ function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "ta
   // filters hidden under "More" that are switched on, so the button can say so
   const hiddenActive = [d.description.trim() !== "", d.xOn, d.yOn, d.engraved].filter(Boolean).length;
   const shown = parts ?? [];
+  // click: this part only; Ctrl+click: add / remove one; Shift+click: a range (as in Explorer)
+  const { selected, setSelected, click } = useListSelection(shown.map((p) => p.id));
   const chosen = shown.filter((p) => selected.has(p.id));
-  const toggle = (id: string) => setSelected((s) => {
-    const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n;
-  });
 
   const onDragStart = (e: React.DragEvent, p: PartSummary) => {
     const dragged = selected.has(p.id) ? chosen : [p];
@@ -266,11 +265,11 @@ function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "ta
             draggable: true,
             onDragStart: (e: React.DragEvent) => onDragStart(e, p),
             onDragEnd: (e: React.DragEvent) => { if (e.dataTransfer.dropEffect !== "none") setSelected(new Set()); },
-            // click selects the part for "Add to job"; right click opens a menu with Properties
-            onClick: () => toggle(p.id),
+            // click selects the part for "Add to job" (Ctrl / Shift: more); right click opens a menu with Properties
+            onClick: (e: React.MouseEvent) => click(p.id, e),
             onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, part: p }); },
             "aria-pressed": on,
-            title: `${p.name}\n${p.project}, ${materialKey(p.material, p.thicknessMm)}\nClick: select · right click: properties · drag into a job`,
+            title: `${p.name}\n${p.project}, ${materialKey(p.material, p.thicknessMm)}\nClick: select · Ctrl+click: add or remove · Shift+click: a range · right click: properties · drag into a job`,
           };
           return (
             <li key={p.id}>
