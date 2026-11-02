@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { COLOUR_ROLES, DEFAULT_RULES, ROTATIONS, type ImportRules } from "../import/rules";
+import { DEFAULT_NESTING_RULES, loadNestingRules, saveNestingRules, type NestingRules } from "../job/nestRules";
 
 type Section = "import" | "nesting";
 
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "import", label: "Import rules", ready: true },
-  { id: "nesting", label: "Nesting rules", ready: false },
+  { id: "nesting", label: "Nesting rules", ready: true },
 ];
 
 const ROLE_NAME = { cut: "Cutting", trace: "Tracing", openCut: "Open cut" } as const;
 
-// GNEZDO menu -> Rules. Import rules decide how new drawings are read.
+// GNEZDO menu -> Rules. Import rules decide how new drawings are read; nesting rules how parts are nested.
 export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (r: ImportRules) => void }) {
   const [section, setSection] = useState<Section>("import");
   const set = (patch: Partial<ImportRules>) => onChange({ ...rules, ...patch });
@@ -27,7 +28,7 @@ export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (
         ))}
       </nav>
 
-      <div className="settings-main">
+      {section === "nesting" ? <NestingRulesPane /> : <div className="settings-main">
         <header className="settings-head">
           <h2>Import rules</h2>
           <p>How new drawings are read. Changes apply to files imported from now on; parts already in the import list keep their lines.</p>
@@ -149,7 +150,35 @@ export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (
           Saved in this browser.{" "}
           <button className="link" onClick={() => onChange(DEFAULT_RULES)}>Reset to defaults</button>
         </footer>
-      </div>
+      </div>}
+    </div>
+  );
+}
+
+function NestingRulesPane() {
+  const [r, setR] = useState<NestingRules>(loadNestingRules);
+  const set = (n: NestingRules) => { setR(n); saveNestingRules(n); };
+  return (
+    <div className="settings-main">
+      <header className="settings-head">
+        <h2>Nesting rules</h2>
+        <p>How parts are nested. Changes apply from the next use.</p>
+      </header>
+
+      <section className="rule">
+        <h3>Manual nest</h3>
+        <label className="rule-check">
+          <input type="checkbox" checked={r.arrangeToOrigin} onChange={(e) => set({ ...r, arrangeToOrigin: e.target.checked })} />
+          <span><b>Arrange moves the parts towards the machine's 0,0</b>
+            <small>On: the selected parts are nested into the free space nearest 0,0, also into gaps among other parts, so they may
+              move across the sheet. Off: they are packed together where they are, from the corner of the selection nearest 0,0.</small></span>
+        </label>
+      </section>
+
+      <footer className="settings-foot">
+        Saved in this browser.{" "}
+        <button className="link" onClick={() => set(DEFAULT_NESTING_RULES)}>Reset to defaults</button>
+      </footer>
     </div>
   );
 }

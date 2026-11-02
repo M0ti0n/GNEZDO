@@ -9,6 +9,7 @@ import {
   type Box, type Dir, type Placed, type Pt,
 } from "../job/manualGeom";
 import { arrange, mirrorGroup, partRules, stack, type PartRules } from "../job/manualTools";
+import { loadNestingRules } from "../job/nestRules";
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 
@@ -56,6 +57,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   }, [index, onChange]);
 
   const geo = useMemo(() => items.map((p) => { const r = byId.get(p.partId); return r ? placed(r.path, p) : null; }), [items, byId]);
+  // parts reaching past the usable area (e.g. left outside when the sheet was made smaller)
+  const outside = useMemo(() => new Set(geo.flatMap((g, i) => (g && (g.box.x0 < usable.x0 - 0.05 || g.box.y0 < usable.y0 - 0.05
+    || g.box.x1 > usable.x1 + 0.05 || g.box.y1 > usable.y1 + 0.05) ? [i] : []))), [geo, usable]);
   const bad = useMemo(() => {
     const idx: number[] = [];
     geo.forEach((g, i) => g && idx.push(i));
@@ -67,22 +71,29 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 500 });
   const [view, setViewState] = useState<{ s: number; tx: number; ty: number } | null>(null);
-  // zoom: from the whole sheet (furthest out) to MAX_ZOOM px per mm (a 20 x 20 mm part about 200 px)
-  const MAX_ZOOM = 10, PAD = 24;
+  // zoom: from 6000 x 3000 mm in view (furthest out: parts bigger than the sheet, or left outside it
+  // when the sheet was made smaller) to MAX_ZOOM px per mm (a 20 x 20 mm part about 200 px); Fit: the whole sheet
+  const MAX_ZOOM = 10, PAD = 24, FAR_X = 6000, FAR_Y = 3000;
   const sizeRef = useRef(size);
   sizeRef.current = size;
   const fitScale = (w: number, h: number) => Math.min((w - 2 * PAD) / sheet.lengthMm, (h - 2 * PAD) / sheet.widthMm);
-  /** Keeps the zoom between the whole sheet and MAX_ZOOM, and the sheet in view. */
+  const minScale = (w: number, h: number) => Math.min(fitScale(w, h), (w - 2 * PAD) / FAR_X, (h - 2 * PAD) / FAR_Y);
+  // what may be looked at: the sheet and every part on it (also parts outside it) [mm]
+  const worldRef = useRef<Box>({ x0: 0, y0: 0, x1: sheet.lengthMm, y1: sheet.widthMm });
+  worldRef.current = unionBox([{ x0: 0, y0: 0, x1: sheet.lengthMm, y1: sheet.widthMm }, ...geo.flatMap((g) => (g ? [g.box] : []))]);
+  /** Keeps the zoom within its limits and the sheet and its parts in view. */
   const clampView = useCallback((v: { s: number; tx: number; ty: number }) => {
     const { w, h } = sizeRef.current;
-    const lo = fitScale(w, h);
+    const lo = minScale(w, h);
     const s = Math.min(Math.max(v.s, lo), Math.max(lo, MAX_ZOOM));
     const k = s / v.s;
     let { tx, ty } = v;
     if (k !== 1) { tx = w / 2 - (w / 2 - tx) * k; ty = h / 2 - (h / 2 - ty) * k; }
-    const L = sheet.lengthMm * s, W = sheet.widthMm * s;
-    tx = L + 2 * PAD <= w ? (w - L) / 2 : Math.min(PAD, Math.max(w - L - PAD, tx));
-    ty = W + 2 * PAD <= h ? (h - W) / 2 : Math.min(PAD, Math.max(h - W - PAD, ty));
+    // smaller than the view: kept wholly in it; bigger: the view stays on it
+    const W0 = worldRef.current;
+    const ax = PAD - W0.x0 * s, bx = w - PAD - W0.x1 * s, ay = PAD - W0.y0 * s, by = h - PAD - W0.y1 * s;
+    tx = Math.min(Math.max(ax, bx), Math.max(Math.min(ax, bx), tx));
+    ty = Math.min(Math.max(ay, by), Math.max(Math.min(ay, by), ty));
     return { s, tx, ty };
   }, [sheet.lengthMm, sheet.widthMm]);   // eslint-disable-line react-hooks/exhaustive-deps
   const setView = useCallback((f: ((v: { s: number; tx: number; ty: number } | null) => { s: number; tx: number; ty: number } | null) | { s: number; tx: number; ty: number }) =>
@@ -110,7 +121,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       setView((v) => {
         if (!v) return v;
         // the zoom limits first, so the point under the pointer stays where it is
-        const lo = fitScale(sizeRef.current.w, sizeRef.current.h);
+        const lo = minScale(sizeRef.current.w, sizeRef.current.h);
         const s = Math.min(Math.max(v.s * Math.exp(-e.deltaY * 0.0015), lo), Math.max(lo, MAX_ZOOM));
         const k = s / v.s;
         return { s, tx: mx - (mx - v.tx) * k, ty: my - (my - v.ty) * k };
@@ -394,10 +405,13 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       return;
     }
     if (t === "stackV" || t === "stackH" || t === "stackGrid") {
-      const r = stack(before, ids, t === "stackV" ? "v" : t === "stackH" ? "h" : "grid", partPath, usable, gap, origin, outline);
-      if (!r.added) { setNote("No room for a copy: the edge or another part is in the way."); return; }
+      // no more pieces than required: per part, required less nested in the solution
+      const left = new Map<string, number>();
+      for (const id of uniq) { const jp = jobParts.find((x) => x.part.id === id); if (jp) left.set(id, Math.max(0, jp.qty - (counts[id] ?? 0))); }
+      const r = stack(before, ids, t === "stackV" ? "v" : t === "stackH" ? "h" : "grid", partPath, usable, gap, origin, outline, left, sheet.cutNumber ?? 1);
+      if (!r.added) { setNote(r.full ? "Required number already nested: no copies added." : "No room for a copy: the edge or another part is in the way."); return; }
       commit(r.list, before);
-      setNote(`${r.added} ${r.added === 1 ? "copy" : "copies"} added`);
+      setNote(`${r.added} ${r.added === 1 ? "copy" : "copies"} added${r.full ? ": required number reached" : ""}`);
       return;
     }
     if (t === "arrange") {
@@ -408,8 +422,20 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
         const rules = new Map<string, PartRules>(uniq.map((id, k) => [id, got[k]]));
         await new Promise((r) => window.setTimeout(r, 30));   // the note shows before the work starts
         if (itemsRef.current !== before) { setNote(null); return; }
-        const out = arrange({ list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable, outline, edgeGap, gap, origin });
-        if (!out) { setNote("No room to arrange these parts on this sheet."); return; }
+        // Rules -> Nesting rules: towards 0,0, or packed where they are (from the selection's corner nearest 0,0)
+        const toOrigin = loadNestingRules().arrangeToOrigin;
+        let area = usable;
+        if (!toOrigin) {
+          const g = unionBox(ids.map((i) => geoOf(before, i)!.box));
+          area = {
+            x0: origin.endsWith("right") ? usable.x0 : Math.max(usable.x0, g.x0), x1: origin.endsWith("right") ? Math.min(usable.x1, g.x1) : usable.x1,
+            y0: origin.startsWith("bottom") ? usable.y0 : Math.max(usable.y0, g.y0), y1: origin.startsWith("bottom") ? Math.min(usable.y1, g.y1) : usable.y1,
+          };
+        }
+        const out = area.x1 > area.x0 && area.y1 > area.y0
+          ? arrange({ list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable: area, outline, edgeGap, gap, origin })
+          : null;
+        if (!out) { setNote(toOrigin ? "No room to arrange these parts on this sheet." : "No room to arrange these parts where they are."); return; }
         commit(out, before);
         setNote(`Arranged ${ids.length} ${ids.length === 1 ? "part" : "parts"}`);
       } finally {
@@ -505,9 +531,21 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
             )}
           </svg>
           {note && <div className={`mn-note${working ? " is-working" : ""}`} role="status">{note}</div>}
-          {bad.size > 0 && <div className="mn-warn">{bad.size} {bad.size === 1 ? "part overlaps or is" : "parts overlap or are"} too close (red)</div>}
+          {bad.size > 0 && (() => {
+            const close = [...bad].filter((i) => !outside.has(i)).length;
+            const msg = [
+              outside.size ? `${outside.size} ${outside.size === 1 ? "part reaches" : "parts reach"} past the trims or the edge` : "",
+              close ? `${close} ${close === 1 ? "part overlaps or is" : "parts overlap or are"} too close` : "",
+            ].filter(Boolean).join(" · ");
+            return <div className="mn-warn">{msg} (red){outside.size ? " — zoom out to see parts outside the sheet" : ""}</div>;
+          })()}
         </div>
-        <span />
+        <button type="button" className="mn-fit" onClick={() => fit(size.w, size.h)} title="Fit: the whole sheet" aria-label="Fit the whole sheet">
+          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+            <path d="M2 7V2h5M13 2h5v5M18 13v5h-5M7 18H2v-5" fill="none" stroke="currentColor" strokeWidth="2" />
+            <rect x="6" y="6" width="8" height="8" rx="1" fill="currentColor" />
+          </svg>
+        </button>
         <Ruler axis="x" view={v} size={size} />
       </div>
 

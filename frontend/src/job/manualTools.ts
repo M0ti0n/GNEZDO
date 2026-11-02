@@ -65,10 +65,17 @@ function shifted(refs: PlacedPart[], pathOf: (id: string) => string | undefined,
  * reach the edge of the sheet or another part. Returns the new list and how many copies were added.
  */
 export function stack(list: PlacedPart[], ids: number[], kind: "v" | "h" | "grid", pathOf: (id: string) => string | undefined,
-  usable: Box, gap: number, origin: Origin, outline?: Pt[][]): { list: PlacedPart[]; added: number } {
+  usable: Box, gap: number, origin: Origin, outline?: Pt[][],
+  /** pieces per part that may still be added (required less nested; missing: no limit), and pieces one copy on this sheet adds */
+  left?: Map<string, number>, per = 1): { list: PlacedPart[]; added: number; full: boolean } {
   const refs = ids.map((i) => list[i]);
   const group = shifted(refs, pathOf, 0, 0);
-  if (!group.length) return { list, added: 0 };
+  if (!group.length) return { list, added: 0, full: false };
+  // the pieces one copy of the group adds, per part
+  const need = new Map<string, number>();
+  for (const p of refs) need.set(p.partId, (need.get(p.partId) ?? 0) + per);
+  const room = new Map(left ?? []);
+  let full = false;
   const { sx, sy } = away(origin);
   const px = kind !== "v" ? pitch(group, refs, pathOf, gap, "x", sx) : 0;
   const py = kind !== "h" ? pitch(group, refs, pathOf, gap, "y", sy) : 0;
@@ -76,11 +83,13 @@ export function stack(list: PlacedPart[], ids: number[], kind: "v" | "h" | "grid
   const out = list.slice();
   let added = 0;
   const tryAt = (i: number, j: number) => {
+    if ([...need].some(([id, n]) => room.has(id) && room.get(id)! < n)) { full = true; return false; }
     const dx = i * px * sx, dy = j * py * sy;
     const copy = shifted(refs, pathOf, dx, dy);
     if (!clearOf(copy, all, usable, gap, outline)) return false;
     for (const p of refs) out.push({ ...p, x: p.x + dx, y: p.y + dy });
     all.push(...copy);
+    for (const [id, n] of need) if (room.has(id)) room.set(id, room.get(id)! - n);
     added++;
     return true;
   };
@@ -91,10 +100,10 @@ export function stack(list: PlacedPart[], ids: number[], kind: "v" | "h" | "grid
     for (let j = 0; j < LIMIT; j++) {
       let row = 0;
       for (let i = j === 0 ? 1 : 0; i < LIMIT && tryAt(i, j); i++) row++;
-      if (j > 0 && row === 0) break;
+      if (full || (j > 0 && row === 0)) break;
     }
   }
-  return { list: out, added };
+  return { list: out, added, full };
 }
 
 // ---------------------------------------------------------------------------------------------
