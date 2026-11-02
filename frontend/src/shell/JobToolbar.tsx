@@ -28,10 +28,15 @@ import toolCostReport from "./jobtools/tool-costReport.png";
 
 // The icons are cut from Fab's design sheet as they are (tile icons on their tile colour).
 interface SectionTool { id: string; label: string; icon: string; hint?: string; ready?: boolean }
-interface Section { id: SectionId; label: string; icon: string; tools: SectionTool[] }
+interface Section {
+  id: SectionId; label: string; icon: string; tools: SectionTool[];
+  /** false: the tile does not open into tools (none yet); a click only switches to its screen */
+  expands?: boolean;
+}
 
 const SECTIONS: Section[] = [
-  { id: "work", label: "Work parts", icon: tileWork, tools: [] },
+  // no tools of its own yet: the tile only opens the work parts list (set expands back when it gets some)
+  { id: "work", label: "Work parts", icon: tileWork, tools: [], expands: false },
   {
     id: "auto", label: "Automatic nest", icon: tileAuto, tools: [
       { id: "fastNest", label: "Fast", icon: toolFastNest, hint: "Fast nest: about 30 s to 1 min (longer for big jobs)", ready: true },
@@ -98,8 +103,8 @@ export function JobToolbar({ onTool, onSection, request }: {
           )) : <span className="jsec-empty">Tools for {s.label.toLowerCase()} come next</span>}
         </div>
       ) : (
-        <button key={s.id} type="button" className={`jsec jsec-${s.id} jsec-tile`} onClick={() => setOpen(s.id)}
-          aria-expanded={false} title={`Open ${s.label}`}>
+        <button key={s.id} type="button" className={`jsec jsec-${s.id} jsec-tile`} onClick={() => { if (s.expands === false) { setOpenState(null); onSection?.(s.id); } else setOpen(s.id); }}
+          aria-expanded={s.expands === false ? undefined : false} title={s.expands === false ? `${s.label}: the job part list` : `Open ${s.label}`}>
           <img className="jsec-icon" src={s.icon} alt="" draggable={false} />
           <span className="jsec-label">{s.label}</span>
         </button>
