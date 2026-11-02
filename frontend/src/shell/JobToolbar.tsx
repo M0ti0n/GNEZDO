@@ -43,7 +43,7 @@ const SECTIONS: Section[] = [
     id: "manual", label: "Manual nest", icon: tileManual, tools: [
       { id: "mirrorV", label: "Mirror V", icon: toolMirrorV, ready: true, hint: "Mirror V: flip the selected parts left-right" },
       { id: "mirrorH", label: "Mirror H", icon: toolMirrorH, ready: true, hint: "Mirror H: flip the selected parts top-bottom" },
-      { id: "arrange", label: "Arrange", icon: toolArrange, ready: true, hint: "Arrange: nest the selected parts as compactly as possible into the free space" },
+      { id: "arrange", label: "Arrange", icon: toolArrange, ready: true, hint: "Arrange: nest the selected parts (up to 50) as compactly as possible into the free space; 1.5 s, or 3 s for more than 20 parts" },
       { id: "stackV", label: "Stack V", icon: toolStackV, ready: true, hint: "Stack V: copies of the selection along Y until the edge or the next part" },
       { id: "stackH", label: "Stack H", icon: toolStackH, ready: true, hint: "Stack H: copies of the selection along X until the edge or the next part" },
       { id: "stackGrid", label: "Stack grid", icon: toolStackGrid, ready: true, hint: "Stack grid: rows and columns of copies of the selection until the edges or other parts" },
