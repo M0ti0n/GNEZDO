@@ -310,7 +310,20 @@ export interface ArrangeInput {
 /** What the packer places: one part, or a pair of the same part placed as one. */
 interface Piece { key: string; partId: string; members: { li: number; rel: Pose }[]; pose0?: Pose }
 
-export function arrange(inp: ArrangeInput): PlacedPart[] | null {
+/** A moment for the page between steps (redraw, pointer), when the last one was over `ms` ago. */
+function breather(ms = 50) {
+  let at = performance.now();
+  return async () => {
+    if (performance.now() - at < ms) return;
+    // a new task: the browser draws a frame in between when one is due
+    await new Promise<void>((r) => { const ch = new MessageChannel(); ch.port1.onmessage = () => r(); ch.port2.postMessage(0); });
+    at = performance.now();
+  };
+}
+
+/** Runs in steps, giving the page a moment between them (the busy ring turns, the pointer moves). */
+export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
+  const pause = breather();
   const { list, ids, pathOf, rules, lengthMm: L, widthMm: W, usable, outline, edgeGap, gap, origin } = inp;
   const t0 = performance.now(), budget = inp.budgetMs ?? 1500;
   const right = origin.endsWith("right"), bottom = origin.startsWith("bottom");
@@ -334,6 +347,7 @@ export function arrange(inp: ArrangeInput): PlacedPart[] | null {
   const kinds = [...byPart].filter(([, l]) => l.length >= 2).sort((a, b) => b[1].length - a[1].length);
   const pairOf = new Map<string, Pose>();
   for (const [id] of inp.noPairs ? [] : kinds) {
+    await pause();
     const pr = bestPair(pathOf(id)!, ruleOf(id), gap, pairEnd);
     if (pr) pairOf.set(id, pr);
   }
@@ -561,7 +575,7 @@ export function arrange(inp: ArrangeInput): PlacedPart[] | null {
   // a new run only when it can end in time (a run takes about as long as the last one)
   let last = 0;
   const timed = (t: Try) => { const s = performance.now(); run(t); last = performance.now() - s; };
-  for (const t of tries) { if (best && performance.now() + last > packEnd) break; timed(t); }
+  for (const t of tries) { if (best && performance.now() + last > packEnd) break; await pause(); timed(t); }
   // with time left: shuffled orders
   let seed = 12345;
   const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
@@ -572,6 +586,7 @@ export function arrange(inp: ArrangeInput): PlacedPart[] | null {
       const a = Math.floor(rnd() * order.length), b2 = Math.min(order.length - 1, a + 1 + Math.floor(rnd() * 3));
       [order[a], order[b2]] = [order[b2], order[a]];
     }
+    await pause();
     timed({ set: si, axis: rnd() < 0.5 ? "u" : "v", order, band: pl.bands[Math.floor(rnd() * pl.bands.length)], rule: rnd() < 0.5 ? "box" : "near" });
   }
   const win = best as { axis: Axis; set: number; at: { m: Mask; ia: number; ib: number }[] } | null;
