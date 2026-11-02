@@ -93,12 +93,14 @@ def _near_distance(p: np.ndarray, q: np.ndarray, gap: float) -> float:
 
 def _top(polys: list) -> list:
     """The outer outlines of the shapes not inside another shape of the same item (a host with the
-    parts in its holes: just the host's outline)."""
+    parts in its holes: just the host's outline; a block: the big part and the parts beside it)."""
     out = []
     for i, p in enumerate(polys):
         b = p.bbox
+        # inside: in another shape's box and its outline (a part in a block's pocket is in the
+        # big part's box but not in its outline: it faces out like the big part)
         if not any(j != i and q.bbox[0] <= b[0] and q.bbox[1] <= b[1] and q.bbox[2] >= b[2] and q.bbox[3] >= b[3]
-                   and (q.bbox != b or j < i) for j, q in enumerate(polys)):
+                   and (q.bbox != b or j < i) and geom.point_in_polygon(*p.outer[0], q.outer) for j, q in enumerate(polys)):
             out.append(geom.PolyShape(p.outer, []))
     return out
 

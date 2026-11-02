@@ -5,6 +5,7 @@ import type { JobPart } from "../api/types";
 import type { CustomNestSettings } from "../components/CustomNestDialog";
 import { DEFAULT_PART_GAP_MM, MACHINE_LIMIT, defaultTrims, fitsMachine, type StockSheet } from "./stock";
 import type { Origin } from "./machine";
+import { loadNestingRules } from "./nestRules";
 
 export type NestMode = "fast" | "thorough" | "custom";
 
@@ -39,6 +40,8 @@ export interface NestRequest {
   stopAfterMinutes: number | null;
   partGapMm: number;
   edgeGapMm: number;
+  /** Rules -> Nesting rules: how much a block's box may grow [%] */
+  blockMarginPct?: number;
   parts: NestRequestPart[];
   sheets: NestRequestSheet[];
 }
@@ -182,6 +185,7 @@ export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: 
     stopAfterMinutes: mode === "custom" ? custom?.stopAfterMinutes ?? null : null,
     partGapMm: PART_GAP_MM,
     edgeGapMm: EDGE_GAP_MM,
+    blockMarginPct: loadNestingRules().blockMarginPct,
     parts: withQty.map((jp, i) => ({
       id: jp.part.id, name: jp.part.name, path: jp.part.path, qty: jp.qty,
       rotations: details[i].rotations, mirror: details[i].mirror,

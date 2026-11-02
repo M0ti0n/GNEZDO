@@ -53,7 +53,8 @@ python nestprep_cli.py compare job.json -t 30 --outdir out/
 ```
 
 Options: `--min-hole` (60 mm), `--sub-time` (0.3 s per hole), `--pair-time`,
-`--workers` (4 parallel solver processes), `--no-pairing`.
+`--workers` (4 parallel solver processes), `--no-pairing`, `--no-blocks`,
+`--block-margin` (10 %).
 
 ## How it works
 
@@ -73,7 +74,17 @@ Options: `--min-hole` (60 mm), `--sub-time` (0.3 s per hole), `--pair-time`,
    leftover host copies are re-solved with what remains.
 4. Composite rotations = the host rotations for which every inner part still
    lands on an allowed angle/mirror (e.g. #11 and #25 restrict to 0/180°).
-5. Self-checks: every sub-solve result is compared against the solver's own
+5. **Blocks** (Thorough and Custom; not Fast). Every big part (box ≥ 4 % of a
+   sheet) whose outline fills at most 85 % of its box (an L, a comb, a slanted
+   plate, a host already filled) gets other parts into its box: the box is a
+   knapsack bin, the big part an obstacle in it, profit area^1.2 so the biggest
+   parts that fit go first. The box may grow by the block margin (10 %) on one
+   side; the fullest variant wins. A block is kept when it fills ≥ 70 % of its
+   box and 0.08 more than the part alone. Big parts take turns, one copy each,
+   so they share the parts that fit them. Test job (1236 pieces, 2 CPU threads,
+   Thorough): 23 sheets / 22.33 sheet equivalents without blocks; 22 sheets /
+   21.3-21.7 with a 5-20 % margin; 22.11 with 0 %.
+6. Self-checks: every sub-solve result is compared against the solver's own
    transformed shapes, and the copy count of every original type is asserted.
 
 `nestprep/solution.py`: expansion (composite transform ∘ member transform),
@@ -113,5 +124,4 @@ python nestprep_cli.py post job.json solution.json -n job_pre.json -m job_compos
 ```
 
 ## Not done yet
-- Hole filling of concave bays (L-shapes #13, #25): only true holes are used now.
 - Cut order is exported as `depth` (inner first); lead-ins are not considered.
