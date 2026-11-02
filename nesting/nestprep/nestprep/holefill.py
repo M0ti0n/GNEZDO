@@ -29,7 +29,9 @@ L, a comb, a slanted plate) gets other parts into the pockets of that box: the b
 big part an obstacle in it, the other parts the items (knapsack, profit growing faster than area
 so the biggest that fit go first). The box may grow by `block_margin` on one side when that makes
 the block fuller. A block is kept when it fills its box clearly better than the big part alone.
-Big parts take turns, one copy each, so one kind does not use up the parts that fit the others.
+All blocks are worked out at once: the parts that fill them are shared out first (by pocket area;
+whole copies of scarce parts to the tightest pocket that holds them), then every block is one solver
+job, all in parallel (block_parallel; the older way, big parts taking turns, is run_blocks_turns).
 
 Algorithm (pairing)
 -------------------
@@ -49,7 +51,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import geom
+from . import freemap, geom
 from .geom import Xf
 from .psrun import solve
 
@@ -184,6 +186,7 @@ class Options:
     block_gain: float = 0.08            # ... and this much more than the big part alone
     block_time: float = 1.0             # time per block sub-solve [s]
     block_budget: float = 30.0          # time for the whole step [s]
+    block_parallel: bool = True         # all blocks worked out at once (parts shared up front)
     workers: int = 4                    # parallel solver processes
     verbose: bool = True
 
@@ -595,7 +598,7 @@ class PrePass:
                                                      it["x"] + bx0, it["y"] + by0)))
         return res
 
-    def block_for(self, host: Part, avail: dict[int, int]):
+    def block_for(self, host: Part, avail: dict[int, int], parallel: bool = True):
         """The best block of one copy of `host` with the parts in `avail`: (fills, composite, fill) or None."""
         W, H = host.dims()
         variants = self.block_variants(host)
@@ -610,8 +613,11 @@ class PrePass:
         if not cands:
             return None
         caps = {p.pid: min(avail[p.pid], max(1, int(pocket // max(p.area, 1.0)))) for p in cands}
-        with ThreadPoolExecutor(max_workers=max(1, self.opt.workers)) as ex:
-            results = list(ex.map(lambda v: self.block_solve(host, v, cands, caps), variants))
+        if parallel:
+            with ThreadPoolExecutor(max_workers=max(1, self.opt.workers)) as ex:
+                results = list(ex.map(lambda v: self.block_solve(host, v, cands, caps), variants))
+        else:
+            results = [self.block_solve(host, variants[0], cands, caps)]
         f0 = self.bbox_fill(host)
         best = None
         for fills in results:
@@ -628,7 +634,225 @@ class PrePass:
             return None
         return best
 
+    def block_hosts(self) -> list[Part]:
+        """The big parts with pockets, the biggest box first."""
+        sheet = min((w * h for w, h in self.sheets), default=None)
+        hosts = []
+        for p in self.parts:
+            if p.remaining <= 0:
+                continue
+            W, H = p.dims()
+            if sheet and W * H < self.opt.block_min_share * sheet:
+                continue
+            env = sum(abs(geom.polygon_area(o)) for o in self.outers(p))
+            if env / (W * H) > self.opt.block_max_outline_fill:
+                continue
+            hosts.append(p)
+        hosts.sort(key=lambda p: -(p.dims()[0] * p.dims()[1]))
+        return hosts
+
+    def pockets_of(self, host: Part, cell: float):
+        """The free pockets in the part's box (the part grown by the gap taken out), and per side of
+        the box (left, bottom, right, top) the pocket area open to it."""
+        x0, y0, x1, y1 = host.bbox
+        W, H = x1 - x0, y1 - y0
+        rect = np.array([[0.0, 0.0], [W, 0.0], [W, H], [0.0, H]])
+        placed = [{"type": "general", "elements": geom.polygon_to_elements(geom.ccw(o - [x0, y0]))} for o in self.outers(host)]
+        fm = freemap.FreeMap({"type": "general", "elements": geom.polygon_to_elements(rect)}, placed, self.s, cell)
+        pockets = [pk for pk in fm.pockets() if pk.area > 0]
+        near = 2.5 * cell
+        open_ = [0.0, 0.0, 0.0, 0.0]
+        for pk in pockets:
+            bx0, by0, bx1, by1 = pk.box
+            if bx0 <= near: open_[0] += pk.area
+            if by0 <= near: open_[1] += pk.area
+            if bx1 >= W - near: open_[2] += pk.area
+            if by1 >= H - near: open_[3] += pk.area
+        return pockets, open_
+
+    @staticmethod
+    def fits_pocket(p: Part, pk) -> bool:
+        """A quick check: the part's box fits the pocket's box, its narrow side the pocket's width."""
+        bx0, by0, bx1, by1 = pk.box
+        pw, ph = p.dims()
+        return p.area <= pk.area and min(pw, ph) <= pk.fit + 1e-6 and p.fits_box(bx1 - bx0, by1 - by0)
+
     def run_blocks(self):
+        if self.opt.block_parallel:
+            return self.run_blocks_parallel()
+        return self.run_blocks_turns()
+
+    def run_blocks_parallel(self):
+        """All blocks worked out at once. The parts that fill them are shared out first: a kind with
+        enough copies in proportion to each big part's pocket area (pocket area x copies); what does
+        not split evenly, whole copies, biggest first, each to the big part whose pocket it fits most
+        tightly. Then every block (big part kind x the parts it got x the box variants) is one
+        solver job, all of them in parallel; a part a block could not place gets one more try in the
+        next-best big part, else it goes to the main nest."""
+        t0 = time.perf_counter()
+        hosts = self.block_hosts()
+        if not hosts:
+            return
+        self.say(f"  {len(hosts)} big parts with pockets: " + ", ".join(self.label(h.pid) for h in hosts))
+        hid = {h.pid for h in hosts}
+        fillers = [p for p in self.parts if p.remaining > 0 and p.pid not in hid]
+        if not fillers:
+            return
+        smallest = min(min(p.dims()) for p in fillers)
+        cell = max(3.0, min(freemap.cell_size(self.s, smallest), 10.0))
+        info = {}
+        for h in hosts:
+            pockets, open_ = self.pockets_of(h, cell)
+            if not pockets:
+                continue
+            fits = {f.pid: [pk for pk in pockets if self.fits_pocket(f, pk)] for f in fillers if f.area < h.area}
+            fits = {k: v for k, v in fits.items() if v}
+            if fits:
+                info[h.pid] = dict(pockets=pockets, open=open_, fits=fits, area=sum(pk.area for pk in pockets))
+        hosts = [h for h in hosts if h.pid in info]
+        if not hosts:
+            return
+
+        # -- the parts shared out ------------------------------------------------------------------
+        cap: dict[int, dict[int, int]] = {h.pid: {} for h in hosts}   # per copy of a big part
+        extra: dict[int, list[Counter]] = {h.pid: [Counter() for _ in range(h.remaining)] for h in hosts}
+        room: dict[int, list[float]] = {h.pid: [info[h.pid]["area"]] * h.remaining for h in hosts}
+        scarce: list[int] = []
+        for f in sorted(fillers, key=lambda p: -p.area):
+            hs = [h for h in hosts if f.pid in info[h.pid]["fits"]]
+            if not hs:
+                continue
+            weight = {h.pid: info[h.pid]["area"] * h.remaining for h in hs}
+            total = sum(weight.values())
+            used = 0
+            for h in hs:
+                per = int(f.remaining * weight[h.pid] / total) // h.remaining
+                per = min(per, int(info[h.pid]["area"] // max(f.area, 1.0)))
+                if per > 0:
+                    cap[h.pid][f.pid] = per
+                    used += per * h.remaining
+            scarce += [f.pid] * (f.remaining - used)
+        # whole copies: the biggest first, each to the tightest pocket that holds it
+        for fpid in scarce:
+            f = self.parts[fpid]
+            best = None
+            for h in hosts:
+                pks = info[h.pid]["fits"].get(fpid)
+                if not pks:
+                    continue
+                slack = min(pk.area for pk in pks) - f.area
+                k = next((i for i, r in enumerate(room[h.pid]) if r >= f.area), None)
+                if k is not None and (best is None or slack < best[0]):
+                    best = (slack, h.pid, k)
+            if best:
+                _, hp, k = best
+                extra[hp][k][fpid] += 1
+                room[hp][k] -= f.area
+
+        # -- the blocks to work out: a big part kind x what one copy got; the box variants ----------
+        kinds = []          # (host, caps per copy, copies)
+        for h in hosts:
+            groups: dict[tuple, int] = {}
+            for e in extra[h.pid]:
+                key = tuple(sorted(e.items()))
+                groups[key] = groups.get(key, 0) + 1
+            for key, n in groups.items():
+                caps = dict(cap[h.pid])
+                for fpid, c in key:
+                    caps[fpid] = caps.get(fpid, 0) + c
+                if caps:
+                    kinds.append((h, caps, n))
+        jobs = []
+        for ki, (h, caps, n) in enumerate(kinds):
+            W, H = h.dims()
+            m = self.opt.block_margin
+            sides = [i for i in sorted(range(4), key=lambda i: -info[h.pid]["open"][i]) if info[h.pid]["open"][i] > 0][:2]
+            vs = [(0.0, 0.0, 0.0, 0.0)]
+            for i in sides if m > 0 else []:
+                v = [0.0, 0.0, 0.0, 0.0]
+                v[i] = m * (W if i in (0, 2) else H)
+                vs.append(tuple(v))
+            for v in vs:
+                if self.box_fits_sheet(W + v[0] + v[2], H + v[1] + v[3]):
+                    jobs.append((ki, v))
+        # within the time: the margin variants of the smallest blocks go first when there are too many
+        w = max(1, self.opt.workers)
+        while jobs and len(jobs) * self.opt.block_time / w > self.opt.block_budget:
+            k = max((j for j in jobs if any(x for x in j[1])), key=lambda j: -kinds[j[0]][0].dims()[0] * kinds[j[0]][0].dims()[1], default=None)
+            if k is None:
+                break
+            jobs.remove(k)
+
+        def job(j):
+            ki, v = j
+            h, caps, _ = kinds[ki]
+            cands = [self.parts[pid] for pid in caps]
+            return self.block_solve(h, v, cands, caps)
+        with ThreadPoolExecutor(max_workers=w) as ex:
+            results = list(ex.map(job, jobs))
+
+        # -- the best variant of every kind; kept when it fills its box well enough -------------
+        best: dict[int, tuple] = {}
+        for (ki, v), fills in zip(jobs, results):
+            if not fills:
+                continue
+            h = kinds[ki][0]
+            comp = self.compose(h, fills, kind="block")
+            if comp is None or not self.fits_sheet(comp):
+                continue
+            f = self.bbox_fill(comp)
+            if ki not in best or f > best[ki][2]:
+                best[ki] = (fills, comp, f)
+        made = 0
+        for ki, (h, caps, n) in enumerate(kinds):
+            b = best.get(ki)
+            if b is None or b[2] < max(self.opt.block_min_fill, self.bbox_fill(h) + self.opt.block_gain):
+                continue
+            need = Counter(pid for pid, _ in b[0])
+            k = min([n, h.remaining] + [self.parts[pid].remaining // c for pid, c in need.items()])
+            if k <= 0:
+                continue
+            comp = b[1]
+            comp.pid = len(self.parts)
+            comp.remaining = k
+            self.parts.append(comp)
+            h.remaining -= k
+            for pid, c in need.items():
+                self.parts[pid].remaining -= c * k
+            made += k
+            desc = ", ".join(f"{c}x{self.label(pid)}" for pid, c in need.items())
+            self.say(f"  block {self.label(h.pid)} x{k}: {desc}, box fill {self.bbox_fill(h):.2f} -> {b[2]:.2f}")
+        self.stats["blocks"] += made
+        self.stats["block_jobs"] += len(jobs)
+        # a short second round: copies of big parts left plain, with the parts still free (in parallel)
+        left = [h for h in hosts if h.remaining > 0]
+        if left and time.perf_counter() - t0 < self.opt.block_budget:
+            avail = {p.pid: p.remaining for p in self.parts}
+            plans = {}
+            with ThreadPoolExecutor(max_workers=w) as ex:
+                futs = {h.pid: ex.submit(self.block_for, h, {**avail, h.pid: avail[h.pid] - 1}, False) for h in left}
+                for hp, fu in futs.items():
+                    plans[hp] = fu.result()
+            for h in left:
+                b = plans.get(h.pid)
+                if not b:
+                    continue
+                need = Counter(pid for pid, _ in b[0])
+                k = min([h.remaining] + [self.parts[pid].remaining // c for pid, c in need.items()])
+                if k <= 0:
+                    continue
+                comp = b[1]
+                comp.pid = len(self.parts)
+                comp.remaining = k
+                self.parts.append(comp)
+                h.remaining -= k
+                for pid, c in need.items():
+                    self.parts[pid].remaining -= c * k
+                self.stats["blocks"] += k
+                desc = ", ".join(f"{c}x{self.label(pid)}" for pid, c in need.items())
+                self.say(f"  block {self.label(h.pid)} x{k} (2nd round): {desc}, box fill {self.bbox_fill(h):.2f} -> {b[2]:.2f}")
+
+    def run_blocks_turns(self):
         end = time.perf_counter() + self.opt.block_budget
         sheet = min((w * h for w, h in self.sheets), default=None)
         hosts = []
