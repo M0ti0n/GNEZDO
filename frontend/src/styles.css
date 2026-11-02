@@ -1596,8 +1596,12 @@ html.is-busy, html.is-busy * { cursor: progress !important; }
 .mn-menu { position: absolute; right: 0; top: 36px; z-index: 5; display: flex; flex-direction: column; min-width: 250px; padding: 5px; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .12); }
 .mn-menu button { text-align: left; padding: 7px 10px; border-radius: 5px; font-size: 13px; }
 .mn-menu button:hover { background: var(--green-tint); }
-.mn-tiles { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px; align-content: start; }
-.mn-tile { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 6px 7px; border: 1.5px solid var(--line); border-radius: 7px; background: #fff; cursor: grab; font-size: 11px; text-align: center; }
+.mn-tiles { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; align-content: start; }
+.mn-tiles.cols-1 { grid-template-columns: minmax(0, 1fr); }
+.mn-tiles.cols-1 .mn-tile-name { white-space: normal; overflow-wrap: anywhere; }
+.mn-tiles.cols-1 .mn-tile svg { height: 90px; }
+/* fixed size: a long name is cut (the whole name shows on hover), it does not widen the tile */
+.mn-tile { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 6px 7px; border: 1.5px solid var(--line); border-radius: 7px; background: #fff; cursor: grab; font-size: 11px; text-align: center; }
 .mn-tile:hover { border-color: var(--green); }
 .mn-tile.is-off { cursor: default; opacity: .7; }
 .mn-tile svg { width: 100%; height: 70px; }
@@ -1619,5 +1623,7 @@ html.is-busy, html.is-busy * { cursor: progress !important; }
 .mn-gap { flex: 1; }
 .mn-lock { flex: none; width: 40px; height: 36px; }
 .mn-lock svg { width: 26px; height: 26px; }
+.mn-ghost { opacity: .45; pointer-events: none; }
+.mn-canvas.is-paste { cursor: copy; }
 .mn-tile.is-done { background: #e6f6dc; border-color: #b7deA0; }
 .mn-tile.is-done:hover { border-color: var(--green); }
