@@ -175,6 +175,20 @@ function NestingRulesPane() {
         </label>
       </section>
 
+      <section className="rule">
+        <h3>Thorough and Custom nest</h3>
+        <label className="rule-field">
+          <span>Block margin</span>
+          <span className="rule-num">
+            <input className="field" type="number" min={0} max={30} step={1} value={r.blockMarginPct}
+              onChange={(e) => { const n = Math.round(Number(e.target.value)); if (Number.isFinite(n)) set({ ...r, blockMarginPct: Math.min(30, Math.max(0, n)) }); }} /> %
+          </span>
+        </label>
+        <p className="rule-help">Before nesting, every big part with pockets (an L, a comb, a slanted plate) gets other parts into its bounding
+          box, the biggest that fit first, so it nests as a near-rectangle block. The box may grow by this share of its width or height
+          when that fits a bigger part and makes the block fuller. 0: the block stays within the part's own box. Fast nest makes no blocks.</p>
+      </section>
+
       <footer className="settings-foot">
         Saved in this browser.{" "}
         <button className="link" onClick={() => set(DEFAULT_NESTING_RULES)}>Reset to defaults</button>

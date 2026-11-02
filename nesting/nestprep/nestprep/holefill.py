@@ -22,6 +22,15 @@ Algorithm (hole filling)
 5.  Composite allowed rotations = host rotations for which every inner part
     still ends up at an angle/mirror it is allowed to have.
 
+Algorithm (blocks)
+------------------
+After pairing and hole filling, every big part whose outline fills little of its bounding box (an
+L, a comb, a slanted plate) gets other parts into the pockets of that box: the box is the bin, the
+big part an obstacle in it, the other parts the items (knapsack, profit growing faster than area
+so the biggest that fit go first). The box may grow by `block_margin` on one side when that makes
+the block fuller. A block is kept when it fills its box clearly better than the big part alone.
+Big parts take turns, one copy each, so one kind does not use up the parts that fit the others.
+
 Algorithm (pairing)
 -------------------
 For part types with a low bounding-box fill ratio and >= 2 copies left, two
@@ -165,6 +174,16 @@ class Options:
     pair_min_fill: float = 0.80         # keep pair if its bbox fill >= this
     pair_min_gain: float = 0.10         # ... and improves fill by this much
     pair_time: float = 0.5
+    # blocks: a big part with pockets (its outline fills little of its box) gets other parts into
+    # its box, the biggest that fit first, so it nests as a near-rectangle (see run_blocks)
+    blocks: bool = True
+    block_margin: float = 0.10          # the box may grow this share of its width or height
+    block_min_share: float = 0.04       # a big part: its box is at least this share of a sheet
+    block_max_outline_fill: float = 0.85   # ... and its outline fills at most this share of the box
+    block_min_fill: float = 0.70        # keep a block when it fills at least this share of its box
+    block_gain: float = 0.08            # ... and this much more than the big part alone
+    block_time: float = 1.0             # time per block sub-solve [s]
+    block_budget: float = 30.0          # time for the whole step [s]
     workers: int = 4                    # parallel solver processes
     verbose: bool = True
 
@@ -518,6 +537,154 @@ class PrePass:
             else:
                 self.say(f"  pair {self.label(p.pid)}: skipped (fill {f1:.2f} -> {f2:.2f})")
 
+    # -- blocks --------------------------------------------------------------------
+    def outers(self, p: Part) -> list[np.ndarray]:
+        """Outer outlines of the part's shapes that are not inside another of its shapes."""
+        polys = p.polys
+        out = []
+        for i, a in enumerate(polys):
+            ab = a.bbox
+            inside = any(j != i and b.bbox[0] <= ab[0] and b.bbox[1] <= ab[1] and b.bbox[2] >= ab[2] and b.bbox[3] >= ab[3]
+                         and (b.bbox != ab or j < i) and geom.point_in_polygon(*a.outer[0], b.outer)
+                         for j, b in enumerate(polys))
+            if not inside:
+                out.append(a.outer)
+        return out
+
+    def box_fits_sheet(self, w: float, h: float) -> bool:
+        return not self.sheets or any((w <= sw + 1e-6 and h <= sh + 1e-6) or (h <= sw + 1e-6 and w <= sh + 1e-6)
+                                      for sw, sh in self.sheets)
+
+    def block_variants(self, host: Part) -> list[tuple[float, float, float, float]]:
+        """How the box may grow: (left, bottom, right, top); none, or the margin on one side."""
+        W, H = host.dims()
+        m = self.opt.block_margin
+        out = [(0.0, 0.0, 0.0, 0.0)]
+        if m > 0:
+            out += [(0.0, 0.0, m * W, 0.0), (m * W, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, m * H), (0.0, m * H, 0.0, 0.0)]
+        return [v for v in out if self.box_fits_sheet(W + v[0] + v[2], H + v[1] + v[3])]
+
+    def block_solve(self, host: Part, v, cands: list[Part], caps: dict[int, int]):
+        """The knapsack of one block: the (grown) box as the bin, the big part an obstacle in it."""
+        x0, y0, x1, y1 = host.bbox
+        bx0, by0 = x0 - v[0], y0 - v[1]
+        BW, BH = x1 + v[2] - bx0, y1 + v[3] - by0
+        rect = np.array([[0.0, 0.0], [BW, 0.0], [BW, BH], [0.0, BH]])
+        defects = [{"type": "general", "elements": geom.polygon_to_elements(geom.ccw(o - [bx0, by0])),
+                    "item_defect_minimum_spacing": self.s} for o in self.outers(host)]
+        sub = {
+            "objective": "knapsack",
+            "parameters": {"item_item_minimum_spacing": self.s},
+            "bin_types": [{"type": "general", "elements": geom.polygon_to_elements(rect), "copies": 1,
+                           "item_bin_minimum_spacing": 0.0, "defects": defects}],
+            "item_types": [{"shapes": p.shapes, "copies": caps[p.pid],
+                            # more than the area: the biggest parts that fit go in first
+                            "profit": p.area ** 1.2,
+                            "allowed_rotations": p.rotations_json()} for p in cands],
+        }
+        try:
+            r = solve(sub, self.bin, self.opt.block_time, self.opt.sub_mode)
+        except RuntimeError:
+            return []
+        self.stats["sub_solves"] += 1
+        self.stats["sub_time"] += r["time"]
+        res = []
+        for b in (r["solution"] or {}).get("bins", []):
+            for it in b["items"]:
+                res.append((cands[it["id"]].pid, Xf(geom.norm_angle(it["angle"]), bool(it.get("mirror", False)),
+                                                     it["x"] + bx0, it["y"] + by0)))
+        return res
+
+    def block_for(self, host: Part, avail: dict[int, int]):
+        """The best block of one copy of `host` with the parts in `avail`: (fills, composite, fill) or None."""
+        W, H = host.dims()
+        variants = self.block_variants(host)
+        if not variants:
+            return None
+        env = sum(abs(geom.polygon_area(o)) for o in self.outers(host))
+        pocket = max(w * h for w, h in ((W + v[0] + v[2], H + v[1] + v[3]) for v in variants)) - env
+        bw = max(W + v[0] + v[2] for v in variants)
+        bh = max(H + v[1] + v[3] for v in variants)
+        cands = [p for p in self.parts if avail.get(p.pid, 0) > 0 and p.area <= pocket and p.area < host.area
+                 and p.fits_box(bw, bh)]
+        if not cands:
+            return None
+        caps = {p.pid: min(avail[p.pid], max(1, int(pocket // max(p.area, 1.0)))) for p in cands}
+        with ThreadPoolExecutor(max_workers=max(1, self.opt.workers)) as ex:
+            results = list(ex.map(lambda v: self.block_solve(host, v, cands, caps), variants))
+        f0 = self.bbox_fill(host)
+        best = None
+        for fills in results:
+            if not fills:
+                continue
+            comp = self.compose(host, fills, kind="block")
+            if comp is None or not self.fits_sheet(comp):
+                continue
+            comp.pid = -1                       # not among the parts yet
+            f = self.bbox_fill(comp)
+            if best is None or f > best[2]:
+                best = (fills, comp, f)
+        if best is None or best[2] < max(self.opt.block_min_fill, f0 + self.opt.block_gain):
+            return None
+        return best
+
+    def run_blocks(self):
+        end = time.perf_counter() + self.opt.block_budget
+        sheet = min((w * h for w, h in self.sheets), default=None)
+        hosts = []
+        for p in self.parts:
+            if p.remaining <= 0:
+                continue
+            W, H = p.dims()
+            if sheet and W * H < self.opt.block_min_share * sheet:
+                continue
+            env = sum(abs(geom.polygon_area(o)) for o in self.outers(p))
+            if env / (W * H) > self.opt.block_max_outline_fill:
+                continue
+            hosts.append(p)
+        hosts.sort(key=lambda p: -(p.dims()[0] * p.dims()[1]))
+        if not hosts:
+            return
+        self.say(f"  {len(hosts)} big parts with pockets: " + ", ".join(self.label(h.pid) for h in hosts))
+        plan: dict[int, tuple | None] = {}       # host pid -> its block as last worked out
+        done: set[int] = set()
+        # turns: one copy of every big part per turn, so they share the parts that fit them; when
+        # the time is up no new blocks are worked out, but those found are still used
+        while True:
+            moved = False
+            for host in hosts:
+                if host.pid in done or host.remaining <= 0:
+                    continue
+                avail = {p.pid: p.remaining for p in self.parts}
+                avail[host.pid] -= 1
+                b = plan.get(host.pid)
+                need = Counter(pid for pid, _ in b[0]) if b else None
+                if b is None or any(avail.get(pid, 0) < n for pid, n in need.items()):
+                    if time.perf_counter() >= end:
+                        done.add(host.pid)
+                        continue
+                    b = self.block_for(host, avail)
+                    plan[host.pid] = b
+                    if b is None:
+                        done.add(host.pid)
+                        continue
+                    need = Counter(pid for pid, _ in b[0])
+                    desc = ", ".join(f"{n}x{self.label(pid)}" for pid, n in need.items())
+                    self.say(f"  block {self.label(host.pid)}: {desc}, box fill {self.bbox_fill(host):.2f} -> {b[2]:.2f}")
+                comp = b[1]
+                if comp.pid < 0:                # its first copy: the composite joins the parts
+                    comp.pid = len(self.parts)
+                    comp.remaining = 0
+                    self.parts.append(comp)
+                comp.remaining += 1
+                host.remaining -= 1
+                for pid, n in need.items():
+                    self.parts[pid].remaining -= n
+                self.stats["blocks"] += 1
+                moved = True
+            if not moved:
+                break
+
     # -- output ----------------------------------------------------------------
     def label(self, pid: int) -> str:
         p = self.parts[pid]
@@ -537,6 +704,11 @@ class PrePass:
         self.say("Hole filling:")
         self.run_holefill()
         self.stats["holefill_s"] = round(time.perf_counter() - t, 1)
+        if self.opt.blocks:
+            t = time.perf_counter()
+            self.say("Blocks:")
+            self.run_blocks()
+            self.stats["blocks_s"] = round(time.perf_counter() - t, 1)
         out = {k: v for k, v in self.inst.items() if k != "item_types"}
         out["item_types"] = []
         mapping = {"format": "nestprep-composites", "version": 1,

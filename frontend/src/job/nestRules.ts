@@ -3,9 +3,11 @@
 export interface NestingRules {
   /** Arrange (manual nest): the arranged parts go towards the machine's 0,0; off: they are packed where they are. */
   arrangeToOrigin: boolean;
+  /** Thorough / Custom nest: how much a block's box may grow to take a bigger part [% of its width or height]. */
+  blockMarginPct: number;
 }
 
-export const DEFAULT_NESTING_RULES: NestingRules = { arrangeToOrigin: true };
+export const DEFAULT_NESTING_RULES: NestingRules = { arrangeToOrigin: true, blockMarginPct: 10 };
 
 const STORE = "gnezdo.nestingRules";
 

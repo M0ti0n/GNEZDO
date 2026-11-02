@@ -754,6 +754,8 @@ th.num .th-sort { flex-direction: row-reverse; }
 .chk-box:has(input:checked) { border-color: var(--green); background: var(--green-tint); color: var(--green-ink); }
 .rule-sub { margin: 12px 0 0 31px; display: grid; gap: 8px; }
 .rule-field { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.rule-num { display: inline-flex; align-items: center; gap: 6px; }
+.rule-num .field { width: 80px; }
 .colour-map { list-style: none; padding: 0; }
 .colour-map li { display: grid; grid-template-columns: 22px 130px 22px auto; align-items: center; gap: 8px; font-size: 14px; }
 .colour-map i { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, .15); }

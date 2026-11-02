@@ -27,17 +27,17 @@ LEVELS = {
     # grace: more nest time when there is no layout yet at the end of it (then a warning)
     "quick": dict(total=30.0, post=10.0, post_per_sheet=0.6, post_max=40.0, grace=15.0, min_nest=10.0, max_nest=30.0,
                   stop_after=5.0, two_phase=False,
-                  pre_opts=dict(pair_max_fill=0.75),
+                  pre_opts=dict(pair_max_fill=0.75, blocks=False),
                   post_opts=dict(pool_time=1.5, fill_time=1.5, fill_rounds=2, tail_time=4.0, empty=False, pairs=False, chain=False, compact_time=5.0)),
     # the nest is capped at 30 s: on the test jobs a longer nest gave the same layout, the time is
     # worth more in the post-pass
     "thorough": dict(total=90.0, post=30.0, post_per_sheet=2.5, post_max=150.0, grace=30.0, min_nest=20.0, max_nest=30.0,
                      stop_after=10.0, two_phase=False,
-                     pre_opts=dict(),
+                     pre_opts=dict(block_budget=30.0),
                      post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, tail_time=6.0, pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
     # the user sets the nest time (or none: until stopped); then the thorough post-pass
     "custom": dict(total=None, two_phase=False, post=30.0, post_per_sheet=2.5, post_max=150.0, grace=60.0, min_nest=None, max_nest=None,
-                   pre_opts=dict(),
+                   pre_opts=dict(block_budget=60.0),
                    post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, tail_time=6.0, pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
 }
 

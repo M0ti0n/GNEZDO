@@ -47,7 +47,8 @@ def dump(obj, p):
 
 def opts_from(a) -> Options:
     return Options(min_hole=a.min_hole, sub_time=a.sub_time, pairing=not a.no_pairing,
-                   pair_time=a.pair_time, workers=a.workers, verbose=not a.quiet)
+                   pair_time=a.pair_time, workers=a.workers, verbose=not a.quiet,
+                   blocks=not a.no_blocks, block_margin=a.block_margin / 100.0)
 
 
 def cmd_prepass(a):
@@ -208,6 +209,8 @@ def main():
         p.add_argument("--workers", type=int, default=max(4, min(8, os.cpu_count() or 4)),
                        help="parallel solver processes for the pre-pass (the threads this job may use)")
         p.add_argument("--no-pairing", action="store_true")
+        p.add_argument("--no-blocks", action="store_true")
+        p.add_argument("--block-margin", type=float, default=10.0, help="how much a block's box may grow [%%]")
         p.add_argument("-q", "--quiet", action="store_true")
 
     p = sub.add_parser("prepass")
