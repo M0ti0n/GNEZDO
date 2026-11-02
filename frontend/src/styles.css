@@ -1388,10 +1388,11 @@ th.num .th-sort { flex-direction: row-reverse; }
 .sol-badge { padding: 2px 8px; border-radius: 5px; background: var(--green); color: #fff; font-size: 12.5px; font-weight: 600; letter-spacing: .03em; white-space: nowrap; }
 .sol-badge.is-error { background: #c62828; }
 .sol-row { display: flex; align-items: center; gap: 8px; }
-.sol-box { flex: 0 1 230px; min-width: 0; display: flex; align-items: center; height: 36px; padding: 0;
+.sol-box { flex: 0 1 276px; min-width: 0; display: flex; align-items: center; height: 36px; padding: 0;
   border: 1.5px solid var(--line); border-radius: 7px; background: #fff; text-align: left; }
 .sol-pick { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 12px; text-align: left; border-radius: 6px 0 0 6px; }
-.sol-box .sol-badge { margin-left: auto; }
+.sol-box .sol-badge { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sol-pick .sol-title { flex: none; }
 .sol-fold { flex: none; width: 26px; height: 100%; display: grid; place-items: center; color: var(--ink-2); border-radius: 0 6px 6px 0; }
 .sol-fold svg { transition: transform .12s; transform: rotate(-90deg); }
 .sol-fold.is-open svg { transform: none; }
@@ -1405,8 +1406,12 @@ th.num .th-sort { flex-direction: row-reverse; }
 .sol-x { margin-left: auto; display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-2); background: #fff; }
 .sol-x:hover { background: #fde8e7; border-color: #e7a9a4; color: #c62828; }
 .sol-err { margin: 6px 0 0; font-size: 13px; }
-.sol-tree { list-style: none; margin: 4px 0 0 14px; padding: 4px 0 2px; border-left: 1.5px solid #b9c4c9; display: flex; flex-direction: column; gap: 6px; }
-.sol-tree li { display: flex; align-items: center; }
+/* the tree's line: each sheet draws its piece; the last one's stops at its middle (nothing below it) */
+.sol-tree { list-style: none; margin: 4px 0 0 14px; padding: 4px 0 2px; display: flex; flex-direction: column; gap: 6px; }
+.sol-tree li { position: relative; display: flex; align-items: center; }
+.sol-tree li::after { content: ""; position: absolute; left: 0; top: -6px; bottom: 0; border-left: 1.5px solid #b9c4c9; }
+.sol-tree li:first-child::after { top: -8px; }
+.sol-tree li:last-child::after { bottom: 50%; }
 .sol-tree li::before { content: ""; width: 40px; flex: none; border-top: 1.5px solid #b9c4c9; }
 .sol-tree button { width: 124px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; text-align: left; font-weight: 600; font-size: 14px; }
 .sol-tree button:hover { border-color: var(--green); }
