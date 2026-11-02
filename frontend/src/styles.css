@@ -1528,7 +1528,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .sp-turn.is-off { opacity: .55; }
 
 /* work part list: material / thickness in this job (drop-downs); blue when set for this job only */
-.work-grid td.cell-mat { padding-top: 3px; padding-bottom: 3px; }
+.work-grid td.cell-mat { padding-top: 3px; padding-bottom: 3px; overflow: visible; }   /* the drop-down list may reach out of the cell */
 .cell-mat-row { display: flex; align-items: center; gap: 2px; }
 .cell-mat-row .combo-wrap { flex: 1; min-width: 0; display: block; }
 .cell-mat-row .combo { width: 100%; }
