@@ -8,7 +8,7 @@ import {
   inMaterial, partLoops, placed, problems, rotateGroup, slideDistance, unionBox, usableBox,
   type Box, type Dir, type Placed, type Pt,
 } from "../job/manualGeom";
-import { arrange, mirrorGroup, partRules, stack, type PartRules } from "../job/manualTools";
+import { arrange, arrangeAgain, mirrorGroup, partRules, stack, type PartRules } from "../job/manualTools";
 import { loadNestingRules } from "../job/nestRules";
 import { loadManualView } from "../job/manualView";
 
@@ -542,6 +542,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   }, [working]);
   useEffect(() => { if (!note || working) return; const t = window.setTimeout(() => setNote(null), 4000); return () => window.clearTimeout(t); }, [note, working]);
   const toolSeen = useRef(tool?.n ?? 0);
+  // Arrange again: the parts and layout of the last Arrange (cleared when the selection is cleared)
+  const arrangeMemo = useRef<{ key: string; items: PlacedPart[]; round: number } | null>(null);
+  useEffect(() => { if (!sel.size) arrangeMemo.current = null; }, [sel]);
   const alive = useRef<{ index: number } | null>({ index });
   alive.current = { index };
   useEffect(() => () => { alive.current = null; }, []);
@@ -585,6 +588,10 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       // a small nest: up to 20 parts in 1.5 s, up to 50 in 3 s; more is a job for Automatic nest
       if (ids.length > 50) { setNote(`Arrange takes up to 50 parts (${ids.length} selected): select fewer, or use Automatic nest.`); return; }
       const limit = ids.length <= 20 ? 1500 : 3000;
+      // the same parts again, nothing changed since: the search goes on from this layout
+      const key = ids.join(",");
+      const memo = arrangeMemo.current;
+      const again = memo && memo.key === key && memo.items === before ? memo.round + 1 : 0;
       const t0 = performance.now();
       setWorking(true);
       setNote(`Arranging ${ids.length} ${ids.length === 1 ? "part" : "parts"}…`);
@@ -604,15 +611,22 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
             y0: origin.startsWith("bottom") ? usable.y0 : Math.max(usable.y0, g.y0), y1: origin.startsWith("bottom") ? Math.min(usable.y1, g.y1) : usable.y1,
           };
         }
-        const out = area.x1 > area.x0 && area.y1 > area.y0
-          ? await arrange({ list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable: area, outline, edgeGap, gap, origin,
-            budgetMs: limit - 60 - (performance.now() - t0) })
-          : null;
+        const input = { list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable: area, outline, edgeGap, gap, origin,
+          budgetMs: limit - 60 - (performance.now() - t0) };
+        const out = !(area.x1 > area.x0 && area.y1 > area.y0) ? null
+          : again ? await arrangeAgain({ ...input, round: again }) : await arrange(input);
         // left the sheet, or it changed meanwhile: not used
         if (!alive.current || alive.current.index !== index || itemsRef.current !== before) { setNote(null); return; }
         if (!out) { setNote(toOrigin ? "No room to arrange these parts on this sheet." : "No room to arrange these parts where they are."); return; }
+        if (out === before) {
+          arrangeMemo.current = { key, items: before, round: again };
+          setNote(`Try ${again + 1}: nothing better found, kept as it is`);
+          return;
+        }
         commit(out, before);
-        setNote(`Arranged ${ids.length} ${ids.length === 1 ? "part" : "parts"}`);
+        arrangeMemo.current = { key, items: out, round: again };
+        const boxArea = (l: PlacedPart[]) => { const u = unionBox(ids.map((i) => geoOf(l, i)!.box)); return (u.x1 - u.x0) * (u.y1 - u.y0); };
+        setNote(again ? `Try ${again + 1}: box ${(100 * (1 - boxArea(out) / boxArea(before))).toFixed(1)} % smaller` : `Arranged ${ids.length} ${ids.length === 1 ? "part" : "parts"} (Arrange again to try for better)`);
       } finally {
         setWorking(false);
       }
