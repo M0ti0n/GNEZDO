@@ -41,12 +41,12 @@ const SECTIONS: Section[] = [
   },
   {
     id: "manual", label: "Manual nest", icon: tileManual, tools: [
-      { id: "mirrorV", label: "Mirror V", icon: toolMirrorV },
-      { id: "mirrorH", label: "Mirror H", icon: toolMirrorH },
-      { id: "arrange", label: "Arrange", icon: toolArrange },
-      { id: "stackV", label: "Stack V", icon: toolStackV },
-      { id: "stackH", label: "Stack H", icon: toolStackH },
-      { id: "stackGrid", label: "Stack grid", icon: toolStackGrid },
+      { id: "mirrorV", label: "Mirror V", icon: toolMirrorV, ready: true, hint: "Mirror V: flip the selected parts left-right" },
+      { id: "mirrorH", label: "Mirror H", icon: toolMirrorH, ready: true, hint: "Mirror H: flip the selected parts top-bottom" },
+      { id: "arrange", label: "Arrange", icon: toolArrange, ready: true, hint: "Arrange: nest the selected parts as compactly as possible into the free space" },
+      { id: "stackV", label: "Stack V", icon: toolStackV, ready: true, hint: "Stack V: copies of the selection along Y until the edge or the next part" },
+      { id: "stackH", label: "Stack H", icon: toolStackH, ready: true, hint: "Stack H: copies of the selection along X until the edge or the next part" },
+      { id: "stackGrid", label: "Stack grid", icon: toolStackGrid, ready: true, hint: "Stack grid: rows and columns of copies of the selection until the edges or other parts" },
     ],
   },
   { id: "process", label: "Process", icon: tileProcess, tools: [] },
@@ -72,7 +72,8 @@ export function JobToolbar({ onTool, onSection, request }: {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || document.querySelector(".dlg-backdrop, .full-view")) return;
+      // in manual nest Escape clears the selection only
+      if (e.key !== "Escape" || document.querySelector(".dlg-backdrop, .full-view, .mn")) return;
       const t = e.target as HTMLElement | null;
       if (t?.closest("input, select, textarea")) return;
       setOpen(null);

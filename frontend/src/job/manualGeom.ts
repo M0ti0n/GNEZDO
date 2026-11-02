@@ -189,6 +189,24 @@ export function problems(parts: Placed[], usable: Box, gap: number, outline?: Pt
   return bad;
 }
 
+/**
+ * True when every part of `mine` is inside the usable area (and a shaped sheet's outline) and keeps
+ * the gap to every part of `others` (the same test as `problems`, so a part that passes does not glow).
+ */
+export function clearOf(mine: Placed[], others: Placed[], usable: Box, gap: number, outline?: Pt[][]): boolean {
+  const tol = 1.2;
+  for (const q of mine) {
+    if (q.box.x0 < usable.x0 - 0.05 || q.box.y0 < usable.y0 - 0.05 || q.box.x1 > usable.x1 + 0.05 || q.box.y1 > usable.y1 + 0.05) return false;
+    if (outline?.length && q.samples.some(([x, y]) => !pointIn(outline[0], x, y) || outline.slice(1).some((h) => pointIn(h, x, y)))) return false;
+    for (const o of others) {
+      if (q.box.x0 > o.box.x1 + gap || o.box.x0 > q.box.x1 + gap || q.box.y0 > o.box.y1 + gap || o.box.y0 > q.box.y1 + gap) continue;
+      if ((q.loops[0] && inMaterial(o, ...q.loops[0][0])) || (o.loops[0] && inMaterial(q, ...o.loops[0][0]))) return false;
+      if (closeness(q, o, gap) < gap - tol) return false;
+    }
+  }
+  return true;
+}
+
 /** The group turned by `deg` (positive: clockwise as drawn) about the centre of its box. */
 export function rotateGroup(parts: PlacedPart[], boxes: Box[], deg: number): PlacedPart[] {
   const u = unionBox(boxes);

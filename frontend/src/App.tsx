@@ -606,8 +606,11 @@ export function App() {
   // opening Automatic nest there leaves manual nesting
   const [toolbarReq, setToolbarReq] = useState<{ section: "auto" | "manual" | null; n: number }>({ section: null, n: 0 });
   const [leaveManual, setLeaveManual] = useState(0);
-  const onJobTool = (_section: string, tool: string, custom?: CustomNestSettings) => {
+  // Manual nest tools: to the sheet open in manual nest (a new n each click)
+  const [manualTool, setManualTool] = useState<{ tool: string; n: number }>({ tool: "", n: 0 });
+  const onJobTool = (section: string, tool: string, custom?: CustomNestSettings) => {
     if (!job) return;
+    if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (tool === "fastNest") void startNest(job.id, "fast");
     else if (tool === "thoroughNest") void startNest(job.id, "thorough");
     else if (tool === "customNest") { if (custom) void startNest(job.id, "custom", custom); else setCustomFor(job.id); }
@@ -651,6 +654,7 @@ export function App() {
               <NestPage
                 onManual={(on) => setToolbarReq((r) => ({ section: on ? "manual" : "auto", n: r.n + 1 }))}
                 leaveManual={leaveManual}
+                manualTool={manualTool}
                 parts={jobParts[job.id] ?? []}
                 solutions={solsOf(job.id).list}
                 selected={solsOf(job.id).sel}
