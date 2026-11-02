@@ -224,6 +224,55 @@ function anglesOf(r: PartRules, coarse = false): number[] {
   return [...out];
 }
 
+/** Convex hull of points (monotone chain). */
+function hull(pts: Pt[]): Pt[] {
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cross = (o: Pt, a: Pt, b: Pt) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo: Pt[] = [], up: Pt[] = [];
+  for (const q of p) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+
+/**
+ * The turns that lay an outer edge of the shape along the sheet's axes (its longest hull edges
+ * first): a part with slanted sides lies straight against the edge of the sheet or its neighbours.
+ */
+function edgeAngles(loops: Pt[][], most = 4): number[] {
+  // real sides of the outline that lie on its hull (outer edges a neighbour or the sheet edge can
+  // lie against; not a hull line across a notch, which would tilt an L or a T for nothing)
+  const h = hull(loops.flat());
+  const onHull = (p: Pt) => h.some((q) => Math.abs(q[0] - p[0]) < 1e-6 && Math.abs(q[1] - p[1]) < 1e-6);
+  const edges: { l: number; a: number }[] = [];
+  for (const lp of loops) for (let i = 0; i < lp.length; i++) {
+    const a = lp[i], b = lp[(i + 1) % lp.length];
+    if (!onHull(a) || !onHull(b)) continue;
+    edges.push({ l: Math.hypot(b[0] - a[0], b[1] - a[1]), a: (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI });
+  }
+  edges.sort((x, y) => y.l - x.l);
+  edges.splice(most);
+  const out: number[] = [];
+  for (const e of edges) for (let k = 0; k < 4; k++) {
+    const a = norm(-e.a + 90 * k);
+    if (!out.some((o) => Math.abs(((o - a + 540) % 360) - 180) > 179.5)) out.push(a);
+  }
+  return out;
+}
+
+/** The smallest box area of the shape over the turns that lay a hull edge along an axis. */
+function minBoxArea(loops: Pt[][], gap: number): number {
+  const pts = loops.flat();
+  let best = Infinity;
+  for (const a of [0, ...edgeAngles(loops, 8)]) {
+    const r = (a * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of pts) { const u = x * c - y * s, v = x * s + y * c; x0 = Math.min(x0, u); x1 = Math.max(x1, u); y0 = Math.min(y0, v); y1 = Math.max(y1, v); }
+    best = Math.min(best, (x1 - x0 + gap) * (y1 - y0 + gap));
+  }
+  return best;
+}
+
 // -- pairing prepass ------------------------------------------------------------------------------
 // Two copies of a part, one turned (or mirrored) against the other, often take much less room than
 // two apart (triangles into a rectangle, an L into an L, a T against a mirrored T). The best pair of a
@@ -249,7 +298,7 @@ function hash(s: string): string {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   return (h >>> 0).toString(36);
 }
-const pairKey = (path: string, r: PartRules, gap: number) => `${hash(path)}|${r.rotations.join(",")}|${r.mirror ? 1 : 0}|${gap}`;
+const pairKey = (path: string, r: PartRules, gap: number) => `v2|${hash(path)}|${r.rotations.join(",")}|${r.mirror ? 1 : 0}|${gap}`;
 
 /**
  * The best pair of a part: the second copy's pose against the first (at 0,0, not turned), or null
@@ -261,7 +310,8 @@ export function bestPair(path: string, r: PartRules, gap: number, deadline = Inf
   if (cache.has(key)) return cache.get(key)!;
   const A = placed(path, { ...ID, partId: "" });
   const ab = A.box;
-  const single = (ab.x1 - ab.x0 + gap) * (ab.y1 - ab.y0 + gap);
+  // a part alone and a pair are both judged turned the best way (a slanted pair lies straight later)
+  const single = minBoxArea(A.loops, gap);
   const K = 16;
   let best: { pose: Pose; area: number }[] = [];
   for (const mirror of r.mirror ? [false, true] : [false]) for (const angle of anglesOf(r, true)) {
@@ -278,8 +328,7 @@ export function bestPair(path: string, r: PartRules, gap: number, deadline = Inf
       const t = slideDistance([B], [A], BIG, gap, axis === "x" ? "left" : "up");
       if (t > (axis === "x" ? ab.x1 - ab.x0 + bb.x1 - bb.x0 : ab.y1 - ab.y0 + bb.y1 - bb.y0) + 2 * gap) continue;   // passes by
       const fin: Pose = axis === "x" ? { ...pose, x: pose.x - t } : { ...pose, y: pose.y - t };
-      const fb = { x0: Math.min(ab.x0, bb.x0 + fin.x), y0: Math.min(ab.y0, bb.y0 + fin.y), x1: Math.max(ab.x1, bb.x1 + fin.x), y1: Math.max(ab.y1, bb.y1 + fin.y) };
-      const area = (fb.x1 - fb.x0 + gap) * (fb.y1 - fb.y0 + gap);
+      const area = minBoxArea([...A.loops, ...placed(path, { ...fin, partId: "" }).loops], gap);
       best.push({ pose: fin, area });
     }
     best.sort((a, b) => a.area - b.area);
@@ -316,7 +365,7 @@ function breather(ms = 50) {
   return async () => {
     if (performance.now() - at < ms) return;
     // a new task: the browser draws a frame in between when one is due
-    await new Promise<void>((r) => { const ch = new MessageChannel(); ch.port1.onmessage = () => r(); ch.port2.postMessage(0); });
+    await new Promise<void>((r) => { const ch = new MessageChannel(); ch.port1.onmessage = () => { ch.port1.close(); r(); }; ch.port2.postMessage(0); });
     at = performance.now();
   };
 }
@@ -364,13 +413,26 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
   }
 
   // the allowed poses of a piece: its rotations (and mirrored when allowed); a part alone also the pose it has now
+  // the allowed poses of a piece: its rotation steps (and mirrored when allowed); a part alone also
+  // the pose it has now; and the turns that lay its longest outer edges along the sheet's axes
+  const poseCache = new Map<string, { angle: number; mirror: boolean }[]>();
   const poses = (pc: Piece): { angle: number; mirror: boolean }[] => {
+    const key = `${pc.key}|${pc.pose0 ? `${norm(pc.pose0.angle)}|${pc.pose0.mirror}` : ""}`;
+    const hit = poseCache.get(key);
+    if (hit) return hit;
     const r = ruleOf(pc.partId);
-    const angles = new Set<number>(anglesOf(r));
-    if (pc.pose0) angles.add(norm(pc.pose0.angle));
+    const mirrors = r.mirror ? [false, true] : pc.pose0?.mirror ? [false, true] : [false];
     const out: { angle: number; mirror: boolean }[] = [];
-    for (const m of r.mirror ? [false, true] : [false]) for (const a of angles) out.push({ angle: a, mirror: m });
-    if (pc.pose0?.mirror && !r.mirror) for (const a of angles) out.push({ angle: a, mirror: true });
+    for (const m of mirrors) {
+      if (m && !r.mirror && !pc.pose0?.mirror) continue;
+      const angles: number[] = [];
+      const add = (a: number) => { if (!angles.some((o) => Math.abs(((o - a + 540) % 360) - 180) > 179.5)) angles.push(a); };
+      anglesOf(r).forEach(add);
+      if (pc.pose0) add(norm(pc.pose0.angle));
+      edgeAngles(loopsOf(pc, 0, m)).forEach(add);
+      for (const a of angles) out.push({ angle: a, mirror: m });
+    }
+    poseCache.set(key, out);
     return out;
   };
   /** The piece's loops at a pose (translation 0), in sheet axes. */
@@ -467,12 +529,15 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
     return m;
   };
 
-  /** The lowest a (then b) where the mask meets no taken cell and stays within the band [0, bLim). */
-  const find = (m: Mask, occN: { na: number; nb: number; last: Int32Array }, bLim: number): [number, number] | null => {
+  /**
+   * The lowest a (then b) where the mask meets no taken cell, within b < bLim; with a range, only
+   * inside it (cells: a from aLo to aHi, b from bLo).
+   */
+  const find = (m: Mask, occN: { na: number; nb: number; last: Int32Array }, bLim: number, aLo = 0, aHi = Infinity, bLo = 0): [number, number] | null => {
     const { na, nb, last } = occN;
     const lim = Math.min(bLim, nb);
-    for (let ia = 0; ia + m.na <= na; ia++) {
-      let ib = 0;
+    for (let ia = Math.max(0, aLo); ia + m.na <= Math.min(na, aHi); ia++) {
+      let ib = Math.max(0, bLo);
       while (ib + m.nb <= lim) {
         let jump = -1;
         for (let r = 0; r < m.na && jump < 0; r++) {
@@ -550,7 +615,19 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
     for (const i of t.order) {
       const pc = pieces[i];
       let pick: { m: Mask; ia: number; ib: number; key: number; key2: number } | null = null;
-      for (const ps of poses(pc)) {
+      // first inside the group's box as it is (holes, gaps between fingers, pockets): it does not grow
+      if (isFinite(A0)) {
+        const a0 = Math.floor(A0 / c), a1 = Math.ceil(A1 / c) + 1, b0 = Math.floor(B0 / c), b1 = Math.ceil(B1 / c) + 1;
+        for (const ps of poses(pc)) {
+          const m = maskOf(t.axis, pc, ps.angle, ps.mirror);
+          if (m.na > a1 - a0 || m.nb > b1 - b0) continue;
+          const f = find(m, st, Math.min(b1, bLim), a0, a1, b0);
+          if (!f) continue;
+          const key = f[0] + m.na, key2 = f[1] + m.nb;
+          if (!pick || key < pick.key || (key === pick.key && key2 < pick.key2)) pick = { m, ia: f[0], ib: f[1], key, key2 };
+        }
+      }
+      if (!pick) for (const ps of poses(pc)) {
         const m = maskOf(t.axis, pc, ps.angle, ps.mirror);
         const f = find(m, st, bLim);
         if (!f) continue;
