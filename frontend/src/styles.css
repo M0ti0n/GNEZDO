@@ -1633,14 +1633,18 @@ html.is-busy, html.is-busy * { cursor: progress !important; }
 .mn-tile.is-done { background: #e6f6dc; border-color: #b7deA0; }
 .mn-tile.is-done:hover { border-color: var(--green); }
 
-/* Top bar: how busy the server is */
-.srv-load { align-self: center; display: flex; align-items: center; gap: 6px; margin: 0 6px 0 2px; padding: 0 8px; height: 30px; border-radius: 7px; background: rgba(255,255,255,.08); color: #e7f2ec; font-size: 12px; font-weight: 600; cursor: default; flex: none; }
-.srv-label { letter-spacing: .04em; opacity: .8; }
-.srv-bar { width: 44px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.2); overflow: hidden; }
-.srv-bar i { display: block; height: 100%; border-radius: 4px; transition: width .6s ease; }
-.srv-load.is-low .srv-bar i { background: #5ccf6c; }
-.srv-load.is-mid .srv-bar i { background: #f2b33a; }
-.srv-load.is-high .srv-bar i { background: #f05a4a; }
-.srv-load.is-high .srv-pct { color: #ffb4a8; }
-.srv-pct { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
-.srv-nests { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #f2a33a; color: #1d2b24; font-size: 11px; display: grid; place-items: center; }
+/* Side rail, at the bottom: how busy the server is */
+.srv-load { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px 6px; border-radius: 10px;
+  font-family: var(--font-cond); color: var(--ink-2); cursor: default; }
+.srv-label { font-size: 12px; font-weight: 600; letter-spacing: .06em; color: var(--ink-3); }
+.srv-pct { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.srv-bar { width: 44px; height: 6px; border-radius: 3px; background: #e3e9e6; overflow: hidden; }
+.srv-bar i { display: block; height: 100%; border-radius: 3px; transition: width .6s ease; }
+.srv-load.is-low .srv-bar i { background: #3fae52; }
+.srv-load.is-low .srv-pct { color: var(--green-ink); }
+.srv-load.is-mid .srv-bar i { background: #e89a1c; }
+.srv-load.is-mid .srv-pct { color: #b06a00; }
+.srv-load.is-high .srv-bar i { background: #e0402f; }
+.srv-load.is-high .srv-pct { color: #c62828; }
+.srv-load.is-high { background: #fdecea; }
+.srv-nests { font-size: 12.5px; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }

@@ -1,3 +1,4 @@
+import { ServerLoad } from "./ServerLoad";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, materialKey, type PartFacets } from "../api/api";
 import { DEFAULT_SORT, type DateMode, type JobFilter, type PartFilter, type PartSummary, type SortOrder } from "../api/types";
@@ -54,6 +55,7 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeA
           <IconImport /><span>Import</span>
           {importPanel.items.length > 0 && <span className="rail-count">{importPanel.items.length}</span>}
         </button>
+        <ServerLoad />
       </div>
       {mode && (
         <div className="drawer-panel">
