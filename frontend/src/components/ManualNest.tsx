@@ -208,7 +208,12 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const busy = (e: KeyboardEvent) => !!document.querySelector(".dlg") || !!(e.target as HTMLElement)?.closest("input, select, textarea");
     const onDown = (e: KeyboardEvent) => {
       if (busy(e) || workingRef.current) return;
-      if (e.key === "Escape") { if (pasteRef.current) { setPaste(null); return; } setSel(new Set()); return; }
+      if (e.key === "Escape") {
+        if (alignRef.current) { setAlign(null); setEdgeHover(null); setNote(null); return; }
+        if (pasteRef.current) { setPaste(null); return; }
+        setSel(new Set());
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.code === "KeyC" && selRef.current.size) {
         e.preventDefault();
         copySel();
@@ -289,6 +294,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       else setPaste(null);
       return;
     }
+    if (align && e.button === 0) { alignClick(toMm(local(e).x, local(e).y)); return; }
+    if (align && e.button === 2) { setAlign(null); setEdgeHover(null); setNote(null); return; }
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const p = local(e);
     if (e.button === 1 || e.button === 2) { pan.current = { x: e.clientX, y: e.clientY }; return; }
@@ -309,6 +316,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const onPointerMove = (e: React.PointerEvent) => {
     { const q = local(e); lastPt.current = toMm(q.x, q.y); }
     if (paste) { setPaste((pp) => pp && { ...pp, at: lastPt.current! }); return; }
+    if (align && !pan.current) { const q = lastPt.current!; setEdgeHover(edgeAt(q[0], q[1], !align.fixed)); return; }
     const p = local(e);
     if (pan.current) {
       const dx = e.clientX - pan.current.x, dy = e.clientY - pan.current.y;
@@ -463,6 +471,66 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     return path ? [{ p, g: placed(path, { ...p, x: p.x + paste.at[0], y: p.y + paste.at[1] }) }] : [];
   }) ?? [], [paste, byId]);
 
+  // -- Align edge: the edge that stays (a part's or the sheet's), then an edge of the part to turn -----
+  type Edge = { a: Pt; b: Pt; part: number };   // part -1: the sheet
+  const [align, setAlign] = useState<{ fixed: Edge | null } | null>(null);
+  const alignRef = useRef(align);
+  alignRef.current = align;
+  const [edgeHover, setEdgeHover] = useState<Edge | null>(null);
+  useEffect(() => { setAlign(null); setEdgeHover(null); }, [index]);
+  /** The edge nearest the point (within a few pixels): of a part, or (sheet = true) of the sheet too. */
+  const edgeAt = (x: number, y: number, sheetToo: boolean): Edge | null => {
+    const tol = 8 / (view?.s ?? 1);
+    let best: Edge | null = null, bd = tol;
+    const seg = (a: Pt, b: Pt, part: number) => {
+      const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+      if (l2 < 1e-9) return;
+      const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / l2));
+      const d = Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y);
+      if (d < bd) { bd = d; best = { a, b, part }; }
+    };
+    geo.forEach((g, i) => {
+      if (!g || x < g.box.x0 - tol || x > g.box.x1 + tol || y < g.box.y0 - tol || y > g.box.y1 + tol) return;
+      for (const lp of g.loops) for (let k = 0; k < lp.length; k++) seg(lp[k], lp[(k + 1) % lp.length], i);
+    });
+    if (sheetToo) {
+      const loops: Pt[][] = outline ?? [[[0, 0], [sheet.lengthMm, 0], [sheet.lengthMm, sheet.widthMm], [0, sheet.widthMm]]];
+      for (const lp of loops) for (let k = 0; k < lp.length; k++) seg(lp[k], lp[(k + 1) % lp.length], -1);
+    }
+    return best;
+  };
+  const alignClick = (pt: Pt) => {
+    const al = alignRef.current;
+    if (!al) return;
+    if (!al.fixed) {
+      const e = edgeAt(pt[0], pt[1], true);
+      if (!e) return;
+      setAlign({ fixed: e });
+      setNote("Now click an edge of the part to turn (Esc: cancel)");
+      return;
+    }
+    const e = edgeAt(pt[0], pt[1], false);
+    if (!e || e.part < 0) return;
+    if (e.part === al.fixed.part) { setNote("Pick an edge of another part: that part stays as it is"); return; }
+    const ang = (q: Edge) => (Math.atan2(q.b[1] - q.a[1], q.b[0] - q.a[0]) * 180) / Math.PI;
+    // the smallest turn that makes them parallel (an edge has no direction: modulo 180°)
+    let d = ang(al.fixed) - ang(e);
+    d = ((d % 180) + 180) % 180;
+    if (d > 90) d -= 180;
+    setAlign(null);
+    setEdgeHover(null);
+    if (Math.abs(d) < 0.01) { setNote("Already parallel"); return; }
+    const before = itemsRef.current;
+    // the part, or the selection it is in, turned about the middle of its box
+    const ids = selRef.current.has(e.part) ? [...selRef.current] : [e.part];
+    const boxes = ids.map((i) => geoOf(before, i)?.box).filter((b): b is Box => !!b);
+    const turned = rotateGroup(ids.map((i) => before[i]), boxes, d);
+    const next = before.slice();
+    ids.forEach((i, k) => { next[i] = turned[k]; });
+    commit(next, before);
+    setNote(`Turned ${Math.abs(d).toFixed(1)}° ${d > 0 ? "clockwise" : "counter-clockwise"}`);
+  };
+
   // -- toolbar tools on the selection: Mirror V / H, Stack V / H / grid, Arrange -----------------------
   const [note, setNote] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
@@ -484,6 +552,12 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const runTool = async (t: string) => {
     if (working) return;
     if (!edit) { setNote("The sheet is locked: unlock it to change it."); return; }
+    if (t === "alignEdge") {
+      setPaste(null);
+      setAlign({ fixed: null });
+      setNote("Align edge: click the edge that stays, a part's or the sheet's (Esc: cancel)");
+      return;
+    }
     const before = itemsRef.current;
     const ids = [...selRef.current].filter((i) => before[i] && partPath(before[i].partId)).sort((a, b) => a - b);
     if (!ids.length) { setNote("Select parts first: click a part, or drag a window."); return; }
@@ -600,7 +674,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
 
       <div className="mn-stage">
         <Ruler axis="y" view={v} size={size} />
-        <div ref={host} className={`mn-canvas${hover >= 0 && edit ? " is-over" : ""}${paste ? " is-paste" : ""}`}
+        <div ref={host} className={`mn-canvas${hover >= 0 && edit ? " is-over" : ""}${paste ? " is-paste" : ""}${align ? " is-align" : ""}`}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           onContextMenu={(e) => e.preventDefault()}
           onDragOver={(e) => { if (edit && e.dataTransfer.types.includes("text/gnezdo-part")) e.preventDefault(); }}
@@ -624,6 +698,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                   </path>
                 );
               })}
+              {align?.fixed && <line className="mn-edge is-fixed" x1={align.fixed.a[0]} y1={align.fixed.a[1]} x2={align.fixed.b[0]} y2={align.fixed.b[1]} style={{ strokeWidth: 5 / v.s }} />}
+              {align && edgeHover && <line className="mn-edge" x1={edgeHover.a[0]} y1={edgeHover.a[1]} x2={edgeHover.b[0]} y2={edgeHover.b[1]} style={{ strokeWidth: 5 / v.s }} />}
               {ghost.map(({ p, g }, k) => {
                 const r = byId.get(p.partId)!;
                 const c = partColor(r.no);

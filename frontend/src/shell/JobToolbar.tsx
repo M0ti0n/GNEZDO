@@ -23,6 +23,7 @@ import toolArrange from "./jobtools/tool-arrange.png";
 import toolStackV from "./jobtools/tool-stackV.png";
 import toolStackH from "./jobtools/tool-stackH.png";
 import toolStackGrid from "./jobtools/tool-stackGrid.png";
+import toolAlignEdge from "./jobtools/tool-alignEdge.png";
 import toolNestReport from "./jobtools/tool-nestReport.png";
 import toolCostReport from "./jobtools/tool-costReport.png";
 
@@ -52,6 +53,7 @@ const SECTIONS: Section[] = [
       { id: "stackV", label: "Stack V", icon: toolStackV, ready: true, hint: "Stack V: copies of the selection along Y until the edge or the next part" },
       { id: "stackH", label: "Stack H", icon: toolStackH, ready: true, hint: "Stack H: copies of the selection along X until the edge or the next part" },
       { id: "stackGrid", label: "Stack grid", icon: toolStackGrid, ready: true, hint: "Stack grid: rows and columns of copies of the selection until the edges or other parts" },
+      { id: "alignEdge", label: "Align edge", icon: toolAlignEdge, ready: true, hint: "Align edge: click the edge that stays (a part's or the sheet's), then an edge of the part to turn: it turns until the two are parallel" },
     ],
   },
   { id: "process", label: "Process", icon: tileProcess, tools: [] },
