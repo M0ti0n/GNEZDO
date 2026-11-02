@@ -10,6 +10,10 @@ import {
 } from "../job/manualGeom";
 import { arrange, mirrorGroup, partRules, stack, type PartRules } from "../job/manualTools";
 import { loadNestingRules } from "../job/nestRules";
+import { loadManualView } from "../job/manualView";
+
+/** Ctrl+C: the copied parts, around the middle of their box (kept across sheets of the job). */
+let clipboard: PlacedPart[] | null = null;
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 
@@ -177,10 +181,15 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const ids = selRef.current;
     if (!ids.size) return list;
     switch (a) {
-      case "up": return moved(list, ids, 0, -1);
-      case "down": return moved(list, ids, 0, 1);
-      case "left": return moved(list, ids, -1, 0);
-      case "right": return moved(list, ids, 1, 0);
+      case "up": case "down": case "left": case "right": {
+        // 1 mm, but not past the edge of the usable area (trims): up to it at most; parts may overlap
+        const g = unionBox([...ids].map((i) => geoOf(list, i)?.box).filter((b): b is Box => !!b));
+        if (!isFinite(g.x0)) return list;
+        const room = a === "up" ? g.y0 - usable.y0 : a === "down" ? usable.y1 - g.y1 : a === "left" ? g.x0 - usable.x0 : usable.x1 - g.x1;
+        const d = Math.min(1, room);
+        if (d <= 1e-6) return list;
+        return a === "up" ? moved(list, ids, 0, -d) : a === "down" ? moved(list, ids, 0, d) : a === "left" ? moved(list, ids, -d, 0) : moved(list, ids, d, 0);
+      }
       default: {
         const deg = a === "rotCw1" ? 1 : a === "rotCw45" ? 45 : a === "rotCcw1" ? -1 : -45;
         const idx = [...ids];
@@ -199,7 +208,17 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const busy = (e: KeyboardEvent) => !!document.querySelector(".dlg") || !!(e.target as HTMLElement)?.closest("input, select, textarea");
     const onDown = (e: KeyboardEvent) => {
       if (busy(e) || workingRef.current) return;
-      if (e.key === "Escape") { setSel(new Set()); return; }
+      if (e.key === "Escape") { if (pasteRef.current) { setPaste(null); return; } setSel(new Set()); return; }
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyC" && selRef.current.size) {
+        e.preventDefault();
+        copySel();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyV") {
+        e.preventDefault();
+        if (edit) startPaste();
+        return;
+      }
       if (!edit) return;
       if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
         e.preventDefault();
@@ -265,6 +284,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const [hover, setHover] = useState(-1);
   const onPointerDown = (e: React.PointerEvent) => {
     if (working) return;
+    if (paste) {
+      if (e.button === 0) placePaste(toMm(local(e).x, local(e).y));
+      else setPaste(null);
+      return;
+    }
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const p = local(e);
     if (e.button === 1 || e.button === 2) { pan.current = { x: e.clientX, y: e.clientY }; return; }
@@ -283,6 +307,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     if (!e.shiftKey) setSel(new Set());
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    { const q = local(e); lastPt.current = toMm(q.x, q.y); }
+    if (paste) { setPaste((pp) => pp && { ...pp, at: lastPt.current! }); return; }
     const p = local(e);
     if (pan.current) {
       const dx = e.clientX - pan.current.x, dy = e.clientY - pan.current.y;
@@ -381,6 +407,61 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     commit(next, before);
     setSel(me);
   };
+
+  // -- Ctrl+C / Ctrl+V: the copy hangs on the pointer (see-through) until a click puts it down ----------
+  const [paste, setPaste] = useState<{ parts: PlacedPart[]; at: Pt } | null>(null);
+  const pasteRef = useRef(paste);
+  pasteRef.current = paste;
+  const lastPt = useRef<Pt | null>(null);
+  const copySel = () => {
+    const ids = [...selRef.current].filter((i) => itemsRef.current[i] && geoOf(itemsRef.current, i));
+    if (!ids.length) return;
+    const g = unionBox(ids.map((i) => geoOf(itemsRef.current, i)!.box));
+    const cx = (g.x0 + g.x1) / 2, cy = (g.y0 + g.y1) / 2;
+    clipboard = ids.map((i) => ({ ...itemsRef.current[i], x: itemsRef.current[i].x - cx, y: itemsRef.current[i].y - cy }));
+    setNote(`Copied ${ids.length} ${ids.length === 1 ? "part" : "parts"}: Ctrl+V to paste`);
+  };
+  /** Why the copy may not go on this sheet: a part would go over its required (or max) number. */
+  const overLimit = (parts: PlacedPart[]): string | null => {
+    const per = sheet.cutNumber ?? 1;
+    const n = new Map<string, number>();
+    for (const p of parts) n.set(p.partId, (n.get(p.partId) ?? 0) + per);
+    for (const [id, k] of n) {
+      const jp = jobParts.find((x) => x.part.id === id);
+      if (!jp) continue;
+      const limit = Math.max(jp.qty, jp.qtyMax ?? 0);
+      if ((counts[id] ?? 0) + k > limit) {
+        return `Not pasted: ${jp.part.name} would be ${(counts[id] ?? 0) + k} of ${limit}${jp.qtyMax && jp.qtyMax > jp.qty ? " (max)" : " required"}.`;
+      }
+    }
+    return null;
+  };
+  const startPaste = () => {
+    if (!clipboard?.length || working) return;
+    const why = overLimit(clipboard);
+    if (why) { setNote(why); return; }
+    const at = lastPt.current ?? [sheet.lengthMm / 2, sheet.widthMm / 2];
+    setPaste({ parts: clipboard, at });
+    setNote("Click to put the copy down, Esc to cancel");
+  };
+  const placePaste = (at: Pt) => {
+    const pp = pasteRef.current;
+    if (!pp) return;
+    setPaste(null);
+    const why = overLimit(pp.parts);
+    if (why) { setNote(why); return; }
+    const before = itemsRef.current;
+    const add = pp.parts.map((p) => ({ ...p, x: p.x + at[0], y: p.y + at[1] }));
+    const next = [...before, ...add];
+    commit(next, before);
+    setSel(new Set(add.map((_, k) => before.length + k)));
+    setNote(`Pasted ${add.length} ${add.length === 1 ? "part" : "parts"}`);
+  };
+  useEffect(() => { setPaste(null); }, [index]);
+  const ghost = useMemo(() => paste?.parts.flatMap((p) => {
+    const path = byId.get(p.partId)?.path;
+    return path ? [{ p, g: placed(path, { ...p, x: p.x + paste.at[0], y: p.y + paste.at[1] }) }] : [];
+  }) ?? [], [paste, byId]);
 
   // -- toolbar tools on the selection: Mirror V / H, Stack V / H / grid, Arrange -----------------------
   const [note, setNote] = useState<string | null>(null);
@@ -519,7 +600,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
 
       <div className="mn-stage">
         <Ruler axis="y" view={v} size={size} />
-        <div ref={host} className={`mn-canvas${hover >= 0 && edit ? " is-over" : ""}`}
+        <div ref={host} className={`mn-canvas${hover >= 0 && edit ? " is-over" : ""}${paste ? " is-paste" : ""}`}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           onContextMenu={(e) => e.preventDefault()}
           onDragOver={(e) => { if (edit && e.dataTransfer.types.includes("text/gnezdo-part")) e.preventDefault(); }}
@@ -542,6 +623,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                     <title>{r.name}</title>
                   </path>
                 );
+              })}
+              {ghost.map(({ p, g }, k) => {
+                const r = byId.get(p.partId)!;
+                const c = partColor(r.no);
+                return <path key={`g${k}`} className="mn-ghost" d={pathOf(g.loops)} fillRule="evenodd" style={{ fill: c.fill, stroke: c.stroke, strokeWidth: 1 / v.s }} />;
               })}
               <circle cx={right ? sheet.lengthMm : 0} cy={bottom ? sheet.widthMm : 0} r={6 / v.s} className="mn-origin" />
             </g>
@@ -663,7 +749,7 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
           )}
         </span>
       </div>
-      <div className="mn-tiles">
+      <div className={`mn-tiles cols-${loadManualView().tileColumns}`}>
         {!list.length && <p className="mn-none">{all ? "No parts in the job." : `No parts of ${sheet.material} ${sheet.thicknessMm} mm. The menu shows all parts.`}</p>}
         {list.map((jp) => {
           const n = counts[jp.part.id] ?? 0;
@@ -673,8 +759,14 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
           const c = partColor(jp.no);
           return (
             <div key={jp.part.id} className={`mn-tile${jp.qty > 0 && n >= jp.qty ? " is-done" : ""}${edit ? "" : " is-off"}`} draggable={edit}
-              title={`${jp.part.name}: drag onto the sheet (Ctrl on a part: next to it)`}
-              onDragStart={(e) => { e.dataTransfer.setData("text/gnezdo-part", jp.part.id); e.dataTransfer.effectAllowed = "copy"; }}>
+              title={`${jp.part.name}\nDrag onto the sheet (Ctrl on a part: next to it)`}
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/gnezdo-part", jp.part.id);
+                e.dataTransfer.effectAllowed = "copy";
+                // only the part's picture under the pointer, not the whole tile
+                const pic = e.currentTarget.querySelector("svg");
+                if (pic) { const r = pic.getBoundingClientRect(); e.dataTransfer.setDragImage(pic, r.width / 2, r.height / 2); }
+              }}>
               <svg viewBox={`${x0 - w * 0.08} ${y0 - h * 0.08} ${w * 1.16} ${h * 1.16}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
                 <path d={jp.part.path} fillRule="evenodd" style={{ fill: c.fill, stroke: c.stroke }} vectorEffect="non-scaling-stroke" />
               </svg>

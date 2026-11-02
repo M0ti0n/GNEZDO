@@ -5,12 +5,13 @@ import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
 import { ORIGINS, TECHNOLOGIES, newMachine, type Machine, type MachineList } from "../job/machine";
 import { DEFAULT_KEYS, KEY_ACTIONS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
+import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
 type Section = "stock" | "machine" | "keys";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock", ready: true },
   { id: "machine", label: "Machines", ready: true },
-  { id: "keys", label: "Manual nest keys", ready: true },
+  { id: "keys", label: "Manual nest", ready: true },
 ];
 
 // GNEZDO menu -> Settings. Stock: the global sheet size and the three default sheet slots.
@@ -191,6 +192,8 @@ function KeysSettings() {
   const [keys, setKeysState] = useState<KeyMap>(loadKeys);
   const [wait, setWait] = useState<{ a: KeyAction; k: 0 | 1 } | null>(null);
   const setKeys = (k: KeyMap) => { setKeysState(k); saveKeys(k); };
+  const [view, setViewState] = useState<ManualView>(loadManualView);
+  const setView = (v: ManualView) => { setViewState(v); saveManualView(v); };
   const capture = (e: React.KeyboardEvent) => {
     if (!wait) return;
     e.preventDefault();
@@ -209,9 +212,10 @@ function KeysSettings() {
   return (
     <div className="settings-main">
       <header className="settings-head">
-        <h2>Manual nest keys</h2>
+        <h2>Manual nest</h2>
         <p>Keys that move and turn the selected parts in manual nesting: a press moves 1 mm or turns 1°, held down 10 steps a second.
-          Ctrl + a move key slides the parts up to the next part or the edge (keeping the gaps). Kept in this browser.</p>
+          A move stops at the sheet edge (the trims); parts may be moved over each other. Ctrl + a move key slides the parts up to the next part
+          or the edge (keeping the gaps). Kept in this browser.</p>
       </header>
       <section className="rule">
         <div className="keys-table" role="table" aria-label="Manual nest keys">
@@ -232,11 +236,19 @@ function KeysSettings() {
             </div>
           ))}
         </div>
-        <p className="rule-help">Delete removes the selected parts, Ctrl+A selects all, Ctrl+Z / Ctrl+Y undo and redo, Esc clears the selection.
+        <p className="rule-help">Delete removes the selected parts, Ctrl+A selects all, Ctrl+C / Ctrl+V copy and paste them (the copy follows the pointer
+          until a click puts it down; not over a part's required or max number), Ctrl+Z / Ctrl+Y undo and redo, Esc clears the selection.
           Numpad keys work with Num Lock on or off.</p>
       </section>
+      <section className="rule">
+        <h3>Job parts list</h3>
+        <div className="rule-row" role="radiogroup" aria-label="Job parts list">
+          <label className="chk"><input type="radio" name="mn-cols" checked={view.tileColumns === 2} onChange={() => setView({ tileColumns: 2 })} /> Two columns (names cut, the whole name on hover)</label>
+          <label className="chk"><input type="radio" name="mn-cols" checked={view.tileColumns === 1} onChange={() => setView({ tileColumns: 1 })} /> One column of wider tiles (whole names)</label>
+        </div>
+      </section>
       <footer className="settings-foot">
-        <button type="button" className="btn btn-plain" onClick={() => setKeys(DEFAULT_KEYS)}>Reset to defaults</button>
+        <button type="button" className="btn btn-plain" onClick={() => { setKeys(DEFAULT_KEYS); setView(DEFAULT_MANUAL_VIEW); }}>Reset to defaults</button>
       </footer>
     </div>
   );
