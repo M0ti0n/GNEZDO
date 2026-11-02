@@ -23,6 +23,14 @@ def find_binary(path: str | None = None) -> str:
     return found
 
 
+def _used(sol):
+    """The solution without bins that hold no parts (a sheet given with parts already on it as
+    obstacles, continuing a solution, comes back without "items" when nothing was added to it)."""
+    if sol and sol.get("bins"):
+        sol["bins"] = [b for b in sol["bins"] if b.get("items")]
+    return sol
+
+
 def solve(instance: dict, binary: str, time_limit: float = 2.0,
           mode: str = "not-anytime-deterministic", workdir: str | None = None,
           keep: bool = False, extra_args: list[str] | None = None) -> dict:
@@ -45,7 +53,7 @@ def solve(instance: dict, binary: str, time_limit: float = 2.0,
     if r.returncode != 0 or not os.path.exists(sol_p):
         raise RuntimeError(f"solver failed ({r.returncode}): {r.stderr[-2000:]}")
     with open(sol_p) as f:
-        sol = json.load(f)
+        sol = _used(json.load(f))
     out = {}
     if os.path.exists(out_p):
         with open(out_p) as f:
@@ -82,7 +90,7 @@ def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
     def read():
         try:
             with open(sol_p) as f:
-                sol = json.load(f)
+                sol = _used(json.load(f))
             return sol if sol and sol.get("bins") else None
         except (OSError, ValueError):
             return None  # not there yet, or being written

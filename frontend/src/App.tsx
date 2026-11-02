@@ -24,7 +24,7 @@ import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
-import { buildRequest, countsOf, isFinished, nestApi, nestProblem, nestsOfJob, solutionsFromSaved, type NestMode, type NestRun, type NestedSheet, type Solution } from "./job/nest";
+import { buildRequest, continuedSheets, countsOf, isFinished, missingParts, nestApi, nestProblem, nestsOfJob, solutionsFromSaved, type NestMode, type NestRun, type NestedSheet, type Solution } from "./job/nest";
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
@@ -53,7 +53,7 @@ export function App() {
   // every nesting run of a job tab ("solutions"), the one shown, and which screen the tab shows
   const [jobSol, setJobSol] = useState<Record<string, { list: Solution[]; sel: NestSelection } | undefined>>({});
   const [jobScreen, setJobScreen] = useState<Record<string, "parts" | "nest" | undefined>>({});
-  const [customFor, setCustomFor] = useState<string | null>(null);
+  const [customFor, setCustomFor] = useState<{ jobId: string; fresh: boolean } | null>(null);
   const [stockSettings, setStockSettingsState] = useState<StockSettings>(loadStockSettings);
   // machines: shared on the server (the browser keeps a copy, and is all there is in the demo)
   const [machines, setMachinesState] = useState<MachineList>(loadLocalMachines);
@@ -411,6 +411,18 @@ export function App() {
     setJobSol((m) => ({ ...m, [jobId]: f(m[jobId] ?? { list: [], sel: { sol: null, sheet: 0 } }) }));
   const patchSol = (jobId: string, id: string, f: (s: Solution) => Solution) =>
     setSols(jobId, (st) => ({ ...st, list: st.list.map((x) => (x.id === id ? f(x) : x)) }));
+  /** A run continuing a solution: its sheets merged into that solution's sheets. */
+  const mergeRun = (run: NestRun, base: NestedSheet[] | undefined): NestRun => {
+    if (!base) return run;
+    const best = run.best ? { sheets: continuedSheets(base, run.best.sheets) } : run.best;
+    const result = run.result ? (() => {
+      const sheets = continuedSheets(base, run.result.sheets);
+      const nested: Record<string, number> = {};
+      for (const sh of sheets) for (const p of sh.parts) nested[p.partId] = (nested[p.partId] ?? 0) + 1;
+      return { ...run.result, sheets, nested };
+    })() : run.result;
+    return { ...run, best, result };
+  };
   const pollNest = async (jobId: string, solId: string, runId: string) => {
     for (let fails = 0; ;) {
       await new Promise((r) => setTimeout(r, 1000));
@@ -421,7 +433,14 @@ export function App() {
         patchSol(jobId, solId, (x) => ({ ...x, error: (e as Error).message }));
         return;
       }
-      patchSol(jobId, solId, (x) => ({ ...x, run }));
+      patchSol(jobId, solId, (x) => {
+        if (!x.base) return { ...x, run };
+        if (!isFinished(run)) return { ...x, run: mergeRun(run, x.base) };
+        // continuing a solution: done, the new layout replaces it; failed, it stays as it was
+        if (run.result?.sheets && run.state !== "error") return { ...x, run: mergeRun(run, x.base), prev: undefined, base: undefined };
+        setToast(`Solution ${x.no} not continued: ${run.error ?? run.result?.errors?.[0] ?? "the nest failed"}`);
+        return { ...x, run: x.prev ?? null, prev: undefined, base: undefined };
+      });
       if (isFinished(run)) {
         // a finished solution with sheets is shown
         if (run.result?.sheets.length) setSols(jobId, (st) => ({ ...st, sel: { sol: solId, sheet: 0 } }));
@@ -429,9 +448,14 @@ export function App() {
       }
     }
   };
-  const startNest = async (jobId: string, mode: NestMode, custom?: CustomNestSettings) => {
+  // Fast / Thorough / Custom: with a finished solution selected, the nest continues it (what is on
+  // its sheets stays, the parts still missing are added); without one, or with fresh (Add new
+  // solution), a new solution from blank
+  const startNest = async (jobId: string, mode: NestMode, custom?: CustomNestSettings, fresh = false) => {
     const st = solsOf(jobId);
     if (st.list.some((x) => !x.error && !isFinished(x.run))) { setToast("A solution is running; start the next one when it is done"); return; }
+    const base = fresh ? undefined : st.list.find((x) => x.id === st.sel.sol && !x.error && !x.outdated && isFinished(x.run) && x.run?.result?.sheets.length);
+    if (base) { void continueNest(jobId, base, mode, custom); return; }
     const problem = nestProblem(jobParts[jobId], jobStock[jobId] ?? []);
     if (problem) { setToast(problem); return; }
     const id = `sol${Date.now().toString(36)}`;
@@ -449,6 +473,37 @@ export function App() {
       void pollNest(jobId, id, run.id);
     } catch (e) {
       patchSol(jobId, id, (x) => ({ ...x, error: (e as Error).message }));
+    }
+  };
+  const continueNest = async (jobId: string, base: Solution, mode: NestMode, custom?: CustomNestSettings) => {
+    const sheets = base.run!.result!.sheets;
+    const parts = jobParts[jobId] ?? [];
+    const missing = missingParts(parts, sheets);
+    if (!missing.length) { setToast(`Solution ${base.no}: all parts are nested. For a new layout use Add new solution`); return; }
+    const pathOf = new Map<string, string>(parts.map((jp) => [jp.part.id, jp.part.path]));
+    // its sheets that may take more parts: not locked, cut once
+    const fixed = sheets.flatMap((sh, index) => base.locked.includes(index) || (sh.cutNumber ?? 1) !== 1 ? [] : [{
+      index, id: sh.sheetId, material: sh.material, thicknessMm: sh.thicknessMm, lengthMm: sh.lengthMm, widthMm: sh.widthMm,
+      outline: sh.outline, trims: sh.trims, partGapMm: sh.partGapMm, kerfMm: sh.kerfMm,
+      parts: sh.parts.flatMap((p) => { const path = pathOf.get(p.partId); return path ? [{ path, x: p.x, y: p.y, angle: p.angle, mirror: p.mirror }] : []; }),
+    }]);
+    const stock = jobStock[jobId] ?? [];
+    const problem = nestProblem(missing, stock);
+    if (problem && !fixed.some((f) => missing.some((jp) => jp.part.material.trim().toLowerCase() === f.material.trim().toLowerCase() && Math.abs(jp.part.thicknessMm - f.thicknessMm) < 1e-6))) {
+      setToast(problem);
+      return;
+    }
+    patchSol(jobId, base.id, (x) => ({ ...x, prev: x.run ?? undefined, base: sheets, run: null, mode, custom, startedAt: Date.now() }));
+    setJobScreen((m) => ({ ...m, [jobId]: "nest" }));
+    try {
+      const req = await buildRequest(missing, stock, mode, custom, base.origin ?? machineFor(jobId).origin);
+      req.fixedSheets = fixed;
+      const run = await nestApi.start(req);
+      patchSol(jobId, base.id, (x) => ({ ...x, run }));
+      void pollNest(jobId, base.id, run.id);
+    } catch (e) {
+      setToast(`Solution ${base.no} not continued: ${(e as Error).message}`);
+      patchSol(jobId, base.id, (x) => ({ ...x, run: x.prev ?? null, prev: undefined, base: undefined }));
     }
   };
   const stopNest = async (jobId: string, solId: string) => {
@@ -613,7 +668,7 @@ export function App() {
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (tool === "fastNest") void startNest(job.id, "fast");
     else if (tool === "thoroughNest") void startNest(job.id, "thorough");
-    else if (tool === "customNest") { if (custom) void startNest(job.id, "custom", custom); else setCustomFor(job.id); }
+    else if (tool === "customNest") { if (custom) void startNest(job.id, "custom", custom); else setCustomFor({ jobId: job.id, fresh: false }); }
   };
 
   return (
@@ -659,7 +714,7 @@ export function App() {
                 solutions={solsOf(job.id).list}
                 selected={solsOf(job.id).sel}
                 onSelect={(sel) => setSols(job.id, (st) => ({ ...st, sel }))}
-                onAdd={(mode) => (mode === "custom" ? setCustomFor(job.id) : void startNest(job.id, mode))}
+                onAdd={(mode) => (mode === "custom" ? setCustomFor({ jobId: job.id, fresh: true }) : void startNest(job.id, mode, undefined, true))}
                 onStop={(id) => void stopNest(job.id, id)}
                 onRemove={(id) => setRemovingSol({ jobId: job.id, id })}
                 machine={machineFor(job.id)}
@@ -736,7 +791,7 @@ export function App() {
             {newJobOpen && <NewJobDialog defaultName={newJobOpen} machines={machines} onCreate={createJob} onCancel={() => setNewJobOpen(null)} />}
             {customFor && (
               <CustomNestDialog onCancel={() => setCustomFor(null)}
-                onStart={(c) => { const id = customFor; setCustomFor(null); void startNest(id, "custom", c); }} />
+                onStart={(c) => { const cf = customFor; setCustomFor(null); void startNest(cf.jobId, "custom", c, cf.fresh); }} />
             )}
             {active.kind === "jobSearch" && (
               <JobSearchPage filter={jobSearch.filter} run={jobSearch.run} onOpenJob={openJob}
