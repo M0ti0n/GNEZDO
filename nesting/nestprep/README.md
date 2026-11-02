@@ -79,11 +79,17 @@ Options: `--min-hole` (60 mm), `--sub-time` (0.3 s per hole), `--pair-time`,
    plate, a host already filled) gets other parts into its box: the box is a
    knapsack bin, the big part an obstacle in it, profit area^1.2 so the biggest
    parts that fit go first. The box may grow by the block margin (10 %) on one
-   side; the fullest variant wins. A block is kept when it fills ≥ 70 % of its
-   box and 0.08 more than the part alone. Big parts take turns, one copy each,
-   so they share the parts that fit them. Test job (1236 pieces, 2 CPU threads,
-   Thorough): 23 sheets / 22.33 sheet equivalents without blocks; 22 sheets /
-   21.3-21.7 with a 5-20 % margin; 22.11 with 0 %.
+   side (only the 1-2 sides where pockets open); the fullest variant wins. A
+   block is kept when it fills ≥ 70 % of its box and 0.08 more than the part alone.
+   All blocks are worked out at once: first the parts are shared out (a free-space
+   map of every big part's box gives its pockets; a kind with enough copies is
+   split by pocket area x copies, whole copies of scarce kinds go, biggest first,
+   to the tightest pocket that holds them), then every block is one solver job,
+   all in parallel; copies left plain get one more parallel round with the parts
+   still free. Test job (1236 pieces, 2 CPU threads, Thorough, 10 % margin):
+   23 sheets / 22.33 sheet equivalents without blocks; 22 / 21.65 with blocks
+   taking turns (block step 33 s); 22 / 21.28-21.38 with the parallel blocks
+   (block step 14-16 s).
 6. Self-checks: every sub-solve result is compared against the solver's own
    transformed shapes, and the copy count of every original type is asserted.
 
