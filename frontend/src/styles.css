@@ -1632,3 +1632,15 @@ html.is-busy, html.is-busy * { cursor: progress !important; }
 .mn-canvas.is-paste { cursor: copy; }
 .mn-tile.is-done { background: #e6f6dc; border-color: #b7deA0; }
 .mn-tile.is-done:hover { border-color: var(--green); }
+
+/* Top bar: how busy the server is */
+.srv-load { align-self: center; display: flex; align-items: center; gap: 6px; margin: 0 6px 0 2px; padding: 0 8px; height: 30px; border-radius: 7px; background: rgba(255,255,255,.08); color: #e7f2ec; font-size: 12px; font-weight: 600; cursor: default; flex: none; }
+.srv-label { letter-spacing: .04em; opacity: .8; }
+.srv-bar { width: 44px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.2); overflow: hidden; }
+.srv-bar i { display: block; height: 100%; border-radius: 4px; transition: width .6s ease; }
+.srv-load.is-low .srv-bar i { background: #5ccf6c; }
+.srv-load.is-mid .srv-bar i { background: #f2b33a; }
+.srv-load.is-high .srv-bar i { background: #f05a4a; }
+.srv-load.is-high .srv-pct { color: #ffb4a8; }
+.srv-pct { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.srv-nests { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #f2a33a; color: #1d2b24; font-size: 11px; display: grid; place-items: center; }
