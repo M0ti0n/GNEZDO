@@ -705,3 +705,257 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Arrange again: the search goes on from the layout the parts have now (ruin and recreate). A few
+// parts, most of all those that make the group's box as big as it is, are taken out and put back
+// in the best place left (inside the box first, any allowed turn); the change stays when the box
+// gets smaller. Again and again while there is time; each time with other picks. On a grid of the
+// group's own window (finer cells than over the whole sheet).
+// ---------------------------------------------------------------------------------------------
+
+export async function arrangeAgain(inp: ArrangeInput & { round: number }): Promise<PlacedPart[]> {
+  const { list, ids, pathOf, rules, lengthMm: L, widthMm: W, usable, outline, edgeGap, gap, origin } = inp;
+  const pause = breather();
+  const t0 = performance.now(), end = t0 + (inp.budgetMs ?? 1500) - Math.min(150, 40 + 4 * ids.length);
+  const right = origin.endsWith("right"), bottom = origin.startsWith("bottom");
+  const toUV = ([x, y]: Pt): Pt => [right ? L - x : x, bottom ? W - y : y];
+  const chosen = ids.filter((i) => pathOf(list[i].partId));
+  if (chosen.length < 2) return list;
+  const sel = new Set(chosen);
+  const ruleOf = (id: string) => rules.get(id) ?? { rotations: [90], mirror: false };
+  const loopsUV = (p: PlacedPart) => { const f = transform(p); return partLoops(pathOf(p.partId)!).map((lp) => lp.map((q) => toUV(f(q)))); };
+  const boxOf = (lps: Pt[][]) => {
+    let a0 = Infinity, b0 = Infinity, a1 = -Infinity, b1 = -Infinity;
+    for (const lp of lps) for (const [a, b] of lp) { a0 = Math.min(a0, a); b0 = Math.min(b0, b); a1 = Math.max(a1, a); b1 = Math.max(b1, b); }
+    return { a0, b0, a1, b1 };
+  };
+
+  // the window: the group's box and some room around it, inside the usable area
+  const cur = chosen.map((li) => ({ li, loops: loopsUV(list[li]) }));
+  const G = cur.reduce((u, q) => { const b = boxOf(q.loops); return { a0: Math.min(u.a0, b.a0), b0: Math.min(u.b0, b.b0), a1: Math.max(u.a1, b.a1), b1: Math.max(u.b1, b.b1) }; },
+    { a0: Infinity, b0: Infinity, a1: -Infinity, b1: -Infinity });
+  const big = Math.max(...cur.map((q) => { const b = boxOf(q.loops); return Math.max(b.a1 - b.a0, b.b1 - b.b0); }));
+  const margin = Math.max(0.25 * Math.max(G.a1 - G.a0, G.b1 - G.b0), big);
+  const [ua0, va0] = toUV([right ? usable.x1 : usable.x0, bottom ? usable.y1 : usable.y0]);
+  const [ua1, va1] = toUV([right ? usable.x0 : usable.x1, bottom ? usable.y0 : usable.y1]);
+  const wa0 = Math.max(ua0, G.a0 - margin), wb0 = Math.max(va0, G.b0 - margin);
+  const wa1 = Math.min(ua1, G.a1 + margin), wb1 = Math.min(va1, G.b1 + margin);
+  const c = Math.max(0.4, Math.sqrt(((wa1 - wa0) * (wb1 - wb0)) / 0.5e6));
+  const k = Math.ceil(gap / c) + 1;
+  const na = Math.max(1, Math.ceil((wa1 - wa0) / c)), nb = Math.max(1, Math.ceil((wb1 - wb0) / c));
+  const loc = (lps: Pt[][]) => lps.map((lp) => lp.map(([a, b]): Pt => [a - wa0, b - wb0]));
+
+  // what does not move: outside the usable area, the sheet's outline, the other parts (grown by the gap)
+  const base = new Uint8Array(na * nb);
+  for (let r = 0; r < na; r++) for (let q = 0; q < nb; q++) {
+    const a = wa0 + r * c, b = wb0 + q * c;
+    if (a < ua0 - 1e-9 || a + c > ua1 + 1e-9 || b < va0 - 1e-9 || b + c > va1 + 1e-9) base[r * nb + q] = 1;
+  }
+  if (outline?.length) {
+    const m = new Uint8Array(na * nb), e = new Uint8Array(na * nb);
+    const lps = loc(outline.map((lp) => lp.map((p) => toUV(p))));
+    raster(lps, c, na, nb, m);
+    for (const lp of lps) for (let i = 0; i < lp.length; i++) {
+      const p = lp[i], q = lp[(i + 1) % lp.length];
+      const n = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / (c / 3)));
+      for (let j = 0; j <= n; j++) {
+        const ia = Math.floor((p[0] + ((q[0] - p[0]) * j) / n) / c), ib = Math.floor((p[1] + ((q[1] - p[1]) * j) / n) / c);
+        if (ia >= 0 && ia < na && ib >= 0 && ib < nb) e[ia * nb + ib] = 1;
+      }
+    }
+    const off = new Uint8Array(na * nb);
+    for (let i = 0; i < off.length; i++) off[i] = !m[i] || e[i] ? 1 : 0;
+    const g = grow(off, na, nb, edgeGap, c);
+    for (let i = 0; i < base.length; i++) base[i] |= g[i];
+  }
+  {
+    const m = new Uint8Array(na * nb);
+    list.forEach((p, i) => {
+      if (sel.has(i) || !pathOf(p.partId)) return;
+      const lps = loopsUV(p), b = boxOf(lps);
+      if (b.a1 < wa0 - gap || b.a0 > wa1 + gap || b.b1 < wb0 - gap || b.b0 > wb1 + gap) return;
+      raster(loc(lps), c, na, nb, m);
+    });
+    const g = grow(m, na, nb, gap, c);
+    for (let i = 0; i < base.length; i++) base[i] |= g[i];
+  }
+
+  /** The cells a shape takes, grown by the gap (indices into the window grid), from its loops in window mm. */
+  const footprint = (lps: Pt[][]): Int32Array => {
+    const b = boxOf(lps);
+    const r0 = Math.max(0, Math.floor(b.a0 / c) - k - 1), r1 = Math.min(na - 1, Math.ceil(b.a1 / c) + k + 1);
+    const q0 = Math.max(0, Math.floor(b.b0 / c) - k - 1), q1 = Math.min(nb - 1, Math.ceil(b.b1 / c) + k + 1);
+    const ha = r1 - r0 + 1, hb = q1 - q0 + 1;
+    if (ha <= 0 || hb <= 0) return new Int32Array(0);
+    const m = new Uint8Array(ha * hb);
+    raster(lps.map((lp) => lp.map(([a, bb]): Pt => [a - r0 * c, bb - q0 * c])), c, ha, hb, m);
+    const g = grow(m, ha, hb, gap, c);
+    const out: number[] = [];
+    for (let r = 0; r < ha; r++) for (let q = 0; q < hb; q++) if (g[r * hb + q]) out.push((r + r0) * nb + q + q0);
+    return Int32Array.from(out);
+  };
+
+  // the masks of the parts in their poses (window grid; translation 0: lowest a, b at the cell corner)
+  type M = { na: number; nb: number; runs: Int32Array[]; dil: Uint8Array; offA: number; offB: number; extA: number; extB: number; angle: number; mirror: boolean };
+  const masks = new Map<string, M>();
+  const maskOf = (id: string, angle: number, mirror: boolean): M => {
+    const key = `${id}|${angle}|${mirror}`;
+    let m = masks.get(key);
+    if (m) return m;
+    const f = transform({ x: 0, y: 0, angle, mirror });
+    const lps = partLoops(pathOf(id)!).map((lp) => lp.map((q) => toUV(f(q))));
+    const b = boxOf(lps);
+    const mna = Math.floor((b.a1 - b.a0) / c) + 1, mnb = Math.floor((b.b1 - b.b0) / c) + 1;
+    const cells = new Uint8Array(mna * mnb);
+    raster(lps.map((lp) => lp.map(([a, bb]): Pt => [a - b.a0, bb - b.b0])), c, mna, mnb, cells);
+    const runs: Int32Array[] = [];
+    for (let r = 0; r < mna; r++) {
+      const rr: number[] = [];
+      for (let q = 0; q < mnb; q++) if (cells[r * mnb + q]) { let e = q; while (e + 1 < mnb && cells[r * mnb + e + 1]) e++; rr.push(q, e); q = e; }
+      runs.push(Int32Array.from(rr));
+    }
+    const DA = mna + 2 * k, DB = mnb + 2 * k, pad = new Uint8Array(DA * DB);
+    for (let r = 0; r < mna; r++) for (let q = 0; q < mnb; q++) pad[(r + k) * DB + q + k] = cells[r * mnb + q];
+    m = { na: mna, nb: mnb, runs, dil: grow(pad, DA, DB, gap, c), offA: b.a0, offB: b.b0, extA: b.a1 - b.a0, extB: b.b1 - b.b0, angle, mirror };
+    masks.set(key, m);
+    return m;
+  };
+  const maskFoot = (m: M, ia: number, ib: number): Int32Array => {
+    const DA = m.na + 2 * k, DB = m.nb + 2 * k, out: number[] = [];
+    for (let r = 0; r < DA; r++) { const row = ia - k + r; if (row < 0 || row >= na) continue;
+      for (let q = 0; q < DB; q++) { const col = ib - k + q; if (col < 0 || col >= nb || !m.dil[r * DB + q]) continue; out.push(row * nb + col); } }
+    return Int32Array.from(out);
+  };
+  const posesOf = (p: PlacedPart) => {
+    const r = ruleOf(p.partId), out: { angle: number; mirror: boolean }[] = [];
+    for (const mir of r.mirror || p.mirror ? [false, true] : [false]) {
+      if (mir && !r.mirror && !p.mirror) continue;
+      const angles: number[] = [];
+      const add = (a: number) => { if (!angles.some((o) => Math.abs(((o - a + 540) % 360) - 180) > 179.5)) angles.push(a); };
+      anglesOf(r).forEach(add);
+      add(norm(p.angle));
+      const f = transform({ x: 0, y: 0, angle: 0, mirror: mir });
+      edgeAngles(partLoops(pathOf(p.partId)!).map((lp) => lp.map(f))).forEach(add);
+      for (const a of angles) out.push({ angle: a, mirror: mir });
+    }
+    return out;
+  };
+
+  // the layout as it is: each part's cells and its box (window mm)
+  type S = { foot: Int32Array; box: { a0: number; b0: number; a1: number; b1: number }; at?: { m: M; ia: number; ib: number } };
+  let state: S[] = cur.map((q) => { const l = loc(q.loops); return { foot: footprint(l), box: boxOf(l) }; });
+  const areaOf = (st: S[]) => {
+    let a0 = Infinity, b0 = Infinity, a1 = -Infinity, b1 = -Infinity;
+    let sum = 0;
+    for (const s of st) { a0 = Math.min(a0, s.box.a0); b0 = Math.min(b0, s.box.b0); a1 = Math.max(a1, s.box.a1); b1 = Math.max(b1, s.box.b1); sum += s.box.a1 + s.box.b1; }
+    // far: how far the parts reach from 0,0 together (a step that keeps the box but packs tighter counts too)
+    return { area: (a1 - a0) * (b1 - b0), far: sum, a0, b0, a1, b1 };
+  };
+  let now = areaOf(state);
+  const occ = new Uint8Array(na * nb), last = new Int32Array(na * nb);
+
+  const find = (m: M, bHi: number, aLo = 0, aHi = Infinity, bLo = 0): [number, number] | null => {
+    const lim = Math.min(bHi, nb);
+    for (let ia = Math.max(0, aLo); ia + m.na <= Math.min(na, aHi); ia++) {
+      let ib = Math.max(0, bLo);
+      while (ib + m.nb <= lim) {
+        let jump = -1;
+        for (let r = 0; r < m.na && jump < 0; r++) {
+          const rr = m.runs[r], row = (ia + r) * nb + ib;
+          for (let j = 0; j < rr.length; j += 2) { const t = last[row + rr[j + 1]]; if (t >= ib + rr[j]) { jump = t - rr[j] + 1; break; } }
+        }
+        if (jump < 0) return [ia, ib];
+        ib = jump;
+      }
+    }
+    return null;
+  };
+  const take = (foot: Int32Array) => {
+    let lo = na, hi = -1;
+    for (const i of foot) { occ[i] = 1; const r = (i / nb) | 0; lo = Math.min(lo, r); hi = Math.max(hi, r); }
+    for (let r = lo; r <= hi; r++) { let l = -1; for (let q = 0; q < nb; q++) { if (occ[r * nb + q]) l = q; last[r * nb + q] = l; } }
+  };
+
+  let seed = 977 + 7919 * inp.round;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  let improved = false, sideways = false;
+  while (performance.now() < end) {
+    await pause();
+    // what to take out: one part that makes the box as big as it is (on its far sides), and up to two near it
+    const n = state.length;
+    const edge = state.map((_, i) => i).filter((i) => state[i].box.a1 >= now.a1 - c || state[i].box.b1 >= now.b1 - c);
+    const pick = new Set<number>([edge.length && rnd() < 0.8 ? edge[Math.floor(rnd() * edge.length)] : Math.floor(rnd() * n)]);
+    const extra = Math.floor(rnd() * 3);
+    const p0 = [...pick][0], cx = (state[p0].box.a0 + state[p0].box.a1) / 2, cy = (state[p0].box.b0 + state[p0].box.b1) / 2;
+    const near = state.map((s, i) => ({ i, d: Math.hypot((s.box.a0 + s.box.a1) / 2 - cx, (s.box.b0 + s.box.b1) / 2 - cy) })).filter((q) => q.i !== p0).sort((x, y) => x.d - y.d);
+    for (let j = 0; j < extra && j < near.length; j++) pick.add(near[Math.floor(rnd() * Math.min(near.length, 4))].i);
+    // the rest stays where it is
+    occ.set(base);
+    const keep = state.filter((_, i) => !pick.has(i));
+    for (const s of keep) for (const i of s.foot) occ[i] = 1;
+    lastTaken(occ, na, nb, last);
+    let box = areaOf(keep.length ? keep : [state[p0]]);
+    const trial = state.slice();
+    let ok = true;
+    const order = [...pick].sort((x, y) => (state[y].box.a1 - state[y].box.a0) * (state[y].box.b1 - state[y].box.b0) - (state[x].box.a1 - state[x].box.a0) * (state[x].box.b1 - state[x].box.b0) || rnd() - 0.5);
+    for (const i of order) {
+      const p = list[chosen[i]];
+      let best: { m: M; ia: number; ib: number; key: number; key2: number } | null = null;
+      const ca0 = Math.floor(box.a0 / c), ca1 = Math.ceil(box.a1 / c) + 1, cb0 = Math.floor(box.b0 / c), cb1 = Math.ceil(box.b1 / c) + 1;
+      const ps = posesOf(p);
+      for (const pose of ps) {      // inside the box of what is there first
+        const m = maskOf(p.partId, pose.angle, pose.mirror);
+        if (m.na > ca1 - ca0 || m.nb > cb1 - cb0) continue;
+        const f = find(m, cb1, ca0, ca1, cb0);
+        if (f && (!best || f[0] + m.na < best.key || (f[0] + m.na === best.key && f[1] + m.nb < best.key2))) best = { m, ia: f[0], ib: f[1], key: f[0] + m.na, key2: f[1] + m.nb };
+      }
+      if (!best) for (const pose of ps) {
+        const m = maskOf(p.partId, pose.angle, pose.mirror);
+        const f = find(m, nb);
+        if (!f) continue;
+        const a0 = Math.min(box.a0, f[0] * c), a1 = Math.max(box.a1, f[0] * c + m.extA), b0 = Math.min(box.b0, f[1] * c), b1 = Math.max(box.b1, f[1] * c + m.extB);
+        const key = (a1 - a0) * (b1 - b0), key2 = a1 + b1;
+        if (!best || key < best.key || (key === best.key && key2 < best.key2)) best = { m, ia: f[0], ib: f[1], key, key2 };
+      }
+      if (!best) { ok = false; break; }
+      const foot = maskFoot(best.m, best.ia, best.ib);
+      take(foot);
+      const b = { a0: best.ia * c, b0: best.ib * c, a1: best.ia * c + best.m.extA, b1: best.ib * c + best.m.extB };
+      trial[i] = { foot, box: b, at: { m: best.m, ia: best.ia, ib: best.ib } };
+      box = { ...box, a0: Math.min(box.a0, b.a0), b0: Math.min(box.b0, b.b0), a1: Math.max(box.a1, b.a1), b1: Math.max(box.b1, b.b1), area: 0, far: 0 };
+    }
+    if (!ok) continue;
+    const t = areaOf(trial);
+    const same = Math.abs(t.area - now.area) <= now.area * 1e-4;
+    if ((t.area < now.area && !same) || (same && t.far < now.far - c)) {
+      if (!same) improved = true;
+      state = trial; now = t;
+      if (same) sideways = true;
+    }
+  }
+  if (!improved && !sideways) return list;
+
+  // back to the sheet: the parts that moved go to their cells; then slid towards 0,0 on their outlines
+  const out = list.slice();
+  state.forEach((s, i) => {
+    if (!s.at) return;
+    const li = chosen[i], { m, ia, ib } = s.at;
+    const du = wa0 + ia * c - m.offA, dv = wb0 + ib * c - m.offB;
+    out[li] = { ...list[li], angle: m.angle, mirror: m.mirror, x: right ? -du : du, y: bottom ? -dv : dv };
+  });
+  const geoOf = (i: number) => { const path = pathOf(out[i].partId); return path ? placed(path, out[i]) : null; };
+  const geos = out.map((_, i) => geoOf(i));
+  const dirs: Dir[] = [bottom ? "down" : "up", right ? "right" : "left"];
+  for (let round = 0; round < 2; round++) for (const i of chosen) for (const d of dirs) {
+    const me = geos[i];
+    if (!me) continue;
+    const t = slideDistance([me], geos.filter((g, j): g is Placed => j !== i && !!g), usable, gap, d, outline, edgeGap);
+    if (t < 0.3) continue;
+    const [dx, dy] = d === "up" ? [0, -t] : d === "down" ? [0, t] : d === "left" ? [-t, 0] : [t, 0];
+    out[i] = { ...out[i], x: out[i].x + dx, y: out[i].y + dy };
+    geos[i] = geoOf(i);
+  }
+  const area = (l: PlacedPart[]) => { const u = unionBox(chosen.map((li) => geos[li] && l === out ? geos[li]!.box : placed(pathOf(l[li].partId)!, l[li]).box)); return (u.x1 - u.x0) * (u.y1 - u.y0); };
+  return area(out) < area(list) * 0.999 ? out : list;
+}
