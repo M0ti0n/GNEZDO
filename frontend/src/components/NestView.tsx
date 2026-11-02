@@ -9,6 +9,7 @@ import type { Machine, Origin } from "../job/machine";
 import type { StockSheet } from "../job/stock";
 import { ManualNest } from "./ManualNest";
 import { SheetPropertiesDialog } from "./SheetPropertiesDialog";
+import { strategyLabel } from "./CustomNestDialog";
 
 // The nest screen of a job (after Fab's layout): the chosen solution's sheets, four to a screen
 // (scroll for more), each with [i], VIEW (EDIT once unlocked) and a lock; on the right the
@@ -283,7 +284,7 @@ function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, 
                     <span className="sol-title">Solution {s.no}</span>
                     <span className={`sol-badge${failed || s.outdated ? " is-error" : ""}`}
                       title={s.outdated ? "Nested for a machine of another technology: nest the job again" : undefined}>
-                      {failed ? "FAILED" : s.outdated ? "OUT OF DATE" : MODE_SHORT[s.mode]}</span>
+                      {failed ? "FAILED" : s.outdated ? "OUT OF DATE" : MODE_SHORT[s.mode]}{!failed && !s.outdated && s.mode === "custom" ? ` · ${s.custom?.blocks ? "BLOCKS" : "STANDARD"}` : ""}</span>
                   </button>
                   {sheets.length > 0 && (
                     <button type="button" className={`sol-fold${open ? " is-open" : ""}`} aria-expanded={open}
@@ -340,7 +341,7 @@ function InfoTabs({ sol, sheets, sheetNo, parts, jobParts }: {
       </div>
       <div className="info-head">
         {tab === "solution"
-          ? <><b>Solution {sol.no}</b><span>{NEST_MODE_LABEL[sol.mode]} · {sheets.length} {sheets.length === 1 ? "sheet" : "sheets"}{sol.run?.result ? ` · ${hms(sol.run.seconds)}` : " · best so far"}</span></>
+          ? <><b>Solution {sol.no}</b><span>{NEST_MODE_LABEL[sol.mode]}{sol.mode === "custom" ? ` (${strategyLabel(sol.custom)})` : ""} · {sheets.length} {sheets.length === 1 ? "sheet" : "sheets"}{sol.run?.result ? ` · ${hms(sol.run.seconds)}` : " · best so far"}</span></>
           : <><b>Solution {sol.no} <span className="slash">/</span> Sheet {sheetNo + 1}</b>
               <span>{sheet.material} · {sheet.thicknessMm} mm · {sheet.lengthMm} × {sheet.widthMm} · {sheet.parts.length} parts</span></>}
       </div>
