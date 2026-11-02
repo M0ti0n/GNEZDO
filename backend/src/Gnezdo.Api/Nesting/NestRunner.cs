@@ -152,6 +152,10 @@ public sealed class NestRunner : IDisposable
 
     private static string Tail(string s) => s.Length > 600 ? "..." + s[^600..] : s;
 
+    /// <summary>How many runs are nesting now, and how many wait for a free slot.</summary>
+    public (int Running, int Queued) Counts() =>
+        (_runs.Values.Count(r => r.State == NestState.Running), _runs.Values.Count(r => r.State == NestState.Queued));
+
     /// <summary>Stop and keep the best layout so far. False when there is no such run.</summary>
     public bool Stop(string id)
     {

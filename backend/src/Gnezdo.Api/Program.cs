@@ -27,6 +27,7 @@ builder.Services.AddSingleton<ShopTime>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.Configure<NestingOptions>(builder.Configuration.GetSection("Nesting"));
 builder.Services.AddSingleton<NestRunner>();
+builder.Services.AddSingleton<ServerLoad>();
 // Connection string is read when the first DbContext is created, so tests and Docker can override it.
 if (!demo) builder.Services.AddDbContext<GnezdoDb>((sp, o) => o.UseSqlServer(
     sp.GetRequiredService<IConfiguration>().GetConnectionString("Gnezdo")

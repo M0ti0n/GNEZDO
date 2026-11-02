@@ -15,6 +15,12 @@ public static class NestEndpoints
     {
         app.MapGet("/api/nest/status", (NestRunner runner) =>
             Results.Ok(new { available = runner.Missing() is null, reason = runner.Missing() }));
+        // how busy the server is (top bar): CPU of the whole machine, nests running and waiting
+        app.MapGet("/api/server/load", (ServerLoad load, NestRunner runner) =>
+        {
+            var (running, queued) = runner.Counts();
+            return Results.Ok(new { cpu = load.Cpu, threads = Environment.ProcessorCount, nestsRunning = running, nestsQueued = queued });
+        });
         app.MapPost("/api/nest", Start);
         app.MapGet("/api/nest/{id}", (string id, NestRunner runner) =>
             runner.Get(id) is { } run ? Results.Ok(run) : Results.NotFound());
