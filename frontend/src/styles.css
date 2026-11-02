@@ -1624,6 +1624,10 @@ html.is-busy, html.is-busy * { cursor: progress !important; }
 .mn-lock { flex: none; width: 40px; height: 36px; }
 .mn-lock svg { width: 26px; height: 26px; }
 .mn-ghost { opacity: .45; pointer-events: none; }
+/* Align edge: the edge under the pointer (orange) and the one that stays (green) */
+.mn-edge { stroke: #f2a33a; stroke-linecap: round; pointer-events: none; }
+.mn-edge.is-fixed { stroke: #2e9d3a; }
+.mn-canvas.is-align { cursor: crosshair; }
 .mn-canvas.is-paste { cursor: copy; }
 .mn-tile.is-done { background: #e6f6dc; border-color: #b7deA0; }
 .mn-tile.is-done:hover { border-color: var(--green); }
