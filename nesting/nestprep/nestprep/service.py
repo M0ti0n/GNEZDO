@@ -6,6 +6,12 @@ request.json (written by GNEZDO from the job tab):
    "stopAfterMinutes": 5 | null,    custom: stop when nothing better for this long
    "partGapMm": 5, "edgeGapMm": 5,
    "blockMarginPct": 10,            Rules -> Nesting rules: how much a block's box may grow (missing: 10)
+   "fixedSheets": [...],            continuing a solution: its sheets with the parts on them, which stay
+                                    where they are; the parts above (the ones still missing) go into the
+                                    free space of these first, then onto new stock sheets. Each:
+                                    {"index", "id", "material", "thicknessMm", "lengthMm", "widthMm",
+                                     "outline"?, "trims", "partGapMm"?, "kerfMm"?,
+                                     "parts": [{"path", "x", "y", "angle", "mirror"}]}  (sheet frame, y down)
    "parts":  [{"id", "name", "path", "qty", "rotations": [90], "mirror", "material", "thicknessMm"}],
    "sheets": [{"id", "material", "thicknessMm", "lengthMm", "widthMm", "qty": 3 | null, "source"}]}
 
@@ -166,6 +172,42 @@ def sheet_bin(s: dict, edge: float, flips: tuple[int, int] = (1, 1)) -> dict:
     return b
 
 
+def placed_loops(path: str, x: float, y: float, angle: float, mirror: bool) -> list[list[tuple[float, float]]]:
+    """A part's loops where GNEZDO shows it on a sheet (y down): mirrored in x, turned, moved."""
+    r = math.radians(float(angle))
+    c, s_ = math.cos(r), math.sin(r)
+    out = []
+    for lp in path_loops(path):
+        q = []
+        for px, py in lp:
+            px = -px if mirror else px
+            q.append((px * c - py * s_ + float(x), px * s_ + py * c + float(y)))
+        out.append(q)
+    return out
+
+
+def fixed_bin(s: dict, edge: float, flips: tuple[int, int], gap: float) -> dict:
+    """A sheet of a solution being continued: its bin, with the parts already on it as obstacles."""
+    b = sheet_bin(s, edge, flips)
+    L, W = float(s["lengthMm"]), float(s["widthMm"])
+    sx, sy = flips
+    defects = list(b.get("defects", []))
+    for p in s.get("parts", []):
+        try:
+            loops = placed_loops(p.get("path", ""), p.get("x", 0), p.get("y", 0), p.get("angle", 0), bool(p.get("mirror")))
+            loops = [[((L - x) if sx < 0 else x, (W - y) if sy < 0 else y) for x, y in lp] for lp in loops]
+            sh = _shape(loops)
+        except (ValueError, KeyError):
+            continue
+        d = {"type": "general", "elements": sh["elements"], "item_defect_minimum_spacing": gap}
+        if sh.get("holes"):
+            d["holes"] = sh["holes"]
+        defects.append(d)
+    if defects:
+        b["defects"] = defects
+    return b
+
+
 def _rect(L: float, W: float) -> dict:
     return {"type": "general", "elements": _elements([(0, 0), (L, 0), (L, W), (0, W)])}
 
@@ -190,8 +232,11 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
         sheets = [s for s in req.get("sheets", []) if _key(s.get("material"), s.get("thicknessMm")) == key
                   and float(s.get("lengthMm") or 0) > 0 and float(s.get("widthMm") or 0) > 0
                   and (s.get("qty") is None or int(s["qty"]) > 0)]
+        # continuing a solution: its sheets of this material, with what is on them
+        fixed = [s for s in req.get("fixedSheets") or [] if _key(s.get("material"), s.get("thicknessMm")) == key
+                 and float(s.get("lengthMm") or 0) > 0 and float(s.get("widthMm") or 0) > 0]
         label = f"{parts[0].get('material', '')} {parts[0].get('thicknessMm', '')} mm"
-        if not sheets:
+        if not sheets and not fixed:
             skipped += [{"partId": p["id"], "reason": f"No stock sheet for {label}"} for p in parts]
             continue
         items, ids, shifts = [], [], []
@@ -218,12 +263,22 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
                 # remnants first: they cost less than a new sheet of the same size
                 b["cost"] = L * W * (0.5 if s.get("source") == "remnant" else 1.0)
             bins.append(b)
+        # one part gap per nest: the largest any of the group's sheets asks for
+        group_gap = max([float(s["partGapMm"]) for s in sheets + fixed if s.get("partGapMm") is not None] or [gap])
+        for s in fixed:
+            L, W = float(s["lengthMm"]), float(s["widthMm"])
+            try:
+                b = {**fixed_bin(s, edge, flips, group_gap), "copies": 1}
+            except ValueError:
+                continue
+            if not limited:
+                b["cost"] = L * W * 1e-4     # already being cut: filled before any new sheet
+            bins.append(b)
+            sheets = sheets + [{**s, "_fixed": int(s.get("index", 0)), "qty": 1}]
         if limited:
             # not enough sheets for everything maybe: as many parts as fit (by area)
             for it in items:
                 it["profit"] = abs(_area(path_loops_outer(it)))
-        # one part gap per nest: the largest any of the group's sheets asks for
-        group_gap = max([float(s["partGapMm"]) for s in sheets if s.get("partGapMm") is not None] or [gap])
         inst = {"objective": "knapsack" if limited else "variable-sized-bin-packing",
                 "parameters": {"item_item_minimum_spacing": group_gap},
                 "bin_types": bins, "item_types": items}
@@ -300,6 +355,9 @@ class Run:
                               "angle": round(a, 6), "mirror": m})
             sheet = {"sheetId": s.get("id"), "lengthMm": L, "widthMm": W,
                      "material": g["material"], "thicknessMm": g["thicknessMm"], "parts": parts}
+            if s.get("_fixed") is not None:
+                # a sheet of the solution being continued: only the parts added to it
+                sheet["fixedIndex"] = s["_fixed"]
             if s.get("outline"):
                 sheet["outline"] = s["outline"]
             # the sheet's own gaps go with it, so it can be changed on its own later

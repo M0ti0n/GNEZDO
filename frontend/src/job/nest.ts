@@ -44,6 +44,21 @@ export interface NestRequest {
   blockMarginPct?: number;
   parts: NestRequestPart[];
   sheets: NestRequestSheet[];
+  /**
+   * Continuing a solution: its sheets with the parts already on them (they stay where they are);
+   * `parts` are then only what is still missing, nested into these sheets first, then onto new ones.
+   */
+  fixedSheets?: FixedSheet[];
+}
+
+export interface FixedSheet {
+  /** the sheet's place in the solution */
+  index: number;
+  id: string; material: string; thicknessMm: number; lengthMm: number; widthMm: number;
+  outline?: [number, number][][];
+  trims?: { xMinus: number; xPlus: number; yMinus: number; yPlus: number };
+  partGapMm?: number; kerfMm?: number;
+  parts: { path: string; x: number; y: number; angle: number; mirror: boolean }[];
 }
 
 export interface PlacedPart { partId: string; x: number; y: number; angle: number; mirror: boolean }
@@ -59,6 +74,29 @@ export interface NestedSheet {
   /** how many times this layout is cut (1 when missing) */
   cutNumber?: number;
   parts: PlacedPart[];
+  /** from a run continuing a solution: the parts added to that solution's sheet at this index */
+  fixedIndex?: number;
+}
+
+/**
+ * A continued solution: its sheets with the parts a run added (sheets with a fixedIndex), then the
+ * run's new sheets after them.
+ */
+export function continuedSheets(base: NestedSheet[], added: NestedSheet[]): NestedSheet[] {
+  const out = base.map((sh) => ({ ...sh }));
+  const fresh: NestedSheet[] = [];
+  for (const sh of added) {
+    const i = sh.fixedIndex;
+    if (i != null && out[i]) out[i] = { ...out[i], parts: [...out[i].parts, ...sh.parts] };
+    else { const { fixedIndex: _, ...rest } = sh; void _; fresh.push(rest); }
+  }
+  return [...out, ...fresh];
+}
+
+/** What a solution still lacks: per part, required less nested (only parts that lack some). */
+export function missingParts(parts: JobPart[], sheets: NestedSheet[]): JobPart[] {
+  const have = countsOf(sheets);
+  return parts.filter((jp) => jp.qty > (have[jp.part.id] ?? 0)).map((jp) => ({ ...jp, qty: jp.qty - (have[jp.part.id] ?? 0) }));
 }
 
 /** Pieces per part of a solution: every sheet's parts times its cut number. */
@@ -215,6 +253,9 @@ export interface Solution extends JobNest {
   machine?: string;
   /** nested for a machine of another technology than the job's now: nest again */
   outdated?: boolean;
+  /** while a run continues it: the solution as it was (back if the run fails) and the sheets it continues */
+  prev?: NestRun;
+  base?: NestedSheet[];
 }
 
 export const hms = (s: number) => {
