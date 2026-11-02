@@ -6,6 +6,7 @@ request.json (written by GNEZDO from the job tab):
    "stopAfterMinutes": 5 | null,    custom: stop when nothing better for this long
    "partGapMm": 5, "edgeGapMm": 5,
    "blockMarginPct": 10,            Rules -> Nesting rules: how much a block's box may grow (missing: 10)
+   "blocks": true | false,          blocks before the nest (missing: the level's default: Fast no, else yes)
    "fixedSheets": [...],            continuing a solution: its sheets with the parts on them, which stay
                                     where they are; the parts above (the ones still missing) go into the
                                     free space of these first, then onto new stock sheets. Each:
@@ -398,6 +399,8 @@ class Run:
             opts = Options(workers=workers, verbose=False)
             if isinstance(margin, (int, float)) and 0 <= margin <= 50:
                 opts.block_margin = margin / 100.0
+            if isinstance(self.req.get("blocks"), bool):
+                opts.blocks = self.req["blocks"]
             job = run_job(g["instance"], self.bin, level, opts,
                           os.path.join(self.dir, f"group{i + 1}"), quiet=True,
                           minutes=self.req.get("minutes"), stop_after=stop_after * 60 if stop_after else None,

@@ -8,7 +8,12 @@ export interface CustomNestSettings {
   minutes: number | null;
   /** Stop when no better layout has turned up for this many minutes (null: never). */
   stopAfterMinutes: number | null;
+  /** Blocks: big parts get their pockets filled before the nest; false (missing): the standard packer. */
+  blocks?: boolean;
 }
+
+/** How a Custom nest was made, as shown with the solution. */
+export const strategyLabel = (c?: CustomNestSettings) => (c?.blocks ? "Blocks" : "Standard");
 
 const PRESETS: { label: string; minutes: number | null }[] = [
   { label: "5 min", minutes: 5 },
@@ -20,7 +25,7 @@ const PRESETS: { label: string; minutes: number | null }[] = [
 ];
 
 const KEY = "gnezdo.customNest";
-const DEFAULTS: CustomNestSettings = { minutes: 15, stopAfterMinutes: 5 };
+const DEFAULTS: CustomNestSettings = { minutes: 15, stopAfterMinutes: 5, blocks: false };
 
 function load(): CustomNestSettings {
   try {
@@ -58,7 +63,7 @@ export function CustomNestDialog({ onStart, onCancel }: { onStart: (s: CustomNes
 
   const minutes = useOther ? other : s.minutes;
   const start = () => {
-    const out = { minutes, stopAfterMinutes: stopEarly ? stopAfter : null };
+    const out = { minutes, stopAfterMinutes: stopEarly ? stopAfter : null, blocks: !!s.blocks };
     save(out);
     onStart(out);
   };
@@ -97,6 +102,21 @@ export function CustomNestDialog({ onStart, onCancel }: { onStart: (s: CustomNes
                 <span>min</span>
               </label>
             </div>
+          </section>
+
+          <section className="cn-sec">
+            <h3>Nesting</h3>
+            <div className="cn-chips" role="radiogroup" aria-label="Nesting">
+              <button type="button" role="radio" aria-checked={!s.blocks} className={`cn-chip is-wide${!s.blocks ? " is-on" : ""}`}
+                title="Pairing and hole filling, then the nest of all parts"
+                onClick={() => setS({ ...s, blocks: false })}>Standard packer</button>
+              <button type="button" role="radio" aria-checked={!!s.blocks} className={`cn-chip is-wide${s.blocks ? " is-on" : ""}`}
+                title="Big parts with pockets (L, comb, slanted plate) first get other parts into their boxes, the biggest that fit first; then the nest of these blocks and the rest (Rules -> Nesting rules -> Block margin)"
+                onClick={() => setS({ ...s, blocks: true })}>Blocks</button>
+            </div>
+            <p className="cn-hint">{s.blocks
+              ? "Blocks: big parts with pockets are filled first, so they nest as near-rectangles. Helps most with short runs, big jobs and many small parts."
+              : "Standard: the parts are nested as they are (pairs and filled holes only). With long runs it did as well as Blocks on the test job."}</p>
           </section>
 
           <section className="cn-sec">

@@ -1310,6 +1310,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .cn-check input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--green); }
 .cn-check .cn-num:disabled { opacity: .5; }
 .cn-note { margin: 0 0 8px; padding: 10px 12px; border-radius: 8px; background: #f2f7f5; font-size: 14px; color: var(--ink-2, #444); line-height: 1.45; }
+.cn-hint { margin: 8px 0 0; font-size: 13px; color: var(--ink-3); line-height: 1.4; }
 
 /* Nesting screen of a job (Fab's layout): sheets four to a screen, SOLUTIONS on the right.
    Same look as Work parts: white panels, thin borders, green for what is chosen. */
