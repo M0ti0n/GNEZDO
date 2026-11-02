@@ -1,4 +1,3 @@
-import { ServerLoad } from "./ServerLoad";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Tab, TabKind } from "../state/tabs";
@@ -52,7 +51,6 @@ export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu, 
   return (
     <header className="tabbar">
       <AppMenu onMenu={onMenu} off={menuOff ?? {}} />
-      <ServerLoad />
       <div className="save-btns" role="group" aria-label="Save the job">
         <button className="undo-btn" onClick={save?.onSave} disabled={!save} title={save ? "Save the job (Ctrl+S)" : "Open a job to save it"} aria-label="Save">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round"><path d="M5 3h11l3 3v15H5z" /><path d="M8 3v5h7V3M8 21v-7h8v7" /></svg>
