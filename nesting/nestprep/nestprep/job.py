@@ -162,7 +162,8 @@ def dump(obj, p):
 def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str, quiet: bool = False, *,
             minutes: float | None = None, stop_after: float | None = None,
             should_stop: Callable[[], bool] | None = None,
-            on_progress: Callable[[dict], None] | None = None, variants: int = 1) -> dict:
+            on_progress: Callable[[dict], None] | None = None, variants: int = 1,
+            growth: float | None = None) -> dict:
     """The whole nesting job within the level's time budget: pre-pass, nest, post-pass.
 
     level custom: the nest runs `minutes` (None: until stopped). stop_after: seconds with no
@@ -171,7 +172,8 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     on_progress gets {stage, sheets?, waste?, layout?} as the job goes on (layout: the best
     layout so far, expanded to the original parts). variants: at most this many nests side by
     side (VARIANTS, the level's own maximum applies too), each with its own post-pass; the best
-    end result is kept.
+    end result is kept. growth: the tree search step (each round this many times wider than the
+    last; None: PackingSolver's 1.5).
     """
     say = on_progress or (lambda d: None)
     os.makedirs(outdir, exist_ok=True)
@@ -227,10 +229,12 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
 
     # the tree search sizes its rounds so the last one is done when the nest time is up, instead of
     # spending the end of it on a round that never finishes (a slow core: a round earlier); not
-    # for a nest that runs until stopped. growth: each round this many times wider than the last
+    # for a nest that runs until stopped. On a 1236-piece job that found its best layout in round 5-6
+    # (40 s) the fitted round and a 1.33 step changed nothing; they are for jobs so big that the
+    # widest useful round does not fit the time
     solver_args = [] if nest_t >= FOREVER else ["--tree-search-round-deadline", f"{nest_t:.1f}"]
-    if L.get("growth"):
-        solver_args += ["--tree-search-growth-factor", str(L["growth"])]
+    if growth and abs(growth - 1.5) > 1e-9:
+        solver_args += ["--tree-search-growth-factor", f"{growth:g}"]
 
     def variant(k: int) -> dict:
         sub = outdir if k == 0 else os.path.join(outdir, f"variant{k + 1}")

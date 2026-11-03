@@ -5,9 +5,14 @@ export interface NestingRules {
   arrangeToOrigin: boolean;
   /** Thorough / Custom nest: how much a block's box may grow to take a bigger part [% of its width or height]. */
   blockMarginPct: number;
+  /** Automatic nest: each search round this many times wider than the last (PackingSolver: 1.5). */
+  searchGrowth: number;
 }
 
-export const DEFAULT_NESTING_RULES: NestingRules = { arrangeToOrigin: true, blockMarginPct: 10 };
+export const SEARCH_GROWTH_MIN = 1.2;
+export const SEARCH_GROWTH_MAX = 2.0;
+
+export const DEFAULT_NESTING_RULES: NestingRules = { arrangeToOrigin: true, blockMarginPct: 10, searchGrowth: 1.5 };
 
 const STORE = "gnezdo.nestingRules";
 

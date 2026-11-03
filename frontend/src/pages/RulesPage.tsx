@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { COLOUR_ROLES, DEFAULT_RULES, ROTATIONS, type ImportRules } from "../import/rules";
-import { DEFAULT_NESTING_RULES, loadNestingRules, saveNestingRules, type NestingRules } from "../job/nestRules";
+import { DEFAULT_NESTING_RULES, SEARCH_GROWTH_MAX, SEARCH_GROWTH_MIN, loadNestingRules, saveNestingRules, type NestingRules } from "../job/nestRules";
 
 type Section = "import" | "nesting";
 
@@ -176,7 +176,22 @@ function NestingRulesPane() {
       </section>
 
       <section className="rule">
-        <h3>Thorough and Custom nest</h3>
+        <h3>Automatic nest</h3>
+        <label className="rule-field">
+          <span>Search step</span>
+          <span className="rule-num">
+            <input className="field" type="number" min={SEARCH_GROWTH_MIN} max={SEARCH_GROWTH_MAX} step={0.05} value={r.searchGrowth}
+              onChange={(e) => { const n = Math.round(Number(e.target.value) * 100) / 100; if (Number.isFinite(n) && n > 0) set({ ...r, searchGrowth: Math.min(SEARCH_GROWTH_MAX, Math.max(SEARCH_GROWTH_MIN, n)) }); }} /> ×
+          </span>
+        </label>
+        <p className="rule-help">The nest searches in rounds, each this many times wider than the last. Smaller: more, shorter rounds, so
+          better layouts show up more often and less time is spent in a round that is still unfinished at the end; but the widest rounds
+          come later. Larger: the widest rounds sooner, in fewer, longer steps. The last round is always sized to finish in the time
+          left. Default 1.5 (PackingSolver's own); on the test job 1.33 gave the same layouts.</p>
+      </section>
+
+      <section className="rule">
+        <h3>Custom nest: blocks (experimental)</h3>
         <label className="rule-field">
           <span>Block margin</span>
           <span className="rule-num">
@@ -186,7 +201,8 @@ function NestingRulesPane() {
         </label>
         <p className="rule-help">Before nesting, every big part with pockets (an L, a comb, a slanted plate) gets other parts into its bounding
           box, the biggest that fit first, so it nests as a near-rectangle block. The box may grow by this share of its width or height
-          when that fits a bigger part and makes the block fuller. 0: the block stays within the part's own box. Fast nest makes no blocks.</p>
+          when that fits a bigger part and makes the block fuller. 0: the block stays within the part's own box. Only for a Custom nest
+          with Blocks chosen; Fast and Thorough make no blocks.</p>
       </section>
 
       <footer className="settings-foot">

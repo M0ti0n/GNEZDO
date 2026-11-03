@@ -87,6 +87,14 @@ winner shows only after the post-pass. Other tree-search guides (2/3) were a she
 PackingSolver ignores the seed for this kind of job, so seeds give no variety. On a machine with
 fewer threads (a 4-thread PC) one nest runs, as before.
 
+**Search rounds** (our patch `0002`): PackingSolver's tree search runs in rounds, each 1.5× wider
+than the last, and a round gives a layout only when it finishes. The main nest now passes
+`--tree-search-round-deadline` (its nest time), so a round that would not be done by then is made as
+wide as still fits, instead of ending unfinished. The step is a setting (Rules → Nesting rules →
+Search step, 1.2–2.0, `--tree-search-growth-factor`). On the 1236-piece test job the best layout
+came in round 5–6 (about 40 s on 2 threads) and neither changed anything at 120 or 200 s; they are
+for jobs so big that the widest useful round doesn't fit the time.
+
 ```bash
 python nestprep_cli.py nest job.json --level quick --workers 8      # workers = threads for this job
 ```
