@@ -217,12 +217,14 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     def progress(best):
         best = dict(best)
         sol = best.pop("solution", None)
-        key = (best.get("sheets") or 0, best.get("waste") if best.get("waste") is not None else 100.0)
+        n, w = best.get("sheets") or 0, best.get("waste")
         with lock:
-            # the best layout of all variants so far; a variant's worse layout is not shown
-            if shown["key"] is not None and key > shown["key"]:
+            # the best layout of all variants so far; a variant's worse layout is not shown. The
+            # waste can be missing (PackingSolver's output file not written yet): then the sheets decide
+            prev = shown["key"]
+            if prev is not None and (n > prev[0] or (n == prev[0] and w is not None and prev[1] is not None and w > prev[1])):
                 return
-            shown["key"] = key
+            shown["key"] = (n, w if w is not None else (prev[1] if prev is not None and n == prev[0] else None))
             # when the nest found it, from the start of the job (pre-pass included), as the user
             # sees the run's clock: shown while it runs and kept with the result
             shown["at"] = best["seconds"] = round(time.perf_counter() - t0, 1)

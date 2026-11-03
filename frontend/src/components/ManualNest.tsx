@@ -313,7 +313,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const [menu, setMenu] = useState<{ x: number; y: number; ids: number[] } | null>(null);
   useEffect(() => {
     if (!menu) return;
-    const close = (e: Event) => { if (!(e.target as HTMLElement)?.closest?.(".mn-menu")) setMenu(null); };
+    const close = (e: Event) => { if (!(e.target as HTMLElement)?.closest?.(".mn-ctx")) setMenu(null); };
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
     window.addEventListener("pointerdown", close, true);
     window.addEventListener("keydown", esc, true);
@@ -426,6 +426,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const d = dragging.current;
     dragging.current = null;
     setMoving(false);
+    // held without moving, but turned by a key meanwhile: that turn is saved now
+    if (d && !d.moved && itemsRef.current !== d.orig) { commit(itemsRef.current, d.orig); return; }
     if (!d || !d.moved) return;
     let next = itemsRef.current;
     if (e.ctrlKey || e.metaKey) {
@@ -809,7 +811,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
             const n = menu.ids.length;
             const what = n === 1 ? "part" : `${n} parts`;
             return (
-              <div className="mn-menu" role="menu" style={{ left: menu.x, top: menu.y }} onContextMenu={(e) => e.preventDefault()}
+              <div className="mn-ctx" role="menu" style={{ left: menu.x, top: menu.y }} onContextMenu={(e) => e.preventDefault()}
                 onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
                 <button type="button" role="menuitem" disabled={!anyFree} onClick={() => { setMenu(null); lockParts(menu.ids); }}
                   title="Pinned where it is: dragging, the arrow keys, slides and Arrange leave it">Lock {what}</button>
