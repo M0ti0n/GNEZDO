@@ -7,6 +7,7 @@ import { SideScroll } from "../components/SideScroll";
 const K = "#1b1b1b";
 const R = "#e3262b";
 const G = "#9acd32";
+const GA = "#1d9641";   // align arrows: the top bar green
 
 const Ico = ({ w = 48, children }: { w?: number; children: ReactNode }) => (
   <svg viewBox={`0 0 ${w} 48`} width={w} height={48} fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -85,8 +86,8 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
       <Ico>
         <path d="M18 6L40 37" stroke={K} strokeWidth="3.2" />
         <path d="M7 38H40" stroke={R} strokeWidth="2.6" strokeDasharray="4 3" />
-        <path d="M22 12Q8 20 10 33" stroke={G} strokeWidth="2.4" />
-        <Arrow x={10.3} y={34.5} angle={95} color={G} />
+        <path d="M22 12Q8 20 10 33" stroke={GA} strokeWidth="2.4" />
+        <Arrow x={10.3} y={34.5} angle={95} color={GA} />
       </Ico>
     ),
   },
@@ -97,8 +98,8 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
       <Ico>
         <path d="M10 40L37 13" stroke={K} strokeWidth="3.2" />
         <path d="M9 39V7" stroke={R} strokeWidth="2.6" strokeDasharray="4 3" />
-        <path d="M33 16Q24 7 14 7" stroke={G} strokeWidth="2.4" />
-        <Arrow x={12.5} y={7} angle={180} color={G} />
+        <path d="M33 16Q24 7 14 7" stroke={GA} strokeWidth="2.4" />
+        <Arrow x={12.5} y={7} angle={180} color={GA} />
       </Ico>
     ),
   },
