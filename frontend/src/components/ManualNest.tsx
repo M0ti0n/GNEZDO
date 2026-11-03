@@ -696,9 +696,13 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
         <div ref={host} className={`mn-canvas${hover >= 0 && edit ? " is-over" : ""}${paste ? " is-paste" : ""}${align ? " is-align" : ""}`}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           onContextMenu={(e) => e.preventDefault()}
+          // the browser's own drag and drop of the sheet picture (a faded copy of the whole sheet
+          // following the mouse next to the parts being moved): never from here
+          onDragStart={(e) => e.preventDefault()}
+          onMouseDown={(e) => { if (e.button === 0) { e.preventDefault(); (document.activeElement as HTMLElement | null)?.blur?.(); } }}
           onDragOver={(e) => { if (edit && e.dataTransfer.types.includes("text/gnezdo-part")) e.preventDefault(); }}
           onDrop={onDrop}>
-          <svg width={size.w} height={size.h} aria-label={`Sheet ${index + 1}`}>
+          <svg width={size.w} height={size.h} aria-label={`Sheet ${index + 1}`} draggable={false}>
             <g transform={`translate(${v.tx} ${v.ty}) scale(${v.s})`}>
               {outline ? <path className="mn-plate" fillRule="evenodd" d={pathOf(outline)} />
                 : <rect className="mn-plate" x={0} y={0} width={sheet.lengthMm} height={sheet.widthMm} />}
