@@ -73,8 +73,19 @@ A whole job (`nest` command, or `compare --post`) runs in the time of its level:
 
 | Level | Total | What |
 |---|---|---|
-| `quick` | 30 s | pre-pass, nest (the time left), compaction (5 s); chain only from leftover time |
-| `thorough` | 90 s | pre-pass, nest (≤ 30 s), sheet pairs, chain, compaction (8 s) |
+| `quick` (Fast) | 35 s | pre-pass, nest (the time left, 10–30 s); more than one sheet: empty the last sheet once, fill with the time left; compaction (5 s). Post-pass 15 s + 0.6 s/sheet, at most 45 s |
+| `thorough` | about 3 min | pre-pass (no blocks), nest 30–60 s, empty, fill (≤ 30 s), empty, tail (3 s/sheet), pairs and chain from what is left, compaction (8 s). Post-pass 30 s + 2.5 s/sheet, at most 120 s |
+| `custom` | the user's minutes | as thorough, with the user's nest time; blocks only when chosen (experimental) |
+
+**Nest variants** (Thorough and Custom): with 8 or more CPU threads for the job, two main nests run
+side by side, each with its own post-pass, and the better end result is kept (fewest sheets, then
+sheet equivalents). Variant 1 fills each sheet along its length (PackingSolver's default), variant 2
+up its width first (`--leftover-mode bottom`). On the 1236-piece test job (Thorough, 2 threads,
+one variant at a time): length-first 23 sheets after the nest, 22 / 21.39 at the end; width-first
+22 after the nest, 22 / 21.47 at the end. Different layouts of about the same quality, and the
+winner shows only after the post-pass. Other tree-search guides (2/3) were a sheet worse.
+PackingSolver ignores the seed for this kind of job, so seeds give no variety. On a machine with
+fewer threads (a 4-thread PC) one nest runs, as before.
 
 ```bash
 python nestprep_cli.py nest job.json --level quick --workers 8      # workers = threads for this job

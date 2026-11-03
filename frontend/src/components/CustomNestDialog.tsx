@@ -112,11 +112,11 @@ export function CustomNestDialog({ onStart, onCancel }: { onStart: (s: CustomNes
                 onClick={() => setS({ ...s, blocks: false })}>Standard packer</button>
               <button type="button" role="radio" aria-checked={!!s.blocks} className={`cn-chip is-wide${s.blocks ? " is-on" : ""}`}
                 title="Big parts with pockets (L, comb, slanted plate) first get other parts into their boxes, the biggest that fit first; then the nest of these blocks and the rest (Rules -> Nesting rules -> Block margin)"
-                onClick={() => setS({ ...s, blocks: true })}>Blocks</button>
+                onClick={() => setS({ ...s, blocks: true })}>Blocks (experimental)</button>
             </div>
             <p className="cn-hint">{s.blocks
-              ? "Blocks: big parts with pockets are filled first, so they nest as near-rectangles. Helps most with short runs, big jobs and many small parts."
-              : "Standard: the parts are nested as they are (pairs and filled holes only). With long runs it did as well as Blocks on the test job."}</p>
+              ? "Blocks (experimental): big parts with pockets are filled first, so they nest as near-rectangles. On real jobs so far it never beat the standard packer; worth a try on jobs full of pocket parts (L, U, comb shapes)."
+              : "Standard: the parts are nested as they are (pairs and filled holes only). The best choice on every real job so far."}</p>
           </section>
 
           <section className="cn-sec">

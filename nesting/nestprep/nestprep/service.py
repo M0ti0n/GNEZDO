@@ -394,6 +394,10 @@ class Run:
         # PackingSolver runs ~2 threads itself: about one solver process per two CPU threads (an i3
         # with 4 threads: 2; 16 threads: 8). More only made every process slower and its answers worse.
         workers = max(2, (os.cpu_count() or 2) // 2 // self.parallel)
+        # Thorough/Custom: two nests side by side (job.VARIANTS) when this group has 8+ CPU threads
+        # of its own: each nest's PackingSolver uses about 3, so both fit next to each other (a
+        # 16-thread server: 2; a 4-thread PC: 1, as before)
+        variants = 2 if (os.cpu_count() or 2) // self.parallel >= 8 else 1
         try:
             margin = self.req.get("blockMarginPct")
             opts = Options(workers=workers, verbose=False)
@@ -404,7 +408,7 @@ class Run:
             job = run_job(g["instance"], self.bin, level, opts,
                           os.path.join(self.dir, f"group{i + 1}"), quiet=True,
                           minutes=self.req.get("minutes"), stop_after=stop_after * 60 if stop_after else None,
-                          should_stop=self.stop_requested, on_progress=on_progress)
+                          should_stop=self.stop_requested, on_progress=on_progress, variants=variants)
         except NestError as e:
             with self.lock:
                 self.status[i].update(stage="error", error=str(e))

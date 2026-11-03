@@ -10,35 +10,52 @@ import dataclasses
 import json
 import math
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 from . import geom, psrun
 from .holefill import Options, PrePass
 from .postpass import PostOptions, PostPass
-from .solution import expand
+from .solution import expand, metrics
 
 # Whole-job time budgets (pre-pass + nest + post-pass), on the machine it runs on.
 # The post-pass gets post + post_per_sheet x the sheets of the nest: a big job has more gaps to
 # fill. Its steps: fill (gaps of the emptiest sheets from later sheets), tail (the last sheets
 # nested again on one sheet less), pairs and chain from what time is left, compaction last.
 # (A 1358-piece job, 30 sheets: the nest alone left sheets at 55-72 %; fill + tail made it 29.)
+# The main nest of Thorough and Custom runs in VARIANTS side by side when the machine has the
+# cores (service.py): the same job, filled along the sheet's length and up its width first. They
+# give different layouts of about the same quality; which one wins depends on the job, and only
+# after the post-pass (on the test job the width-first nest had a sheet less, the length-first
+# one ended better), so each variant gets its own post-pass and the best end result is kept.
+# PackingSolver ignores the seed for this kind of job: two runs with other seeds are the same.
+VARIANTS = [[], ["--leftover-mode", "bottom"]]
+
 LEVELS = {
     # grace: more nest time when there is no layout yet at the end of it (then a warning)
-    "quick": dict(total=30.0, post=10.0, post_per_sheet=0.6, post_max=40.0, grace=15.0, min_nest=10.0, max_nest=30.0,
-                  stop_after=5.0, two_phase=False,
+    # Fast: one nest; more than one sheet: the last sheet emptied into the others once, then the
+    # gaps filled from later sheets with the time left, then compacted (one sheet: compacted only)
+    "quick": dict(total=35.0, post=15.0, post_per_sheet=0.6, post_max=45.0, grace=15.0, min_nest=10.0, max_nest=30.0,
+                  stop_after=5.0, two_phase=False, variants=1,
                   pre_opts=dict(pair_max_fill=0.75, blocks=False),
-                  post_opts=dict(pool_time=1.5, fill_time=1.5, fill_rounds=2, tail_time=4.0, empty=False, pairs=False, chain=False, compact_time=5.0)),
-    # the nest is capped at 30 s: on the test jobs a longer nest gave the same layout, the time is
-    # worth more in the post-pass
-    "thorough": dict(total=90.0, post=30.0, post_per_sheet=2.5, post_max=150.0, grace=30.0, min_nest=20.0, max_nest=30.0,
-                     stop_after=10.0, two_phase=False,
-                     pre_opts=dict(block_budget=30.0),
-                     post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, tail_time=6.0, pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
+                  post_opts=dict(pool_time=1.5, fill_time=1.5, fill_rounds=2, empty=True, empty_first=True, empty_again=False,
+                                 tail=False, pairs=False, chain=False, compact_time=5.0)),
+    # Thorough: about 3 minutes, half nest, half post-pass (a server core is slower than a desktop's);
+    # the post-pass time goes mostly to emptying the last sheet (the step that saved the most sheets),
+    # fill is capped, the tail gets a short slot. Blocks off: on real jobs they never did better.
+    "thorough": dict(total=180.0, post=30.0, post_per_sheet=2.5, post_max=120.0, grace=30.0, min_nest=30.0, max_nest=60.0,
+                     stop_after=15.0, two_phase=False, variants=2,
+                     pre_opts=dict(blocks=False, block_budget=30.0),
+                     post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, fill_max=30.0, empty_time=3.0, tail_time=3.0,
+                                    pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
     # the user sets the nest time (or none: until stopped); then the thorough post-pass
     "custom": dict(total=None, two_phase=False, post=30.0, post_per_sheet=2.5, post_max=150.0, grace=60.0, min_nest=None, max_nest=None,
+                   variants=2,
                    pre_opts=dict(block_budget=60.0),
-                   post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, tail_time=6.0, pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
+                   post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, fill_max=30.0, empty_time=3.0, tail_time=3.0,
+                                  pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
 }
 
 
@@ -145,14 +162,16 @@ def dump(obj, p):
 def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str, quiet: bool = False, *,
             minutes: float | None = None, stop_after: float | None = None,
             should_stop: Callable[[], bool] | None = None,
-            on_progress: Callable[[dict], None] | None = None) -> dict:
+            on_progress: Callable[[dict], None] | None = None, variants: int = 1) -> dict:
     """The whole nesting job within the level's time budget: pre-pass, nest, post-pass.
 
     level custom: the nest runs `minutes` (None: until stopped). stop_after: seconds with no
     better layout after which the nest ends (custom only). should_stop: polled during the
     nest; when it says so the best layout so far is kept and only the last sheet is compacted.
     on_progress gets {stage, sheets?, waste?, layout?} as the job goes on (layout: the best
-    layout so far, expanded to the original parts).
+    layout so far, expanded to the original parts). variants: at most this many nests side by
+    side (VARIANTS, the level's own maximum applies too), each with its own post-pass; the best
+    end result is kept.
     """
     say = on_progress or (lambda d: None)
     os.makedirs(outdir, exist_ok=True)
@@ -187,38 +206,74 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     remap = (lambda sol: sol) if not small else (lambda sol: {**sol, "bins": [
         {**b, "items": [{**it, "id": keep[it["id"]]} for it in b["items"]]} for b in sol.get("bins", [])]})
 
+    n_var = max(1, min(variants, L.get("variants", 1), len(VARIANTS)))
+    if pre.get("objective") == "knapsack":
+        n_var = 1   # one sheet: the fill direction is chosen by the solver itself
+    lock = threading.Lock()
+    shown = {"key": None}
+
     def progress(best):
         best = dict(best)
         sol = best.pop("solution", None)
+        key = (best.get("sheets") or 0, best.get("waste") if best.get("waste") is not None else 100.0)
+        with lock:
+            # the best layout of all variants so far; a variant's worse layout is not shown
+            if shown["key"] is not None and key > shown["key"]:
+                return
+            shown["key"] = key
         if sol:
             best["layout"] = expand(remap(sol), mapping)  # the best layout so far, as original parts
         say({"stage": "nest", **best})
-    # no layout yet when the time is up (a hard job): a little more time, stopping at the first one
-    r = psrun.solve_grace(nest_inst, binary, nest_t, L["grace"], workdir=os.path.join(outdir, "nest"),
-                          stop_after=stop_after, should_stop=should_stop, on_progress=progress)
-    if r["solution"]:
-        r["solution"] = remap(r["solution"])
-    if not r["solution"]:
+
+    def variant(k: int) -> dict:
+        sub = outdir if k == 0 else os.path.join(outdir, f"variant{k + 1}")
+        # no layout yet when the time is up (a hard job): a little more time, stopping at the first one
+        r = psrun.solve_grace(nest_inst, binary, nest_t, L["grace"], workdir=os.path.join(sub, "nest"),
+                              stop_after=stop_after, should_stop=should_stop, on_progress=progress,
+                              extra_args=VARIANTS[k])
+        if r["solution"]:
+            r["solution"] = remap(r["solution"])
+        if not r["solution"]:
+            return {"r": r}
+        nest_done = time.perf_counter() - t0
+        say({"stage": "improve"})
         if r.get("stopped"):
+            # stopped by hand: only the last sheet is compacted, quickly
+            opts = PostOptions(fill=False, tail=False, pairs=False, chain=False, compact_time=5.0, budget=6.0, quiet=quiet)
+        else:
+            n = sum(int(b.get("copies", 1)) for b in r["solution"].get("bins", []))
+            opts = post_options(level, post_budget(level, n), quiet)
+        opts.workers = max(1, pre_opts.workers // n_var)
+        pp = PostPass(pre, r["solution"], binary, opts, pool=small)
+        sol = pp.run()
+        m = metrics(inst, expand(sol, mapping)) if sol.get("bins") else {}
+        return {"r": r, "sol": sol, "log": pp.log, "nest_done": nest_done,
+                "key": (m.get("sheets", 10 ** 9), m.get("sheet_equivalents", 10.0 ** 9))}
+
+    if n_var == 1:
+        results = [variant(0)]
+    else:
+        with ThreadPoolExecutor(max_workers=n_var) as ex:
+            results = list(ex.map(variant, range(n_var)))
+    done = [(k, x) for k, x in enumerate(results) if x.get("sol") is not None]
+    if not done:
+        r = results[0]["r"]
+        if any(x["r"].get("stopped") for x in results):
             raise NestError("Stopped before a layout was found")
         raise NestError(f"No layout found in {time.perf_counter() - t0:.0f} s. "
                         "Try Thorough nest, or nest fewer parts at a time.")
-    nest_done = time.perf_counter() - t0
-    say({"stage": "improve"})
-    if r.get("stopped"):
-        # stopped by hand: only the last sheet is compacted, quickly
-        opts = PostOptions(fill=False, tail=False, pairs=False, chain=False, compact_time=5.0, budget=6.0, quiet=quiet)
-    else:
-        n = sum(int(b.get("copies", 1)) for b in r["solution"].get("bins", []))
-        opts = post_options(level, post_budget(level, n), quiet)
-    opts.workers = max(1, pre_opts.workers)
-    pp = PostPass(pre, r["solution"], binary, opts, pool=small)
-    sol = pp.run()
+    k, best = min(done, key=lambda kx: kx[1]["key"])
+    r, sol, nest_done = best["r"], best["sol"], best["nest_done"]
+    log = best["log"]
+    if n_var > 1:
+        log = [{"step": "variants", "seconds": 0.0, "moved": 0, "chosen": k + 1,
+                "results": [{"variant": j + 1, "args": " ".join(VARIANTS[j]) or "default",
+                             "sheets": x["key"][0], "equiv": x["key"][1]} for j, x in done]}] + log
     total = time.perf_counter() - t0
     dump(pre, os.path.join(outdir, "instance_pre.json"))
     dump(mapping, os.path.join(outdir, "composites.json"))
     dump(sol, os.path.join(outdir, "solution.json"))
-    return {"solution": sol, "mapping": mapping, "steps": pp.log, "instance": inst,
+    return {"solution": sol, "mapping": mapping, "steps": log, "variant": k + 1, "variants": n_var, "instance": inst,
             "skipped": big, "stopped": bool(r.get("stopped")),
             "seconds": {"prepass": round(pre_t, 1), "nest": round(r["time"], 1),
                         "post": round(total - nest_done, 1), "total": round(total, 1)}}

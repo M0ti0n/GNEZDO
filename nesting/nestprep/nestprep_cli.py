@@ -9,7 +9,7 @@ Commands
   compare   run baseline and pre-processed solves with the same settings, report
             (--post quick|thorough also runs the whole job in that level's time)
   nest      one job as GNEZDO would run it: pre-pass + nest + post-pass in the level's time
-            (--level quick = 30 s, thorough = 90 s)
+            (--level quick = 35 s, thorough = about 3 min)
   run       a nesting run started by GNEZDO: request.json -> RUNDIR/progress.json, result.json
   post      move parts of a finished nest forward into gaps, shorten the last sheet
 
@@ -158,7 +158,7 @@ def cmd_nest(a):
     inst = load(a.instance)
     os.makedirs(a.outdir, exist_ok=True)
     try:
-        job = run_job(inst, psrun.find_binary(a.solver), a.level, opts_from(a), a.outdir, a.quiet)
+        job = run_job(inst, psrun.find_binary(a.solver), a.level, opts_from(a), a.outdir, a.quiet, variants=a.variants)
     except NestError as e:
         print(json.dumps({"valid": False, "error": str(e)}))
         sys.exit(2)
@@ -243,9 +243,10 @@ def main():
     common_pre(p)
     p.set_defaults(fn=cmd_compare)
 
-    p = sub.add_parser("nest", help="one job: pre-pass + nest + post-pass in the level's time (quick 30 s, thorough 90 s)")
+    p = sub.add_parser("nest", help="one job: pre-pass + nest + post-pass in the level's time (quick 35 s, thorough about 3 min)")
     p.add_argument("instance")
     p.add_argument("--level", default="quick", choices=["quick", "thorough"])
+    p.add_argument("--variants", type=int, default=1, help="thorough: nests side by side, the best kept (1 or 2)")
     p.add_argument("--outdir", default="nest_out")
     common_pre(p)
     p.set_defaults(fn=cmd_nest)

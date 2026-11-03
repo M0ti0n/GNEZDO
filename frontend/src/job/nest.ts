@@ -42,7 +42,7 @@ export interface NestRequest {
   edgeGapMm: number;
   /** Rules -> Nesting rules: how much a block's box may grow [%] */
   blockMarginPct?: number;
-  /** blocks before the nest (Thorough; Custom when chosen) */
+  /** blocks before the nest (Custom when chosen, experimental) */
   blocks?: boolean;
   parts: NestRequestPart[];
   sheets: NestRequestSheet[];
@@ -223,8 +223,9 @@ export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: 
     origin,
     minutes: mode === "custom" ? custom?.minutes ?? null : null,
     stopAfterMinutes: mode === "custom" ? custom?.stopAfterMinutes ?? null : null,
-    // blocks: Custom as chosen in its pop-up; Thorough always; Fast never
-    blocks: mode === "custom" ? !!custom?.blocks : mode === "thorough",
+    // blocks: Custom as chosen in its pop-up (experimental); Fast and Thorough never (on real jobs
+    // they never beat the standard nest)
+    blocks: mode === "custom" ? !!custom?.blocks : false,
     partGapMm: PART_GAP_MM,
     edgeGapMm: EDGE_GAP_MM,
     blockMarginPct: loadNestingRules().blockMarginPct,
