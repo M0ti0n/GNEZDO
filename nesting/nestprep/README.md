@@ -74,7 +74,8 @@ Options: `--min-hole` (60 mm), `--sub-time` (0.3 s per hole), `--pair-time`,
    leftover host copies are re-solved with what remains.
 4. Composite rotations = the host rotations for which every inner part still
    lands on an allowed angle/mirror (e.g. #11 and #25 restrict to 0/180°).
-5. **Blocks** (Thorough and Custom; not Fast). Every big part (box ≥ 4 % of a
+5. **Blocks** (Custom only, when chosen: experimental. On real jobs they never beat the
+   standard nest, so Thorough and Fast run without them). Every big part (box ≥ 4 % of a
    sheet) whose outline fills at most 85 % of its box (an L, a comb, a slanted
    plate, a host already filled) gets other parts into its box: the box is a
    knapsack bin, the big part an obstacle in it, profit area^1.2 so the biggest
@@ -125,7 +126,7 @@ Gap filling, chain, sheet pairs and last-sheet compaction after the nest: see
 [../README.md](../README.md#post-pass-and-time-levels).
 
 ```bash
-python nestprep_cli.py nest job.json --level quick                # quick: ~30 s + post-pass by sheets (thorough: longer, see LEVELS)
+python nestprep_cli.py nest job.json --level quick                # quick: ~35 s (thorough: about 3 min, see LEVELS)
 python nestprep_cli.py post job.json solution.json -n job_pre.json -m job_composites.json --budget 30
 ```
 

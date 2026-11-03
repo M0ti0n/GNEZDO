@@ -65,7 +65,7 @@ def solve(instance: dict, binary: str, time_limit: float = 2.0,
 
 def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
                 workdir: str | None = None, *, stop_after: float | None = None,
-                should_stop=None, on_progress=None) -> dict:
+                should_stop=None, on_progress=None, extra_args: list[str] | None = None) -> dict:
     """Anytime solve for `time_limit` seconds; when there is no layout yet by then, up to `grace`
     seconds more, stopping at the first layout. PackingSolver writes each better layout to the
     solution file as it finds it, so the run is never started again.
@@ -73,6 +73,7 @@ def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
     stop_after: end once a layout exists and no better one has turned up for this many seconds.
     should_stop(): polled; True ends the run, keeping the best layout so far ("stopped").
     on_progress({"sheets", "waste", "seconds", "solution"}): called for every better layout.
+    extra_args: more PackingSolver options (e.g. --leftover-mode bottom for a nest variant).
     """
     tmp = workdir or tempfile.mkdtemp(prefix="ps_")
     os.makedirs(tmp, exist_ok=True)
@@ -83,7 +84,7 @@ def solve_grace(instance: dict, binary: str, time_limit: float, grace: float,
     with open(inst_p, "w") as f:
         json.dump(instance, f)
     cmd = [binary, "-i", inst_p, "-o", out_p, "-c", sol_p, "-t", str(time_limit + grace), "-v", "0",
-           "--optimization-mode", "anytime", "--linear-programming-solver", LP_SOLVER]
+           "--optimization-mode", "anytime", "--linear-programming-solver", LP_SOLVER] + list(extra_args or [])
     t0 = time.perf_counter()
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
 

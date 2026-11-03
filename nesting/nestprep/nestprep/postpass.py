@@ -41,10 +41,12 @@ class PostOptions:
     fill: bool = True            # gaps of the emptiest sheets first, from the parts of later sheets
     fill_time: float = 3.0       # per sheet
     fill_rounds: int = 3
+    fill_max: float = 0.0        # the whole fill step at most this long [s]; 0: no limit of its own
     fill_below: float = 0.86     # sheets fuller than this (parts area / sheet area) are left alone
     empty: bool = True           # the last sheet's parts into the earlier sheets, again while sheets go
     empty_time: float = 2.0      # per sheet
-    empty_first: bool = True     # also before fill (Thorough); Fast has the time for one run only
+    empty_first: bool = True     # before fill
+    empty_again: bool = True     # and after fill (Thorough); Fast has the time for one run only
     push: bool = True            # parts pushed towards 0,0 at the start and after every step (push.py)
     tail: bool = True            # the last sheets nested again together, to need one sheet less
     tail_time: float = 6.0       # per sheet of the tail
@@ -140,8 +142,11 @@ class PostPass:
     def left(self) -> float:
         """Time left for the steps before the compaction (its time is kept aside)."""
         reserve = (self.opt.compact_time if self.opt.compact else 0.0) + (self.opt.tail_time * 2 if self.opt.tail and not self._in_tail else 0.0) \
-            + (self.opt.empty_time * 3 if self.opt.empty and self._empty_runs < (2 if self.opt.empty_first else 1) else 0.0)
+            + (self.opt.empty_time * 3 if self.opt.empty and self._empty_runs < self._empty_planned() else 0.0)
         return self.opt.budget - reserve - (time.perf_counter() - self.t0)
+
+    def _empty_planned(self) -> int:
+        return int(self.opt.empty_first) + int(self.opt.empty_again or not self.opt.empty_first)
 
     def left_total(self) -> float:
         return self.opt.budget - (time.perf_counter() - self.t0)
@@ -592,13 +597,17 @@ class PostPass:
             moved = 0
             order = sorted((x for x in self.sheets[:-1] if self.fullness(x) < self.opt.fill_below), key=self.fullness)
             for batch in self.batches(order):
-                if self.left() < 1.0:
+                if self.left() < 1.0 or self._fill_over(t):
                     break
                 moved += self.fill_batch(batch, "later", self.opt.fill_time)
             total += moved
-            if not moved or self.left() < 1.0:
+            if not moved or self.left() < 1.0 or self._fill_over(t):
                 break
         self.note("fill", time.perf_counter() - t, total)
+
+    def _fill_over(self, t0: float) -> bool:
+        """fill has had its own maximum (fill_max), the rest is kept for the later steps."""
+        return self.opt.fill_max > 0 and time.perf_counter() - t0 >= self.opt.fill_max - 1.0
 
     def step_empty(self):
         """What a person does by hand: the last sheet's parts into the gaps of the earlier sheets,
@@ -764,7 +773,7 @@ class PostPass:
             steps.append(self.step_empty)
         if self.opt.fill:
             steps.append(self.step_fill)
-        if self.opt.empty:
+        if self.opt.empty and (self.opt.empty_again or not self.opt.empty_first):
             steps.append(self.step_empty)
         if self.opt.tail:
             steps.append(self.step_tail)

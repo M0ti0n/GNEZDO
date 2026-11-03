@@ -41,7 +41,7 @@ const SECTIONS: Section[] = [
   {
     id: "auto", label: "Automatic nest", icon: tileAuto, tools: [
       { id: "fastNest", label: "Fast", icon: toolFastNest, hint: "Fast nest: about 30 s to 1 min (longer for big jobs)", ready: true },
-      { id: "thoroughNest", label: "Thorough", icon: toolThoroughNest, hint: "Thorough nest: about 1.5–3 min (longer for big jobs), fewer and fuller sheets", ready: true },
+      { id: "thoroughNest", label: "Thorough", icon: toolThoroughNest, hint: "Thorough nest: about 3 min, fewer and fuller sheets (on a server: two nests side by side, the better one kept)", ready: true },
       { id: "customNest", label: "Custom", icon: toolCustomNest, hint: "Custom nest: you set the time, or run until you stop it; keeps the best layout so far", ready: true },
     ],
   },
