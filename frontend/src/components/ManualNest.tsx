@@ -147,7 +147,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   };
 
   // -- moving the selection -------------------------------------------------------------------
-  // locked parts stay where they are (drag, arrow keys, slides; Arrange leaves them out)
+  // locked parts keep their place and angle: drag, arrow keys, turning, slides, mirroring, Align edge
+  // and Arrange leave them (copying, stacking and deleting still work)
   const moved = (list: PlacedPart[], ids: Set<number>, dx: number, dy: number) =>
     list.map((p, i) => (ids.has(i) && !p.lock ? { ...p, x: p.x + dx, y: p.y + dy } : p));
   const movable = (list: PlacedPart[], ids: Set<number>) => new Set([...ids].filter((i) => list[i] && !list[i].lock));
@@ -200,7 +201,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       }
       default: {
         const deg = a === "rotCw1" ? 1 : a === "rotCw45" ? 45 : a === "rotCcw1" ? -1 : -45;
-        const idx = [...all];
+        const idx = [...movable(list, all)];   // locked parts keep their angle too
+        if (!idx.length) return list;
         const boxes = idx.map((i) => geoOf(list, i)?.box).filter((b): b is Box => !!b);
         const turned = rotateGroup(idx.map((i) => list[i]), boxes, deg);
         const next = list.slice();
@@ -568,6 +570,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     }
     return best;
   };
+  const isLocked = (i: number) => itemsRef.current[i]?.lock !== undefined;
   const alignClick = (pt: Pt) => {
     const al = alignRef.current;
     if (!al) return;
@@ -591,7 +594,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     if (Math.abs(d) < 0.01) { setNote("Already parallel"); return; }
     const before = itemsRef.current;
     // the part, or the selection it is in, turned about the middle of its box
-    const ids = selRef.current.has(e.part) ? [...selRef.current] : [e.part];
+    if (isLocked(e.part)) { setNote("That part is locked: unlock it to turn it"); return; }
+    const ids = (selRef.current.has(e.part) ? [...selRef.current] : [e.part]).filter((i) => !isLocked(i));
     const boxes = ids.map((i) => geoOf(before, i)?.box).filter((b): b is Box => !!b);
     const turned = rotateGroup(ids.map((i) => before[i]), boxes, d);
     const next = before.slice();
@@ -633,6 +637,12 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const before = itemsRef.current;
     const ids = [...selRef.current].filter((i) => before[i] && partPath(before[i].partId)).sort((a, b) => a - b);
     if (!ids.length) { setNote("Select parts first: click a part, or drag a window."); return; }
+    if (t === "mirrorV" || t === "mirrorH" || t === "arrange") {
+      // locked parts are left as they are; the others go on (Arrange works around the locked ones)
+      const free = ids.filter((i) => !before[i].lock);
+      if (!free.length) { setNote("Locked parts stay as they are: unlock them first."); return; }
+      if (free.length < ids.length) { ids.length = 0; ids.push(...free); }
+    }
     const uniq = [...new Set(ids.map((i) => before[i].partId))];
     if (t === "mirrorV" || t === "mirrorH") {
       const rules = await Promise.all(uniq.map(partRules));
@@ -654,9 +664,6 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       return;
     }
     if (t === "arrange") {
-      const free = ids.filter((i) => !before[i].lock);
-      if (!free.length) { setNote("Locked parts stay where they are: unlock them to arrange them."); return; }
-      if (free.length < ids.length) { ids.length = 0; ids.push(...free); }   // the locked ones stay, as obstacles
       // a small nest: up to 20 parts in 1.5 s, up to 50 in 3 s; more is a job for Automatic nest
       if (ids.length > 50) { setNote(`Arrange takes up to 50 parts (${ids.length} selected): select fewer, or use Automatic nest.`); return; }
       const limit = ids.length <= 20 ? 1500 : 3000;
@@ -814,7 +821,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
               <div className="mn-ctx" role="menu" style={{ left: menu.x, top: menu.y }} onContextMenu={(e) => e.preventDefault()}
                 onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
                 <button type="button" role="menuitem" disabled={!anyFree} onClick={() => { setMenu(null); lockParts(menu.ids); }}
-                  title="Pinned where it is: dragging, the arrow keys, slides and Arrange leave it">Lock {what}</button>
+                  title="Pinned where it is, at its angle: dragging, arrow keys, turning, slides, mirroring, Align edge and Arrange leave it">Lock {what}</button>
                 <button type="button" role="menuitem" disabled={!anyLocked} onClick={() => { setMenu(null); unlockParts(menu.ids); }}
                   title="Free again; parts locked together with it come free too">Unlock {what}</button>
               </div>

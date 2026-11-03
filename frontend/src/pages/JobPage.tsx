@@ -203,7 +203,7 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
               <colgroup>
                 {/* material and thickness narrow and side by side; the room goes to project and part name */}
                 <col style={{ width: 68 }} /><col style={{ width: "16%" }} /><col />
-                <col style={{ width: 172 }} /><col style={{ width: 124 }} />
+                <col style={{ width: 172 }} /><col style={{ width: 136 }} />
                 <col style={{ width: 84 }} /><col style={{ width: 92 }} /><col style={{ width: 84 }} /><col style={{ width: 42 }} />
               </colgroup>
               <thead>
