@@ -6,7 +6,9 @@ request.json (written by GNEZDO from the job tab):
    "stopAfterMinutes": 5 | null,    custom: stop when nothing better for this long
    "partGapMm": 5, "edgeGapMm": 5,
    "blockMarginPct": 10,            Rules -> Nesting rules: how much a block's box may grow (missing: 10)
-   "blocks": true | false,          blocks before the nest (missing: the level's default: Fast no, else yes)
+   "blocks": true | false,          blocks before the nest (Custom only; Fast and Thorough never)
+   "searchGrowth": 1.5,             Rules -> Nesting rules: search step, each tree search round this many
+                                    times wider than the last (1.2-2.0; missing: 1.5)
    "fixedSheets": [...],            continuing a solution: its sheets with the parts on them, which stay
                                     where they are; the parts above (the ones still missing) go into the
                                     free space of these first, then onto new stock sheets. Each:
@@ -398,6 +400,8 @@ class Run:
         # of its own: each nest's PackingSolver uses about 3, so both fit next to each other (a
         # 16-thread server: 2; a 4-thread PC: 1, as before)
         variants = 2 if (os.cpu_count() or 2) // self.parallel >= 8 else 1
+        growth = self.req.get("searchGrowth")
+        growth = float(growth) if isinstance(growth, (int, float)) and 1.2 <= growth <= 2.0 else None
         try:
             margin = self.req.get("blockMarginPct")
             opts = Options(workers=workers, verbose=False)
@@ -408,7 +412,8 @@ class Run:
             job = run_job(g["instance"], self.bin, level, opts,
                           os.path.join(self.dir, f"group{i + 1}"), quiet=True,
                           minutes=self.req.get("minutes"), stop_after=stop_after * 60 if stop_after else None,
-                          should_stop=self.stop_requested, on_progress=on_progress, variants=variants)
+                          should_stop=self.stop_requested, on_progress=on_progress, variants=variants,
+                          growth=growth)
         except NestError as e:
             with self.lock:
                 self.status[i].update(stage="error", error=str(e))

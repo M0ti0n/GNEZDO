@@ -42,6 +42,8 @@ export interface NestRequest {
   edgeGapMm: number;
   /** Rules -> Nesting rules: how much a block's box may grow [%] */
   blockMarginPct?: number;
+  /** Rules -> Nesting rules: search step (each round this many times wider than the last) */
+  searchGrowth?: number;
   /** blocks before the nest (Custom when chosen, experimental) */
   blocks?: boolean;
   parts: NestRequestPart[];
@@ -229,6 +231,7 @@ export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: 
     partGapMm: PART_GAP_MM,
     edgeGapMm: EDGE_GAP_MM,
     blockMarginPct: loadNestingRules().blockMarginPct,
+    searchGrowth: loadNestingRules().searchGrowth,
     parts: withQty.map((jp, i) => ({
       id: jp.part.id, name: jp.part.name, path: jp.part.path, qty: jp.qty,
       rotations: details[i].rotations, mirror: details[i].mirror,

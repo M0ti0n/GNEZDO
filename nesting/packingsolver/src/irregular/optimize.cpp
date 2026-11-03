@@ -280,6 +280,8 @@ void optimize_tree_search(
     ts_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
     ts_parameters.optimization_mode = parameters.optimization_mode;
     ts_parameters.guides = parameters.tree_search_guides;
+    ts_parameters.growth_factor = parameters.tree_search_growth_factor;
+    ts_parameters.round_deadline = parameters.tree_search_round_deadline;
     ts_parameters.not_anytime_tree_search_queue_size = parameters.not_anytime_tree_search_queue_size;
     ts_parameters.initial_maximum_approximation_ratio = parameters.initial_maximum_approximation_ratio;
     ts_parameters.not_anytime_maximum_approximation_ratio = parameters.not_anytime_maximum_approximation_ratio;
