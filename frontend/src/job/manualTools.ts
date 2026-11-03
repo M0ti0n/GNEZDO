@@ -2,7 +2,7 @@
 // quick nest of the selected parts into the free space of the sheet).
 import { api } from "../api/api";
 import type { Origin } from "./machine";
-import type { PlacedPart } from "./nest";
+import { unlocked, type PlacedPart } from "./nest";
 import {
   clearOf, partLoops, placed, slideDistance, transform, unionBox,
   type Box, type Dir, type Placed, type Pt,
@@ -87,7 +87,7 @@ export function stack(list: PlacedPart[], ids: number[], kind: "v" | "h" | "grid
     const dx = i * px * sx, dy = j * py * sy;
     const copy = shifted(refs, pathOf, dx, dy);
     if (!clearOf(copy, all, usable, gap, outline)) return false;
-    for (const p of refs) out.push({ ...p, x: p.x + dx, y: p.y + dy });
+    for (const p of refs) out.push({ ...unlocked(p), x: p.x + dx, y: p.y + dy });
     all.push(...copy);
     for (const [id, n] of need) if (room.has(id)) room.set(id, room.get(id)! - n);
     added++;
