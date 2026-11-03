@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { JobPart } from "../api/types";
 import { IconClose } from "./Icons";
 import {
-  NEST_MODE_LABEL, countsOf, hms, isFinished, partColor, sheetProblems, sheetStats,
+  NEST_MODE_LABEL, bestFoundAt, countsOf, hms, isFinished, partColor, sheetProblems, sheetStats,
   type NestMode, type NestedSheet, type Solution,
 } from "../job/nest";
 import type { Machine, Origin } from "../job/machine";
@@ -263,7 +263,8 @@ function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, 
                   <span className="sol-badge">{MODE_SHORT[s.mode]}</span>
                   {s.mode === "custom" && s.custom && <span className="sol-badge">{s.custom.minutes === null ? "∞" : `${s.custom.minutes} min`}</span>}
                 </div>
-                <div className="sol-live-best">{best ? `${best} ${best === 1 ? "sheet" : "sheets"}` : "no layout yet"}</div>
+                <div className="sol-live-best">{best ? `${best} ${best === 1 ? "sheet" : "sheets"}` : "no layout yet"}
+                  {best > 0 && bestFoundAt(s.run) !== null && <small title="When the nest found this layout (the run's clock)">found at {hms(bestFoundAt(s.run)!)}</small>}</div>
                 <div className="sol-live-row is-end">
                   <button type="button" className="sol-btn" disabled={!s.run?.best?.sheets.length}
                     onClick={() => onSelect({ sol: s.id, sheet: 0 })} title="Show the best layout so far">VIEW</button>
@@ -280,7 +281,7 @@ function SolutionsPanel({ solutions, current, sheetNo, onSelect, onAdd, onStop, 
               <div className="sol-row">
                 <div className={`sol-box${on ? " is-on" : ""}`}>
                   <button type="button" className="sol-pick" onClick={() => { onSelect({ sol: s.id, sheet: 0 }); setFold((f) => ({ ...f, [s.id]: true })); }}
-                    title={failed ? failed : `${sheets.length} ${sheets.length === 1 ? "sheet" : "sheets"} · ${hms(s.run?.seconds ?? 0)}${s.run?.state === "stopped" ? " · stopped" : ""}`}>
+                    title={failed ? failed : `${sheets.length} ${sheets.length === 1 ? "sheet" : "sheets"} · ${hms(s.run?.seconds ?? 0)}${bestFoundAt(s.run) !== null ? ` · nest's best found at ${hms(bestFoundAt(s.run)!)}` : ""}${s.run?.state === "stopped" ? " · stopped" : ""}`}>
                     <span className="sol-title">Solution {s.no}</span>
                     <span className={`sol-badge${failed || s.outdated ? " is-error" : ""}`}
                       title={s.outdated ? "Nested for a machine of another technology: nest the job again" : undefined}>
@@ -341,7 +342,7 @@ function InfoTabs({ sol, sheets, sheetNo, parts, jobParts }: {
       </div>
       <div className="info-head">
         {tab === "solution"
-          ? <><b>Solution {sol.no}</b><span>{NEST_MODE_LABEL[sol.mode]}{sol.mode === "custom" ? ` (${strategyLabel(sol.custom)})` : ""} · {sheets.length} {sheets.length === 1 ? "sheet" : "sheets"}{sol.run?.result ? ` · ${hms(sol.run.seconds)}` : " · best so far"}</span></>
+          ? <><b>Solution {sol.no}</b><span>{NEST_MODE_LABEL[sol.mode]}{sol.mode === "custom" ? ` (${strategyLabel(sol.custom)})` : ""} · {sheets.length} {sheets.length === 1 ? "sheet" : "sheets"}{sol.run?.result ? ` · ${hms(sol.run.seconds)}` : " · best so far"}{bestFoundAt(sol.run) !== null ? ` · found at ${hms(bestFoundAt(sol.run)!)}` : ""}</span></>
           : <><b>Solution {sol.no} <span className="slash">/</span> Sheet {sheetNo + 1}</b>
               <span>{sheet.material} · {sheet.thicknessMm} mm · {sheet.lengthMm} × {sheet.widthMm} · {sheet.parts.length} parts</span></>}
       </div>

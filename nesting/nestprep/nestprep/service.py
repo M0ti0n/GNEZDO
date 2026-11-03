@@ -435,6 +435,7 @@ class Run:
         self.progress()
         return {"sheets": sheets, "valid": v["ok"], "errors": v["errors"][:10],
                 "sheetEquivalents": m.get("sheet_equivalents"), "seconds": job["seconds"], "steps": job["steps"],
+                "bestAt": job.get("bestAt"),
                 "tooBig": [{"partId": g["partIds"][n], "reason": f"Bigger than every stock sheet ({t})"}
                            for n, t in job["skipped"]],
                 "counts": {g["partIds"][t]: c for t, c in counts.items()}}
@@ -455,11 +456,15 @@ class Run:
             valid &= r["valid"]
             errors += [f"{g['label']}: {e}" for e in r["errors"]]
         self.state = "stopped" if self.stop_requested() else "done"
+        # when the last group's nest found its best layout (job clock): if that was long before the
+        # end, more time would not have helped; near the end, it might have
+        at = [r["bestAt"] for r in results if isinstance(r.get("bestAt"), (int, float))]
         result = {"state": self.state, "seconds": round(time.perf_counter() - self.t0, 1),
+                  "bestAt": max(at) if at else None,
                   "sheets": sheets, "nested": dict(nested), "skipped": skipped,
                   "valid": valid, "errors": errors,
                   "groups": [{"material": g["material"], "thicknessMm": g["thicknessMm"],
-                              **{k: r.get(k) for k in ("sheetEquivalents", "seconds", "valid", "error", "steps")}}
+                              **{k: r.get(k) for k in ("sheetEquivalents", "seconds", "valid", "error", "steps", "bestAt")}}
                              for g, r in zip(self.groups, results)]}
         self.write("result.json", result)
         self.progress("finished")

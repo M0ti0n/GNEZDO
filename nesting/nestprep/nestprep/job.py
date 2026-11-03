@@ -212,7 +212,7 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     if pre.get("objective") == "knapsack":
         n_var = 1   # one sheet: the fill direction is chosen by the solver itself
     lock = threading.Lock()
-    shown = {"key": None}
+    shown = {"key": None, "at": None}
 
     def progress(best):
         best = dict(best)
@@ -223,6 +223,9 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
             if shown["key"] is not None and key > shown["key"]:
                 return
             shown["key"] = key
+            # when the nest found it, from the start of the job (pre-pass included), as the user
+            # sees the run's clock: shown while it runs and kept with the result
+            shown["at"] = best["seconds"] = round(time.perf_counter() - t0, 1)
         if sol:
             best["layout"] = expand(remap(sol), mapping)  # the best layout so far, as original parts
         say({"stage": "nest", **best})
@@ -284,7 +287,7 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     dump(pre, os.path.join(outdir, "instance_pre.json"))
     dump(mapping, os.path.join(outdir, "composites.json"))
     dump(sol, os.path.join(outdir, "solution.json"))
-    return {"solution": sol, "mapping": mapping, "steps": log, "variant": k + 1, "variants": n_var, "instance": inst,
+    return {"solution": sol, "mapping": mapping, "steps": log, "variant": k + 1, "variants": n_var, "bestAt": shown["at"], "instance": inst,
             "skipped": big, "stopped": bool(r.get("stopped")),
             "seconds": {"prepass": round(pre_t, 1), "nest": round(r["time"], 1),
                         "post": round(total - nest_done, 1), "total": round(total, 1)}}

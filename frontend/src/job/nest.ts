@@ -140,12 +140,23 @@ export interface NestResult {
   skipped: { partId: string; reason: string }[];
   valid: boolean;
   errors: string[];
+  /** when the nest found its best layout [s from the start of the run] (the last of the materials) */
+  bestAt?: number | null;
 }
 
 export interface NestGroupProgress {
   material: string; thicknessMm: number;
   stage: "waiting" | "prepare" | "nest" | "improve" | "done" | "error";
   sheets?: number; waste?: number; error?: string;
+  /** when the nest found the best layout so far [s from the start of the run] */
+  bestAt?: number;
+}
+
+/** When the nest found its best layout: of the finished result, or (running) the latest of its materials so far. */
+export function bestFoundAt(run: NestRun | null | undefined): number | null {
+  if (run?.result) return typeof run.result.bestAt === "number" ? run.result.bestAt : null;
+  const at = (run?.groups ?? []).map((g) => g.bestAt).filter((x): x is number => typeof x === "number");
+  return at.length ? Math.max(...at) : null;
 }
 
 export interface NestRun {
