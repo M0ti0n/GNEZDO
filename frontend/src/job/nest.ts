@@ -65,7 +65,15 @@ export interface FixedSheet {
   parts: { path: string; x: number; y: number; angle: number; mirror: boolean }[];
 }
 
-export interface PlacedPart { partId: string; x: number; y: number; angle: number; mirror: boolean }
+export interface PlacedPart {
+  partId: string; x: number; y: number; angle: number; mirror: boolean;
+  /** Manual nest: pinned where it is (drag, arrow keys, slides and Arrange leave it); parts locked
+   * together share the number, and unlocking one unlocks them all */
+  lock?: number;
+}
+
+/** The part without its lock (a copy of a locked part comes out free). */
+export const unlocked = (p: PlacedPart): PlacedPart => { const q = { ...p }; delete q.lock; return q; };
 
 export interface NestedSheet {
   sheetId: string; lengthMm: number; widthMm: number; material: string; thicknessMm: number;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { JobPart } from "../api/types";
 import type { Origin } from "../job/machine";
-import { partColor, type NestedSheet, type PlacedPart, type Solution } from "../job/nest";
+import { partColor, unlocked, type NestedSheet, type PlacedPart, type Solution } from "../job/nest";
 import { Lock } from "./NestView";
 import { actionOf, loadKeys, type KeyAction } from "../job/manualKeys";
 import {
@@ -147,11 +147,14 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   };
 
   // -- moving the selection -------------------------------------------------------------------
+  // locked parts stay where they are (drag, arrow keys, slides; Arrange leaves them out)
   const moved = (list: PlacedPart[], ids: Set<number>, dx: number, dy: number) =>
-    list.map((p, i) => (ids.has(i) ? { ...p, x: p.x + dx, y: p.y + dy } : p));
+    list.map((p, i) => (ids.has(i) && !p.lock ? { ...p, x: p.x + dx, y: p.y + dy } : p));
+  const movable = (list: PlacedPart[], ids: Set<number>) => new Set([...ids].filter((i) => list[i] && !list[i].lock));
   const geoOf = (list: PlacedPart[], i: number) => { const r = byId.get(list[i].partId); return r ? placed(r.path, list[i]) : null; };
   /** How far the selection can slide in a direction (to the next part or the edge, with the gaps). */
-  const slide = (list: PlacedPart[], ids: Set<number>, dir: Dir) => {
+  const slide = (list: PlacedPart[], all: Set<number>, dir: Dir) => {
+    const ids = movable(list, all);
     const group = [...ids].map((i) => geoOf(list, i)).filter((g): g is Placed => !!g);
     const others = list.map((_, i) => (ids.has(i) ? null : geoOf(list, i))).filter((g): g is Placed => !!g);
     if (!group.length) return list;
@@ -161,7 +164,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     return moved(list, ids, dx, dy);
   };
   /** Ctrl + drop on a part: the selection goes next to it, on the side it was dropped, with the gap. */
-  const snapTo = (list: PlacedPart[], ids: Set<number>, target: number) => {
+  const snapTo = (list: PlacedPart[], all: Set<number>, target: number) => {
+    const ids = movable(list, all);
     const g = unionBox([...ids].map((i) => geoOf(list, i)?.box).filter((b): b is Box => !!b));
     const t = geoOf(list, target)?.box;
     if (!t || !isFinite(g.x0)) return list;
@@ -180,10 +184,12 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   };
 
   const step = (list: PlacedPart[], a: KeyAction): PlacedPart[] => {
-    const ids = selRef.current;
-    if (!ids.size) return list;
+    const all = selRef.current;
+    if (!all.size) return list;
     switch (a) {
       case "up": case "down": case "left": case "right": {
+        const ids = movable(list, all);
+        if (!ids.size) return list;
         // 1 mm, but not past the edge of the usable area (trims): up to it at most; parts may overlap
         const g = unionBox([...ids].map((i) => geoOf(list, i)?.box).filter((b): b is Box => !!b));
         if (!isFinite(g.x0)) return list;
@@ -194,7 +200,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       }
       default: {
         const deg = a === "rotCw1" ? 1 : a === "rotCw45" ? 45 : a === "rotCcw1" ? -1 : -45;
-        const idx = [...ids];
+        const idx = [...all];
         const boxes = idx.map((i) => geoOf(list, i)?.box).filter((b): b is Box => !!b);
         const turned = rotateGroup(idx.map((i) => list[i]), boxes, deg);
         const next = list.slice();
@@ -302,7 +308,32 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   // before: the parts the drag offset applies to (turned by a key while held: the turned parts, from
   // where the mouse is then); orig: the sheet when the drag started (for undo)
   const dragging = useRef<{ start: Pt; before: PlacedPart[]; orig: PlacedPart[]; ids: Set<number>; moved: boolean; px: { x: number; y: number } } | null>(null);
-  const pan = useRef<{ x: number; y: number } | null>(null);
+  const pan = useRef<{ x: number; y: number; from: { x: number; y: number }; button: number } | null>(null);
+  // right click (no drag) on a part: Lock / Unlock it, or the selection it is in
+  const [menu, setMenu] = useState<{ x: number; y: number; ids: number[] } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: Event) => { if (!(e.target as HTMLElement)?.closest?.(".mn-menu")) setMenu(null); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", esc, true);
+    return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", esc, true); };
+  }, [menu]);
+  useEffect(() => { setMenu(null); }, [index]);
+  const lockParts = (ids: number[]) => {
+    const before = itemsRef.current;
+    const group = Date.now();
+    commit(before.map((p, i) => (ids.includes(i) ? { ...p, lock: group } : p)), before);
+    setNote(`Locked ${ids.length} ${ids.length === 1 ? "part" : "parts"}: they stay where they are`);
+  };
+  const unlockParts = (ids: number[]) => {
+    const before = itemsRef.current;
+    // a part locked with others: they all come free
+    const groups = new Set(ids.map((i) => before[i]?.lock).filter((g): g is number => g !== undefined));
+    let n = 0;
+    commit(before.map((p) => (p.lock !== undefined && groups.has(p.lock) ? (n++, unlocked(p)) : p)), before);
+    setNote(`Unlocked ${n} ${n === 1 ? "part" : "parts"}`);
+  };
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [hover, setHover] = useState(-1);
   const [moving, setMoving] = useState(false);   // selected parts being dragged
@@ -317,7 +348,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     if (align && e.button === 2) { setAlign(null); setEdgeHover(null); setNote(null); return; }
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const p = local(e);
-    if (e.button === 1 || e.button === 2) { pan.current = { x: e.clientX, y: e.clientY }; return; }
+    if (e.button === 1 || e.button === 2) { pan.current = { x: e.clientX, y: e.clientY, from: { x: e.clientX, y: e.clientY }, button: e.button }; return; }
     if (e.button !== 0) return;
     const [x, y] = toMm(p.x, p.y);
     const i = hit(x, y);
@@ -339,7 +370,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const p = local(e);
     if (pan.current) {
       const dx = e.clientX - pan.current.x, dy = e.clientY - pan.current.y;
-      pan.current = { x: e.clientX, y: e.clientY };
+      pan.current = { ...pan.current, x: e.clientX, y: e.clientY };
       setView((v) => v && { ...v, tx: v.tx + dx, ty: v.ty + dy });
       return;
     }
@@ -356,7 +387,22 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     setHover(hit(x, y));
   };
   const onPointerUp = (e: React.PointerEvent) => {
-    if (pan.current) { pan.current = null; return; }
+    if (pan.current) {
+      const pn = pan.current;
+      pan.current = null;
+      // a right click that did not pan: the lock menu for the part under it (or its selection)
+      if (pn.button === 2 && edit && Math.hypot(e.clientX - pn.from.x, e.clientY - pn.from.y) < 4) {
+        const q = local(e);
+        const [x, y] = toMm(q.x, q.y);
+        const i = hit(x, y);
+        if (i >= 0) {
+          const ids = sel.has(i) ? [...sel] : [i];
+          if (!sel.has(i)) setSel(new Set([i]));
+          setMenu({ x: e.clientX, y: e.clientY, ids });
+        }
+      }
+      return;
+    }
     if (box) {
       const b = box;
       setBox(null);
@@ -447,7 +493,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     if (!ids.length) return;
     const g = unionBox(ids.map((i) => geoOf(itemsRef.current, i)!.box));
     const cx = (g.x0 + g.x1) / 2, cy = (g.y0 + g.y1) / 2;
-    clipboard = ids.map((i) => ({ ...itemsRef.current[i], x: itemsRef.current[i].x - cx, y: itemsRef.current[i].y - cy }));
+    clipboard = ids.map((i) => ({ ...unlocked(itemsRef.current[i]), x: itemsRef.current[i].x - cx, y: itemsRef.current[i].y - cy }));
     setNote(`Copied ${ids.length} ${ids.length === 1 ? "part" : "parts"}: Ctrl+V to paste`);
   };
   /** Why the copy may not go on this sheet: a part would go over its required (or max) number. */
@@ -606,6 +652,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       return;
     }
     if (t === "arrange") {
+      const free = ids.filter((i) => !before[i].lock);
+      if (!free.length) { setNote("Locked parts stay where they are: unlock them to arrange them."); return; }
+      if (free.length < ids.length) { ids.length = 0; ids.push(...free); }   // the locked ones stay, as obstacles
       // a small nest: up to 20 parts in 1.5 s, up to 50 in 3 s; more is a job for Automatic nest
       if (ids.length > 50) { setNote(`Arrange takes up to 50 parts (${ids.length} selected): select fewer, or use Automatic nest.`); return; }
       const limit = ids.length <= 20 ? 1500 : 3000;
@@ -733,7 +782,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 const c = partColor(r.no);
                 return (
                   <path key={i} d={pathOf(g.loops)} fillRule="evenodd"
-                    className={`mn-part${sel.has(i) ? " is-sel" : ""}${bad.has(i) ? " is-bad" : ""}${sel.has(i) && moving ? " is-moving" : ""}`}
+                    className={`mn-part${sel.has(i) ? " is-sel" : ""}${bad.has(i) ? " is-bad" : ""}${sel.has(i) && moving ? " is-moving" : ""}${p.lock ? " is-locked" : ""}`}
                     style={{ fill: c.fill, stroke: sel.has(i) ? undefined : c.stroke, strokeWidth: (sel.has(i) ? 2.2 : 1) / v.s }}>
                     <title>{r.name}</title>
                   </path>
@@ -754,6 +803,21 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
             )}
           </svg>
           {working && <div className="mn-busy" aria-hidden="true"><span /></div>}
+          {menu && (() => {
+            const anyFree = menu.ids.some((i) => items[i] && !items[i].lock);
+            const anyLocked = menu.ids.some((i) => items[i]?.lock !== undefined);
+            const n = menu.ids.length;
+            const what = n === 1 ? "part" : `${n} parts`;
+            return (
+              <div className="mn-menu" role="menu" style={{ left: menu.x, top: menu.y }} onContextMenu={(e) => e.preventDefault()}
+                onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                <button type="button" role="menuitem" disabled={!anyFree} onClick={() => { setMenu(null); lockParts(menu.ids); }}
+                  title="Pinned where it is: dragging, the arrow keys, slides and Arrange leave it">Lock {what}</button>
+                <button type="button" role="menuitem" disabled={!anyLocked} onClick={() => { setMenu(null); unlockParts(menu.ids); }}
+                  title="Free again; parts locked together with it come free too">Unlock {what}</button>
+              </div>
+            );
+          })()}
           {note && <div className={`mn-note${working ? " is-working" : ""}`} role="status">{note}</div>}
           {bad.size > 0 && (() => {
             const close = [...bad].filter((i) => !outside.has(i)).length;
