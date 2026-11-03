@@ -204,6 +204,19 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     }
   };
 
+  // a key step; while parts are dragged, the drag goes on from the stepped parts (a turn is kept
+  // when the mouse moves on)
+  const stepNow = (a: KeyAction) => {
+    const next = step(itemsRef.current, a);
+    itemsRef.current = next;
+    const d = dragging.current;
+    if (d) {
+      d.before = next;
+      if (lastPt.current) d.start = lastPt.current;
+    }
+    setItems(next);
+  };
+
   // -- keys: a press moves 1 mm / turns 1°; held, 10 steps a second; Ctrl + direction slides -------
   const hold = useRef<{ code: string; before: PlacedPart[]; timer: number } | null>(null);
   useEffect(() => {
@@ -261,11 +274,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
         if (next !== before) commit(next, before);
         return;
       }
-      setItems((l) => step(l, a));
+      stepNow(a);
       // held: after a moment, 10 steps a second until the key is let go
       const start = window.setTimeout(() => {
         if (!hold.current) return;
-        hold.current.timer = window.setInterval(() => setItems((l) => step(l, a)), 100);
+        hold.current.timer = window.setInterval(() => stepNow(a), 100);
       }, 300);
       hold.current = { code: e.code, before, timer: start };
     };
@@ -275,7 +288,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       window.clearTimeout(h.timer);
       window.clearInterval(h.timer);
       hold.current = null;
-      if (itemsRef.current !== h.before) commit(itemsRef.current, h.before);
+      // while parts are dragged the drop saves it all (one undo step)
+      if (itemsRef.current !== h.before && !dragging.current) commit(itemsRef.current, h.before);
     };
     const onUp = (e: KeyboardEvent) => { if (hold.current && e.code === hold.current.code) end(); };
     window.addEventListener("keydown", onDown);
@@ -285,7 +299,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   });   // every render: the handlers see the current sheet and selection
 
   // -- mouse: click / drag parts, window selection, pan ---------------------------------------
-  const dragging = useRef<{ start: Pt; before: PlacedPart[]; ids: Set<number>; moved: boolean; px: { x: number; y: number } } | null>(null);
+  // before: the parts the drag offset applies to (turned by a key while held: the turned parts, from
+  // where the mouse is then); orig: the sheet when the drag started (for undo)
+  const dragging = useRef<{ start: Pt; before: PlacedPart[]; orig: PlacedPart[]; ids: Set<number>; moved: boolean; px: { x: number; y: number } } | null>(null);
   const pan = useRef<{ x: number; y: number } | null>(null);
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [hover, setHover] = useState(-1);
@@ -310,7 +326,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       if (e.shiftKey) { ids = new Set(sel); if (ids.has(i)) ids.delete(i); else ids.add(i); }
       else if (!sel.has(i)) ids = new Set([i]);
       setSel(ids);
-      if (edit && ids.has(i)) dragging.current = { start: [x, y], before: items, ids, moved: false, px: p };
+      if (edit && ids.has(i)) dragging.current = { start: [x, y], before: items, orig: items, ids, moved: false, px: p };
       return;
     }
     setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
@@ -386,7 +402,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       }
       if (target >= 0) next = snapTo(next, d.ids, target);
     }
-    commit(next, d.before);
+    commit(next, d.orig);
   };
 
   // -- parts from the JOB PARTS panel -----------------------------------------------------------
