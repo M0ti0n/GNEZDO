@@ -97,10 +97,30 @@ export function stack(list: PlacedPart[], ids: number[], kind: "v" | "h" | "grid
   if (kind === "v") for (let j = 1; j < LIMIT && tryAt(0, j); j++);
   else if (kind === "h") for (let i = 1; i < LIMIT && tryAt(i, 0); i++);
   else {
-    for (let j = 0; j < LIMIT; j++) {
-      let row = 0;
-      for (let i = j === 0 ? 1 : 0; i < LIMIT && tryAt(i, j); i++) row++;
-      if (full || (j > 0 && row === 0)) break;
+    // the grid grows by a whole column, then a whole row, in turn (1x1, 2x1, 2x2, 3x2, ...), so it
+    // stays about square instead of a long first row; a side that is blocked (the edge, another
+    // part) stops growing and the other goes on. When the pieces still needed run out, the line
+    // being added is filled as far as they go.
+    const copies = () => Math.min(...[...need].map(([id, n]) => room.has(id) ? Math.floor(room.get(id)! / n) : Infinity));
+    const fits = (i: number, j: number) => clearOf(shifted(refs, pathOf, i * px * sx, j * py * sy), all, usable, gap, outline);
+    const line = (cells: [number, number][]) => {
+      if (!cells.every(([i, j]) => fits(i, j))) return false;
+      const n = Math.min(cells.length, copies());
+      for (const [i, j] of cells.slice(0, n)) tryAt(i, j);
+      if (n < cells.length) full = true;
+      return n > 0;
+    };
+    let cols = 1, rows = 1, colOk = true, rowOk = true;
+    while (!full && (colOk || rowOk) && cols * rows < LIMIT) {
+      if (colOk) {
+        colOk = line(Array.from({ length: rows }, (_, j) => [cols, j] as [number, number]));
+        if (colOk) cols++;
+      }
+      if (full) break;
+      if (rowOk) {
+        rowOk = line(Array.from({ length: cols }, (_, i) => [i, rows] as [number, number]));
+        if (rowOk) rows++;
+      }
     }
   }
   return { list: out, added, full };
