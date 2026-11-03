@@ -604,24 +604,39 @@ export function App() {
     const sol = solsOf(jobId).list.find((x) => x.id === solId);
     const sh = sol?.run?.result?.sheets[index];
     if (!sol || !sh) return;
+    // locked parts (Manual nest) stay where they are: the others are nested around them
+    const pinned = sh.parts.filter((p) => p.lock !== undefined);
+    const loose = sh.parts.filter((p) => p.lock === undefined);
+    if (!loose.length) { setToast("Every part on this sheet is locked: nothing to nest again"); return; }
     const counts = new Map<string, number>();
-    for (const p of sh.parts) counts.set(p.partId, (counts.get(p.partId) ?? 0) + 1);
+    for (const p of loose) counts.set(p.partId, (counts.get(p.partId) ?? 0) + 1);
     const jparts = (jobParts[jobId] ?? []).filter((jp) => counts.has(jp.part.id)).map((jp) => ({ ...jp, qty: counts.get(jp.part.id)! }));
     const m = machineFor(jobId);
     setRenesting(`${solId}:${index}`);
     try {
       const req = await buildRequest(jparts, [], "fast", undefined, sol.origin ?? m.origin);
-      req.sheets = [{ id: sh.sheetId, material: sh.material, thicknessMm: sh.thicknessMm, lengthMm: sh.lengthMm, widthMm: sh.widthMm,
-        qty: 1, source: "nested", trims: sh.trims ?? { ...m.trims }, partGapMm: sh.partGapMm ?? m.partGapMm, kerfMm: sh.kerfMm, outline: sh.outline }];
+      if (pinned.length) {
+        // the sheet as a fixed sheet with its locked parts on it, no other stock
+        const pathOf = new Map<string, string>((jobParts[jobId] ?? []).map((jp) => [jp.part.id, jp.part.path]));
+        req.sheets = [];
+        req.fixedSheets = [{
+          index: 0, id: sh.sheetId, material: sh.material, thicknessMm: sh.thicknessMm, lengthMm: sh.lengthMm, widthMm: sh.widthMm,
+          outline: sh.outline, trims: sh.trims ?? { ...m.trims }, partGapMm: sh.partGapMm ?? m.partGapMm, kerfMm: sh.kerfMm,
+          parts: pinned.flatMap((p) => { const path = pathOf.get(p.partId); return path ? [{ path, x: p.x, y: p.y, angle: p.angle, mirror: p.mirror }] : []; }),
+        }];
+      } else {
+        req.sheets = [{ id: sh.sheetId, material: sh.material, thicknessMm: sh.thicknessMm, lengthMm: sh.lengthMm, widthMm: sh.widthMm,
+          qty: 1, source: "nested", trims: sh.trims ?? { ...m.trims }, partGapMm: sh.partGapMm ?? m.partGapMm, kerfMm: sh.kerfMm, outline: sh.outline }];
+      }
       let run = await nestApi.start(req);
       while (!isFinished(run)) { await new Promise((r) => setTimeout(r, 1000)); run = await nestApi.get(run.id); }
-      const out = run.result?.sheets[0];
+      const out = pinned.length ? run.result?.sheets.find((s) => s.fixedIndex === 0) : run.result?.sheets[0];
       const placed = out?.parts.length ?? 0;
-      if (!out || placed < sh.parts.length) {
-        setToast(`Only ${placed} of ${sh.parts.length} parts fit on this sheet: it is kept as it was`);
+      if (!out || placed < loose.length) {
+        setToast(`Only ${placed} of ${loose.length} parts fit on this sheet${pinned.length ? " around the locked ones" : ""}: it is kept as it was`);
         return;
       }
-      editSheet(jobId, solId, index, { parts: out.parts });
+      editSheet(jobId, solId, index, { parts: [...pinned, ...out.parts] });
       setToast(`Sheet ${index + 1} nested again`);
     } catch (e) {
       setToast(`Not nested again: ${(e as Error).message}`);

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { NumInput } from "../components/NumInput";
 import { COLOUR_ROLES, DEFAULT_RULES, ROTATIONS, type ImportRules } from "../import/rules";
 import { DEFAULT_NESTING_RULES, SEARCH_GROWTH_MAX, SEARCH_GROWTH_MIN, loadNestingRules, saveNestingRules, type NestingRules } from "../job/nestRules";
 
@@ -180,8 +181,9 @@ function NestingRulesPane() {
         <label className="rule-field">
           <span>Search step</span>
           <span className="rule-num">
-            <input className="field" type="number" min={SEARCH_GROWTH_MIN} max={SEARCH_GROWTH_MAX} step={0.05} value={r.searchGrowth}
-              onChange={(e) => { const n = Math.round(Number(e.target.value) * 100) / 100; if (Number.isFinite(n) && n > 0) set({ ...r, searchGrowth: Math.min(SEARCH_GROWTH_MAX, Math.max(SEARCH_GROWTH_MIN, n)) }); }} /> ×
+            {/* taken when the field is left (Enter): clamping every keystroke turned "1.33" into 1.23 */}
+            <NumInput className="field" value={r.searchGrowth} min={SEARCH_GROWTH_MIN} aria-label="Search step"
+              onCommit={(n) => set({ ...r, searchGrowth: Math.min(SEARCH_GROWTH_MAX, Math.max(SEARCH_GROWTH_MIN, Math.round(n * 100) / 100)) })} /> ×
           </span>
         </label>
         <p className="rule-help">The nest searches in rounds, each this many times wider than the last. Smaller: more, shorter rounds, so
