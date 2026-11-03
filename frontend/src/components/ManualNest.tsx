@@ -702,7 +702,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           onMouseDown={(e) => { if (e.button === 0) { e.preventDefault(); (document.activeElement as HTMLElement | null)?.blur?.(); } }}
           onDragOver={(e) => { if (edit && e.dataTransfer.types.includes("text/gnezdo-part")) e.preventDefault(); }}
           onDrop={onDrop}>
-          <svg width={size.w} height={size.h} aria-label={`Sheet ${index + 1}`} draggable={false}>
+          <svg width={size.w} height={size.h} aria-label={`Sheet ${index + 1}`}>
             <g transform={`translate(${v.tx} ${v.ty}) scale(${v.s})`}>
               {outline ? <path className="mn-plate" fillRule="evenodd" d={pathOf(outline)} />
                 : <rect className="mn-plate" x={0} y={0} width={sheet.lengthMm} height={sheet.widthMm} />}
