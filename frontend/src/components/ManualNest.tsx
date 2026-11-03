@@ -140,6 +140,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
   const hit = (x: number, y: number): number => {
+    // the selected parts are drawn on top: over another part, the click goes to them first
+    for (let i = geo.length - 1; i >= 0; i--) if (sel.has(i) && geo[i] && inMaterial(geo[i]!, x, y)) return i;
     for (let i = geo.length - 1; i >= 0; i--) if (geo[i] && inMaterial(geo[i]!, x, y)) return i;
     return -1;
   };
@@ -287,6 +289,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const pan = useRef<{ x: number; y: number } | null>(null);
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [hover, setHover] = useState(-1);
+  const [moving, setMoving] = useState(false);   // selected parts being dragged
   const onPointerDown = (e: React.PointerEvent) => {
     if (working) return;
     if (paste) {
@@ -329,6 +332,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const [x, y] = toMm(p.x, p.y);
     if (d) {
       if (!d.moved && Math.hypot(p.x - d.px.x, p.y - d.px.y) < 3) return;
+      if (!d.moved) setMoving(true);
       d.moved = true;
       setItems(moved(d.before, d.ids, x - d.start[0], y - d.start[1]));
       return;
@@ -359,6 +363,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     }
     const d = dragging.current;
     dragging.current = null;
+    setMoving(false);
     if (!d || !d.moved) return;
     let next = itemsRef.current;
     if (e.ctrlKey || e.metaKey) {
@@ -699,14 +704,16 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 : <rect className="mn-plate" x={0} y={0} width={sheet.lengthMm} height={sheet.widthMm} />}
               {!outline && <rect className="mn-trim" x={usable.x0} y={usable.y0} width={usable.x1 - usable.x0} height={usable.y1 - usable.y0}
                 style={{ strokeWidth: 1 / v.s }} />}
-              {items.map((p, i) => {
+              {/* the selected parts last, on top: dragged over others they stay in sight (and see-through) */}
+              {[...items.keys()].sort((a, b) => Number(sel.has(a)) - Number(sel.has(b))).map((i) => {
+                const p = items[i];
                 const g = geo[i];
                 const r = byId.get(p.partId);
                 if (!g || !r) return null;
                 const c = partColor(r.no);
                 return (
                   <path key={i} d={pathOf(g.loops)} fillRule="evenodd"
-                    className={`mn-part${sel.has(i) ? " is-sel" : ""}${bad.has(i) ? " is-bad" : ""}`}
+                    className={`mn-part${sel.has(i) ? " is-sel" : ""}${bad.has(i) ? " is-bad" : ""}${sel.has(i) && moving ? " is-moving" : ""}`}
                     style={{ fill: c.fill, stroke: sel.has(i) ? undefined : c.stroke, strokeWidth: (sel.has(i) ? 2.2 : 1) / v.s }}>
                     <title>{r.name}</title>
                   </path>
