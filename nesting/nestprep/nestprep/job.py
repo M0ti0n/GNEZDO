@@ -41,7 +41,7 @@ LEVELS = {
                   stop_after=5.0, two_phase=False, variants=1,
                   pre_opts=dict(pair_max_fill=0.75, blocks=False),
                   post_opts=dict(pool_time=1.5, fill_time=1.5, fill_rounds=2, empty=True, empty_first=True, empty_again=False,
-                                 tail=False, pairs=False, chain=False, compact_time=5.0)),
+                                 tail=False, swap=False, pairs=False, chain=False, compact_time=5.0)),
     # Thorough: about 3 minutes, half nest, half post-pass (a server core is slower than a desktop's);
     # the post-pass time goes mostly to emptying the last sheet (the step that saved the most sheets),
     # fill is capped, the tail gets a short slot. Blocks off: on real jobs they never did better.

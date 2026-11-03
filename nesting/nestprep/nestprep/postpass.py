@@ -58,6 +58,15 @@ class PostOptions:
     chain_rounds: int = 4
     pair_time: float = 8.0       # per solve (two per pair)
     compact_time: float = 5.0
+    # swap: a big awkward part (E, U, L, comb) on the last sheets goes onto an earlier sheet, that sheet
+    # nested again with it so its small parts fill the part's bays; what no longer fits moves to the end
+    swap: bool = True
+    swap_time: float = 5.0       # per solve
+    swap_max: float = 30.0       # the whole step at most this long [s]
+    swap_tries: int = 3          # candidate sheets nested again per part (side by side)
+    swap_big: float = 0.04       # big: its box at least this share of the sheet
+    swap_fill: float = 0.75      # awkward: its outline fills at most this share of its convex hull
+    swap_edge: float = 1.15      # ... and its contour is at least this many times the hull's (real bays, not a dent)
     # "anytime" uses every second it is given; "not-anytime-deterministic" returns when its search
     # is done (usually well inside the limit)
     solve_mode: str = "anytime"
@@ -97,6 +106,28 @@ def clip_rect(poly: np.ndarray, x0: float, y0: float, x1: float, y1: float) -> n
             return None
     q = np.array(pts, dtype=float)
     return q if abs(geom.polygon_area(q)) > 1.0 else None
+
+
+def convex_hull(pts: np.ndarray) -> np.ndarray:
+    """Convex hull (monotone chain), counter-clockwise."""
+    P = sorted(set(map(tuple, np.round(np.asarray(pts, dtype=float), 3))))
+    if len(P) < 3:
+        return np.array(P, dtype=float)
+
+    def half(seq):
+        h: list = []
+        for q in seq:
+            while len(h) >= 2 and (h[-1][0] - h[-2][0]) * (q[1] - h[-2][1]) - (h[-1][1] - h[-2][1]) * (q[0] - h[-2][0]) <= 0:
+                h.pop()
+            h.append(q)
+        return h
+    lo, up = half(P), half(list(reversed(P)))
+    return np.array(lo[:-1] + up[:-1], dtype=float)
+
+
+def perimeter(p: np.ndarray) -> float:
+    d = np.roll(p, -1, axis=0) - p
+    return float(np.hypot(d[:, 0], d[:, 1]).sum())
 
 
 @dataclass
@@ -210,15 +241,20 @@ class PostPass:
         return b
 
     def solve(self, objective: str, bt: int, obstacles: list[Placed], cands: Counter, t: float,
-              bin_json: dict | None = None) -> list[Placed]:
+              bin_json: dict | None = None, boost: dict[int, float] | None = None) -> list[Placed]:
         """Places as many of `cands` as it can (knapsack) or all of them (open-dimension-x).
-        bin_json: a bin of its own (a window around a pocket) instead of the sheet with `obstacles`."""
+        bin_json: a bin of its own (a window around a pocket) instead of the sheet with `obstacles`.
+        boost: item type -> profit factor (knapsack: these first)."""
         ids = sorted(cands)
+        items = [self.item_json(tid, cands[tid]) for tid in ids]
+        for it, tid in zip(items, ids):
+            if boost and tid in boost:
+                it["profit"] *= boost[tid]
         inst = {
             "objective": objective,
             "parameters": dict(self.inst.get("parameters", {})),
             "bin_types": [bin_json if bin_json is not None else self.bin_json(bt, obstacles)],
-            "item_types": [self.item_json(tid, cands[tid]) for tid in ids],
+            "item_types": items,
         }
         try:
             r = psrun.solve(inst, self.bin, max(0.2, t), self.opt.solve_mode)
@@ -677,6 +713,190 @@ class PostPass:
         self._in_tail = False
         self.note("tail", time.perf_counter() - t, done)
 
+    # -- swap: big awkward parts off the last sheets ---------------------------
+    def pocket_area(self, tid: int) -> float:
+        """A big awkward part's bays (convex hull less its outline) [mm2]; 0 for any other part.
+        Big: its box at least swap_big of a sheet. Awkward: its outline fills at most swap_fill of
+        its hull and its contour is at least swap_edge times the hull's (bays, not a dent or teeth).
+        Holes inside it do not count: hole filling takes care of those."""
+        if not hasattr(self, "_pocket"):
+            self._pocket = {}
+        if tid not in self._pocket:
+            polys = [geom.shape_to_poly(s) for s in self.shapes(tid)]
+            pts = np.vstack([p.outer for p in polys])
+            hull = convex_hull(pts)
+            v = 0.0
+            if len(hull) >= 3:
+                h_area = abs(geom.polygon_area(hull))
+                x0, y0, x1, y1 = geom.bbox(hull)
+                sheet = min(self._bin_area_of(b) for b in range(len(self.inst["bin_types"])))
+                main = max(polys, key=lambda p: abs(geom.polygon_area(p.outer)))
+                o_area = sum(abs(geom.polygon_area(p.outer)) for p in polys)
+                big = (x1 - x0) * (y1 - y0) >= self.opt.swap_big * sheet
+                fill = o_area / h_area if h_area > 0 else 1.0
+                edge = perimeter(main.outer) / max(1.0, perimeter(convex_hull(main.outer)))
+                if big and fill <= self.opt.swap_fill and edge >= self.opt.swap_edge:
+                    v = h_area - o_area
+            self._pocket[tid] = v
+        return self._pocket[tid]
+
+    def _bin_area_of(self, bt: int) -> float:
+        if bt not in self._bin_area:
+            b = self.inst["bin_types"][bt]
+            self._bin_area[bt] = geom.shape_to_poly(b).area if "elements" in b else float(b["width"]) * float(b["height"])
+        return self._bin_area[bt]
+
+    def angles(self, tid: int) -> list[float]:
+        rots = self.inst["item_types"][tid].get("allowed_rotations") or [{"start": 0, "end": 0}]
+        out = sorted({float(r["start"]) % 360 for r in rots if float(r["start"]) == float(r["end"])})
+        return out or [0.0, 90.0, 180.0, 270.0]   # a range: the right angles are enough for a check
+
+    def fits_among(self, bt: int, fixed: list[Placed], tid: int) -> bool:
+        """Is there room for the part, in one of its angles, among `fixed` (the sheet's big parts)?
+        On the free-space grid: the part's cells must meet no taken cell (FFT correlation)."""
+        placed = [geom.transform_shape(s, p.xf) for p in fixed for s in self.shapes(p.id)]
+        fm = FreeMap(self.inst["bin_types"][bt], placed, self.spacing, self.cell())
+        taken = (~fm.free).astype(float)
+        H, W = taken.shape
+        F = np.fft.rfft2(taken)
+        from .freemap import _raster, _edges   # the grid FreeMap itself uses
+        for a in self.angles(tid):
+            polys = [geom.shape_to_poly(geom.transform_shape(s, Xf(a, False, 0.0, 0.0))).outer for s in self.shapes(tid)]
+            x0 = min(p[:, 0].min() for p in polys)
+            y0 = min(p[:, 1].min() for p in polys)
+            w = int(np.ceil((max(p[:, 0].max() for p in polys) - x0) / fm.cell)) + 1
+            h = int(np.ceil((max(p[:, 1].max() for p in polys) - y0) / fm.cell)) + 1
+            if w > W or h > H:
+                continue
+            m = np.zeros((H, W), dtype=bool)
+            for p in polys:
+                sub = _raster(p, x0, y0, fm.cell, (h, w))
+                _edges(p, x0, y0, fm.cell, (h, w), sub)
+                m[:h, :w] |= sub
+            corr = np.fft.irfft2(F * np.conj(np.fft.rfft2(m.astype(float))), s=(H, W))
+            if (corr[:H - h + 1, :W - w + 1] < 0.5).any():
+                return True
+        return False
+
+    def step_swap(self):
+        """A big awkward part (E, U, L, comb) on the last two sheets: an earlier sheet is nested again
+        with it, so that sheet's small parts go into its bays (what a person does by hand: those parts
+        are left at the end when no small parts remain to fill them). What no longer fits on that
+        sheet goes onto the part's old sheet or the last ones. Kept only when there are no more sheets
+        and the last is gone or shorter. Candidate sheets, cheapest checks first: the area of its big
+        parts and the part fits; on the free-space grid with only its big parts the part has room;
+        it has small parts for the bays (most of them first)."""
+        t0 = time.perf_counter()
+        done = 0
+        tried: set = set()
+        # its own time, on top of the post-pass budget (as the push): it is spent only when the last
+        # sheets have such a part, and the steps after it keep all of theirs
+        over = lambda: time.perf_counter() - t0 >= self.opt.swap_max - 1.0
+        while not over() and len(self.sheets) >= 2:
+            n = len(self.sheets)
+            targets = sorted(((self.pocket_area(p.id), k, p) for k in range(max(0, n - 2), n)
+                              for p in self.sheets[k].items if self.pocket_area(p.id) > 0
+                              and (p.id, k) not in tried), key=lambda x: -x[0])
+            if not targets:
+                break
+            pocket, src_k, part = targets[0]
+            tried.add((part.id, src_k))
+            src = self.sheets[src_k]
+            bt = src.bin_type
+            sheet_a = self._bin_area_of(bt)
+            small_max = 0.25 * pocket          # a part that could go into the bays
+            cands = []
+            for k in range(0, n - 2):   # the sheets before the last two
+                sh = self.sheets[k]
+                if sh.bin_type != bt:
+                    continue
+                fixed = [p for p in sh.items if self.area(p.id) > small_max]
+                small = sum(self.area(p.id) for p in sh.items if self.area(p.id) <= small_max)
+                if sum(self.area(p.id) for p in fixed) + self.area(part.id) > 0.85 * sheet_a:
+                    continue          # 1. area: no room for it next to the big parts
+                if small < 0.3 * pocket:
+                    continue          # 3. too few small parts for its bays
+                cands.append((small, k, fixed))
+            cands.sort(key=lambda c: -c[0])
+            ok = []
+            for small, k, fixed in cands:
+                if over() or len(ok) >= self.opt.swap_tries:
+                    break
+                if self.fits_among(bt, fixed, part.id):
+                    ok.append(k)      # 2. room of the right shape among the big parts
+            self.say(f"  swap: part type {part.id} on sheet {src_k + 1}: {len(cands)} sheets pass area and small parts, "
+                     f"{len(ok)} have room: {[k + 1 for k in ok]}")
+            if not ok:
+                continue
+            tt = self.opt.swap_time
+
+            def renest(k):
+                items = Counter(p.id for p in self.sheets[k].items)
+                items[part.id] += 1
+                return k, items, self.solve("knapsack", bt, [], items, tt, boost={part.id: 20.0})
+            with ThreadPoolExecutor(max_workers=max(1, self.opt.workers)) as ex:
+                results = list(ex.map(renest, ok))
+            before = (len(self.sheets), self.xmax(self.sheets[-1]))
+            best = neutral = None
+            # the fewest parts left over first: they are the ones to place again
+            for k, items, placed in sorted(results, key=lambda r: sum(self.area(t) * c for t, c in
+                                                                     (r[1] - Counter(p.id for p in r[2])).items())):
+                got = Counter(p.id for p in placed)
+                left_a = sum(self.area(t) * c for t, c in (items - got).items())
+                if got[part.id] < items[part.id] or over():
+                    self.say(f"    sheet {k + 1}: the part did not go on")
+                    continue          # the part did not go on
+                trial = [Sheet(x.bin_type, list(x.items)) for x in self.sheets]
+                trial[k] = Sheet(bt, placed)
+                # the part off its old sheet
+                i = next(j for j, q in enumerate(trial[src_k].items) if q is part)
+                del trial[src_k].items[i]
+                rest = items - got
+                # what no longer fits: the part's old sheet first, then the last sheets
+                for j in [src_k] + [x for x in range(len(trial) - 1, k, -1) if x != src_k]:
+                    if not +rest or over():
+                        break
+                    more = self.solve("knapsack", trial[j].bin_type, trial[j].items, +rest, tt)
+                    trial[j].items += more
+                    rest -= Counter(p.id for p in more)
+                if +rest:
+                    self.say(f"    sheet {k + 1}: on, {left_a / 1e6:.3f} m2 left over, {sum(rest.values())} parts found no place")
+                    continue
+                # the room the part left on its old sheet: the last sheet's parts into it
+                if src_k < len(trial) - 1 and trial[-1].items and not over():
+                    last = Counter(p.id for p in trial[-1].items)
+                    more = self.solve("knapsack", trial[src_k].bin_type, trial[src_k].items, last, tt)
+                    if more:
+                        trial[src_k].items += more
+                        need = Counter(p.id for p in more)
+                        order = sorted(trial[-1].items, key=lambda p: -self.item_xmax(p))   # the far ones first
+                        keep = []
+                        for p in order:
+                            if need[p.id] > 0:
+                                need[p.id] -= 1
+                            else:
+                                keep.append(p)
+                        trial[-1].items = keep
+                trial = [x for x in trial if x.items]
+                after = (len(trial), self.xmax(trial[-1]))
+                self.say(f"    sheet {k + 1}: on; then {after[0]} sheets, the last {after[1]:.0f} mm (was {before[0]}, {before[1]:.0f})")
+                if after[0] < before[0] or (after[0] == before[0] and after[1] < before[1] - 20.0):
+                    best = (trial, k)
+                    break
+                if after[0] == before[0] and after[1] <= before[1] + 1.0 and neutral is None:
+                    # no better yet, no worse: kept when nothing better turns up, so the part's twin on
+                    # the same sheet can follow and the space it leaves is used (empty runs after this)
+                    neutral = (trial, k)
+            if best is None and neutral is not None:
+                best = neutral
+            if best:
+                trial, k = best
+                self.sheets = trial
+                done += 1
+                self.say(f"  swap: a part with bays from sheet {src_k + 1} onto sheet {k + 1}")
+        self.opt.budget += time.perf_counter() - t0
+        self.note("swap", time.perf_counter() - t0, done)
+
     def step_chain(self):
         t = time.perf_counter()
         total = 0
@@ -773,6 +993,9 @@ class PostPass:
             steps.append(self.step_empty)
         if self.opt.fill:
             steps.append(self.step_fill)
+        # big awkward parts off the last sheets onto earlier ones (into the second empty: it uses the room)
+        if self.opt.swap:
+            steps.append(self.step_swap)
         if self.opt.empty and (self.opt.empty_again or not self.opt.empty_first):
             steps.append(self.step_empty)
         if self.opt.tail:
