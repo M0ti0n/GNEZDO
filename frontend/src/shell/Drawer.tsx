@@ -10,6 +10,8 @@ import { JobsPanel } from "./JobsPanel";
 import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PartPropertiesDialog } from "../components/PartPropertiesDialog";
 import { useListSelection } from "../components/useListSelection";
+import { Combobox } from "../components/Combobox";
+import { usePickLists } from "../components/pickLists";
 import { editPart, exportPart } from "../import/partFile";
 import { ImportPanel, type ImportPanelProps } from "./ImportPanel";
 
@@ -144,6 +146,7 @@ function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "ta
   const search = () => { setApplied(toFilter(d)); setRun((n) => n + 1); setSelected(new Set()); };
   const reset = () => { setD(EMPTY_DRAFT); setApplied(toFilter(EMPTY_DRAFT)); setRun((n) => n + 1); setSelected(new Set()); };
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
+  const projectList = usePickLists("");
 
   // Thickness list follows the chosen material.
   const thicknesses = useMemo(
@@ -197,8 +200,9 @@ function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "ta
             {thicknesses.map((t) => <option key={t} value={t}>{t} mm</option>)}
           </select>
         </div>
-        <input className="field" type="search" value={d.project} placeholder="Project"
-          aria-label="Project" onChange={(e) => set({ project: e.target.value })} />
+        {/* the saved projects, narrowed as you type; any text still searches as typed */}
+        <Combobox value={d.project} onChange={(project) => set({ project })} options={projectList.projects}
+          placeholder="Project" ariaLabel="Project" newHint="searched as typed" />
 
         <DateLine label="Created" on={d.createdOn} value={d.created}
           onToggle={(v) => set({ createdOn: v })}
