@@ -140,6 +140,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
   const hit = (x: number, y: number): number => {
+    // the selected parts are drawn on top: over another part, the click goes to them first
+    for (let i = geo.length - 1; i >= 0; i--) if (sel.has(i) && geo[i] && inMaterial(geo[i]!, x, y)) return i;
     for (let i = geo.length - 1; i >= 0; i--) if (geo[i] && inMaterial(geo[i]!, x, y)) return i;
     return -1;
   };
@@ -202,6 +204,19 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     }
   };
 
+  // a key step; while parts are dragged, the drag goes on from the stepped parts (a turn is kept
+  // when the mouse moves on)
+  const stepNow = (a: KeyAction) => {
+    const next = step(itemsRef.current, a);
+    itemsRef.current = next;
+    const d = dragging.current;
+    if (d) {
+      d.before = next;
+      if (lastPt.current) d.start = lastPt.current;
+    }
+    setItems(next);
+  };
+
   // -- keys: a press moves 1 mm / turns 1°; held, 10 steps a second; Ctrl + direction slides -------
   const hold = useRef<{ code: string; before: PlacedPart[]; timer: number } | null>(null);
   useEffect(() => {
@@ -259,11 +274,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
         if (next !== before) commit(next, before);
         return;
       }
-      setItems((l) => step(l, a));
+      stepNow(a);
       // held: after a moment, 10 steps a second until the key is let go
       const start = window.setTimeout(() => {
         if (!hold.current) return;
-        hold.current.timer = window.setInterval(() => setItems((l) => step(l, a)), 100);
+        hold.current.timer = window.setInterval(() => stepNow(a), 100);
       }, 300);
       hold.current = { code: e.code, before, timer: start };
     };
@@ -273,7 +288,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       window.clearTimeout(h.timer);
       window.clearInterval(h.timer);
       hold.current = null;
-      if (itemsRef.current !== h.before) commit(itemsRef.current, h.before);
+      // while parts are dragged the drop saves it all (one undo step)
+      if (itemsRef.current !== h.before && !dragging.current) commit(itemsRef.current, h.before);
     };
     const onUp = (e: KeyboardEvent) => { if (hold.current && e.code === hold.current.code) end(); };
     window.addEventListener("keydown", onDown);
@@ -283,10 +299,13 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   });   // every render: the handlers see the current sheet and selection
 
   // -- mouse: click / drag parts, window selection, pan ---------------------------------------
-  const dragging = useRef<{ start: Pt; before: PlacedPart[]; ids: Set<number>; moved: boolean; px: { x: number; y: number } } | null>(null);
+  // before: the parts the drag offset applies to (turned by a key while held: the turned parts, from
+  // where the mouse is then); orig: the sheet when the drag started (for undo)
+  const dragging = useRef<{ start: Pt; before: PlacedPart[]; orig: PlacedPart[]; ids: Set<number>; moved: boolean; px: { x: number; y: number } } | null>(null);
   const pan = useRef<{ x: number; y: number } | null>(null);
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [hover, setHover] = useState(-1);
+  const [moving, setMoving] = useState(false);   // selected parts being dragged
   const onPointerDown = (e: React.PointerEvent) => {
     if (working) return;
     if (paste) {
@@ -307,7 +326,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       if (e.shiftKey) { ids = new Set(sel); if (ids.has(i)) ids.delete(i); else ids.add(i); }
       else if (!sel.has(i)) ids = new Set([i]);
       setSel(ids);
-      if (edit && ids.has(i)) dragging.current = { start: [x, y], before: items, ids, moved: false, px: p };
+      if (edit && ids.has(i)) dragging.current = { start: [x, y], before: items, orig: items, ids, moved: false, px: p };
       return;
     }
     setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
@@ -329,6 +348,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const [x, y] = toMm(p.x, p.y);
     if (d) {
       if (!d.moved && Math.hypot(p.x - d.px.x, p.y - d.px.y) < 3) return;
+      if (!d.moved) setMoving(true);
       d.moved = true;
       setItems(moved(d.before, d.ids, x - d.start[0], y - d.start[1]));
       return;
@@ -359,6 +379,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     }
     const d = dragging.current;
     dragging.current = null;
+    setMoving(false);
     if (!d || !d.moved) return;
     let next = itemsRef.current;
     if (e.ctrlKey || e.metaKey) {
@@ -381,7 +402,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       }
       if (target >= 0) next = snapTo(next, d.ids, target);
     }
-    commit(next, d.before);
+    commit(next, d.orig);
   };
 
   // -- parts from the JOB PARTS panel -----------------------------------------------------------
@@ -691,6 +712,10 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
         <div ref={host} className={`mn-canvas${hover >= 0 && edit ? " is-over" : ""}${paste ? " is-paste" : ""}${align ? " is-align" : ""}`}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           onContextMenu={(e) => e.preventDefault()}
+          // the browser's own drag and drop of the sheet picture (a faded copy of the whole sheet
+          // following the mouse next to the parts being moved): never from here
+          onDragStart={(e) => e.preventDefault()}
+          onMouseDown={(e) => { if (e.button === 0) { e.preventDefault(); (document.activeElement as HTMLElement | null)?.blur?.(); } }}
           onDragOver={(e) => { if (edit && e.dataTransfer.types.includes("text/gnezdo-part")) e.preventDefault(); }}
           onDrop={onDrop}>
           <svg width={size.w} height={size.h} aria-label={`Sheet ${index + 1}`}>
@@ -699,14 +724,16 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 : <rect className="mn-plate" x={0} y={0} width={sheet.lengthMm} height={sheet.widthMm} />}
               {!outline && <rect className="mn-trim" x={usable.x0} y={usable.y0} width={usable.x1 - usable.x0} height={usable.y1 - usable.y0}
                 style={{ strokeWidth: 1 / v.s }} />}
-              {items.map((p, i) => {
+              {/* the selected parts last, on top: dragged over others they stay in sight (and see-through) */}
+              {[...items.keys()].sort((a, b) => Number(sel.has(a)) - Number(sel.has(b))).map((i) => {
+                const p = items[i];
                 const g = geo[i];
                 const r = byId.get(p.partId);
                 if (!g || !r) return null;
                 const c = partColor(r.no);
                 return (
                   <path key={i} d={pathOf(g.loops)} fillRule="evenodd"
-                    className={`mn-part${sel.has(i) ? " is-sel" : ""}${bad.has(i) ? " is-bad" : ""}`}
+                    className={`mn-part${sel.has(i) ? " is-sel" : ""}${bad.has(i) ? " is-bad" : ""}${sel.has(i) && moving ? " is-moving" : ""}`}
                     style={{ fill: c.fill, stroke: sel.has(i) ? undefined : c.stroke, strokeWidth: (sel.has(i) ? 2.2 : 1) / v.s }}>
                     <title>{r.name}</title>
                   </path>
