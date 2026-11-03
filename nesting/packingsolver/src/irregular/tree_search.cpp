@@ -2758,6 +2758,7 @@ void tree_search_worker(
                 + "_d_" + std::to_string((int)branching_scheme_parameters.direction);
         }
         BranchingScheme branching_scheme(instance, branching_scheme_parameters);
+        double round_start = parameters.timer.elapsed_time();
         ibs_parameters.new_solution_callback =
             [&branching_scheme, &branching_scheme_parameters, &new_solution_callback](
                     const treesearchsolver::Output<BranchingScheme>& tss_output)
@@ -2790,9 +2791,24 @@ void tree_search_worker(
             ibs_output.solution_pool.add(cutoff);
         cutoff = ibs_output.solution_pool.best();
 
-        queue_size = std::max(
+        NodeId queue_size_next = std::max(
                 queue_size + 1,
-                (NodeId)(queue_size * 1.5));
+                (NodeId)(queue_size * parameters.growth_factor));
+        if (parameters.round_deadline >= 0) {
+            // a round's time grows about in proportion to its queue size: when the next round
+            // would not be done by the deadline, make it as wide as still fits (10 % margin)
+            double round_time = parameters.timer.elapsed_time() - round_start;
+            double left = parameters.round_deadline - parameters.timer.elapsed_time();
+            if (round_time > 0 && left > 0) {
+                double per_node = round_time / (double)queue_size;
+                if (per_node * (double)queue_size_next > left) {
+                    NodeId fit = (NodeId)(0.9 * left / per_node);
+                    if (fit > queue_size)
+                        queue_size_next = fit;
+                }
+            }
+        }
+        queue_size = queue_size_next;
         maximum_approximation_ratio *= parameters.maximum_approximation_ratio_factor;
     }
 }

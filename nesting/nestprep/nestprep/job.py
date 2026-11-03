@@ -225,12 +225,19 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
             best["layout"] = expand(remap(sol), mapping)  # the best layout so far, as original parts
         say({"stage": "nest", **best})
 
+    # the tree search sizes its rounds so the last one is done when the nest time is up, instead of
+    # spending the end of it on a round that never finishes (a slow core: a round earlier); not
+    # for a nest that runs until stopped. growth: each round this many times wider than the last
+    solver_args = [] if nest_t >= FOREVER else ["--tree-search-round-deadline", f"{nest_t:.1f}"]
+    if L.get("growth"):
+        solver_args += ["--tree-search-growth-factor", str(L["growth"])]
+
     def variant(k: int) -> dict:
         sub = outdir if k == 0 else os.path.join(outdir, f"variant{k + 1}")
         # no layout yet when the time is up (a hard job): a little more time, stopping at the first one
         r = psrun.solve_grace(nest_inst, binary, nest_t, L["grace"], workdir=os.path.join(sub, "nest"),
                               stop_after=stop_after, should_stop=should_stop, on_progress=progress,
-                              extra_args=VARIANTS[k])
+                              extra_args=VARIANTS[k] + solver_args)
         if r["solution"]:
             r["solution"] = remap(r["solution"])
         if not r["solution"]:

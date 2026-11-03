@@ -810,6 +810,12 @@ struct TreeSearchParameters: packingsolver::Parameters<Instance, Solution, Outpu
     double not_anytime_maximum_approximation_ratio = std::numeric_limits<double>::infinity();
 
     double maximum_approximation_ratio_factor = 1.0;
+
+    /** See OptimizeParameters::tree_search_growth_factor. */
+    double growth_factor = 1.5;
+
+    /** See OptimizeParameters::tree_search_round_deadline. */
+    double round_deadline = -1;
 };
 
 const TreeSearchOutput tree_search(

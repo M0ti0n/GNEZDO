@@ -1,0 +1,117 @@
+diff --git a/include/packingsolver/irregular/optimize.hpp b/include/packingsolver/irregular/optimize.hpp
+index 31910ddc..84846fb6 100644
+--- a/include/packingsolver/irregular/optimize.hpp
++++ b/include/packingsolver/irregular/optimize.hpp
+@@ -279,6 +279,19 @@ struct OptimizeParameters: packingsolver::Parameters<Instance, Solution, Output>
+     /** Guides used in the tree search algorithm. */
+     std::vector<GuideId> tree_search_guides;
+ 
++    /**
++     * Anytime tree search: each round's queue is this many times the last one's.
++     */
++    double tree_search_growth_factor = 1.5;
++
++    /**
++     * Anytime tree search: when the rounds have to be done (seconds from the start; < 0: no such
++     * time). A round that would not finish by then (its time is estimated from the last round's,
++     * in proportion to the queue size) is made as wide as still fits, so the time before the
++     * deadline is not spent on a round that ends unfinished. For slow machines.
++     */
++    double tree_search_round_deadline = -1;
++
+     /**
+      * Size of the queue for the pricing knapsack subproblem of the sequential
+      * value correction algorithm.
+diff --git a/src/irregular/main.cpp b/src/irregular/main.cpp
+index fde206fc..e41b2655 100644
+--- a/src/irregular/main.cpp
++++ b/src/irregular/main.cpp
+@@ -115,6 +115,8 @@ int main(int argc, char *argv[])
+ 
+             ("group-identical-bins,", po::value<bool>(), "")
+ 
++            ("tree-search-growth-factor,", po::value<double>(), "anytime tree search: queue growth per round (default 1.5)")
++            ("tree-search-round-deadline,", po::value<double>(), "anytime tree search: rounds sized to be done by this time [s]")
+             ("anchor,", po::value<bool>(), "")
+             ("anchor-x-weight,", po::value<double>(), "")
+             ("anchor-y-weight,", po::value<double>(), "")
+@@ -169,6 +171,10 @@ int main(int argc, char *argv[])
+         if (vm.count("memory-limit"))
+             parameters.memory_limit_megabytes = vm["memory-limit"].as<Megabytes>();
+ 
++        if (vm.count("tree-search-growth-factor"))
++            parameters.tree_search_growth_factor = vm["tree-search-growth-factor"].as<double>();
++        if (vm.count("tree-search-round-deadline"))
++            parameters.tree_search_round_deadline = vm["tree-search-round-deadline"].as<double>();
+         if (vm.count("use-tree-search"))
+             parameters.use_tree_search = vm["use-tree-search"].as<bool>();
+         if (vm.count("use-tree-search-periodic-packing"))
+diff --git a/src/irregular/optimize.cpp b/src/irregular/optimize.cpp
+index 707ab316..b87acff5 100644
+--- a/src/irregular/optimize.cpp
++++ b/src/irregular/optimize.cpp
+@@ -280,6 +280,8 @@ void optimize_tree_search(
+     ts_parameters.timer.add_end_boolean(&algorithm_formatter.end_boolean());
+     ts_parameters.optimization_mode = parameters.optimization_mode;
+     ts_parameters.guides = parameters.tree_search_guides;
++    ts_parameters.growth_factor = parameters.tree_search_growth_factor;
++    ts_parameters.round_deadline = parameters.tree_search_round_deadline;
+     ts_parameters.not_anytime_tree_search_queue_size = parameters.not_anytime_tree_search_queue_size;
+     ts_parameters.initial_maximum_approximation_ratio = parameters.initial_maximum_approximation_ratio;
+     ts_parameters.not_anytime_maximum_approximation_ratio = parameters.not_anytime_maximum_approximation_ratio;
+diff --git a/src/irregular/tree_search.cpp b/src/irregular/tree_search.cpp
+index 27ff13d0..6e1749bd 100644
+--- a/src/irregular/tree_search.cpp
++++ b/src/irregular/tree_search.cpp
+@@ -2758,6 +2758,7 @@ void tree_search_worker(
+                 + "_d_" + std::to_string((int)branching_scheme_parameters.direction);
+         }
+         BranchingScheme branching_scheme(instance, branching_scheme_parameters);
++        double round_start = parameters.timer.elapsed_time();
+         ibs_parameters.new_solution_callback =
+             [&branching_scheme, &branching_scheme_parameters, &new_solution_callback](
+                     const treesearchsolver::Output<BranchingScheme>& tss_output)
+@@ -2790,9 +2791,24 @@ void tree_search_worker(
+             ibs_output.solution_pool.add(cutoff);
+         cutoff = ibs_output.solution_pool.best();
+ 
+-        queue_size = std::max(
++        NodeId queue_size_next = std::max(
+                 queue_size + 1,
+-                (NodeId)(queue_size * 1.5));
++                (NodeId)(queue_size * parameters.growth_factor));
++        if (parameters.round_deadline >= 0) {
++            // a round's time grows about in proportion to its queue size: when the next round
++            // would not be done by the deadline, make it as wide as still fits (10 % margin)
++            double round_time = parameters.timer.elapsed_time() - round_start;
++            double left = parameters.round_deadline - parameters.timer.elapsed_time();
++            if (round_time > 0 && left > 0) {
++                double per_node = round_time / (double)queue_size;
++                if (per_node * (double)queue_size_next > left) {
++                    NodeId fit = (NodeId)(0.9 * left / per_node);
++                    if (fit > queue_size)
++                        queue_size_next = fit;
++                }
++            }
++        }
++        queue_size = queue_size_next;
+         maximum_approximation_ratio *= parameters.maximum_approximation_ratio_factor;
+     }
+ }
+diff --git a/src/irregular/tree_search.hpp b/src/irregular/tree_search.hpp
+index c0008bb7..4630e50a 100644
+--- a/src/irregular/tree_search.hpp
++++ b/src/irregular/tree_search.hpp
+@@ -810,6 +810,12 @@ struct TreeSearchParameters: packingsolver::Parameters<Instance, Solution, Outpu
+     double not_anytime_maximum_approximation_ratio = std::numeric_limits<double>::infinity();
+ 
+     double maximum_approximation_ratio_factor = 1.0;
++
++    /** See OptimizeParameters::tree_search_growth_factor. */
++    double growth_factor = 1.5;
++
++    /** See OptimizeParameters::tree_search_round_deadline. */
++    double round_deadline = -1;
+ };
+ 
+ const TreeSearchOutput tree_search(

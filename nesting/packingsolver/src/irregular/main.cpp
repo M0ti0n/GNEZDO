@@ -115,6 +115,8 @@ int main(int argc, char *argv[])
 
             ("group-identical-bins,", po::value<bool>(), "")
 
+            ("tree-search-growth-factor,", po::value<double>(), "anytime tree search: queue growth per round (default 1.5)")
+            ("tree-search-round-deadline,", po::value<double>(), "anytime tree search: rounds sized to be done by this time [s]")
             ("anchor,", po::value<bool>(), "")
             ("anchor-x-weight,", po::value<double>(), "")
             ("anchor-y-weight,", po::value<double>(), "")
@@ -169,6 +171,10 @@ int main(int argc, char *argv[])
         if (vm.count("memory-limit"))
             parameters.memory_limit_megabytes = vm["memory-limit"].as<Megabytes>();
 
+        if (vm.count("tree-search-growth-factor"))
+            parameters.tree_search_growth_factor = vm["tree-search-growth-factor"].as<double>();
+        if (vm.count("tree-search-round-deadline"))
+            parameters.tree_search_round_deadline = vm["tree-search-round-deadline"].as<double>();
         if (vm.count("use-tree-search"))
             parameters.use_tree_search = vm["use-tree-search"].as<bool>();
         if (vm.count("use-tree-search-periodic-packing"))

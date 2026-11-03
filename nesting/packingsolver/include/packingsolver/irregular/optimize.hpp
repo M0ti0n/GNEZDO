@@ -280,6 +280,19 @@ struct OptimizeParameters: packingsolver::Parameters<Instance, Solution, Output>
     std::vector<GuideId> tree_search_guides;
 
     /**
+     * Anytime tree search: each round's queue is this many times the last one's.
+     */
+    double tree_search_growth_factor = 1.5;
+
+    /**
+     * Anytime tree search: when the rounds have to be done (seconds from the start; < 0: no such
+     * time). A round that would not finish by then (its time is estimated from the last round's,
+     * in proportion to the queue size) is made as wide as still fits, so the time before the
+     * deadline is not spent on a round that ends unfinished. For slow machines.
+     */
+    double tree_search_round_deadline = -1;
+
+    /**
      * Size of the queue for the pricing knapsack subproblem of the sequential
      * value correction algorithm.
      */
