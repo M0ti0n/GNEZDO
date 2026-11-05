@@ -12,6 +12,8 @@ here is my ko-fi link if you want to support me in development
 
 https://ko-fi.com/m0ti0n
 
+https://paypal.me/FabG03D
+
 ## GNEZDO – Application Screenshots
 
 ### JOB – AUTO NESTING
