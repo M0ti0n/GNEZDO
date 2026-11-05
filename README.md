@@ -32,6 +32,8 @@ Centralizes all parts assigned to a production job in one organized list. Allows
 Centralizes all parts assigned to a production job in one organized list. Allows users to review part names, materials, thicknesses, required quantities, nested quantities and maximum quantities. Supports filtering imported parts and assigning material sheets and stock dimensions before starting the nesting process.
 
 
+### APP MODULES
+
 | Folder | What | Language |
 |---|---|---|
 | `frontend/` | Screens: home, tabs, imported parts panel, job part list | TypeScript + React (Vite) |
