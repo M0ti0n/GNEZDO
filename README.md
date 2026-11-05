@@ -16,7 +16,7 @@ https://paypal.me/FabG03D
 
 https://buymeacoffee.com/M0ti0n
 
-For more info you can reach me on mail fab.go3d@gmail.com
+For more info you can reach me on mail fab.go3d(4ttt)gmail.com
 
 ## GNEZDO – Application Screenshots
 
