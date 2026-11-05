@@ -3,10 +3,10 @@
 Laser nesting software A web app on the work server or a desktop version for windows and linux.
 Users work in the browser; parts, jobs and nests live in SQL Server, or on personal pc if using desktop version.
 
-I started the project because we are disappointed with the commercial software we are using at our company  right. It is expensive, fragile, and online support is bad,... So i sad f-it im making my own software that i will actually enjoy using it.
-Im building it from my experience using various nesting software over time.  Working as mechanical engineer in metal processing company  i tailoring it as i see it bets fits the workflow im using.. IT should suit not just hobbies but industrial use as well.
+I started the project because we are disappointed with the commercial software. It is expensive, fragile, and support is bad,... So i sad f-it im making my own software that i will actually enjoy using it.
+Im building it from my experience using various nesting software over time.  Working as mechanical engineer in metal processing company  i tailoring it as i see it bets fits the workflow im using.. IT should suit not just hobbies but professional industrial environment  as well. 
 
-I name it GNEZDO because all NEST  / NESTING are already used adn i dont want my app to be another one  :D  [although GNEZDO means NEST in my language :)]
+I name it GNEZDO because all NEST  / NESTING are already used and i dont want my app to be another one  :D  [although GNEZDO means NEST in my language :)]
 
 here is my ko-fi link if you want to support me in development
 
