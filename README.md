@@ -14,7 +14,7 @@ https://ko-fi.com/m0ti0n
 
 https://paypal.me/FabG03D
 
-buymeacoffee.com/M0ti0n
+https://buymeacoffee.com/M0ti0n
 
 ## GNEZDO – Application Screenshots
 
