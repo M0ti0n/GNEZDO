@@ -1,7 +1,36 @@
 # GNEZDO
 
-Laser nesting software A web app on the work server.
-Users work in the browser; parts, jobs and nests live in SQL Server.
+Laser nesting software A web app on the work server or a desktop version for windows and linux.
+Users work in the browser; parts, jobs and nests live in SQL Server, or on personal pc if using desktop version.
+
+## GNEZDO – Application Screenshots
+
+### JOB – AUTO NESTING
+![JOB-AUTONEST](images/JOB-AUTONEST.png)
+
+
+Automatically arranges imported parts onto available material sheets to optimize material utilization and minimize waste. Supports multiple nesting strategies, including Fast, Thorough and Custom, to balance processing speed and nesting quality. Provides multiple sheet solutions with material usage statistics and nesting results for easy comparison.
+
+
+### JOB – MANUAL NESTING
+![JOB-MANUALNEST](images/JOB-MANUALNEST.png)
+
+
+Provides an interactive workspace for manually positioning and arranging parts on material sheets. Includes tools for mirroring, rotating, arranging, stacking and aligning parts to achieve the desired layout. Gives users precise control over the nesting process while displaying available job parts and sheet dimensions.
+
+
+### JOB – WORK PART LIST
+![JOB-WORK-PART-LIST](images/JOB-WORK-PART-LIST.png)
+
+Centralizes all parts assigned to a production job in one organized list. Allows users to review part names, materials, thicknesses, required quantities, nested quantities and maximum quantities. Supports filtering imported parts and assigning material sheets and stock dimensions before starting the nesting process.
+
+
+### PART IMPORTER
+![PART IMPORTER](images/PART%20IMPORTER.png)
+
+
+Centralizes all parts assigned to a production job in one organized list. Allows users to review part names, materials, thicknesses, required quantities, nested quantities and maximum quantities. Supports filtering imported parts and assigning material sheets and stock dimensions before starting the nesting process.
+
 
 | Folder | What | Language |
 |---|---|---|
