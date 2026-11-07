@@ -735,13 +735,11 @@ export function App() {
     setOpenManual((o) => ({ sheet: at, n: o.n + 1 }));
   };
 
-  /** Delete sheet: the shown sheet of the shown solution; a sheet with parts asks first. */
-  const askDeleteSheet = (jobId: string) => {
-    const st = solsOf(jobId);
-    const sol = st.list.find((x) => x.id === st.sel.sol);
+  /** Delete sheet (Sheet properties of a nested sheet): a sheet with parts asks first. */
+  const askDeleteSheet = (jobId: string, solId: string, i: number) => {
+    const sol = solsOf(jobId).list.find((x) => x.id === solId);
     const sheets = sol?.run?.result?.sheets;
-    if (!sol || !sheets?.length || !isFinished(sol.run)) { setToast("No sheet to delete: show a finished solution's sheet first"); return; }
-    const i = Math.min(st.sel.sheet, sheets.length - 1);
+    if (!sol || !sheets?.[i] || !isFinished(sol.run)) return;
     if (sol.locked.includes(i)) { setToast(`Sheet ${i + 1} is locked: unlock it to delete it`); return; }
     if (!sheets[i].parts.length) deleteSheet(jobId, sol.id, i);
     else setDeleteAsk({ jobId, solId: sol.id, index: i, parts: sheets[i].parts.length });
@@ -773,7 +771,6 @@ export function App() {
   const onJobTool = (section: string, tool: string, custom?: CustomNestSettings) => {
     if (!job) return;
     if (section === "manual" && tool === "addSheet") { askAddSheet(job.id); return; }
-    if (section === "manual" && tool === "deleteSheet") { askDeleteSheet(job.id); return; }
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (tool === "fastNest") void startNest(job.id, "fast");
     else if (tool === "thoroughNest") void startNest(job.id, "thorough");
@@ -819,6 +816,7 @@ export function App() {
                 onManual={(on) => { manualOn.current = on; setToolbarReq((r) => ({ section: on ? "manual" : "auto", n: r.n + 1 })); }}
                 leaveManual={leaveManual}
                 openManual={openManual}
+                onDeleteSheet={(solId, i) => askDeleteSheet(job.id, solId, i)}
                 manualTool={manualTool}
                 parts={jobParts[job.id] ?? []}
                 solutions={solsOf(job.id).list}
