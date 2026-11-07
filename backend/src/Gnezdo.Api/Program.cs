@@ -107,6 +107,7 @@ if (!demo)
     app.MapHomeEndpoints();
     app.MapJobEndpoints();
     app.MapSettingsEndpoints();
+    app.MapDraftEndpoints();
 }
 
 // Windows build: the web pages are next to the program (wwwroot uses the database,

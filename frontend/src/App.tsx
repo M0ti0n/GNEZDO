@@ -1,4 +1,6 @@
 import { startDesktop } from "./api/desktop";
+import { drafts, newDraftId, type DraftContent, type DraftRow } from "./api/drafts";
+import { RestoreDialog } from "./components/RestoreDialog";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api, demoMode } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
@@ -365,6 +367,7 @@ export function App() {
     // a closed job tab forgets what it held: opened again, it shows the job as saved; its running
     // nest stops (nothing would show or keep its result)
     if (jid) {
+      dropDraft(jid);   // closed without saving: its recovery copy goes too
       for (const x of solsOf(jid).list) if (x.run && !isFinished(x.run) && !x.error) void nestApi.stop(x.run.id).catch(() => {});
       const drop = <T,>(m: Record<string, T>) => { const n = { ...m }; delete n[jid]; return n; };
       setJobParts(drop); setJobStock(drop); setJobSol(drop); setJobScreen(drop); setJobServerId(drop); setJobMachine(drop); setSavedSnap(drop);
@@ -609,10 +612,92 @@ export function App() {
     setJobScreen((m) => ({ ...m, [jobId]: "parts" }));
     setMachineAsk(null);
   };
-  // closing the browser window with unsaved jobs: the browser asks first
+  // ---- Restore unsaved work: a recovery copy of each job tab with unsaved changes, on the server
+  // (the desktop: its data file), written every few seconds; offered back on the next start.
+  const draftIds = useRef<Record<string, string>>({});      // job tab -> its copy
+  const draftSnap = useRef<Record<string, string>>({});     // what was last written for it
+  const restoredIds = useRef<Record<string, string>>({});   // restored tabs carry on with their copy
+  const dropDraft = (jid: string) => {
+    const id = draftIds.current[jid] ?? restoredIds.current[jid];
+    delete draftIds.current[jid]; delete draftSnap.current[jid]; delete restoredIds.current[jid];
+    if (id) void drafts.remove(id).catch(() => {});
+  };
+  const draftTick = useRef<() => void>(() => {});
+  draftTick.current = () => {
+    if (demoMode || !authState || (authState.required && !me)) return;
+    const open = new Set<string>();
+    for (const t of state.tabs) {
+      if (t.kind !== "job" || !t.jobId) continue;
+      const jid = t.jobId;
+      open.add(jid);
+      const parts = jobParts[jid];
+      if (!parts) continue;
+      if (!jobDirty(jid)) { if (draftIds.current[jid]) dropDraft(jid); continue; }
+      const st = solsOf(jid), stock = jobStock[jid] ?? [], machine = machineFor(jid).id;
+      const snap = `${t.title}\n${snapOf(parts, stock, st.list, machine)}`;
+      if (draftSnap.current[jid] === snap) continue;
+      const id = (draftIds.current[jid] ??= restoredIds.current[jid] ?? newDraftId());
+      delete restoredIds.current[jid];
+      draftSnap.current[jid] = snap;
+      const content: DraftContent = {
+        title: t.title, jobId: jobServerId[jid] ?? (jid.startsWith("new-") ? null : jid), machine,
+        parts, stock, nest: nestsOfJob(st.list, st.sel.sol), screen: jobScreen[jid],
+      };
+      drafts.put(id, content).catch(() => { delete draftSnap.current[jid]; });   // tried again next time
+    }
+    for (const jid of Object.keys(draftIds.current)) if (!open.has(jid)) dropDraft(jid);
+  };
+  useEffect(() => {
+    const t = window.setInterval(() => draftTick.current(), 4000);
+    return () => window.clearInterval(t);
+  }, []);
+  // on start (signed in): copies left from last time
+  const [restoreRows, setRestoreRows] = useState<DraftRow[] | null>(null);
+  const restoreAsked = useRef(false);
+  useEffect(() => {
+    if (restoreAsked.current || demoMode || !authState || (authState.required && !me)) return;
+    restoreAsked.current = true;
+    drafts.list().then((r) => { if (r.length) setRestoreRows(r); }).catch(() => { /* an older server */ });
+  }, [authState, me]);
+  const doneWith = (ids: string[]) => setRestoreRows((rows) => {
+    const left = (rows ?? []).filter((r) => !ids.includes(r.id));
+    return left.length ? left : null;
+  });
+  const restoreDrafts = async (ids: string[]) => {
+    doneWith(ids);
+    const taken = new Set(state.tabs.map((t) => t.jobId).filter(Boolean));
+    for (const id of ids) {
+      try {
+        const c = (await drafts.get(id)).content;
+        // the saved job's own tab, unless it is open already: then a new tab, saving over that job
+        const jid = c.jobId && !taken.has(c.jobId) ? c.jobId : `new-${++newJobCount.current}`;
+        taken.add(jid);
+        const sols = solutionsFromSaved(c.nest);
+        setJobParts((m) => ({ ...m, [jid]: c.parts }));
+        setJobStock((m) => ({ ...m, [jid]: c.stock ?? [] }));
+        if (machines.list.some((x) => x.id === c.machine)) setJobMachine((m) => ({ ...m, [jid]: c.machine }));
+        if (sols) setJobSol((m) => ({ ...m, [jid]: sols }));
+        if (c.screen) setJobScreen((m) => ({ ...m, [jid]: c.screen }));
+        if (c.jobId && jid !== c.jobId) setJobServerId((m) => ({ ...m, [jid]: c.jobId! }));
+        setSavedSnap((m) => ({ ...m, [jid]: "restored" }));   // unsaved until SAVE
+        restoredIds.current[jid] = id;
+        dispatch({ type: "open", tab: jobTab(jid, c.title) });
+        diag("save", `Restored unsaved job ${c.title}`, { job: jid, parts: c.parts.length, solutions: sols?.list.length ?? 0 });
+      } catch (e) {
+        setToast(`Could not restore: ${(e as Error).message}`);
+      }
+    }
+  };
+  const discardDrafts = (ids: string[]) => {
+    doneWith(ids);
+    for (const id of ids) void drafts.remove(id).catch(() => {});
+  };
+
+  // closing the browser window with unsaved jobs or a nest running: the browser asks first
   useEffect(() => {
     const onLeave = (e: BeforeUnloadEvent) => {
-      if (!state.tabs.some((t) => t.kind === "job" && t.jobId && jobDirty(t.jobId))) return;
+      const busy = (jid: string) => jobDirty(jid) || solsOf(jid).list.some((x) => x.run && !isFinished(x.run) && !x.error);
+      if (!state.tabs.some((t) => t.kind === "job" && t.jobId && busy(t.jobId))) return;
       e.preventDefault();
       e.returnValue = "";
     };
@@ -830,6 +915,7 @@ export function App() {
   return (
     <div className="app">
       {authState.required && !me && <div className="signin-over"><SignInPage setupNeeded={false} onSignedIn={signedIn} /></div>}
+      {restoreRows && <RestoreDialog rows={restoreRows} onRestore={(ids) => void restoreDrafts(ids)} onDiscard={discardDrafts} onLater={() => setRestoreRows(null)} />}
       {accountDlg === "users" && me && <UsersDialog me={me} onMe={setMe} onClose={() => setAccountDlg(null)} />}
       {accountDlg === "password" && me && <PasswordDialog me={me} onMe={setMe} onClose={() => setAccountDlg(null)} />}
       <TabBar

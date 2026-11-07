@@ -1711,3 +1711,14 @@ button.user-btn:hover { background: rgba(255, 255, 255, .3); }
 fieldset.admin-lock { border: 0; margin: 0; padding: 0; min-width: 0; display: contents; }
 fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opacity: .6; }
 .admin-only { margin: 6px 0 0; color: var(--yellow-ink); font-weight: 600; font-size: 13.5px; }
+
+/* Restore unsaved work (on start) */
+.restore-dlg { width: min(620px, 100%); display: flex; flex-direction: column; }
+.restore-list { list-style: none; margin: 0; padding: 8px 20px; display: flex; flex-direction: column; max-height: 50vh; overflow: auto; }
+.restore-list li { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.restore-list li:last-child { border-bottom: 0; }
+.restore-what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.restore-what strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.restore-what small { color: var(--ink-3); font-size: 13px; }
+.restore-list .btn { height: 32px; padding: 0 14px; }
+.restore-note { margin: 0 20px 4px; }

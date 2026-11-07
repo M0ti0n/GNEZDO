@@ -170,3 +170,27 @@ public class JobPart
     /// <summary>Thickness in this job only (null = the part's own).</summary>
     public decimal? ThicknessMm { get; set; }
 }
+
+/// <summary>
+/// A recovery copy of a job tab with unsaved changes, written every few seconds while it is open:
+/// after a crash, a closed window or a lost connection the job can be restored. Deleted once the job
+/// is saved or its changes are discarded.
+/// </summary>
+public class Draft
+{
+    /// <summary>Made by the browser for the job tab (a GUID).</summary>
+    public required string Id { get; set; }
+    /// <summary>The signed-in user ("" without sign-in: the desktop build).</summary>
+    public string User { get; set; } = "";
+    /// <summary>The browser it came from (diagnostic id).</summary>
+    public string Browser { get; set; } = "";
+    /// <summary>The saved job it changes; null for a job never saved.</summary>
+    public int? JobId { get; set; }
+    public string Name { get; set; } = "";
+    public int Parts { get; set; }
+    public int Solutions { get; set; }
+    /// <summary>The job tab as JSON: parts, stock, machine, finished solutions.</summary>
+    public string Content { get; set; } = "";
+    public DateTimeOffset SavedAt { get; set; }
+}
+
