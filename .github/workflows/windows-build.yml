@@ -80,8 +80,9 @@ jobs:
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
           New-Item -ItemType Directory out-launcher | Out-Null
-          & $csc /nologo /target:winexe /optimize+ /out:out-launcher/GNEZDO.exe /win32icon:packaging/gnezdo.ico `
-            /r:System.Windows.Forms.dll packaging/desktop/GnezdoLauncher.cs
+          # this old compiler wants Windows paths (a "/" starts an option)
+          & $csc /nologo /target:winexe /optimize+ /out:out-launcher\GNEZDO.exe /win32icon:packaging\gnezdo.ico `
+            /r:System.Windows.Forms.dll packaging\desktop\GnezdoLauncher.cs
           if ($LASTEXITCODE -ne 0) { throw "csc failed" }
           Get-Item out-launcher/GNEZDO.exe | Format-List Name, Length
       - uses: actions/upload-artifact@v4
