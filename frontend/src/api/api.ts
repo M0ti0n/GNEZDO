@@ -9,6 +9,7 @@ import type {
 } from "./types";
 import { otherParts, testJobParts } from "./sampleParts";
 import type { Entity } from "../import/geometry";
+import { diag, diagHeaders } from "../job/diag";
 
 // Until the backend exists, the app runs on sample data.
 // Set VITE_USE_API=true (e.g. in .env.local) to call the real server instead.
@@ -17,17 +18,22 @@ const useApi = import.meta.env.VITE_USE_API === "true";
 export const demoMode = !useApi;
 
 async function get<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`);
+  let res: Response;
+  try { res = await fetch(url, { headers: { Accept: "application/json", ...diagHeaders() } }); }
+  catch (e) { diag("error", `Server not reached: GET ${url}`); throw e; }
+  if (!res.ok) { diag(res.status >= 500 ? "error" : "api", `GET ${url}: ${res.status}`); throw new Error(`${res.status} ${res.statusText} (${url})`); }
   return (await res.json()) as T;
 }
 
 async function post<T>(url: string, body: unknown, method = "POST"): Promise<T> {
-  const res = await fetch(url, {
-    method,
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: { Accept: "application/json", "Content-Type": "application/json", ...diagHeaders() },
+      body: JSON.stringify(body),
+    });
+  } catch (e) { diag("error", `Server not reached: ${method} ${url}`); throw e; }
   if (res.status === 204) return undefined as T;
   if (!res.ok) {
     // validation problems come back as { errors: { field: [messages] } }
@@ -36,6 +42,7 @@ async function post<T>(url: string, body: unknown, method = "POST"): Promise<T> 
       const j = await res.json();
       detail = j.message ?? Object.values(j.errors ?? {}).flat().join(" ");
     } catch { /* not JSON */ }
+    diag(res.status >= 500 ? "error" : "api", `${method} ${url}: ${res.status} ${detail}`);
     throw new Error(detail || `${res.status} ${res.statusText} (${url})`);
   }
   return (await res.json()) as T;

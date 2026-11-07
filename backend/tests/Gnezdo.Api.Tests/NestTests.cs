@@ -23,7 +23,7 @@ public sealed class NestTests : IAsyncLifetime
         groups = [{"material": "S235", "thicknessMm": 10, "stage": "nest", "sheets": 2}]
         write("progress.json", {"state": "running", "groups": groups})
         state = "done"
-        sheet = {"sheetId": req["sheets"][0]["id"], "lengthMm": 3000, "widthMm": 1500,
+        sheet = {"sheetId": (req.get("sheets") or req.get("fixedSheets"))[0]["id"], "lengthMm": 3000, "widthMm": 1500,
                  "parts": [{"partId": p["id"], "x": 5, "y": 5, "angle": 0, "mirror": False} for p in req["parts"]]}
         write("best.json", {"sheets": [sheet]})
         if req["mode"] == "custom":
@@ -31,7 +31,7 @@ public sealed class NestTests : IAsyncLifetime
                 time.sleep(0.05)
             state = "stopped"
         nested = {p["id"]: p["qty"] for p in req["parts"]}
-        sheet = {"sheetId": req["sheets"][0]["id"], "lengthMm": 3000, "widthMm": 1500,
+        sheet = {"sheetId": (req.get("sheets") or req.get("fixedSheets"))[0]["id"], "lengthMm": 3000, "widthMm": 1500,
                  "parts": [{"partId": p["id"], "x": 5, "y": 5, "angle": 0, "mirror": False} for p in req["parts"]]}
         write("result.json", {"state": state, "sheets": [sheet], "nested": nested, "skipped": [], "valid": True, "errors": []})
         write("progress.json", {"state": state, "groups": groups})
@@ -50,6 +50,7 @@ public sealed class NestTests : IAsyncLifetime
             b.UseSetting("Nesting:Script", script);
             b.UseSetting("Nesting:Solver", solver);
             b.UseSetting("Nesting:RunsDir", Path.Combine(_dir, "runs"));
+            b.UseSetting("Diagnostics:Dir", Path.Combine(_dir, "logs"));
         });
 
     public Task InitializeAsync()
@@ -138,6 +139,23 @@ public sealed class NestTests : IAsyncLifetime
         req["sheets"] = new JsonArray();
         var res = await _client.PostAsJsonAsync("/api/nest", req);
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task Fixed_sheets_without_stock_are_nested()
+    {
+        // Re-nest a sheet around its locked parts / Continue nest: the sheet is sent as fixed, no stock
+        var req = Request("fast");
+        req["sheets"] = new JsonArray();
+        req["fixedSheets"] = new JsonArray(new JsonObject
+        {
+            ["index"] = 0, ["id"] = "s1", ["material"] = "S235", ["thicknessMm"] = 10, ["lengthMm"] = 3000, ["widthMm"] = 1500,
+            ["parts"] = new JsonArray(),
+        });
+        var res = await _client.PostAsJsonAsync("/api/nest", req);
+        Assert.Equal(HttpStatusCode.Accepted, res.StatusCode);
+        var id = (await res.Content.ReadFromJsonAsync<JsonObject>())!["id"]!.GetValue<string>();
+        Assert.Equal("done", (await WaitFor(id, "done", "error"))["state"]!.GetValue<string>());
     }
 
     [Fact]

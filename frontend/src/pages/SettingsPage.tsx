@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { flush, logDownloadUrl, logSettings, reportProblem, setLogEnabled, type LogSettings as LogSettingsData } from "../job/diag";
 import { Combobox } from "../components/Combobox";
 import { NumInput } from "../components/NumInput";
 import { usePickLists } from "../components/pickLists";
@@ -7,11 +8,12 @@ import { ORIGINS, TECHNOLOGIES, newMachine, type Machine, type MachineList } fro
 import { DEFAULT_KEYS, KEY_ACTIONS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
-type Section = "stock" | "machine" | "keys";
+type Section = "stock" | "machine" | "keys" | "log";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock", ready: true },
   { id: "machine", label: "Machines", ready: true },
   { id: "keys", label: "Manual nest", ready: true },
+  { id: "log", label: "Diagnostic log", ready: true },
 ];
 
 // GNEZDO menu -> Settings. Stock: the global sheet size and the three default sheet slots.
@@ -58,6 +60,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared }: {
       </nav>
 
       {section === "keys" && <KeysSettings />}
+      {section === "log" && <LogSettings />}
 
       {section === "machine" && (
       <div className="settings-main">
@@ -250,6 +253,79 @@ function KeysSettings() {
       <footer className="settings-foot">
         <button type="button" className="btn btn-plain" onClick={() => { setKeys(DEFAULT_KEYS); setView(DEFAULT_MANUAL_VIEW); }}>Reset to defaults</button>
       </footer>
+    </div>
+  );
+}
+
+// Settings -> Diagnostic log: what the server and the browsers did, kept on the server to find out
+// afterwards what went wrong. On for everyone by default; off here for everyone on this server.
+function LogSettings() {
+  const [s, setS] = useState<LogSettingsData | null | undefined>(undefined);   // undefined: loading, null: no server log
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [text, setText] = useState("");
+  const [days, setDays] = useState(3);
+  useEffect(() => { void logSettings().then(setS); }, []);
+  const toggle = async (on: boolean) => {
+    setBusy(true); setMsg(null);
+    try { await setLogEnabled(on); setS(await logSettings()); }
+    catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+    finally { setBusy(false); }
+  };
+  const send = async () => {
+    if (!text.trim()) return;
+    setBusy(true); setMsg(null);
+    try {
+      await reportProblem(text.trim(), { page: window.location.pathname, screen: `${window.innerWidth}x${window.innerHeight}` });
+      setText("");
+      setMsg({ ok: true, text: `Reported at ${new Date().toLocaleTimeString()}. Download the log below and send it with a few words.` });
+      setS(await logSettings());
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="settings-main">
+      <header className="settings-head">
+        <h2>Diagnostic log</h2>
+        <p>GNEZDO writes down what happens on the server and in every browser using it: nests started and how they ended, saves,
+          tools used, and every error, with who and when. If something goes wrong, report it here, then download the log and send it,
+          so it can be looked at without describing every step. Job, part and user names are in it; drawings and outlines are not.
+          It stays on the server, {s?.keepDays ?? 30} days at most.</p>
+      </header>
+      {s === undefined && <section className="rule"><p className="rule-help">Loading…</p></section>}
+      {s === null && <section className="rule"><p className="rule-help">There is no server log here (these demo pages run without GNEZDO's server).</p></section>}
+      {s && (
+        <>
+          <section className="rule">
+            <h3>Keep a diagnostic log</h3>
+            <label className="chk">
+              <input type="checkbox" checked={s.enabled} disabled={busy} onChange={(e) => void toggle(e.target.checked)} />
+              {" "}On (for everyone on this server; switched off, nothing more is written)
+            </label>
+            <p className="rule-help">{s.files ? `${s.files} ${s.files === 1 ? "day" : "days"} kept, ${s.sizeMb < 0.1 ? "under 0.1" : s.sizeMb} MB, since ${s.oldest}` : "Nothing written yet"} · folder {s.dir}</p>
+          </section>
+          <section className="rule">
+            <h3>Report a problem</h3>
+            <p className="rule-help">Say in a few words what went wrong: it goes into the log as a marked entry at this moment, with what this browser did just before.</p>
+            <textarea className="field log-report" rows={3} value={text} placeholder="e.g. Fast nest stuck at 80 %, job 26-0412" disabled={!s.enabled || busy}
+              onChange={(e) => setText(e.target.value)} aria-label="What went wrong" />
+            <div className="rule-row">
+              <button type="button" className="btn btn-save" disabled={!s.enabled || busy || !text.trim()} onClick={() => void send()}>Report</button>
+              {!s.enabled && <span className="rule-help">The log is off: switch it on to report.</span>}
+            </div>
+          </section>
+          <section className="rule">
+            <h3>Download log</h3>
+            <div className="rule-row">
+              <select className="field log-days" value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Days">
+                {[1, 3, 7, 30].map((d) => <option key={d} value={d}>{d === 1 ? "Today" : `Last ${d} days`}</option>)}
+              </select>
+              <a className="btn btn-plain log-dl" href={logDownloadUrl(days)} download onClick={() => { void flush(); }}>Download (zip)</a>
+            </div>
+          </section>
+          {msg && <p className={`log-msg${msg.ok ? "" : " is-bad"}`} role="status">{msg.text}</p>}
+        </>
+      )}
     </div>
   );
 }

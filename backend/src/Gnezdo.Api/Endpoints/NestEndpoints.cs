@@ -29,7 +29,7 @@ public static class NestEndpoints
     }
 
     /// <summary>POST /api/nest: starts a run, answers with its id (then poll GET /api/nest/{id}).</summary>
-    private static IResult Start(JsonObject request, NestRunner runner)
+    private static IResult Start(JsonObject request, NestRunner runner, HttpContext ctx)
     {
         if (runner.Missing() is { } missing)
             return Results.Problem(missing, statusCode: StatusCodes.Status503ServiceUnavailable, title: "Nesting is not available");
@@ -37,9 +37,13 @@ public static class NestEndpoints
         var mode = request["mode"]?.GetValueKind() == System.Text.Json.JsonValueKind.String ? request["mode"]!.GetValue<string>() : "";
         if (!Modes.Contains(mode)) errors["mode"] = ["Mode must be fast, thorough or custom."];
         if (request["parts"] is not JsonArray { Count: > 0 }) errors["parts"] = ["No parts to nest."];
-        if (request["sheets"] is not JsonArray { Count: > 0 }) errors["sheets"] = ["No stock sheets. Add sheets in the Stock panel."];
+        // no stock is fine when sheets already nested are continued (fixedSheets: Continue nest, Re-nest
+        // a sheet around its locked parts)
+        if (request["sheets"] is not JsonArray { Count: > 0 } && request["fixedSheets"] is not JsonArray { Count: > 0 })
+            errors["sheets"] = ["No stock sheets. Add sheets in the Stock panel."];
         if (errors.Count > 0) return Results.ValidationProblem(errors);
-        var id = runner.Start(request);
+        var (user, browser, client) = Gnezdo.Api.Diagnostics.DiagEndpoints.Who(ctx);
+        var id = runner.Start(request, user, browser, client);
         return Results.Accepted($"/api/nest/{id}", runner.Get(id));
     }
 }

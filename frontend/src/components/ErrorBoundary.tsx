@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from "react";
+import { diag } from "../job/diag";
 
 interface Props { children: ReactNode; what: string }
 interface State { error: Error | null }
@@ -12,8 +13,9 @@ export class ErrorBoundary extends Component<Props, State> {
     return { error };
   }
 
-  componentDidCatch(error: Error) {
+  componentDidCatch(error: Error, info: { componentStack?: string | null }) {
     console.error(`GNEZDO: ${this.props.what} failed`, error);
+    diag("error", `Screen failed: ${this.props.what}: ${error.message}`, { stack: error.stack?.slice(0, 3000), components: info.componentStack?.slice(0, 2000) });
   }
 
   render() {

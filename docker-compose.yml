@@ -16,6 +16,8 @@ services:
       ConnectionStrings__Gnezdo: ${GNEZDO_DB}
       Gnezdo__TimeZone: Europe/Ljubljana
       Gnezdo__SeedSampleData: ${GNEZDO_SAMPLE_DATA:-false}
+    volumes:
+      - gnezdo-logs:/app/logs   # the diagnostic log survives an update of the container
     depends_on:
       db:
         condition: service_started
@@ -42,3 +44,4 @@ services:
 
 volumes:
   gnezdo-sql:
+  gnezdo-logs:
