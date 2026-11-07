@@ -131,4 +131,23 @@ public sealed class AuthTests : IAsyncLifetime
         var job = (await admin.GetFromJsonAsync<JsonObject>($"/api/jobs/{id}"))!;
         Assert.Equal("Fab", job["modifiedBy"]!.GetValue<string>());
     }
+
+    [Fact]
+    public async Task Each_user_sees_only_their_own_drafts()
+    {
+        var admin = await Admin();
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/users", new { name = "Miha", isAdmin = false })).StatusCode);
+        var miha = Browser();
+        Assert.Equal(HttpStatusCode.OK, (await miha.PostAsJsonAsync("/api/auth/signin", new { name = "Miha" })).StatusCode);
+
+        var id = Guid.NewGuid().ToString();
+        var draft = new { name = "Fab's job", parts = 1, solutions = 0, content = new JsonObject { ["x"] = 1 } };
+        Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync($"/api/drafts/{id}", draft)).StatusCode);
+        Assert.Single((await admin.GetFromJsonAsync<JsonArray>("/api/drafts"))!);
+        Assert.Empty((await miha.GetFromJsonAsync<JsonArray>("/api/drafts"))!);
+        Assert.Equal(HttpStatusCode.NotFound, (await miha.GetAsync($"/api/drafts/{id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await miha.PutAsJsonAsync($"/api/drafts/{id}", draft)).StatusCode);
+        await miha.DeleteAsync($"/api/drafts/{id}");   // not hers: nothing happens
+        Assert.Single((await admin.GetFromJsonAsync<JsonArray>("/api/drafts"))!);
+    }
 }
