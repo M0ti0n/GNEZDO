@@ -34,13 +34,16 @@ import { setMachineLimit } from "./job/stock";
 import { exportSolutionDxf } from "./job/exportNest";
 import { loadStockSettings, newSheet, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
 import { SheetPropertiesDialog } from "./components/SheetPropertiesDialog";
-import { diag, startDiag } from "./job/diag";
+import { diag, flush, startDiag } from "./job/diag";
+import { auth, SIGN_IN_NEEDED, type AuthState, type Me } from "./api/auth";
+import { SignInPage } from "./components/SignInPage";
+import { PasswordDialog, UsersDialog } from "./components/UsersDialog";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
 import type { Drawing } from "./import/geometry";
 import { VIEW_TITLE, drawingTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
 
-const USER_NAME = "Fab"; // until sign-in exists
+const USER_NAME = "Fab"; // where there is no sign-in (the demo; the desktop build)
 
 /** What saving a job keeps, as text: the same text means nothing to save. */
 const snapOf = (parts: JobPart[], stock: StockSheet[], sols: Solution[], machine: string) =>
@@ -101,7 +104,23 @@ export function App() {
   const [toast, setToastState] = useState<string | null>(null);
   // every message shown is in the diagnostic log too: it is what the user saw
   const setToast = (m: string | null) => { if (m) diag("toast", m); setToastState(m); };
-  useEffect(() => { startDiag(USER_NAME); }, []);
+  // -- sign-in (server build) ------------------------------------------------------------------
+  const [authState, setAuthState] = useState<AuthState | null>(demoMode ? { required: false, setupNeeded: false, user: null } : null);
+  const [me, setMe] = useState<Me | null>(null);
+  const [accountDlg, setAccountDlg] = useState<"password" | "users" | null>(null);
+  useEffect(() => { void auth.state().then((s) => { setAuthState(s); setMe(s.user); }); }, []);
+  // a call answered "sign in first" (signed out elsewhere, removed, password changed): the sign-in page
+  useEffect(() => {
+    const on = () => { setMe(null); void auth.state().then((s) => { setAuthState(s); setMe(s.user); }); };
+    window.addEventListener(SIGN_IN_NEEDED, on);
+    return () => window.removeEventListener(SIGN_IN_NEEDED, on);
+  }, []);
+  // signed in during this page's life: a sign-in that ends later shows over the open work (nothing is lost)
+  const signedInAs = useRef<string | null>(null);
+  if (me) signedInAs.current = me.name;
+  const userName = me?.name ?? signedInAs.current ?? USER_NAME;
+  const isAdmin = !authState?.required || !!me?.isAdmin;
+  useEffect(() => { startDiag(userName); }, [userName]);
   const newJobCount = useRef(0);
   // Last job search: results show in the Job search view on the main screen.
   const [jobSearch, setJobSearch] = useState<{ filter: JobFilter | null; run: number }>({ filter: null, run: 0 });
@@ -548,7 +567,7 @@ export function App() {
     const serverId = asNew ? null : known;
     const st = solsOf(jobId);
     try {
-      const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: USER_NAME, machine: machineFor(jobId).id });
+      const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: userName, machine: machineFor(jobId).id });
       if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
       if (asNew) dispatch({ type: "rename", id: `job:${jobId}`, title });
       setSavedSnap((m) => ({ ...m, [jobId]: snapOf(parts, jobStock[jobId] ?? [], st.list, machineFor(jobId).id) }));
@@ -794,12 +813,33 @@ export function App() {
     else if (tool === "customNest") { if (custom) void startNest(job.id, "custom", custom); else setCustomFor({ jobId: job.id, fresh: false }); }
   };
 
+  // the server build without a signed-in user: only the sign-in page
+  if (!authState) return <div className="signin" aria-busy="true" />;
+  // first sign-in on this page: reloaded, so everything loads as this user; signed out while working:
+  // the same person carries on where they were, someone else gets a fresh page
+  const signedIn = (m: Me) => {
+    if (signedInAs.current && signedInAs.current === m.name) { setMe(m); setAuthState({ ...authState, setupNeeded: false, user: m }); }
+    else window.location.reload();
+  };
+  if (authState.required && !me && !signedInAs.current) return <SignInPage setupNeeded={authState.setupNeeded} onSignedIn={signedIn} />;
+
   return (
     <div className="app">
+      {authState.required && !me && <div className="signin-over"><SignInPage setupNeeded={false} onSignedIn={signedIn} /></div>}
+      {accountDlg === "users" && me && <UsersDialog me={me} onMe={setMe} onClose={() => setAccountDlg(null)} />}
+      {accountDlg === "password" && me && <PasswordDialog me={me} onMe={setMe} onClose={() => setAccountDlg(null)} />}
       <TabBar
         tabs={state.tabs}
         activeId={state.activeId}
-        userName={USER_NAME}
+        userName={userName}
+        account={authState?.required && me ? {
+          isAdmin: me.isAdmin, hasPassword: me.hasPassword,
+          onPick: (id) => {
+            // signed out: a fresh page, so the next person does not see these tabs
+            if (id === "signout") { diag("auth", `${me.name} signed out`); void flush().finally(() => auth.signOut().finally(() => window.location.reload())); }
+            else setAccountDlg(id);
+          },
+        } : undefined}
         onActivate={(id) => dispatch({ type: "activate", id })}
         onClose={(id) => requestClose(id)}
         onMenu={(id) => (id === "exportDxf" ? void exportDxf() : showView(id))}
@@ -961,7 +1001,7 @@ export function App() {
               // a list that has not been touched yet follows the new defaults
               if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller }));
             }} />}
-            {active.kind === "settings" && <SettingsPage stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} />}
+            {active.kind === "settings" && <SettingsPage stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
           </main>
         </div>

@@ -21,6 +21,7 @@ async function get<T>(url: string): Promise<T> {
   let res: Response;
   try { res = await fetch(url, { headers: { Accept: "application/json", ...diagHeaders() } }); }
   catch (e) { diag("error", `Server not reached: GET ${url}`); throw e; }
+  if (res.status === 401) { window.dispatchEvent(new Event("gnezdo:signin-needed")); throw new Error("Sign in first."); }
   if (!res.ok) { diag(res.status >= 500 ? "error" : "api", `GET ${url}: ${res.status}`); throw new Error(`${res.status} ${res.statusText} (${url})`); }
   return (await res.json()) as T;
 }
@@ -35,6 +36,7 @@ async function post<T>(url: string, body: unknown, method = "POST"): Promise<T> 
     });
   } catch (e) { diag("error", `Server not reached: ${method} ${url}`); throw e; }
   if (res.status === 204) return undefined as T;
+  if (res.status === 401) { window.dispatchEvent(new Event("gnezdo:signin-needed")); throw new Error("Sign in first."); }
   if (!res.ok) {
     // validation problems come back as { errors: { field: [messages] } }
     let detail = "";

@@ -1669,3 +1669,45 @@ html.is-busy, html.is-busy * { cursor: progress !important; }
 a.btn.log-dl { text-decoration: none; display: inline-flex; align-items: center; }
 .log-msg { margin: 12px 0 0; color: var(--green-dark, #1d7a35); }
 .log-msg.is-bad { color: #c62828; }
+
+/* Sign-in (server build) */
+.signin { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: var(--sheet); }
+.signin-over { position: fixed; inset: 0; z-index: 90; background: rgba(20, 40, 35, .45); }
+.signin-over .signin { background: transparent; }
+.signin-card { width: min(380px, 100%); background: var(--plate); border-radius: 12px; padding: 28px 28px 24px;
+  box-shadow: 0 24px 60px rgba(10, 40, 25, .18), 0 0 0 1px rgba(20, 50, 30, .08); display: flex; flex-direction: column; gap: 12px; }
+.signin-brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-cond); font-weight: 700; font-size: 22px; letter-spacing: .08em; color: var(--chrome); }
+.signin-card h1 { font-size: 24px; margin: 6px 0 0; }
+.signin-help { margin: 0; color: var(--ink-2); font-size: 14px; }
+.signin-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.signin-field .field { height: 38px; font-size: 15px; }
+.signin-error { margin: 0; color: var(--red); font-size: 14px; }
+.signin-go { height: 40px; margin-top: 6px; font-weight: 600; }
+/* the name in the top bar: its menu */
+.user-wrap { position: relative; align-self: center; flex-shrink: 0; }
+button.user-btn { border: 0; cursor: pointer; font: inherit; font-weight: 600; font-size: 14px; }
+button.user-btn:hover { background: rgba(255, 255, 255, .3); }
+.user-menu { left: auto; right: 0; min-width: 190px; }
+/* Users / password dialogs */
+.users-dlg { width: min(520px, 100%); display: flex; flex-direction: column; }
+.users-dlg.is-wide { width: min(860px, 100%); }
+.users-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+.users-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.users-table th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.users-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.users-name { font-weight: 600; }
+.users-name small { font-weight: 400; color: var(--ink-3); }
+.users-when { color: var(--ink-3); white-space: nowrap; }
+.users-pw { display: inline-flex; align-items: center; gap: 8px; }
+.users-pw .field { height: 30px; width: 150px; }
+.users-pw .btn, .users-del { height: 30px; padding: 0 10px; }
+.users-add { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.users-add h3 { width: 100%; margin: 0; font-size: 15px; }
+.users-add .field { height: 34px; width: 200px; }
+.users-add .btn { height: 34px; padding: 0 18px; }
+.users-form { display: flex; flex-direction: column; gap: 10px; }
+
+/* settings only an admin may change: shown, greyed out */
+fieldset.admin-lock { border: 0; margin: 0; padding: 0; min-width: 0; display: contents; }
+fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opacity: .6; }
+.admin-only { margin: 6px 0 0; color: var(--yellow-ink); font-weight: 600; font-size: 13.5px; }

@@ -17,11 +17,13 @@ const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
 ];
 
 // GNEZDO menu -> Settings. Stock: the global sheet size and the three default sheet slots.
-export function SettingsPage({ stock, onStock, machines, onMachines, shared }: {
+export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true }: {
   stock: StockSettings; onStock: (s: StockSettings) => void;
   machines: MachineList; onMachines: (m: MachineList) => void;
   /** Machines are kept on the server (false: in this browser, the demo). */
   shared: boolean;
+  /** Settings shared by everyone (machines, the log switch) are an admin's (the server build). */
+  isAdmin?: boolean;
 }) {
   const [mSel, setMSel] = useState(machines.defaultId);
   const machine = machines.list.find((m) => m.id === mSel) ?? machines.list[0];
@@ -60,14 +62,16 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared }: {
       </nav>
 
       {section === "keys" && <KeysSettings />}
-      {section === "log" && <LogSettings />}
+      {section === "log" && <LogSettings isAdmin={isAdmin} />}
 
       {section === "machine" && (
       <div className="settings-main">
         <header className="settings-head">
           <h2>Machines</h2>
           <p>Every job is nested for one machine: its gaps, its 0,0 corner and the largest sheet come from it. {shared ? "The same for everyone." : "Demo: kept in this browser."}</p>
+          {!isAdmin && <p className="admin-only">Only an admin can change the machines.</p>}
         </header>
+        <fieldset className="admin-lock" disabled={!isAdmin}>
         <div className="mc-tabs" role="tablist" aria-label="Machines">
           {machines.list.map((m) => (
             <button key={m.id} type="button" role="tab" aria-selected={m.id === machine.id} className={`mc-tab${m.id === machine.id ? " is-on" : ""}`} onClick={() => setMSel(m.id)}>
@@ -137,6 +141,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared }: {
           </div>
           <p className="rule-help">Materials and thicknesses it can cut come with the technology tables.</p>
         </section>
+        </fieldset>
         <footer className="settings-foot">{shared ? "Saved on the server, for everyone." : "Saved in this browser."}</footer>
       </div>
       )}
@@ -259,7 +264,7 @@ function KeysSettings() {
 
 // Settings -> Diagnostic log: what the server and the browsers did, kept on the server to find out
 // afterwards what went wrong. On for everyone by default; off here for everyone on this server.
-function LogSettings() {
+function LogSettings({ isAdmin }: { isAdmin: boolean }) {
   const [s, setS] = useState<LogSettingsData | null | undefined>(undefined);   // undefined: loading, null: no server log
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -299,9 +304,10 @@ function LogSettings() {
           <section className="rule">
             <h3>Keep a diagnostic log</h3>
             <label className="chk">
-              <input type="checkbox" checked={s.enabled} disabled={busy} onChange={(e) => void toggle(e.target.checked)} />
+              <input type="checkbox" checked={s.enabled} disabled={busy || !isAdmin} onChange={(e) => void toggle(e.target.checked)} />
               {" "}On (for everyone on this server; switched off, nothing more is written)
             </label>
+            {!isAdmin && <p className="admin-only">Only an admin can switch the log on or off.</p>}
             <p className="rule-help">{s.files ? `${s.files} ${s.files === 1 ? "day" : "days"} kept, ${s.sizeMb < 0.1 ? "under 0.1" : s.sizeMb} MB, since ${s.oldest}` : "Nothing written yet"} · folder {s.dir}</p>
           </section>
           <section className="rule">
