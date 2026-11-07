@@ -12,6 +12,7 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobPart> JobParts => Set<JobPart>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
+    public DbSet<User> Users => Set<User>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -78,6 +79,14 @@ public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => x.ModifiedAt);
+        });
+
+        b.Entity<User>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.HasIndex(x => x.Name).IsUnique();   // the database's collation ignores case: "fab" is "Fab"
+            e.Property(x => x.PasswordHash).HasMaxLength(200);
+            e.Property(x => x.Stamp).HasMaxLength(40);
         });
 
         b.Entity<AppSetting>(e =>

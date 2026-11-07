@@ -18,6 +18,7 @@ services:
       Gnezdo__SeedSampleData: ${GNEZDO_SAMPLE_DATA:-false}
     volumes:
       - gnezdo-logs:/app/logs   # the diagnostic log survives an update of the container
+      - gnezdo-data:/app/data   # sign-in keys: an update does not sign everyone out
     depends_on:
       db:
         condition: service_started
@@ -45,3 +46,4 @@ services:
 volumes:
   gnezdo-sql:
   gnezdo-logs:
+  gnezdo-data:

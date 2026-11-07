@@ -27,8 +27,11 @@ public static class JobSave
     public static void MapJobEndpoints(this WebApplication app)
     {
         app.MapGet("/api/jobs/{id:int}", GetAsync);
-        app.MapPost("/api/jobs", (JobSaveRequest r, GnezdoDb db, TimeProvider clock, CancellationToken ct) => SaveAsync(null, r, db, clock, ct));
-        app.MapPut("/api/jobs/{id:int}", (int id, JobSaveRequest r, GnezdoDb db, TimeProvider clock, CancellationToken ct) => SaveAsync(id, r, db, clock, ct));
+        // signed in: the job is modified by who it really is
+        app.MapPost("/api/jobs", (JobSaveRequest r, HttpContext ctx, GnezdoDb db, TimeProvider clock, CancellationToken ct) =>
+            SaveAsync(null, r with { ModifiedBy = ctx.User.Identity?.Name ?? r.ModifiedBy }, db, clock, ct));
+        app.MapPut("/api/jobs/{id:int}", (int id, JobSaveRequest r, HttpContext ctx, GnezdoDb db, TimeProvider clock, CancellationToken ct) =>
+            SaveAsync(id, r with { ModifiedBy = ctx.User.Identity?.Name ?? r.ModifiedBy }, db, clock, ct));
     }
 
     private static JsonNode? Parse(string json)

@@ -34,7 +34,9 @@ public static class PartEndpoints
         app.MapGet("/api/parts", SearchAsync);
         app.MapGet("/api/parts/facets", FacetsAsync);
         app.MapPost("/api/parts/existing", PartSave.ExistingAsync);
-        app.MapPost("/api/parts", PartSave.SaveAsync);
+        // signed in: imported by who it really is
+        app.MapPost("/api/parts", (SavePartsRequest req, HttpContext ctx, GnezdoDb db, TimeProvider clock, CancellationToken ct) =>
+            PartSave.SaveAsync(req with { ImportedBy = ctx.User.Identity?.Name ?? req.ImportedBy }, db, clock, ct));
         app.MapGet("/api/parts/{id:int}/history", PartSave.HistoryAsync);
         // the part's drawing (entities with roles), for EDIT on the importer canvas and EXPORT
         app.MapGet("/api/parts/{id:int}/geometry", async (int id, GnezdoDb db, CancellationToken ct) =>

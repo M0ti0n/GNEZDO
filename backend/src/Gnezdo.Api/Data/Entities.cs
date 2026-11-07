@@ -110,6 +110,20 @@ public class PartRevision
 /// A setting shared by everyone (machines, later materials, technology tables, ...): its value is JSON
 /// as the app keeps it, under a fixed key.
 /// </summary>
+/// <summary>Someone who may sign in (server build). The admin adds users; a password is optional.</summary>
+public class User
+{
+    public int Id { get; set; }
+    public required string Name { get; set; }
+    /// <summary>PBKDF2 hash ("pbkdf2-sha256$iterations$salt$hash"); null: signs in by name alone.</summary>
+    public string? PasswordHash { get; set; }
+    public bool IsAdmin { get; set; }
+    /// <summary>Changes when the password or rights change, or the user is removed: older sign-ins end.</summary>
+    public string Stamp { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? LastSignInAt { get; set; }
+}
+
 public class AppSetting
 {
     public required string Key { get; set; }

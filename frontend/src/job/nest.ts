@@ -199,6 +199,7 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
     diag("error", `Server not reached: ${init?.method ?? "GET"} ${url}`);
     throw new Error("GNEZDO's server cannot be reached. Nesting needs GNEZDO running (start.bat).");
   }
+  if (res.status === 401) { window.dispatchEvent(new Event("gnezdo:signin-needed")); throw new Error("Sign in first."); }
   if (res.status === 404 && url === "/api/nest/status") throw new Error("Nesting needs GNEZDO running (start.bat); this demo page has no server.");
   if (!res.ok) {
     let detail = "";

@@ -24,15 +24,17 @@ public static class SettingsEndpoints
             var s = await db.Settings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == key, ct);
             return Results.Content(string.IsNullOrWhiteSpace(s?.Value) ? "null" : s.Value, "application/json");
         });
-        app.MapPut("/api/settings/{key}", async (string key, SettingSaveRequest r, GnezdoDb db, TimeProvider clock, CancellationToken ct) =>
+        app.MapPut("/api/settings/{key}", async (string key, SettingSaveRequest r, GnezdoDb db, TimeProvider clock, HttpContext ctx, CancellationToken ct) =>
         {
             if (!Keys.Contains(key)) return Results.NotFound();
+            // shared by everyone (machines, ...): only an admin changes them
+            if (!Gnezdo.Api.Auth.AuthEndpoints.Admin(ctx)) return Results.Json(new { message = "Only an admin can change this setting." }, statusCode: StatusCodes.Status403Forbidden);
             if (r.Value is null) return Results.ValidationProblem(new Dictionary<string, string[]> { ["value"] = ["A value is required."] });
             var s = await db.Settings.FirstOrDefaultAsync(x => x.Key == key, ct);
             if (s is null) { s = new AppSetting { Key = key }; db.Settings.Add(s); }
             s.Value = r.Value.ToJsonString();
             s.ModifiedAt = clock.GetUtcNow();
-            s.ModifiedBy = (r.ModifiedBy ?? "").Trim() is { Length: > 0 } by ? by[..Math.Min(100, by.Length)] : s.ModifiedBy;
+            s.ModifiedBy = ctx.User.Identity?.Name ?? ((r.ModifiedBy ?? "").Trim() is { Length: > 0 } by ? by[..Math.Min(100, by.Length)] : s.ModifiedBy);
             await db.SaveChangesAsync(ct);
             return Results.Ok(r.Value);
         });

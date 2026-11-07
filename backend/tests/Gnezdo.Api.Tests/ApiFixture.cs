@@ -31,6 +31,7 @@ public sealed class ApiFixture : IAsyncLifetime
             b.UseSetting("ConnectionStrings:Gnezdo", cs);
             b.UseSetting("Gnezdo:SeedSampleData", "true");
             b.UseSetting("Gnezdo:TimeZone", "Europe/Ljubljana");
+            b.UseSetting("Gnezdo:RequireSignIn", "false");   // these tests are about the data; sign-in has AuthTests
         });
     }
 

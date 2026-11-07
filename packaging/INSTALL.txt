@@ -86,3 +86,17 @@ a day, kept 30 days (at most 200 MB). When something goes wrong:
 2. "Download log" there gives a zip of the last days: send that.
 It can be switched off there, for everyone on this server. Job, part and user
 names are in it; drawings are not. It never leaves the server by itself.
+
+
+7. USERS AND SIGN-IN (with the database)
+----------------------------------------
+With a database, GNEZDO asks everyone to sign in. On the very first start it
+asks for the first user, who is an admin. The admin adds the others: click your
+name in the top right -> Users. A password is optional; without one, anyone who
+knows the name can sign in as that user, so give admins a password.
+Only an admin can change the machines and switch the diagnostic log on or off.
+Everyone can set or change their own password (click your name).
+A sign-in lasts 30 days in that browser. The keys for it are in the "data"
+folder next to config.json: keep that folder when updating.
+The demo (no database) has no sign-in.
+

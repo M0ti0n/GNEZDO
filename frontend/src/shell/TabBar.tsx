@@ -45,9 +45,11 @@ interface Props {
   undo: UndoState;
   /** SAVE / SAVE AS of the open job tab (missing: nothing to save). */
   save?: { onSave: () => void; onSaveAs: () => void } | null;
+  /** Signed in (server build): the menu under the name; missing: just the name. */
+  account?: { isAdmin: boolean; hasPassword: boolean; onPick: (id: "password" | "users" | "signout") => void };
 }
 
-export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu, menuOff, undo, save }: Props) {
+export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu, menuOff, undo, save, account }: Props) {
   return (
     <header className="tabbar">
       <AppMenu onMenu={onMenu} off={menuOff ?? {}} />
@@ -80,7 +82,7 @@ export function TabBar({ tabs, activeId, userName, onActivate, onClose, onMenu, 
         })}
       </SideScroll>
       {demoMode && <div className="demo-badge" title="Demo: sample data. What you import and save stays in this browser tab only.">DEMO</div>}
-      <div className="user" title={`Signed in as ${userName}`}>{userName}</div>
+      {account ? <UserMenu name={userName} account={account} /> : <div className="user" title={`Signed in as ${userName}`}>{userName}</div>}
     </header>
   );
 }
@@ -139,6 +141,34 @@ function UndoRedo({ undoLabel, redoLabel, onUndo, onRedo }: UndoState) {
         title={redoLabel ? `Redo ${redoLabel} (Ctrl+Y)` : "Nothing to redo"} aria-label={redoLabel ? `Redo ${redoLabel}` : "Redo"}>
         <UndoArrow flip />
       </button>
+    </div>
+  );
+}
+
+// The name in the top right (server build): change one's password, Users (admin), sign out.
+function UserMenu({ name, account }: { name: string; account: NonNullable<Props["account"]> }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const pick = (id: "password" | "users" | "signout") => { setOpen(false); account.onPick(id); };
+  return (
+    <div className="user-wrap" ref={ref}>
+      <button type="button" className="user user-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}
+        title={`Signed in as ${name}${account.isAdmin ? " (admin)" : ""}`}>{name}</button>
+      {open && (
+        <div className="menu user-menu" role="menu">
+          <button type="button" role="menuitem" className="menu-item" onClick={() => pick("password")}>{account.hasPassword ? "Change password" : "Set a password"}</button>
+          {account.isAdmin && <button type="button" role="menuitem" className="menu-item" onClick={() => pick("users")}>Users</button>}
+          <button type="button" role="menuitem" className="menu-item" onClick={() => pick("signout")}>Sign out</button>
+        </div>
+      )}
     </div>
   );
 }
