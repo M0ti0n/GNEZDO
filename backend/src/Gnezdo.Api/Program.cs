@@ -1,4 +1,5 @@
 using Gnezdo.Api;
+using Gnezdo.Api.Auth;
 using Gnezdo.Api.Data;
 using Gnezdo.Api.Diagnostics;
 using Gnezdo.Api.Endpoints;
@@ -33,6 +34,12 @@ var logDir = builder.Configuration["Diagnostics:Dir"] is { Length: > 0 } ld ? ld
     : configFile is not null ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configFile))!, "logs")
     : Path.Combine(AppContext.BaseDirectory, "logs");
 builder.Services.AddSingleton(sp => new DiagLog(logDir, sp.GetRequiredService<TimeProvider>()));
+// GNEZDO's own data next to config.json (Windows build) or the program: the sign-in keys; "Gnezdo:DataDir" sets another folder
+var dataDir = builder.Configuration["Gnezdo:DataDir"] is { Length: > 0 } dd ? dd
+    : configFile is not null ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configFile))!, "data")
+    : Path.Combine(AppContext.BaseDirectory, "data");
+// sign-in (server build): users added by the admin; not in the demo (no database)
+builder.AddGnezdoAuth(AuthEndpoints.Required(builder.Configuration, demo), Path.Combine(dataDir, "keys"));
 builder.Services.AddSingleton<NestRunner>();
 builder.Services.AddSingleton<ServerLoad>();
 // Connection string is read when the first DbContext is created, so tests and Docker can override it.
@@ -45,7 +52,9 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseAuthentication();
 app.UseDiagLog();
+app.UseGnezdoAuth();
 app.Services.GetRequiredService<DiagLog>().Write("start", $"GNEZDO started{(demo ? " (demo, no database)" : "")}", new { version = typeof(Program).Assembly.GetName().Version?.ToString(), machine = Environment.MachineName });
 
 if (!demo) await DbInitializer.InitializeAsync(app.Services, app.Logger);
@@ -54,6 +63,7 @@ app.MapGet("/api/health", () => Results.Ok(new { status = "ok", demo }));
 // nesting works in the demo too: the job tab sends everything a run needs
 app.MapNestEndpoints();
 app.MapDiagEndpoints();
+app.MapAuthEndpoints();
 if (!demo)
 {
     app.MapPartEndpoints();

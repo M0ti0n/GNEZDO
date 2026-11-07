@@ -415,6 +415,45 @@ namespace Gnezdo.Api.Data.Migrations
                     b.ToTable("Projects");
                 });
 
+            modelBuilder.Entity("Gnezdo.Api.Data.User", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsAdmin")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("LastSignInAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PasswordHash")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Stamp")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Users");
+                });
+
             modelBuilder.Entity("Gnezdo.Api.Data.ImportBatch", b =>
                 {
                     b.HasOne("Gnezdo.Api.Data.Project", "Project")

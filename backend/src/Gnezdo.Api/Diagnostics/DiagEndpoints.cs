@@ -16,7 +16,8 @@ public static class DiagEndpoints
 
     /// <summary>The browser's user and id (sent with every call), and the PC's address.</summary>
     public static (string? User, string? Browser, string? Client) Who(HttpContext ctx) => (
-        DiagLog.Cut(ctx.Request.Headers["X-Gnezdo-User"].FirstOrDefault(), 100) is { Length: > 0 } u ? u : null,
+        ctx.User.Identity?.IsAuthenticated == true ? ctx.User.Identity.Name   // signed in: who it really is
+        : DiagLog.Cut(ctx.Request.Headers["X-Gnezdo-User"].FirstOrDefault(), 100) is { Length: > 0 } u ? u : null,
         DiagLog.Cut(ctx.Request.Headers["X-Gnezdo-Browser"].FirstOrDefault(), 40) is { Length: > 0 } b ? b : null,
         ctx.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim() is { Length: > 0 } f ? f : ctx.Connection.RemoteIpAddress?.ToString());
 
@@ -58,9 +59,10 @@ public static class DiagEndpoints
             var (files, bytes, oldest) = log.Summary();
             return Results.Ok(new { enabled = log.Enabled, dir = log.Dir, files, sizeMb = Math.Round(bytes / 1048576.0, 1), oldest, keepDays = DiagLog.KeepDays });
         });
-        app.MapPut("/api/logs/settings", (LogSwitch s, DiagLog log) =>
+        app.MapPut("/api/logs/settings", (LogSwitch s, DiagLog log, HttpContext ctx) =>
         {
-            log.SetEnabled(s.Enabled, DiagLog.Cut(s.By, 100));
+            if (!Gnezdo.Api.Auth.AuthEndpoints.Admin(ctx)) return Results.Json(new { message = "Only an admin can switch the log on or off." }, statusCode: StatusCodes.Status403Forbidden);
+            log.SetEnabled(s.Enabled, ctx.User.Identity?.Name ?? DiagLog.Cut(s.By, 100));
             return Results.Ok(new { enabled = log.Enabled });
         });
         // the browsers' own events: what was clicked, run and failed there

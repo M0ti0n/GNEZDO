@@ -28,8 +28,10 @@ COPY nesting/nestprep/nestprep_cli.py nesting/nestprep/
 COPY nesting/nestprep/nestprep/*.py nesting/nestprep/nestprep/
 ENV ASPNETCORE_HTTP_PORTS=8080
 # the diagnostic log (Settings -> Diagnostic log): a folder the app's user may write, kept in a volume
-RUN mkdir -p /app/logs && chown $APP_UID /app/logs
+RUN mkdir -p /app/logs /app/data && chown $APP_UID /app/logs /app/data
 ENV Diagnostics__Dir=/app/logs
+# GNEZDO's own data: the keys that sign the sign-in cookies (kept, so a new container keeps everyone signed in)
+ENV Gnezdo__DataDir=/app/data
 EXPOSE 8080
 USER $APP_UID
 ENTRYPOINT ["dotnet", "Gnezdo.Api.dll"]
