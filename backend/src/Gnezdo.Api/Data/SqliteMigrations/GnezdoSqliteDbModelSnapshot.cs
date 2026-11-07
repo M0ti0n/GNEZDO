@@ -42,6 +42,55 @@ namespace Gnezdo.Api.Data.SqliteMigrations
                     b.ToTable("Settings");
                 });
 
+            modelBuilder.Entity("Gnezdo.Api.Data.Draft", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.Property<string>("Browser")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.Property<int?>("JobId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.Property<int>("Parts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("SavedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Solutions")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("User")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("User");
+
+                    b.ToTable("Drafts");
+                });
+
             modelBuilder.Entity("Gnezdo.Api.Data.ImportBatch", b =>
                 {
                     b.Property<int>("Id")
