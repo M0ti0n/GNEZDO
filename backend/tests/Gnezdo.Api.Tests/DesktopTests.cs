@@ -56,4 +56,25 @@ public sealed class DesktopTests : IAsyncLifetime
         // the log is in the desktop's folder too
         Assert.True(Directory.EnumerateFiles(Path.Combine(_root, "logs"), "gnezdo-*.log").Any());
     }
+
+    [Fact]
+    public async Task Data_shows_the_folder_and_a_backup_is_a_whole_database()
+    {
+        var d = (await _client.GetFromJsonAsync<JsonObject>("/api/data"))!;
+        Assert.Equal("file", d["kind"]!.GetValue<string>());
+        Assert.Equal(_root, d["folder"]!.GetValue<string>());
+
+        await _client.PutAsJsonAsync("/api/settings/machines", new { value = new JsonArray() });
+        var res = await _client.GetAsync("/api/data/backup");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.StartsWith("gnezdo-backup-", res.Content.Headers.ContentDisposition!.FileName!.Trim('"'));
+        var copy = Path.Combine(_root, "copy.db");
+        await File.WriteAllBytesAsync(copy, await res.Content.ReadAsByteArrayAsync());
+        // a real SQLite database with GNEZDO's tables
+        await using var con = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={copy}");
+        await con.OpenAsync();
+        await using var cmd = con.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('Parts', 'Jobs', 'Settings', '__EFMigrationsHistory')";
+        Assert.Equal(4L, (long)(await cmd.ExecuteScalarAsync())!);
+    }
 }

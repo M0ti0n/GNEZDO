@@ -9,8 +9,7 @@ namespace Gnezdo.Api.Desktop;
 
 /// <summary>
 /// The desktop build (GNEZDO --desktop): one person on one PC. The data (an SQLite file), the log and
-/// the browser profile are in GNEZDO's folder (or, when that cannot be written, the user's own app
-/// data folder); the program answers only this PC; the window is Edge (Windows) or Chromium / Chrome
+/// the browser profile are in the user's own app-data folder (see PickRoot); the program answers only this PC; the window is Edge (Windows) or Chromium / Chrome
 /// (Linux) in app mode. Closing the window stops GNEZDO 30 s later, unless the window comes back
 /// (a reload, or GNEZDO started again in the meantime). Started twice, the second start only opens a window.
 /// </summary>
@@ -49,10 +48,10 @@ public sealed class DesktopHost
     /// Before the app is built: where the data goes, whether it already runs, the port. Program then
     /// uses SQLite, no sign-in, this PC only.
     /// </summary>
-    public static DesktopHost Prepare(WebApplicationBuilder builder, string? configFile)
+    public static DesktopHost Prepare(WebApplicationBuilder builder)
     {
         var cfg = builder.Configuration;
-        var root = cfg["Gnezdo:DesktopRoot"] is { Length: > 0 } r ? r : PickRoot(configFile);
+        var root = cfg["Gnezdo:DesktopRoot"] is { Length: > 0 } r ? r : PickRoot();
         var host = new DesktopHost(cfg, root);
         Directory.CreateDirectory(host.DataDir);
         try
@@ -75,34 +74,19 @@ public sealed class DesktopHost
     public string Database => new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = Path.Combine(DataDir, "gnezdo.db") }.ToString();
 
     /// <summary>
-    /// GNEZDO's folder (the one holding "program") when it can be written, like the Windows server
-    /// build; else (installed for all users) %LOCALAPPDATA%\GNEZDO or ~/.local/share/gnezdo.
+    /// The user's own app-data folder, never the program's folder (an update or a deleted GNEZDO
+    /// folder must not take the data with it): %LOCALAPPDATA%\GNEZDO on Windows (not Documents:
+    /// often synced by OneDrive, which does not go well with a database being written),
+    /// ~/.local/share/gnezdo on Linux. "Gnezdo:DesktopRoot" in config.json sets another folder.
     /// </summary>
-    private static string PickRoot(string? configFile)
+    private static string PickRoot()
     {
-        var appDir = Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar);
-        var folder = configFile is not null ? Path.GetDirectoryName(Path.GetFullPath(configFile))!
-            : string.Equals(Path.GetFileName(appDir), "program", StringComparison.OrdinalIgnoreCase) ? Path.GetDirectoryName(appDir)!
-            : appDir;
-        if (CanWrite(folder)) return folder;
         var own = Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } xdg && !OperatingSystem.IsWindows()
             ? Path.Combine(xdg, "gnezdo")
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.Create),
                 OperatingSystem.IsWindows() ? "GNEZDO" : "gnezdo");
         Directory.CreateDirectory(own);
         return own;
-    }
-
-    private static bool CanWrite(string folder)
-    {
-        try
-        {
-            var probe = Path.Combine(folder, $".gnezdo-write-test-{Environment.ProcessId}");
-            File.WriteAllText(probe, "");
-            File.Delete(probe);
-            return true;
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
     }
 
     private int? ReadInfo()

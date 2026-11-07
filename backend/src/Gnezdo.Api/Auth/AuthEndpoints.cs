@@ -70,11 +70,13 @@ public static class AuthEndpoints
     public static void UseGnezdoAuth(this WebApplication app)
     {
         if (!app.Services.GetRequiredService<SignInState>().Required) return;
+        var setup = app.Services.GetService<Gnezdo.Api.Setup.SetupState>();
         app.Use(async (ctx, next) =>
         {
             var path = ctx.Request.Path;
             if (path.StartsWithSegments("/api") && ctx.User.Identity?.IsAuthenticated != true
-                && !path.StartsWithSegments("/api/auth") && !path.StartsWithSegments("/api/health"))
+                && !path.StartsWithSegments("/api/auth") && !path.StartsWithSegments("/api/health")
+                && !(setup?.Pending == true && path.StartsWithSegments("/api/setup")))   // no users before there is a database
             {
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await ctx.Response.WriteAsJsonAsync(new { message = "Sign in first." });

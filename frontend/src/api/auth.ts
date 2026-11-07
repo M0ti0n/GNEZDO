@@ -5,7 +5,11 @@ import { diagHeaders } from "../job/diag";
 
 export interface Me { id: number; name: string; isAdmin: boolean; hasPassword: boolean }
 export interface UserRow extends Me { createdAt: string; lastSignInAt: string | null }
-export interface AuthState { required: boolean; setupNeeded: boolean; user: Me | null }
+export interface AuthState {
+  required: boolean; setupNeeded: boolean; user: Me | null;
+  /** The server has no database yet: "Set up the database" comes first. */
+  dbSetup?: boolean;
+}
 
 async function call<T>(url: string, method = "GET", body?: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -25,6 +29,10 @@ async function call<T>(url: string, method = "GET", body?: unknown): Promise<T> 
 export const auth = {
   state: async (): Promise<AuthState> => {
     if (demoMode) return { required: false, setupNeeded: false, user: null };
+    try {
+      const h = (await (await fetch("/api/health", { headers: { Accept: "application/json" } })).json()) as { setup?: boolean };
+      if (h.setup) return { required: true, setupNeeded: false, user: null, dbSetup: true };
+    } catch { /* answered below */ }
     try { return await call<AuthState>("/api/auth/state"); }
     catch { return { required: false, setupNeeded: false, user: null }; }   // an older server without sign-in
   },
