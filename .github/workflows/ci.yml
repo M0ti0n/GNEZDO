@@ -88,3 +88,28 @@ jobs:
             /app/nesting/nestprep/nestprep_cli.py run /ex/demo_request.json /run-out --solver /app/nesting/packingsolver_irregular
           python3 -c "import json; r=json.load(open('run/result.json')); print(r['state'], r['seconds'], r['valid']); assert r['state']=='done' and r['valid']"
       - run: docker build -t gnezdo-web frontend
+
+  linux-server:
+    name: Linux server, end to end (docker compose)
+    runs-on: ubuntu-latest
+    needs: [frontend, backend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start web + API + SQL Server, as in the install notes
+        run: |
+          cat > .env <<'ENV'
+          GNEZDO_PORT=8080
+          SQL_SA_PASSWORD=Smoke_Test_Pass1!
+          GNEZDO_DB=Server=db,1433;Database=gnezdo;User Id=sa;Password=Smoke_Test_Pass1!;TrustServerCertificate=True;Encrypt=False
+          GNEZDO_SAMPLE_DATA=false
+          ENV
+          docker compose --profile sqlserver up -d --build
+      - name: Sign in, nest, users, sign out
+        run: python3 .github/scripts/server_smoke.py http://localhost:8080
+      - name: A restarted API keeps everyone signed in
+        run: |
+          docker compose restart api
+          python3 .github/scripts/server_smoke.py http://localhost:8080 --after-restart
+      - name: Logs
+        if: always()
+        run: docker compose --profile sqlserver logs --no-color --tail 200 api web
