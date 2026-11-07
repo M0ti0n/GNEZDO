@@ -5,6 +5,7 @@ using Gnezdo.Api.Desktop;
 using Gnezdo.Api.Diagnostics;
 using Gnezdo.Api.Endpoints;
 using Gnezdo.Api.Nesting;
+using Gnezdo.Api.Setup;
 using Microsoft.EntityFrameworkCore;
 
 // start.bat runs "GNEZDO.exe --check" first, to find out whether this PC lets the program run at all
@@ -27,13 +28,18 @@ if (configFile is not null) builder.Configuration.AddJsonFile(Path.GetFullPath(c
 DesktopHost? desktop = null;
 if (desktopMode || builder.Configuration.GetValue<bool>("Gnezdo:Desktop"))
 {
-    desktop = DesktopHost.Prepare(builder, configFile);
+    desktop = DesktopHost.Prepare(builder);
     // started a second time: open a window to the GNEZDO that already runs, and stop
     if (desktop.AlreadyRunning) { desktop.OpenWindow(); return; }
     builder.Services.AddSingleton(desktop);
     builder.Services.AddHostedService<DesktopWatch>();
 }
 var demo = desktop is null && string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("Gnezdo"));
+// server zip without a database and "Gnezdo:Setup": the browser asks for the database (no demo)
+var setup = demo && builder.Configuration.GetValue<bool>("Gnezdo:Setup");
+if (setup) demo = false;
+if (desktop is null) builder.Services.AddSingleton(new SetupState(setup,
+    builder.Configuration["Gnezdo:ConfigFile"] is { Length: > 0 } cf ? cf : configFile is null ? null : Path.GetFullPath(configFile)));
 if (desktop is not null) builder.WebHost.UseUrls($"http://127.0.0.1:{desktop.Port}");   // this PC only
 else if (builder.Configuration["Urls"] is { Length: > 0 } urls) builder.WebHost.UseUrls(urls);
 
@@ -73,10 +79,11 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseDiagLog();
+if (setup) app.UseDatabaseSetup();
 app.UseGnezdoAuth();
-app.Services.GetRequiredService<DiagLog>().Write("start", $"GNEZDO started{(demo ? " (demo, no database)" : "")}", new { version = typeof(Program).Assembly.GetName().Version?.ToString(), machine = Environment.MachineName });
+app.Services.GetRequiredService<DiagLog>().Write("start", $"GNEZDO started{(demo ? " (demo, no database)" : setup ? " (waiting for the database to be set up)" : "")}", new { version = typeof(Program).Assembly.GetName().Version?.ToString(), machine = Environment.MachineName });
 
-if (!demo)
+if (!demo && !setup)
 {
     try { await DbInitializer.InitializeAsync(app.Services, app.Logger); }
     catch (Exception ex) when (desktop is not null)
@@ -89,7 +96,17 @@ if (!demo)
 }
 
 // desktop: the window's name is the PC's user (there is no sign-in)
-app.MapGet("/api/health", () => Results.Ok(new { status = "ok", demo, desktop = desktop is not null, user = desktop is not null ? Environment.UserName : null }));
+var setupState = app.Services.GetService<SetupState>();
+app.MapGet("/api/health", () => Results.Ok(new
+{
+    status = "ok", demo, desktop = desktop is not null, user = desktop is not null ? Environment.UserName : null,
+    setup = setupState?.Pending == true,
+}));
+// the database page: on the first start, and for an admin later - Windows zip only (config.json is
+// where the connection goes; Docker sets it in docker-compose.yml)
+var dbPage = desktop is null && !demo && (setup || configFile is not null);
+app.MapDataEndpoints(desktop, demo, dbPage);
+if (dbPage) app.MapDatabaseSetup();
 if (desktop is not null)
 {
     app.MapDesktopEndpoints(desktop);
@@ -125,7 +142,7 @@ if (Directory.Exists(web))
         await ctx.Response.SendFileAsync(Path.Combine(web, "index.html"));
     });
     app.Lifetime.ApplicationStarted.Register(() => Console.WriteLine(
-        $"GNEZDO {(demo ? "DEMO - sample data, nothing is saved" : "with the database")}. Open {string.Join(", ", app.Urls).Replace("0.0.0.0", "localhost")} in a browser. Close this window to stop GNEZDO."));
+        $"GNEZDO {(demo ? "DEMO - sample data, nothing is saved" : setup ? "- set up the database in the browser" : "with the database")}. Open {string.Join(", ", app.Urls).Replace("0.0.0.0", "localhost")} in a browser. Close this window to stop GNEZDO."));
 }
 
 try

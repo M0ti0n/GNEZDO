@@ -1,9 +1,14 @@
 GNEZDO - DESKTOP VERSION
 ========================
 
-One person, one PC. No server, no database to set up, no sign-in. Everything GNEZDO
-keeps (parts, jobs, settings, the diagnostic log) is in the "data" and "logs" folders
-inside the GNEZDO folder. To move GNEZDO to another PC, copy the whole folder.
+One person, one PC. No server, no database to set up, no sign-in.
+
+Everything GNEZDO keeps (parts, jobs, settings, the diagnostic log) is in your own
+app-data folder, not in the GNEZDO folder, so updating or deleting the GNEZDO folder
+does not touch it:
+    Windows:  %LOCALAPPDATA%\GNEZDO     (e.g. C:\Users\you\AppData\Local\GNEZDO)
+    Linux:    ~/.local/share/gnezdo
+GNEZDO menu -> Settings -> Data shows it, opens the folder, and makes a backup.
 
 
 1. WINDOWS
@@ -45,14 +50,18 @@ or similar.
 
 4. UPDATING
 -----------
-Replace everything in the GNEZDO folder EXCEPT the "data" and "logs" folders
-(and config.json, if you made one). The data is brought up to date at the next start.
-Backup: copy the "data" folder while GNEZDO is closed.
+Close GNEZDO, then replace the GNEZDO folder with the new one (keep config.json, if
+you made one). The data is brought up to date at the next start.
+
+Backup: Settings -> Data -> "Back up now" saves a copy of the database (one file,
+gnezdo-backup-....db) to your Downloads. To go back to a backup: close GNEZDO and
+replace data\gnezdo.db in the app-data folder with it (renamed to gnezdo.db).
+To move GNEZDO to another PC: install it there and do the same with a backup.
 
 
 5. SETTINGS (optional)
 ----------------------
-A config.json in the GNEZDO folder can change:
+A config.json in the GNEZDO folder (next to GNEZDO.exe / gnezdo) can change:
 
     {
       "Gnezdo": {
@@ -62,3 +71,4 @@ A config.json in the GNEZDO folder can change:
     }
 
 DesktopPort: when another program uses port 8095. Browser: a different browser.
+DesktopRoot: keep the data in another folder (e.g. "D:\\GNEZDO-data").

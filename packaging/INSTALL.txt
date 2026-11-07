@@ -25,26 +25,31 @@ Start it with start.bat; settings are in config.json next to it.
 
 NESTING: the "nesting" folder next to "program" holds the nesting engine
 (PackingSolver and a Python of its own). Keep the two folders together; nothing
-else has to be installed. Nesting works in the demo too.
+else has to be installed.
 
 
-3. DEMO OR DATABASE
--------------------
-Out of the box GNEZDO runs as a DEMO: sample parts and jobs, everything you
-import and save stays in that browser tab only, and nothing is written anywhere.
-Good for trying the import tools.
+3. THE DATABASE
+---------------
+GNEZDO keeps parts, jobs and settings in a Microsoft SQL Server database
+(Express is enough). It uses its OWN database (called "gnezdo" unless you
+choose another name) and creates it itself. Never point it at the SAOP or
+Libellula database: GNEZDO refuses a database that belongs to another program.
 
-To save parts for real, GNEZDO needs a Microsoft SQL Server (Express is enough).
-It uses its OWN database called "gnezdo" and creates it itself. Never point it
-at the SAOP or Libellula database.
-1. Stop GNEZDO (close the black window).
-2. Open config.json in Notepad and fill in "Gnezdo" under ConnectionStrings,
-   for example (Windows login):
-     "Gnezdo": "Server=SERVERNAME\\SQLEXPRESS;Database=gnezdo;Trusted_Connection=True;TrustServerCertificate=True"
-   Write every backslash twice (\\). The SQL login needs rights to create a
-   database the first time.
-3. Start it again with start.bat. The black window says "with the database".
-To go back to the demo, empty the "Gnezdo" value again ("").
+The first time GNEZDO starts, the browser shows "Set up the database":
+1. SQL Server: the server name, e.g. SERVERNAME\SQLEXPRESS (or SERVERNAME,1433).
+2. Database: gnezdo.
+3. Sign-in: Windows sign-in (the Windows user GNEZDO runs as), or an SQL login
+   with its password. The login needs rights to create a database the first time.
+4. "Test connection", then "Save and continue". GNEZDO writes it into config.json,
+   creates the tables, and asks for the first admin (see 7).
+
+Later an admin can point GNEZDO at another database: Settings -> Data -> Change
+(used after GNEZDO is started again). Or edit "Gnezdo" under ConnectionStrings in
+config.json while GNEZDO is stopped.
+
+THE DEMO: to try GNEZDO without a database (sample parts and jobs, nothing is
+saved), set "Setup": false under "Gnezdo" in config.json and leave the
+connection empty, then start GNEZDO again.
 
 
 4. A NEWER VERSION

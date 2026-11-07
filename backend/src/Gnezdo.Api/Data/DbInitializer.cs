@@ -11,13 +11,13 @@ namespace Gnezdo.Api.Data;
 /// </summary>
 public static class DbInitializer
 {
-    public static async Task InitializeAsync(IServiceProvider services, ILogger logger, CancellationToken ct = default)
+    /// <param name="attempts">Tries while SQL Server is not reachable yet (2 s apart); 1 from the setup page.</param>
+    public static async Task InitializeAsync(IServiceProvider services, ILogger logger, CancellationToken ct = default, int attempts = 30)
     {
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<GnezdoDb>();
         var options = scope.ServiceProvider.GetRequiredService<IOptions<GnezdoOptions>>().Value;
 
-        const int attempts = 30;
         for (var i = 1; ; i++)
         {
             try

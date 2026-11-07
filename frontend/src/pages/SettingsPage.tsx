@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { flush, logDownloadUrl, logSettings, reportProblem, setLogEnabled, type LogSettings as LogSettingsData } from "../job/diag";
 import { Combobox } from "../components/Combobox";
+import { DatabaseForm } from "../components/DatabaseSetup";
+import { data, type DataInfo } from "../api/data";
 import { NumInput } from "../components/NumInput";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
@@ -8,11 +10,12 @@ import { ORIGINS, TECHNOLOGIES, newMachine, type Machine, type MachineList } fro
 import { DEFAULT_KEYS, KEY_ACTIONS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
-type Section = "stock" | "machine" | "keys" | "log";
+type Section = "stock" | "machine" | "keys" | "data" | "log";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock", ready: true },
   { id: "machine", label: "Machines", ready: true },
   { id: "keys", label: "Manual nest", ready: true },
+  { id: "data", label: "Data", ready: true },
   { id: "log", label: "Diagnostic log", ready: true },
 ];
 
@@ -62,6 +65,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
       </nav>
 
       {section === "keys" && <KeysSettings />}
+      {section === "data" && <DataSettings />}
       {section === "log" && <LogSettings isAdmin={isAdmin} />}
 
       {section === "machine" && (
@@ -335,3 +339,67 @@ function LogSettings({ isAdmin }: { isAdmin: boolean }) {
     </div>
   );
 }
+
+// Settings -> Data: where GNEZDO keeps parts, jobs and settings. The desktop: a database file in the
+// user's app-data folder (open it, back it up). The server: its SQL Server database (an admin may
+// point GNEZDO at another one, used after a restart).
+function DataSettings() {
+  const [d, setD] = useState<DataInfo | null | undefined>(undefined);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [changing, setChanging] = useState(false);
+  useEffect(() => { void data.info().then(setD).catch(() => setD(null)); }, []);
+  const open = async () => {
+    setMsg(null);
+    try { await data.openFolder(); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+  };
+  return (
+    <div className="settings-main">
+      <header className="settings-head">
+        <h2>Data</h2>
+        <p>Where GNEZDO keeps parts, jobs, stock, machines and settings.</p>
+      </header>
+      {d === undefined && <section className="rule"><p className="rule-help">Loading…</p></section>}
+      {d === null && <section className="rule"><p className="rule-help">Could not ask GNEZDO's server.</p></section>}
+      {d?.kind === "demo" && <section className="rule"><p className="rule-help">The demo: sample data in this browser tab only; nothing is saved.</p></section>}
+      {d?.kind === "file" && (
+        <>
+          <section className="rule">
+            <h3>Data folder</h3>
+            <p className="data-path">{d.folder}</p>
+            <p className="rule-help">In your own app-data folder, not in the GNEZDO program folder: updating or deleting GNEZDO does not touch it.
+              The database is data{d.file.includes("\\") ? "\\" : "/"}gnezdo.db ({d.sizeMb < 0.1 ? "under 0.1" : d.sizeMb} MB); the diagnostic log is in logs.</p>
+            <div className="rule-row"><button type="button" className="btn btn-plain" onClick={() => void open()}>Open folder</button></div>
+          </section>
+          <section className="rule">
+            <h3>Back up</h3>
+            <p className="rule-help">A complete copy of the database as one file (gnezdo-backup-date-time.db), saved like any download.
+              Keep it somewhere safe, e.g. on another drive. To go back to it: close GNEZDO and put it in place of data{d.file.includes("\\") ? "\\" : "/"}gnezdo.db, renamed to gnezdo.db.</p>
+            <div className="rule-row"><a className="btn btn-save" href={data.backupUrl} download>Back up now</a></div>
+          </section>
+        </>
+      )}
+      {d?.kind === "sqlite" && <section className="rule"><h3>Database file</h3><p className="data-path">{d.file}</p></section>}
+      {d?.kind === "sqlserver" && (
+        <section className="rule">
+          <h3>SQL Server database</h3>
+          <dl className="data-db">
+            <dt>Server</dt><dd>{d.server}</dd>
+            <dt>Database</dt><dd>{d.database}</dd>
+            <dt>Sign-in</dt><dd>{d.login}</dd>
+          </dl>
+          {d.canChange && !changing && <div className="rule-row"><button type="button" className="btn btn-plain" onClick={() => { setChanging(true); setMsg(null); }}>Change…</button></div>}
+          {!d.canChange && <p className="admin-only">Only an admin can change the database.</p>}
+          {changing && (
+            <div className="data-change">
+              <DatabaseForm start={{ server: d.server, database: d.database }} saveLabel="Save"
+                onSaved={(m) => { setChanging(false); setMsg({ ok: true, text: m }); }} />
+              <button type="button" className="btn btn-plain" onClick={() => setChanging(false)}>Cancel</button>
+            </div>
+          )}
+        </section>
+      )}
+      {msg && <p className={`log-msg${msg.ok ? "" : " is-bad"}`} role="status">{msg.text}</p>}
+    </div>
+  );
+}
+

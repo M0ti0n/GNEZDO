@@ -1722,3 +1722,19 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .restore-what small { color: var(--ink-3); font-size: 13px; }
 .restore-list .btn { height: 32px; padding: 0 14px; }
 .restore-note { margin: 0 20px 4px; }
+
+/* Database setup (server's first start) and Settings -> Data */
+.db-card { width: min(520px, 100%); }
+.db-form { display: flex; flex-direction: column; gap: 12px; }
+.db-login { display: flex; gap: 18px; flex-wrap: wrap; }
+.db-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.db-trust { font-size: 13px; color: var(--ink-2); }
+.db-ok { margin: 0; color: #1d7a34; font-size: 14px; }
+.db-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+.data-path { font-family: ui-monospace, Consolas, monospace; font-size: 13px; background: var(--panel-2, #f3f5f2); padding: 6px 10px; border-radius: 6px; margin: 0 0 6px; word-break: break-all; }
+.data-db { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 10px; font-size: 14px; }
+.data-db dt { color: var(--ink-3); }
+.data-db dd { margin: 0; }
+.data-change { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
+.data-change > .btn { align-self: flex-start; }
+.rule-row a.btn { text-decoration: none; display: inline-flex; align-items: center; }

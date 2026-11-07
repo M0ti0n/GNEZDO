@@ -295,7 +295,9 @@ jobs:
           for ($i = 0; $i -lt 40 -and -not $h; $i++) { Start-Sleep 2; try { $h = Invoke-RestMethod "$base/api/health" } catch { } }
           if (-not $h) { Get-ChildItem -Recurse GNEZDO/logs -ErrorAction SilentlyContinue | Get-Content -Tail 30; throw "GNEZDO desktop did not answer on $base" }
           if (-not $h.desktop -or $h.demo) { throw "expected the desktop build with its database: $($h | ConvertTo-Json -Compress)" }
-          if (-not (Test-Path GNEZDO/data/gnezdo.db)) { throw "no data/gnezdo.db next to GNEZDO.exe" }
+          $data = Join-Path $env:LOCALAPPDATA "GNEZDO"
+          if (-not (Test-Path "$data/data/gnezdo.db")) { throw "no data\gnezdo.db in $data" }
+          if (Test-Path GNEZDO/data) { throw "data was written into the GNEZDO folder" }
           $gp = Get-Process GNEZDO | Where-Object { $_.Path -like "*\program\GNEZDO.exe" }
           if (-not $gp) { throw "program\GNEZDO.exe is not running" }
           # the data works: parts list (empty), a setting saved
@@ -322,7 +324,7 @@ jobs:
           if (-not $gp.WaitForExit(90000)) { throw "GNEZDO did not stop after its window closed" }
           Write-Output "stopped $([int]$t.Elapsed.TotalSeconds) s after the window closed"
           if ($t.Elapsed.TotalSeconds -lt 20) { throw "stopped too soon ($($t.Elapsed.TotalSeconds) s)" }
-          Get-Content GNEZDO/logs/*.log | Select-String '"kind":"desktop"' | ForEach-Object { $_.Line.Substring(0, [Math]::Min(220, $_.Line.Length)) }
+          Get-Content "$data/logs/*.log" | Select-String '"kind":"desktop"' | ForEach-Object { $_.Line.Substring(0, [Math]::Min(220, $_.Line.Length)) }
           Write-Output "::notice title=Desktop smoke test::GNEZDO desktop started on Windows, nested, stopped after the window closed"
 
   # The Linux desktop build, made on an older Ubuntu so it runs on most current distributions
@@ -416,10 +418,12 @@ jobs:
           for i in $(seq 1 40); do curl -fs $base/api/health > health.json && break; sleep 2; done
           cat health.json; echo
           python3 -c "import json; h=json.load(open('health.json')); assert h['desktop'] and not h['demo'], h"
-          test -f $g/data/gnezdo.db
+          data="$HOME/.local/share/gnezdo"
+          test -f $data/data/gnezdo.db
+          test ! -e $g/data
           sleep 2; cat browser-args.txt
           grep -q -- "--app=$base/" browser-args.txt
-          grep -q -- "--user-data-dir=$(readlink -f $g)/data/browser" browser-args.txt
+          grep -q -- "--user-data-dir=$data/data/browser" browser-args.txt
           curl -fs $base/api/parts > /dev/null
           curl -fs -X PUT -H 'Content-Type: application/json' -d '{"value":[]}' $base/api/settings/machines > /dev/null
           id=$(curl -fs -X POST -H 'Content-Type: application/json' --data @nesting/nestprep/examples/demo_request.json $base/api/nest | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
@@ -440,7 +444,7 @@ jobs:
           if kill -0 $gp 2>/dev/null; then cat gnezdo-out.txt; echo "::error::GNEZDO did not stop after its window closed"; exit 1; fi
           took=$(( $(date +%s) - start )); echo "stopped $took s after the window closed"
           test $took -ge 20
-          grep '"kind":"desktop"' $g/logs/*.log | cut -c1-220
+          grep '"kind":"desktop"' $data/logs/*.log | cut -c1-220
           echo "::notice title=Linux desktop::started, nested, stopped $took s after the window closed"
       - uses: actions/upload-artifact@v4
         with:

@@ -40,6 +40,7 @@ import { SheetPropertiesDialog } from "./components/SheetPropertiesDialog";
 import { diag, flush, startDiag } from "./job/diag";
 import { auth, SIGN_IN_NEEDED, type AuthState, type Me } from "./api/auth";
 import { SignInPage } from "./components/SignInPage";
+import { DatabaseSetupPage } from "./components/DatabaseSetup";
 import { PasswordDialog, UsersDialog } from "./components/UsersDialog";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
@@ -910,6 +911,7 @@ export function App() {
     if (signedInAs.current && signedInAs.current === m.name) { setMe(m); setAuthState({ ...authState, setupNeeded: false, user: m }); }
     else window.location.reload();
   };
+  if (authState.dbSetup) return <DatabaseSetupPage onDone={() => window.location.reload()} />;
   if (authState.required && !me && !signedInAs.current) return <SignInPage setupNeeded={authState.setupNeeded} onSignedIn={signedIn} />;
 
   return (
