@@ -1,6 +1,7 @@
 // Stock sheets of a job (the STOCK panel of the Work parts screen).
 
-export type StockSource = "parts" | "default1" | "default2" | "default3" | "remnant" | "dxf";
+/** manual: added by Add sheet in Manual nest */
+export type StockSource = "parts" | "default1" | "default2" | "default3" | "remnant" | "dxf" | "manual";
 
 export interface StockSheet {
   id: string;

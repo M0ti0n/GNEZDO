@@ -7,9 +7,10 @@ import { DEFAULT_PART_GAP_MM, MACHINE_LIMIT, defaultTrims, fitsMachine, type Sto
 import type { Origin } from "./machine";
 import { loadNestingRules } from "./nestRules";
 
-export type NestMode = "fast" | "thorough" | "custom";
+/** manual: a solution started by Add sheet (Manual nest), nested by hand */
+export type NestMode = "fast" | "thorough" | "custom" | "manual";
 
-export const NEST_MODE_LABEL: Record<NestMode, string> = { fast: "Fast nest", thorough: "Thorough nest", custom: "Custom nest" };
+export const NEST_MODE_LABEL: Record<NestMode, string> = { fast: "Fast nest", thorough: "Thorough nest", custom: "Custom nest", manual: "Manual nest" };
 
 /** Distances until the technology tables exist [mm]. */
 export const PART_GAP_MM = 5;

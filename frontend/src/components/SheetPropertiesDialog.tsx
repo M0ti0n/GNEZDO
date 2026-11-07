@@ -11,16 +11,18 @@ import {
 import type { Machine, Origin } from "../job/machine";
 
 const SOURCE: Record<string, string> = {
-  parts: "From the job part list", default1: "Default 1", default2: "Default 2", default3: "Default 3", remnant: "Remnant", dxf: "From a DXF file",
+  parts: "From the job part list", default1: "Default 1", default2: "Default 2", default3: "Default 3", remnant: "Remnant", dxf: "From a DXF file", manual: "Added in Manual nest",
 };
 
 // Properties of a stock sheet (STOCK panel: [i] or double click on its name), laid out like Part
 // properties: the sheet's shape with the machine's 0,0, rotate / mirror under it; size, trims (gap from
 // each edge to the parts, by the machine's axes), part gap, cut number and cut diameter on the right.
-export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, nested = false }: {
+export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, nested = false, adding = false }: {
   sheet: StockSheet; index: number; machine: Machine; onSave: (s: StockSheet) => void; onClose: () => void;
   /** A sheet of a nest (not the stock): only this sheet changes; the parts stay where they are. */
   nested?: boolean;
+  /** A new sheet (Manual nest -> Add sheet): ADD SHEET instead of Save, to the stock and the nest. */
+  adding?: boolean;
 }) {
   const origin = machine.origin;
   // the machine's gaps are the defaults (RESET, and for a sheet that has none of its own)
@@ -63,8 +65,8 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
             </svg>
           </span>
           <div className="dlg-title">
-            <h2 id="sp-title">Sheet properties</h2>
-            <p>{nested ? `Nested sheet ${index + 1}: changes apply to this sheet only` : `Sheet ${index + 1} · ${SOURCE[s.source] ?? s.source}${s.fileName ? ` (${s.fileName}.dxf)` : ""}`}</p>
+            <h2 id="sp-title">{adding ? "Add sheet" : "Sheet properties"}</h2>
+            <p>{adding ? "A new sheet for manual nesting: it goes into the stock and opens empty in Manual nest" : nested ? `Nested sheet ${index + 1}: changes apply to this sheet only` : `Sheet ${index + 1} · ${SOURCE[s.source] ?? s.source}${s.fileName ? ` (${s.fileName}.dxf)` : ""}`}</p>
           </div>
           <button type="button" className="icon-btn dlg-close" onClick={onClose} aria-label="Close" title="Close (Esc)"><IconClose size={16} /></button>
         </header>
@@ -148,9 +150,12 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
 
         <footer className="dlg-foot">
           <button type="button" className="btn btn-plain" onClick={reset} title={`Size and shape as added; trims, parts gap and cut diameter of ${machine.name}`}>Reset</button>
-          <span className="proc-missing">{changed ? (nested ? "Only this sheet changes." : "Every sheet nested from this stock gets it.") : ""}</span>
+          <span className="proc-missing">{adding ? (!s.material.trim() || !s.thicknessMm ? "Material and thickness first." : !(s.lengthMm > 0 && s.widthMm > 0) ? "Size first." : tooBig ? "Too big for the machine." : "")
+            : changed ? (nested ? "Only this sheet changes." : "Every sheet nested from this stock gets it.") : ""}</span>
           <button type="button" className="btn btn-plain" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn btn-save" disabled={!changed}>Save</button>
+          {adding
+            ? <button type="submit" className="btn btn-save" disabled={!s.material.trim() || !s.thicknessMm || !(s.lengthMm > 0 && s.widthMm > 0) || tooBig}>ADD SHEET</button>
+            : <button type="submit" className="btn btn-save" disabled={!changed}>Save</button>}
         </footer>
       </form>
     </div>,
