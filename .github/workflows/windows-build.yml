@@ -5,12 +5,8 @@ name: Windows test build
 #                                with the web pages, start.bat, config.example.json and INSTALL.txt
 #   gnezdo-desktop-windows.zip   the desktop build for Windows: GNEZDO.exe opens GNEZDO in an Edge window
 #   gnezdo-desktop-linux.tar.gz  the desktop build for Linux (Chromium / Chrome window)
-# Runs on every change to main, on a push to a build/... branch (a test build of work not merged
-# yet), or by hand (Actions tab -> Windows test build -> Run workflow).
+# Runs only when asked: Actions tab -> Windows test build -> Run workflow (on main or any branch).
 on:
-  push:
-    branches: [main, "build/**"]
-    paths: ["frontend/**", "backend/src/**", "packaging/**", "nesting/**", ".github/workflows/windows-build.yml"]
   workflow_dispatch:
 
 permissions:
