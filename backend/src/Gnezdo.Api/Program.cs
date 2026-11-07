@@ -1,6 +1,7 @@
 using Gnezdo.Api;
 using Gnezdo.Api.Auth;
 using Gnezdo.Api.Data;
+using Gnezdo.Api.Desktop;
 using Gnezdo.Api.Diagnostics;
 using Gnezdo.Api.Endpoints;
 using Gnezdo.Api.Nesting;
@@ -9,7 +10,9 @@ using Microsoft.EntityFrameworkCore;
 // start.bat runs "GNEZDO.exe --check" first, to find out whether this PC lets the program run at all
 if (args.Contains("--check")) { Console.WriteLine("GNEZDO can run on this PC"); return; }
 
-var builder = WebApplication.CreateBuilder(args);
+// "--desktop": the desktop build (one person, one PC, SQLite, its own window); see DesktopHost
+var desktopMode = args.Contains("--desktop");
+var builder = WebApplication.CreateBuilder(args.Where(a => a != "--desktop").ToArray());
 
 // Windows build: settings in config.json (database, port) - in the GNEZDO folder, next to start.bat
 // (the program itself sits in its "program" subfolder), or next to the exe, or where GNEZDO_CONFIG
@@ -21,8 +24,18 @@ var configFile = new[]
     Path.Combine(AppContext.BaseDirectory, "..", "config.json"),
 }.FirstOrDefault(f => !string.IsNullOrEmpty(f) && File.Exists(f));
 if (configFile is not null) builder.Configuration.AddJsonFile(Path.GetFullPath(configFile), optional: true, reloadOnChange: false);
-var demo = string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("Gnezdo"));
-if (builder.Configuration["Urls"] is { Length: > 0 } urls) builder.WebHost.UseUrls(urls);
+DesktopHost? desktop = null;
+if (desktopMode || builder.Configuration.GetValue<bool>("Gnezdo:Desktop"))
+{
+    desktop = DesktopHost.Prepare(builder, configFile);
+    // started a second time: open a window to the GNEZDO that already runs, and stop
+    if (desktop.AlreadyRunning) { desktop.OpenWindow(); return; }
+    builder.Services.AddSingleton(desktop);
+    builder.Services.AddHostedService<DesktopWatch>();
+}
+var demo = desktop is null && string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("Gnezdo"));
+if (desktop is not null) builder.WebHost.UseUrls($"http://127.0.0.1:{desktop.Port}");   // this PC only
+else if (builder.Configuration["Urls"] is { Length: > 0 } urls) builder.WebHost.UseUrls(urls);
 
 builder.Services.Configure<GnezdoOptions>(builder.Configuration.GetSection("Gnezdo"));
 builder.Services.AddSingleton<ShopTime>();
@@ -31,15 +44,17 @@ builder.Services.Configure<NestingOptions>(builder.Configuration.GetSection("Nes
 // the diagnostic log (Settings -> Diagnostic log): GNEZDO\logs next to config.json (Windows build),
 // else logs next to the program; "Diagnostics:Dir" sets another folder
 var logDir = builder.Configuration["Diagnostics:Dir"] is { Length: > 0 } ld ? ld
+    : desktop is not null ? desktop.LogDir
     : configFile is not null ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configFile))!, "logs")
     : Path.Combine(AppContext.BaseDirectory, "logs");
 builder.Services.AddSingleton(sp => new DiagLog(logDir, sp.GetRequiredService<TimeProvider>()));
 // GNEZDO's own data next to config.json (Windows build) or the program: the sign-in keys; "Gnezdo:DataDir" sets another folder
 var dataDir = builder.Configuration["Gnezdo:DataDir"] is { Length: > 0 } dd ? dd
+    : desktop is not null ? desktop.DataDir
     : configFile is not null ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configFile))!, "data")
     : Path.Combine(AppContext.BaseDirectory, "data");
 // sign-in (server build): users added by the admin; not in the demo (no database)
-builder.AddGnezdoAuth(AuthEndpoints.Required(builder.Configuration, demo), Path.Combine(dataDir, "keys"));
+builder.AddGnezdoAuth(desktop is null && AuthEndpoints.Required(builder.Configuration, demo), Path.Combine(dataDir, "keys"));
 builder.Services.AddSingleton<NestRunner>();
 builder.Services.AddSingleton<ServerLoad>();
 // Connection string is read when the first DbContext is created, so tests and Docker can override it.
@@ -47,7 +62,8 @@ builder.Services.AddSingleton<ServerLoad>();
 string Cs(IServiceProvider sp) => sp.GetRequiredService<IConfiguration>().GetConnectionString("Gnezdo")
     ?? throw new InvalidOperationException("Connection string 'Gnezdo' is not set.");
 var sqlite = string.Equals(builder.Configuration["Gnezdo:Database"], "sqlite", StringComparison.OrdinalIgnoreCase);
-if (!demo && sqlite) builder.Services.AddDbContext<GnezdoDb, GnezdoSqliteDb>((sp, o) => o.UseSqlite(Cs(sp)));
+if (desktop is not null) builder.Services.AddDbContext<GnezdoDb, GnezdoSqliteDb>(o => o.UseSqlite(desktop.Database));
+else if (!demo && sqlite) builder.Services.AddDbContext<GnezdoDb, GnezdoSqliteDb>((sp, o) => o.UseSqlite(Cs(sp)));
 else if (!demo) builder.Services.AddDbContext<GnezdoDb>((sp, o) => o.UseSqlServer(Cs(sp)));
 builder.Services.AddProblemDetails();
 
@@ -60,9 +76,27 @@ app.UseDiagLog();
 app.UseGnezdoAuth();
 app.Services.GetRequiredService<DiagLog>().Write("start", $"GNEZDO started{(demo ? " (demo, no database)" : "")}", new { version = typeof(Program).Assembly.GetName().Version?.ToString(), machine = Environment.MachineName });
 
-if (!demo) await DbInitializer.InitializeAsync(app.Services, app.Logger);
+if (!demo)
+{
+    try { await DbInitializer.InitializeAsync(app.Services, app.Logger); }
+    catch (Exception ex) when (desktop is not null)
+    {
+        DesktopHost.Fail($"GNEZDO could not open its data ({desktop.DataDir}):\n{ex.Message}");
+        desktop.Release();
+        Environment.ExitCode = 1;
+        return;
+    }
+}
 
-app.MapGet("/api/health", () => Results.Ok(new { status = "ok", demo }));
+// desktop: the window's name is the PC's user (there is no sign-in)
+app.MapGet("/api/health", () => Results.Ok(new { status = "ok", demo, desktop = desktop is not null, user = desktop is not null ? Environment.UserName : null }));
+if (desktop is not null)
+{
+    app.MapDesktopEndpoints(desktop);
+    var diag = app.Services.GetRequiredService<DiagLog>();
+    app.Lifetime.ApplicationStarted.Register(() => desktop.OpenWindow(diag));
+    app.Lifetime.ApplicationStopped.Register(desktop.Release);
+}
 // nesting works in the demo too: the job tab sends everything a run needs
 app.MapNestEndpoints();
 app.MapDiagEndpoints();
@@ -96,6 +130,12 @@ if (Directory.Exists(web))
 try
 {
     app.Run();
+}
+catch (IOException ex) when (desktop is not null)
+{
+    DesktopHost.Fail($"GNEZDO could not start on port {desktop.Port}: {ex.Message}\nSet another port in config.json (\"Gnezdo\": {{ \"DesktopPort\": 8096 }}).");
+    desktop.Release();
+    Environment.ExitCode = 1;
 }
 catch (IOException ex) when (Directory.Exists(web))
 {

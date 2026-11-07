@@ -1,3 +1,4 @@
+import { startDesktop } from "./api/desktop";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api, demoMode } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
@@ -109,6 +110,9 @@ export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [accountDlg, setAccountDlg] = useState<"password" | "users" | null>(null);
   useEffect(() => { void auth.state().then((s) => { setAuthState(s); setMe(s.user); }); }, []);
+  // desktop build: the PC's user is the name on saves and in the log
+  const [deskUser, setDeskUser] = useState<string | null>(null);
+  useEffect(() => { void startDesktop().then((u) => { if (u) setDeskUser(u); }); }, []);
   // a call answered "sign in first" (signed out elsewhere, removed, password changed): the sign-in page
   useEffect(() => {
     const on = () => { setMe(null); void auth.state().then((s) => { setAuthState(s); setMe(s.user); }); };
@@ -118,7 +122,7 @@ export function App() {
   // signed in during this page's life: a sign-in that ends later shows over the open work (nothing is lost)
   const signedInAs = useRef<string | null>(null);
   if (me) signedInAs.current = me.name;
-  const userName = me?.name ?? signedInAs.current ?? USER_NAME;
+  const userName = me?.name ?? signedInAs.current ?? deskUser ?? USER_NAME;
   const isAdmin = !authState?.required || !!me?.isAdmin;
   useEffect(() => { startDiag(userName); }, [userName]);
   const newJobCount = useRef(0);

@@ -1,0 +1,5 @@
+#!/bin/sh
+# GNEZDO desktop (Linux): starts GNEZDO; it opens its own window (Chromium, Chrome, Edge or Brave in
+# app mode, else the default browser) and stops 30 s after the window is closed.
+here=$(dirname "$(readlink -f "$0")")
+exec "$here/program/GNEZDO" --desktop "$@"
