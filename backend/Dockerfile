@@ -27,6 +27,9 @@ COPY --from=solver /ps/build/src/irregular/packingsolver_irregular nesting/
 COPY nesting/nestprep/nestprep_cli.py nesting/nestprep/
 COPY nesting/nestprep/nestprep/*.py nesting/nestprep/nestprep/
 ENV ASPNETCORE_HTTP_PORTS=8080
+# the diagnostic log (Settings -> Diagnostic log): a folder the app's user may write, kept in a volume
+RUN mkdir -p /app/logs && chown $APP_UID /app/logs
+ENV Diagnostics__Dir=/app/logs
 EXPOSE 8080
 USER $APP_UID
 ENTRYPOINT ["dotnet", "Gnezdo.Api.dll"]

@@ -6,6 +6,7 @@ import type { CustomNestSettings } from "../components/CustomNestDialog";
 import { DEFAULT_PART_GAP_MM, MACHINE_LIMIT, defaultTrims, fitsMachine, type StockSheet } from "./stock";
 import type { Origin } from "./machine";
 import { loadNestingRules } from "./nestRules";
+import { diag, diagHeaders } from "./diag";
 
 /** manual: a solution started by Add sheet (Manual nest), nested by hand */
 export type NestMode = "fast" | "thorough" | "custom" | "manual";
@@ -193,8 +194,9 @@ export interface JobNest {
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(url, { ...init, headers: { Accept: "application/json", "Content-Type": "application/json" } });
+    res = await fetch(url, { ...init, headers: { Accept: "application/json", "Content-Type": "application/json", ...diagHeaders() } });
   } catch {
+    diag("error", `Server not reached: ${init?.method ?? "GET"} ${url}`);
     throw new Error("GNEZDO's server cannot be reached. Nesting needs GNEZDO running (start.bat).");
   }
   if (res.status === 404 && url === "/api/nest/status") throw new Error("Nesting needs GNEZDO running (start.bat); this demo page has no server.");
@@ -204,6 +206,7 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
       const j = await res.json();
       detail = j.detail ?? Object.values(j.errors ?? {}).flat().join(" ");
     } catch { /* not JSON */ }
+    diag(res.status >= 500 ? "error" : "api", `${init?.method ?? "GET"} ${url}: ${res.status} ${detail}`);
     throw new Error(detail || `${res.status} ${res.statusText}`);
   }
   return (await res.json()) as T;

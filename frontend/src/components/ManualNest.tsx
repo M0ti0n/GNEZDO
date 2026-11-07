@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { JobPart } from "../api/types";
 import type { Origin } from "../job/machine";
 import { partColor, unlocked, type NestedSheet, type PlacedPart, type Solution } from "../job/nest";
+import { diag } from "../job/diag";
 import { Lock } from "./NestView";
 import { actionOf, loadKeys, type KeyAction } from "../job/manualKeys";
 import {
@@ -323,12 +324,14 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   }, [menu]);
   useEffect(() => { setMenu(null); }, [index]);
   const lockParts = (ids: number[]) => {
+    diag("manual", `Sheet ${index + 1}: lock ${ids.length} parts`);
     const before = itemsRef.current;
     const group = Date.now();
     commit(before.map((p, i) => (ids.includes(i) ? { ...p, lock: group } : p)), before);
     setNote(`Locked ${ids.length} ${ids.length === 1 ? "part" : "parts"}: they stay where they are`);
   };
   const unlockParts = (ids: number[]) => {
+    diag("manual", `Sheet ${index + 1}: unlock (${ids.length} clicked)`);
     const before = itemsRef.current;
     // a part locked with others: they all come free
     const groups = new Set(ids.map((i) => before[i]?.lock).filter((g): g is number => g !== undefined));
@@ -626,6 +629,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const partPath = (id: string) => byId.get(id)?.path;
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
   const runTool = async (t: string) => {
+    diag("manual", `Sheet ${index + 1}: ${t} with ${selRef.current.size} selected of ${itemsRef.current.length} parts`);
     if (working) return;
     if (!edit) { setNote("The sheet is locked: unlock it to change it."); return; }
     if (t === "alignEdge") {

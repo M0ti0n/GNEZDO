@@ -74,3 +74,15 @@ Other messages:
   http://localhost:8091 instead.
 - The browser says it cannot reach the page: wait a few seconds after the black
   window shows "Open http://localhost:8090" and refresh.
+
+
+6. DIAGNOSTIC LOG
+-----------------
+GNEZDO writes down what happens (nests and how they ended, saves, tools used,
+errors, with who and when) in the "logs" folder next to config.json, one file
+a day, kept 30 days (at most 200 MB). When something goes wrong:
+1. GNEZDO menu -> Settings -> Diagnostic log -> "Report a problem": a few words
+   about what went wrong (it marks the moment in the log).
+2. "Download log" there gives a zip of the last days: send that.
+It can be switched off there, for everyone on this server. Job, part and user
+names are in it; drawings are not. It never leaves the server by itself.

@@ -1662,3 +1662,10 @@ html.is-busy, html.is-busy * { cursor: progress !important; }
 .srv-load.is-high .srv-pct { color: #c62828; }
 .srv-load.is-high { background: #fdecea; }
 .srv-nests { font-size: 12.5px; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* Settings -> Diagnostic log */
+.log-report { width: 100%; max-width: 640px; resize: vertical; font: inherit; padding: 8px 10px; }
+.log-days { width: 160px; }
+a.btn.log-dl { text-decoration: none; display: inline-flex; align-items: center; }
+.log-msg { margin: 12px 0 0; color: var(--green-dark, #1d7a35); }
+.log-msg.is-bad { color: #c62828; }

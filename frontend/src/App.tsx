@@ -34,6 +34,7 @@ import { setMachineLimit } from "./job/stock";
 import { exportSolutionDxf } from "./job/exportNest";
 import { loadStockSettings, newSheet, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
 import { SheetPropertiesDialog } from "./components/SheetPropertiesDialog";
+import { diag, startDiag } from "./job/diag";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
 import type { Drawing } from "./import/geometry";
@@ -97,7 +98,10 @@ export function App() {
     setImportProps({ project: v.project, description: v.description, material: v.material, thicknessMm: v.thicknessMm, rotations: [...v.rotations], mirror: v.mirror, filler: v.filler });
   const patchItem = (id: string, patch: Partial<ImportItem>) =>
     setImports((list) => list.map((i) => (i.id === id ? { ...i, ...patch } : i)));
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToastState] = useState<string | null>(null);
+  // every message shown is in the diagnostic log too: it is what the user saw
+  const setToast = (m: string | null) => { if (m) diag("toast", m); setToastState(m); };
+  useEffect(() => { startDiag(USER_NAME); }, []);
   const newJobCount = useRef(0);
   // Last job search: results show in the Job search view on the main screen.
   const [jobSearch, setJobSearch] = useState<{ filter: JobFilter | null; run: number }>({ filter: null, run: 0 });
@@ -112,7 +116,7 @@ export function App() {
   // what the main area shows: the active document tab, else the current view
   const active: { kind: PageKind; title: string; jobId?: string; drawingId?: string } =
     activeTab ?? { kind: state.view, title: VIEW_TITLE[state.view] };
-  const open = (tab: Tab) => dispatch({ type: "open", tab });
+  const open = (tab: Tab) => { diag("tab", `Opened ${tab.kind}: ${tab.title}`); dispatch({ type: "open", tab }); };
 
   // Load the part list when a job tab is opened for the first time.
   useEffect(() => {
@@ -432,6 +436,7 @@ export function App() {
         // a moment without the server (busy, restarting) is not a failed nest: give up after 10 tries
         if (++fails < 10) continue;
         patchSol(jobId, solId, (x) => ({ ...x, error: (e as Error).message }));
+        diag("error", `Nest ${runId}: no answer from the server (${(e as Error).message})`, { job: jobId });
         return;
       }
       patchSol(jobId, solId, (x) => {
@@ -443,6 +448,8 @@ export function App() {
         return { ...x, run: x.prev ?? null, prev: undefined, base: undefined };
       });
       if (isFinished(run)) {
+        diag(run.state === "error" ? "error" : "nest", `Nest ${run.id} ${run.state} in ${Math.round(run.seconds)} s: ${run.result?.sheets.length ?? 0} sheets${run.result && !run.result.valid ? ", NOT VALID" : ""}`,
+          { job: jobId, error: run.error, errors: run.result?.errors?.slice(0, 5), skipped: run.result?.skipped?.length, bestAt: run.result?.bestAt });
         // a finished solution with sheets is shown
         if (run.result?.sheets.length) setSols(jobId, (st) => ({ ...st, sel: { sol: solId, sheet: 0 } }));
         return;
@@ -470,9 +477,12 @@ export function App() {
     try {
       const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom, machineFor(jobId).origin);
       const run = await nestApi.start(req);
+      diag("nest", `Nest ${run.id} started: ${mode}${custom ? ` ${custom.minutes ?? "until stopped"} min ${custom.blocks ? "blocks" : "standard"}` : ""}, new solution ${no}`,
+        { job: jobId, partTypes: req.parts.length, pieces: req.parts.reduce((n, p) => n + p.qty, 0), stockSheets: req.sheets.length });
       patchSol(jobId, id, (x) => ({ ...x, run }));
       void pollNest(jobId, id, run.id);
     } catch (e) {
+      diag("error", `Nest not started (${mode}): ${(e as Error).message}`, { job: jobId });
       patchSol(jobId, id, (x) => ({ ...x, error: (e as Error).message }));
     }
   };
@@ -500,6 +510,8 @@ export function App() {
       const req = await buildRequest(missing, stock, mode, custom, base.origin ?? machineFor(jobId).origin);
       req.fixedSheets = fixed;
       const run = await nestApi.start(req);
+      diag("nest", `Nest ${run.id} started: ${mode}, continuing solution ${base.no} (${fixed.length} of its ${sheets.length} sheets open to more parts)`,
+        { job: jobId, missingTypes: missing.length, pieces: missing.reduce((n, jp) => n + jp.qty, 0) });
       patchSol(jobId, base.id, (x) => ({ ...x, run }));
       void pollNest(jobId, base.id, run.id);
     } catch (e) {
@@ -511,6 +523,7 @@ export function App() {
     const runId = solsOf(jobId).list.find((x) => x.id === solId)?.run?.id;
     if (!runId) return;
     patchSol(jobId, solId, (x) => (x.run ? { ...x, run: { ...x.run, stopAsked: true } } : x));
+    diag("nest", `Nest ${runId} stop asked`, { job: jobId });
     try { await nestApi.stop(runId); } catch (e) { setToast((e as Error).message); }
   };
   // Saving a job (Work parts SAVE / SAVE AS; until those buttons exist, Ctrl+S): parts with their
@@ -539,6 +552,7 @@ export function App() {
       if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
       if (asNew) dispatch({ type: "rename", id: `job:${jobId}`, title });
       setSavedSnap((m) => ({ ...m, [jobId]: snapOf(parts, jobStock[jobId] ?? [], st.list, machineFor(jobId).id) }));
+      diag("save", `Job ${title} saved${asNew ? " as new" : ""}`, { job: jobId, serverId: r.id, parts: parts.length, sheets: r.sheetCount, solutions: st.list.length });
       setToast(`${asNew ? `Saved as ${title}` : "Job saved"}${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}`);
     } catch (e) {
       setToast(`Not saved: ${(e as Error).message}`);
@@ -733,6 +747,7 @@ export function App() {
     }
     setJobScreen((mm) => ({ ...mm, [jobId]: "nest" }));
     setOpenManual((o) => ({ sheet: at, n: o.n + 1 }));
+    diag("sheet", `Sheet added: ${s.material} ${s.thicknessMm} mm ${s.lengthMm}x${s.widthMm}${sol ? `, onto solution ${sol.no} as sheet ${at + 1}` : ", new manual solution"}`, { job: jobId });
   };
 
   /** Delete sheet (Sheet properties of a nested sheet): a sheet with parts asks first. */
@@ -749,6 +764,7 @@ export function App() {
     const sol = st.list.find((x) => x.id === solId);
     const sheets = sol?.run?.result?.sheets;
     if (!sol || !sheets?.[i]) return;
+    diag("sheet", `Sheet ${i + 1} of solution ${sol.no} deleted (${sheets[i].parts.length} parts back to the list)`, { job: jobId });
     if (sheets.length === 1) {
       // its last sheet: the solution goes
       setSols(jobId, (s0) => {
@@ -770,6 +786,7 @@ export function App() {
 
   const onJobTool = (section: string, tool: string, custom?: CustomNestSettings) => {
     if (!job) return;
+    diag("tool", `${section}: ${tool}`, { job: job.id, custom });
     if (section === "manual" && tool === "addSheet") { askAddSheet(job.id); return; }
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (tool === "fastNest") void startNest(job.id, "fast");
