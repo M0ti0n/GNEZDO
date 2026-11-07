@@ -24,6 +24,8 @@ import toolStackV from "./jobtools/tool-stackV.png";
 import toolStackH from "./jobtools/tool-stackH.png";
 import toolStackGrid from "./jobtools/tool-stackGrid.png";
 import toolAlignEdge from "./jobtools/tool-alignEdge.png";
+import toolAddSheet from "./jobtools/tool-addSheet.png";
+import toolDeleteSheet from "./jobtools/tool-deleteSheet.png";
 import toolNestReport from "./jobtools/tool-nestReport.png";
 import toolCostReport from "./jobtools/tool-costReport.png";
 
@@ -47,6 +49,8 @@ const SECTIONS: Section[] = [
   },
   {
     id: "manual", label: "Manual nest", icon: tileManual, tools: [
+      { id: "addSheet", label: "Add sheet", icon: toolAddSheet, ready: true, hint: "Add sheet: a new empty sheet (its properties first) into the stock and the shown solution, opened in Manual nest" },
+      { id: "deleteSheet", label: "Delete sheet", icon: toolDeleteSheet, ready: true, hint: "Delete sheet: the shown sheet out of the solution; its parts go back to the work part list" },
       { id: "mirrorV", label: "Mirror V", icon: toolMirrorV, ready: true, hint: "Mirror V: flip the selected parts left-right" },
       { id: "mirrorH", label: "Mirror H", icon: toolMirrorH, ready: true, hint: "Mirror H: flip the selected parts top-bottom" },
       { id: "arrange", label: "Arrange", icon: toolArrange, ready: true, hint: "Arrange: nest the selected parts (up to 50) as compactly as possible into the free space; 1.5 s, or 3 s for more than 20 parts" },

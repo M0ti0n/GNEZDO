@@ -32,7 +32,8 @@ import { loadLocalMachines, machineOf, normalizeMachines, saveLocalMachines, typ
 import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
 import { setMachineLimit } from "./job/stock";
 import { exportSolutionDxf } from "./job/exportNest";
-import { loadStockSettings, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
+import { loadStockSettings, newSheet, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
+import { SheetPropertiesDialog } from "./components/SheetPropertiesDialog";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
 import type { Drawing } from "./import/geometry";
@@ -678,8 +679,101 @@ export function App() {
   const [leaveManual, setLeaveManual] = useState(0);
   // Manual nest tools: to the sheet open in manual nest (a new n each click)
   const [manualTool, setManualTool] = useState<{ tool: string; n: number }>({ tool: "", n: 0 });
+  // -- Manual nest: Add sheet / Delete sheet ------------------------------------------------------
+  const [addSheetFor, setAddSheetFor] = useState<{ jobId: string; sheet: StockSheet } | null>(null);
+  const [deleteAsk, setDeleteAsk] = useState<{ jobId: string; solId: string; index: number; parts: number } | null>(null);
+  const [openManual, setOpenManual] = useState<{ sheet: number; n: number }>({ sheet: 0, n: 0 });
+  const manualOn = useRef(false);   // Manual nest open (a sheet in place of the sheets)
+
+  /** Add sheet: the dialog, filled in like the shown sheet, else the first material of the part list. */
+  const askAddSheet = (jobId: string) => {
+    const st = solsOf(jobId);
+    const cur = st.list.find((x) => x.id === st.sel.sol)?.run?.result?.sheets[st.sel.sheet];
+    const m = machineFor(jobId);
+    const first = (jobParts[jobId] ?? [])[0]?.part;
+    setAddSheetFor({ jobId, sheet: newSheet({
+      source: "manual", material: cur?.material ?? first?.material ?? "", thicknessMm: cur?.thicknessMm ?? first?.thicknessMm ?? 0,
+      lengthMm: cur && !cur.outline ? cur.lengthMm : stockSettings.globalLengthMm, widthMm: cur && !cur.outline ? cur.widthMm : stockSettings.globalWidthMm,
+      qty: 1, unlimited: false, trims: { ...(cur?.trims ?? m.trims) }, partGapMm: cur?.partGapMm ?? m.partGapMm, kerfMm: cur?.kerfMm ?? (m.kerfMm || undefined),
+    }) });
+  };
+
+  /** ADD SHEET: into the stock (one more of the same sheet when it is there already) and, empty, onto
+   * the shown solution, or a new Manual nest solution when there is none to add to; then opened. */
+  const addSheet = (jobId: string, s: StockSheet) => {
+    const stock = jobStock[jobId] ?? [];
+    const same = stock.find((x) => !x.outline && x.material.trim().toLowerCase() === s.material.trim().toLowerCase()
+      && Math.abs(x.thicknessMm - s.thicknessMm) < 1e-6 && x.lengthMm === s.lengthMm && x.widthMm === s.widthMm
+      && JSON.stringify(x.trims) === JSON.stringify(s.trims) && x.partGapMm === s.partGapMm && x.kerfMm === s.kerfMm);
+    let sheetId = s.id;
+    if (same) {
+      sheetId = same.id;
+      if (!same.unlimited) setJobStock((mm) => ({ ...mm, [jobId]: (mm[jobId] ?? []).map((x) => (x.id === same.id ? { ...x, qty: x.qty + 1 } : x)) }));
+    } else {
+      setJobStock((mm) => ({ ...mm, [jobId]: [...(mm[jobId] ?? []), { ...s, original: { lengthMm: s.lengthMm, widthMm: s.widthMm } }] }));
+    }
+    const nested: NestedSheet = {
+      sheetId, lengthMm: s.lengthMm, widthMm: s.widthMm, material: s.material.trim(), thicknessMm: s.thicknessMm,
+      trims: s.trims, partGapMm: s.partGapMm, kerfMm: s.kerfMm, parts: [],
+    };
+    const st = solsOf(jobId);
+    const sol = st.list.find((x) => x.id === st.sel.sol && !x.error && !x.outdated && isFinished(x.run) && x.run?.result);
+    let at = 0;
+    if (sol) {
+      at = sol.run!.result!.sheets.length;
+      patchSol(jobId, sol.id, (x) => ({ ...x, run: { ...x.run!, result: { ...x.run!.result!, sheets: [...x.run!.result!.sheets, nested] } } }));
+      setSols(jobId, (s0) => ({ ...s0, sel: { sol: sol.id, sheet: at } }));
+    } else {
+      const id = `sol${Date.now().toString(36)}`;
+      const no = Math.max(0, ...st.list.map((x) => x.no)) + 1;
+      const run: NestRun = { id, state: "done", stopAsked: false, seconds: 0,
+        result: { state: "done", seconds: 0, sheets: [nested], nested: {}, skipped: [], valid: true, errors: [] } };
+      setSols(jobId, (s0) => ({ list: [...s0.list, { id, no, mode: "manual", run, startedAt: Date.now(), locked: [], origin: machineFor(jobId).origin, machine: machineFor(jobId).id }],
+        sel: { sol: id, sheet: 0 } }));
+    }
+    setJobScreen((mm) => ({ ...mm, [jobId]: "nest" }));
+    setOpenManual((o) => ({ sheet: at, n: o.n + 1 }));
+  };
+
+  /** Delete sheet: the shown sheet of the shown solution; a sheet with parts asks first. */
+  const askDeleteSheet = (jobId: string) => {
+    const st = solsOf(jobId);
+    const sol = st.list.find((x) => x.id === st.sel.sol);
+    const sheets = sol?.run?.result?.sheets;
+    if (!sol || !sheets?.length || !isFinished(sol.run)) { setToast("No sheet to delete: show a finished solution's sheet first"); return; }
+    const i = Math.min(st.sel.sheet, sheets.length - 1);
+    if (sol.locked.includes(i)) { setToast(`Sheet ${i + 1} is locked: unlock it to delete it`); return; }
+    if (!sheets[i].parts.length) deleteSheet(jobId, sol.id, i);
+    else setDeleteAsk({ jobId, solId: sol.id, index: i, parts: sheets[i].parts.length });
+  };
+  const deleteSheet = (jobId: string, solId: string, i: number) => {
+    const st = solsOf(jobId);
+    const sol = st.list.find((x) => x.id === solId);
+    const sheets = sol?.run?.result?.sheets;
+    if (!sol || !sheets?.[i]) return;
+    if (sheets.length === 1) {
+      // its last sheet: the solution goes
+      setSols(jobId, (s0) => {
+        const list = s0.list.filter((x) => x.id !== solId);
+        return { list, sel: s0.sel.sol === solId ? { sol: list.length ? list[list.length - 1].id : null, sheet: 0 } : s0.sel };
+      });
+      if (manualOn.current) setLeaveManual((n) => n + 1);
+      setToast(`Solution ${sol.no} had only this sheet: removed`);
+      return;
+    }
+    patchSol(jobId, solId, (x) => ({
+      ...x, locked: x.locked.filter((n) => n !== i).map((n) => (n > i ? n - 1 : n)),
+      run: { ...x.run!, result: { ...x.run!.result!, sheets: x.run!.result!.sheets.filter((_, k) => k !== i) } },
+    }));
+    const next = Math.min(i, sheets.length - 2);
+    setSols(jobId, (s0) => ({ ...s0, sel: { sol: solId, sheet: next } }));
+    if (manualOn.current) setOpenManual((o) => ({ sheet: next, n: o.n + 1 }));
+  };
+
   const onJobTool = (section: string, tool: string, custom?: CustomNestSettings) => {
     if (!job) return;
+    if (section === "manual" && tool === "addSheet") { askAddSheet(job.id); return; }
+    if (section === "manual" && tool === "deleteSheet") { askDeleteSheet(job.id); return; }
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (tool === "fastNest") void startNest(job.id, "fast");
     else if (tool === "thoroughNest") void startNest(job.id, "thorough");
@@ -722,8 +816,9 @@ export function App() {
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && jobScreen[job.id] === "nest" && (
               <NestPage
-                onManual={(on) => setToolbarReq((r) => ({ section: on ? "manual" : "auto", n: r.n + 1 }))}
+                onManual={(on) => { manualOn.current = on; setToolbarReq((r) => ({ section: on ? "manual" : "auto", n: r.n + 1 })); }}
                 leaveManual={leaveManual}
+                openManual={openManual}
                 manualTool={manualTool}
                 parts={jobParts[job.id] ?? []}
                 solutions={solsOf(job.id).list}
@@ -762,6 +857,19 @@ export function App() {
                 onRemove={(pid) => setJobParts((m) => ({ ...m, [job.id]: (m[job.id] ?? []).filter((jp) => jp.part.id !== pid) }))}
                 onOpenParts={() => setDrawer("parts")}
               />
+            )}
+            {addSheetFor && (
+              <SheetPropertiesDialog adding index={(jobStock[addSheetFor.jobId] ?? []).length} sheet={addSheetFor.sheet}
+                machine={machineFor(addSheetFor.jobId)}
+                onSave={(s) => addSheet(addSheetFor.jobId, s)} onClose={() => setAddSheetFor(null)} />
+            )}
+            {deleteAsk && (
+              <ConfirmDialog title={`Delete sheet ${deleteAsk.index + 1}?`} confirmLabel="Delete sheet"
+                onCancel={() => setDeleteAsk(null)}
+                onConfirm={() => { const d = deleteAsk; setDeleteAsk(null); deleteSheet(d.jobId, d.solId, d.index); }}>
+                Its <b>{deleteAsk.parts} {deleteAsk.parts === 1 ? "part goes" : "parts go"} back</b> to the work part list, to be nested again.
+                The sheet stays in the stock.
+              </ConfirmDialog>
             )}
             {machineAsk && (
               <ConfirmDialog title="Change the machine?" confirmLabel={`Change to ${machineOf(machines, machineAsk.id).name}`}

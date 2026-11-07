@@ -39,13 +39,15 @@ interface Props {
   leaveManual?: number;
   /** a Manual nest tool clicked on the toolbar (a new n each click) */
   manualTool?: { tool: string; n: number };
+  /** opens this sheet of the shown solution in Manual nest (a new n each time) */
+  openManual?: { sheet: number; n: number };
   /** "solId:index" of the sheet being nested again */
   renesting: string | null;
 }
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 
-const MODE_SHORT: Record<NestMode, string> = { fast: "FAST", thorough: "THOROUGH", custom: "CUSTOM" };
+const MODE_SHORT: Record<NestMode, string> = { fast: "FAST", thorough: "THOROUGH", custom: "CUSTOM", manual: "MANUAL" };
 
 const transformOf = (p: { x: number; y: number; angle: number; mirror: boolean }) =>
   `translate(${p.x} ${p.y}) rotate(${p.angle})${p.mirror ? " scale(-1 1)" : ""}`;
@@ -80,7 +82,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool }: Props) {
+export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -92,6 +94,8 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
   const [full, setFullState] = useState<number | null>(null);
   const setFull = (i: number | null) => { if ((i === null) !== (full === null)) onManual?.(i !== null); setFullState(i); };
   useEffect(() => { if (leaveManual) setFullState(null); }, [leaveManual]);
+  // Add sheet / Delete sheet: this sheet opens in Manual nest
+  useEffect(() => { if (openManual?.n) setFull(openManual.sheet); }, [openManual?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
   const grid = useRef<HTMLDivElement>(null);
 
   // the chosen sheet scrolls into view (chosen from the SOLUTIONS panel)
@@ -342,7 +346,7 @@ function InfoTabs({ sol, sheets, sheetNo, parts, jobParts }: {
       </div>
       <div className="info-head">
         {tab === "solution"
-          ? <><b>Solution {sol.no}</b><span>{NEST_MODE_LABEL[sol.mode]}{sol.mode === "custom" ? ` (${strategyLabel(sol.custom)})` : ""} · {sheets.length} {sheets.length === 1 ? "sheet" : "sheets"}{sol.run?.result ? ` · ${hms(sol.run.seconds)}` : " · best so far"}{bestFoundAt(sol.run) !== null ? ` · found at ${hms(bestFoundAt(sol.run)!)}` : ""}</span></>
+          ? <><b>Solution {sol.no}</b><span>{NEST_MODE_LABEL[sol.mode]}{sol.mode === "custom" ? ` (${strategyLabel(sol.custom)})` : ""} · {sheets.length} {sheets.length === 1 ? "sheet" : "sheets"}{sol.mode === "manual" ? "" : sol.run?.result ? ` · ${hms(sol.run.seconds)}` : " · best so far"}{bestFoundAt(sol.run) !== null ? ` · found at ${hms(bestFoundAt(sol.run)!)}` : ""}</span></>
           : <><b>Solution {sol.no} <span className="slash">/</span> Sheet {sheetNo + 1}</b>
               <span>{sheet.material} · {sheet.thicknessMm} mm · {sheet.lengthMm} × {sheet.widthMm} · {sheet.parts.length} parts</span></>}
       </div>
