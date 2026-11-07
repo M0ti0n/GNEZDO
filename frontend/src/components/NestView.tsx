@@ -39,6 +39,8 @@ interface Props {
   leaveManual?: number;
   /** a Manual nest tool clicked on the toolbar (a new n each click) */
   manualTool?: { tool: string; n: number };
+  /** Delete sheet (Sheet properties of a nested sheet) */
+  onDeleteSheet?: (solId: string, index: number) => void;
   /** opens this sheet of the shown solution in Manual nest (a new n each time) */
   openManual?: { sheet: number; n: number };
   /** "solId:index" of the sheet being nested again */
@@ -82,7 +84,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual }: Props) {
+export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onDeleteSheet }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -112,7 +114,9 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
       onSave={(s) => onEditSheet(sol.id, props, {
         lengthMm: s.lengthMm, widthMm: s.widthMm, trims: s.trims, partGapMm: s.partGapMm, kerfMm: s.kerfMm, cutNumber: Math.max(1, s.qty || 1),
       })}
-      onClose={() => setProps(null)} />
+      onClose={() => setProps(null)}
+      onDelete={!finished || !onDeleteSheet ? undefined : sol.locked.includes(props) ? `Sheet ${props + 1} is locked: unlock it to delete it`
+        : () => onDeleteSheet(sol.id, props)} />
   );
 
   // EDIT / VIEW: manual nesting of the sheet, in place of the sheets

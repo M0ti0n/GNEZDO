@@ -17,12 +17,15 @@ const SOURCE: Record<string, string> = {
 // Properties of a stock sheet (STOCK panel: [i] or double click on its name), laid out like Part
 // properties: the sheet's shape with the machine's 0,0, rotate / mirror under it; size, trims (gap from
 // each edge to the parts, by the machine's axes), part gap, cut number and cut diameter on the right.
-export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, nested = false, adding = false }: {
+export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, nested = false, adding = false, onDelete }: {
   sheet: StockSheet; index: number; machine: Machine; onSave: (s: StockSheet) => void; onClose: () => void;
   /** A sheet of a nest (not the stock): only this sheet changes; the parts stay where they are. */
   nested?: boolean;
   /** A new sheet (Manual nest -> Add sheet): ADD SHEET instead of Save, to the stock and the nest. */
   adding?: boolean;
+  /** A nested sheet: Delete sheet takes it out of its solution (its parts go back to the work part
+   * list); a string: why it cannot be deleted (locked) */
+  onDelete?: (() => void) | string;
 }) {
   const origin = machine.origin;
   // the machine's gaps are the defaults (RESET, and for a sheet that has none of its own)
@@ -150,6 +153,11 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
 
         <footer className="dlg-foot">
           <button type="button" className="btn btn-plain" onClick={reset} title={`Size and shape as added; trims, parts gap and cut diameter of ${machine.name}`}>Reset</button>
+          {onDelete !== undefined && (
+            <button type="button" className="btn btn-replace sp-delete" disabled={typeof onDelete === "string"}
+              title={typeof onDelete === "string" ? onDelete : "Take this sheet out of the solution; its parts go back to the work part list"}
+              onClick={() => { if (typeof onDelete === "function") { onClose(); onDelete(); } }}>Delete sheet</button>
+          )}
           <span className="proc-missing">{adding ? (!s.material.trim() || !s.thicknessMm ? "Material and thickness first." : !(s.lengthMm > 0 && s.widthMm > 0) ? "Size first." : tooBig ? "Too big for the machine." : "")
             : changed ? (nested ? "Only this sheet changes." : "Every sheet nested from this stock gets it.") : ""}</span>
           <button type="button" className="btn btn-plain" onClick={onClose}>Cancel</button>
