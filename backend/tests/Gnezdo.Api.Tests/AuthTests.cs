@@ -4,7 +4,6 @@ using System.Text.Json.Nodes;
 using Gnezdo.Api.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Gnezdo.Api.Tests;
@@ -17,13 +16,11 @@ public sealed class AuthTests : IAsyncLifetime
 
     public AuthTests()
     {
-        var server = Environment.GetEnvironmentVariable("GNEZDO_TEST_SQL")
-            ?? "Server=localhost,1433;User Id=sa;Password=Gnezdo_Test_123;TrustServerCertificate=True;Encrypt=False";
-        var cs = new SqlConnectionStringBuilder(server) { InitialCatalog = $"gnezdo_auth_{Guid.NewGuid():N}" }.ConnectionString;
+        var cs = TestDb.NewConnectionString("gnezdo_auth");
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Testing");
-            b.UseSetting("ConnectionStrings:Gnezdo", cs);
+            TestDb.Use(b, cs);
             b.UseSetting("Gnezdo:SeedSampleData", "false");
             b.UseSetting("Gnezdo:DataDir", Path.Combine(_dir, "data"));
             b.UseSetting("Diagnostics:Dir", Path.Combine(_dir, "logs"));
@@ -35,7 +32,7 @@ public sealed class AuthTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         using (var scope = _factory.Services.CreateScope())
-            await scope.ServiceProvider.GetRequiredService<GnezdoDb>().Database.EnsureDeletedAsync();
+            await TestDb.DropAsync(scope.ServiceProvider.GetRequiredService<GnezdoDb>());
         await _factory.DisposeAsync();
         try { Directory.Delete(_dir, true); } catch (IOException) { }
     }

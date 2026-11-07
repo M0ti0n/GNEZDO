@@ -43,9 +43,12 @@ builder.AddGnezdoAuth(AuthEndpoints.Required(builder.Configuration, demo), Path.
 builder.Services.AddSingleton<NestRunner>();
 builder.Services.AddSingleton<ServerLoad>();
 // Connection string is read when the first DbContext is created, so tests and Docker can override it.
-if (!demo) builder.Services.AddDbContext<GnezdoDb>((sp, o) => o.UseSqlServer(
-    sp.GetRequiredService<IConfiguration>().GetConnectionString("Gnezdo")
-    ?? throw new InvalidOperationException("Connection string 'Gnezdo' is not set.")));
+// "Gnezdo:Database": sqlserver (server build, the default) or sqlite (desktop build: one file).
+string Cs(IServiceProvider sp) => sp.GetRequiredService<IConfiguration>().GetConnectionString("Gnezdo")
+    ?? throw new InvalidOperationException("Connection string 'Gnezdo' is not set.");
+var sqlite = string.Equals(builder.Configuration["Gnezdo:Database"], "sqlite", StringComparison.OrdinalIgnoreCase);
+if (!demo && sqlite) builder.Services.AddDbContext<GnezdoDb, GnezdoSqliteDb>((sp, o) => o.UseSqlite(Cs(sp)));
+else if (!demo) builder.Services.AddDbContext<GnezdoDb>((sp, o) => o.UseSqlServer(Cs(sp)));
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();

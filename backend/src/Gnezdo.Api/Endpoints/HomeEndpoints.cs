@@ -105,7 +105,7 @@ public static class HomeEndpoints
         IQueryable<Job> jobs = db.Jobs.AsNoTracking();
 
         var name = Clean(q.Name);
-        if (name is not null) jobs = jobs.Where(j => j.Name.Contains(name));
+        if (name is not null) { var pat = TextSearch.Pattern(db, name); jobs = jobs.Where(j => EF.Functions.Like(j.Name, pat, TextSearch.Escape)); }
 
         // Material and thickness must match on the same part of the job.
         var material = Clean(q.Material);
@@ -120,11 +120,14 @@ public static class HomeEndpoints
         // Project: jobs that contain parts of a project whose code contains the text.
         var project = Clean(q.Project);
         if (project is not null)
-            jobs = jobs.Where(j => j.Parts.Any(jp => jp.Part.Project != null && jp.Part.Project.Code.Contains(project)));
+        {
+            var pat = TextSearch.Pattern(db, project);
+            jobs = jobs.Where(j => j.Parts.Any(jp => jp.Part.Project != null && EF.Functions.Like(jp.Part.Project.Code, pat, TextSearch.Escape)));
+        }
 
         // Part name: every job the part is used in.
         var part = Clean(q.Part);
-        if (part is not null) jobs = jobs.Where(j => j.Parts.Any(jp => jp.Part.Name.Contains(part)));
+        if (part is not null) { var pat = TextSearch.Pattern(db, part); jobs = jobs.Where(j => j.Parts.Any(jp => EF.Functions.Like(jp.Part.Name, pat, TextSearch.Escape))); }
 
         if (created is { } c)
         {
