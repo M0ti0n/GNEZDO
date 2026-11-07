@@ -22,7 +22,8 @@ public static class DbInitializer
         {
             try
             {
-                await RefuseOldDatabaseAsync(db, ct);
+                if (db.Database.IsSqlite()) await PrepareSqliteAsync(db, ct);
+                else await RefuseOldDatabaseAsync(db, ct);
                 var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
                 if (pending.Count > 0)
                 {
@@ -44,6 +45,16 @@ public static class DbInitializer
             await SampleData.SeedAsync(db, DateTimeOffset.UtcNow, ct);
             logger.LogInformation("Sample data added.");
         }
+    }
+
+    /// <summary>The desktop build's file: its folder made; WAL, so reading goes on while a save is written.</summary>
+    private static async Task PrepareSqliteAsync(GnezdoDb db, CancellationToken ct)
+    {
+        var file = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(db.Database.GetConnectionString()).DataSource;
+        if (Path.GetDirectoryName(Path.GetFullPath(file)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
+        await db.Database.OpenConnectionAsync(ct);
+        try { await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", ct); }
+        finally { await db.Database.CloseConnectionAsync(); }
     }
 
     /// <summary>

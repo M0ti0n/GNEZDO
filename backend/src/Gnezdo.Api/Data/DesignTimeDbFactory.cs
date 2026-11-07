@@ -14,3 +14,10 @@ public sealed class DesignTimeDbFactory : IDesignTimeDbContextFactory<GnezdoDb>
             .UseSqlServer("Server=design-time;Database=Gnezdo;Trusted_Connection=True;TrustServerCertificate=True")
             .Options);
 }
+
+/// <summary>The same for the desktop build's SQLite database (dotnet ef ... --context GnezdoSqliteDb).</summary>
+public sealed class DesignTimeSqliteDbFactory : IDesignTimeDbContextFactory<GnezdoSqliteDb>
+{
+    public GnezdoSqliteDb CreateDbContext(string[] args) =>
+        new(new DbContextOptionsBuilder<GnezdoSqliteDb>().UseSqlite("Data Source=design-time.db").Options);
+}

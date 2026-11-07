@@ -74,14 +74,14 @@ public static class PartEndpoints
         IQueryable<Part> parts = db.Parts.AsNoTracking().Live();
 
         var name = Clean(q.Name);
-        if (name is not null) parts = parts.Where(p => p.Name.Contains(name));
+        if (name is not null) { var pat = TextSearch.Pattern(db, name); parts = parts.Where(p => EF.Functions.Like(p.Name, pat, TextSearch.Escape)); }
         var material = Clean(q.Material);
         if (material is not null) parts = parts.Where(p => p.Material.Name == material);
         if (q.ThicknessMm is { } thickness) parts = parts.Where(p => p.ThicknessMm == thickness);
         var project = Clean(q.Project);
-        if (project is not null) parts = parts.Where(p => p.Project != null && p.Project.Code.Contains(project));
+        if (project is not null) { var pat = TextSearch.Pattern(db, project); parts = parts.Where(p => p.Project != null && EF.Functions.Like(p.Project.Code, pat, TextSearch.Escape)); }
         var description = Clean(q.Description);
-        if (description is not null) parts = parts.Where(p => p.Description.Contains(description));
+        if (description is not null) { var pat = TextSearch.Pattern(db, description); parts = parts.Where(p => EF.Functions.Like(p.Description, pat, TextSearch.Escape)); }
 
         if (created is { } c)
         {

@@ -2,8 +2,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Gnezdo.Api.Data;
 
-public class GnezdoDb(DbContextOptions<GnezdoDb> options) : DbContext(options)
+/// <summary>The database: SQL Server (server build). The desktop build uses <see cref="GnezdoSqliteDb"/>.</summary>
+public class GnezdoDb : DbContext
 {
+    public GnezdoDb(DbContextOptions<GnezdoDb> options) : base(options) { }
+
+    /// <summary>For the SQLite database (desktop build), with its own migrations.</summary>
+    protected GnezdoDb(DbContextOptions options) : base(options) { }
+
     public DbSet<Material> Materials => Set<Material>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();

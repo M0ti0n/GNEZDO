@@ -1,6 +1,5 @@
 using Gnezdo.Api;
 using Gnezdo.Api.Data;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -10,15 +9,10 @@ namespace Gnezdo.Api.Tests;
 /// <summary>Start-up against databases in different states; each test uses its own database.</summary>
 public sealed class MigrationTests
 {
-    private static string NewConnectionString()
-    {
-        var server = Environment.GetEnvironmentVariable("GNEZDO_TEST_SQL")
-            ?? "Server=localhost,1433;User Id=sa;Password=Gnezdo_Test_123;TrustServerCertificate=True;Encrypt=False";
-        return new SqlConnectionStringBuilder(server) { InitialCatalog = $"gnezdo_mig_{Guid.NewGuid():N}" }.ConnectionString;
-    }
+    private static string NewConnectionString() => TestDb.NewConnectionString("gnezdo_mig");
 
     private static ServiceProvider Services(string cs) => new ServiceCollection()
-        .AddDbContext<GnezdoDb>(o => o.UseSqlServer(cs))
+        .AddDb(cs)
         .Configure<GnezdoOptions>(o => o.SeedSampleData = false)
         .BuildServiceProvider();
 
@@ -41,13 +35,14 @@ public sealed class MigrationTests
         finally
         {
             using var scope = sp.CreateScope();
-            await scope.ServiceProvider.GetRequiredService<GnezdoDb>().Database.EnsureDeletedAsync();
+            await TestDb.DropAsync(scope.ServiceProvider.GetRequiredService<GnezdoDb>());
         }
     }
 
     [Fact]
     public async Task A_database_from_before_migrations_is_refused_with_a_clear_message()
     {
+        if (TestDb.Sqlite) return;   // only SQL Server databases were ever made that way
         var cs = NewConnectionString();
         await using var sp = Services(cs);
         try
@@ -61,7 +56,7 @@ public sealed class MigrationTests
         finally
         {
             using var scope = sp.CreateScope();
-            await scope.ServiceProvider.GetRequiredService<GnezdoDb>().Database.EnsureDeletedAsync();
+            await TestDb.DropAsync(scope.ServiceProvider.GetRequiredService<GnezdoDb>());
         }
     }
 }
