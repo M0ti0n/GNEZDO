@@ -1738,3 +1738,9 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .data-change { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
 .data-change > .btn { align-self: flex-start; }
 .rule-row a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* Jobs search: the saved nest's sheets, drawn */
+.sheet-tile.has-nest { display: flex; align-items: center; justify-content: center; padding: 22px 6px 6px; background: #fff; border-color: var(--line); }
+.sheet-tile.has-nest .sheet-svg { width: 100%; height: 100%; }
+.sheet-tile.has-nest .sheet-no { top: 3px; }
+.sheet-tiles .sheets-empty { grid-column: 1 / -1; }

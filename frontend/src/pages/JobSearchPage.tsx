@@ -6,6 +6,8 @@ import {
   type DateFilter, type JobFilter, type JobPart, type JobStatus, type JobSummary, type SortKey, type SortOrder,
 } from "../api/types";
 import { SortArrow, loadSort, saveSort } from "../components/SortControl";
+import { SheetSvg } from "../components/NestView";
+import { solutionsFromSaved, type NestedSheet } from "../job/nest";
 import { fullDate, mm, when } from "../components/format";
 
 const STATUS: Record<JobStatus, string> = { draft: "Draft", nested: "Nested", released: "Released", cut: "Cut" };
@@ -209,6 +211,7 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters }: {
 
 function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
   const [parts, setParts] = useState<JobPart[] | null>(null);
+  const [sheets, setSheets] = useState<NestedSheet[] | null>(null);   // the saved nest's shown solution
   const [mats, setMats] = useState<Set<string>>(new Set());       // pink buttons switched on
   const [thks, setThks] = useState<Set<number>>(new Set());       // purple buttons switched on
 
@@ -217,7 +220,14 @@ function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
     setParts(null);
     setMats(new Set());
     setThks(new Set());
+    setSheets(null);
     api.jobParts(job.id).then((p) => alive && setParts(p), () => alive && setParts([]));
+    api.job(job.id).then((d) => {
+      if (!alive) return;
+      const sols = solutionsFromSaved(d?.nest ?? null);
+      const sol = sols?.list.find((x) => x.id === sols.sel.sol) ?? sols?.list.at(-1);
+      setSheets(sol?.run?.result?.sheets ?? []);
+    }, () => alive && setSheets([]));
     return () => { alive = false; };
   }, [job.id]);
 
@@ -225,6 +235,12 @@ function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
   const thicknesses = useMemo(() => [...new Set((parts ?? []).map((p) => p.part.thicknessMm))].sort((a, b) => a - b), [parts]);
   const shown = (parts ?? []).filter((p) =>
     (mats.size === 0 || mats.has(p.part.material)) && (thks.size === 0 || thks.has(p.part.thicknessMm)));
+
+  const byId = useMemo(() => new Map((parts ?? []).map((jp) =>
+    [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
+  // the material / thickness buttons pick the sheets too
+  const shownSheets = (sheets ?? []).map((sh, i) => ({ sh, i })).filter(({ sh }) =>
+    (mats.size === 0 || mats.has(sh.material)) && (thks.size === 0 || thks.has(sh.thicknessMm)));
 
   const flip = <T,>(set: Set<T>, v: T) => { const n = new Set(set); if (n.has(v)) n.delete(v); else n.add(v); return n; };
 
@@ -238,17 +254,19 @@ function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
 
       {/* sheets */}
       <div className="sheets-area">
-        {job.sheetCount > 0 ? (
-          <ul className="sheet-tiles" aria-label={`${job.sheetCount} sheets`}>
-            {Array.from({ length: job.sheetCount }, (_, i) => (
-              <li key={i} className="sheet-tile" title="Nest preview appears here once nesting is built">
-                <span className="sheet-no">Sheet {i + 1}</span>
+        {job.sheetCount > 0 && (sheets === null || !parts) && <p className="sheets-empty">Loading the nest…</p>}
+        {job.sheetCount > 0 && sheets && parts && sheets.length > 0 && (
+          <ul className="sheet-tiles" aria-label={`${sheets.length} sheets`}>
+            {shownSheets.map(({ sh, i }) => (
+              <li key={i} className="sheet-tile has-nest" title={`Sheet ${i + 1}: ${sh.material} ${mm(sh.thicknessMm)}, ${sh.lengthMm} × ${sh.widthMm}`}>
+                <SheetSvg sheet={sh} parts={byId} titles />
+                <span className="sheet-no">Sheet {i + 1}{(sh.cutNumber ?? 1) > 1 ? ` ×${sh.cutNumber}` : ""}</span>
               </li>
             ))}
+            {shownSheets.length === 0 && <li className="sheets-empty">No sheet of this material / thickness</li>}
           </ul>
-        ) : (
-          <p className="sheets-empty">Not nested yet</p>
         )}
+        {(job.sheetCount === 0 || (sheets && sheets.length === 0)) && <p className="sheets-empty">Not nested yet</p>}
       </div>
 
       {/* materials and thicknesses used in the job */}
