@@ -1,8 +1,10 @@
 name: Windows test build
 
-# Builds gnezdo-windows.zip: GNEZDO.exe (self-contained, nothing to install) with the web pages,
-# start.bat, config.example.json and INSTALL.txt, and publishes it as the "test-build" release:
-#   https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-windows.zip
+# Builds, tests and publishes as the "test-build" release (https://github.com/M0ti0n/GNEZDO/releases/tag/test-build):
+#   gnezdo-windows.zip           the server for Windows: GNEZDO.exe (self-contained, nothing to install)
+#                                with the web pages, start.bat, config.example.json and INSTALL.txt
+#   gnezdo-desktop-windows.zip   the desktop build for Windows: GNEZDO.exe opens GNEZDO in an Edge window
+#   gnezdo-desktop-linux.tar.gz  the desktop build for Linux (Chromium / Chrome window)
 # Runs on every change to main, on a push to a build/... branch (a test build of work not merged
 # yet), or by hand (Actions tab -> Windows test build -> Run workflow).
 on:
@@ -68,8 +70,28 @@ jobs:
           name: solver-windows
           path: out-solver/packingsolver_irregular.exe
 
+  # GNEZDO.exe of the desktop build: a small starter made with the C# compiler that comes with Windows
+  launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the starter
+        shell: pwsh
+        run: |
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          New-Item -ItemType Directory out-launcher | Out-Null
+          # this old compiler wants Windows paths (a "/" starts an option)
+          & $csc /nologo /target:winexe /optimize+ /out:out-launcher\GNEZDO.exe /win32icon:packaging\gnezdo.ico `
+            /r:System.Windows.Forms.dll packaging\desktop\GnezdoLauncher.cs
+          if ($LASTEXITCODE -ne 0) { throw "csc failed" }
+          Get-Item out-launcher/GNEZDO.exe | Format-List Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-windows
+          path: out-launcher/GNEZDO.exe
+
   build:
-    needs: solver
+    needs: [solver, launcher]
     runs-on: ubuntu-latest
     env:
       DOTNET_NOLOGO: "1"
@@ -153,20 +175,33 @@ jobs:
           (cd out && zip -qr gnezdo-windows.zip gnezdo)
           ls -la out/gnezdo-windows.zip
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: launcher-windows
+          path: out/launcher
+
+      # the same program and engine; the starter GNEZDO.exe on top, no server files, no demo pages
+      - name: Assemble the desktop zip
+        run: |
+          set -e
+          d=out/desktop/GNEZDO
+          mkdir -p $d
+          cp -r out/gnezdo/program out/gnezdo/nesting $d/
+          rm -rf $d/program/wwwroot-demo
+          cp out/launcher/GNEZDO.exe $d/
+          cp packaging/desktop/INSTALL-desktop.txt $d/INSTALL.txt
+          sed "s/test build/desktop test build/" out/gnezdo/VERSION.txt > $d/VERSION.txt
+          (cd out/desktop && zip -qr ../gnezdo-desktop-windows.zip GNEZDO)
+          ls -la out/gnezdo-desktop-windows.zip
+
       - uses: actions/upload-artifact@v4
         with:
           name: gnezdo-windows
           path: out/gnezdo-windows.zip
-
-      - name: Publish as the test-build release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release delete test-build --yes --cleanup-tag || true
-          gh release create test-build out/gnezdo-windows.zip --prerelease --target "$GITHUB_SHA" \
-            --title "Test build for Windows ($(date -u +%Y-%m-%d), ${GITHUB_REF_NAME})" \
-            --notes "Unzip, double-click start.bat, open http://localhost:8090. Runs as a demo until a database is set in config.json - see INSTALL.txt."
-          echo "::notice title=Download::https://github.com/${GITHUB_REPOSITORY}/releases/download/test-build/gnezdo-windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gnezdo-desktop-windows
+          path: out/gnezdo-desktop-windows.zip
 
   # Starts GNEZDO.exe on Windows from the zip, as a user would, and checks it answers.
   smoke-test:
@@ -237,3 +272,204 @@ jobs:
           Write-Output $msg
           if ($msg -notmatch "could not start" -or $msg -notmatch "8091") { throw "no plain message when the port is taken" }
           Write-Output "::notice title=Smoke test::GNEZDO.exe started on Windows, demo mode, pages served"
+
+  # The Windows desktop build as a person starts it: the starter GNEZDO.exe, data next to it,
+  # a nest, a second start, and GNEZDO stopping 30 s after its window closes.
+  desktop-smoke-windows:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+          sparse-checkout: nesting/nestprep/examples
+      - uses: actions/download-artifact@v4
+        with:
+          name: gnezdo-desktop-windows
+      - name: Start, nest, close the window
+        shell: pwsh
+        run: |
+          trap { Write-Output "::error title=Desktop smoke test::$($_.Exception.Message)"; break }
+          Expand-Archive gnezdo-desktop-windows.zip -DestinationPath .
+          # no real Edge window on the build machine: a stand-in program that takes the arguments and ends
+          '{ "Gnezdo": { "Browser": "C:\\Windows\\System32\\whoami.exe" } }' | Set-Content GNEZDO/config.json
+          Start-Process GNEZDO/GNEZDO.exe -WorkingDirectory GNEZDO
+          $base = "http://127.0.0.1:8095"
+          $h = $null
+          for ($i = 0; $i -lt 40 -and -not $h; $i++) { Start-Sleep 2; try { $h = Invoke-RestMethod "$base/api/health" } catch { } }
+          if (-not $h) { Get-ChildItem -Recurse GNEZDO/logs -ErrorAction SilentlyContinue | Get-Content -Tail 30; throw "GNEZDO desktop did not answer on $base" }
+          if (-not $h.desktop -or $h.demo) { throw "expected the desktop build with its database: $($h | ConvertTo-Json -Compress)" }
+          if (-not (Test-Path GNEZDO/data/gnezdo.db)) { throw "no data/gnezdo.db next to GNEZDO.exe" }
+          $gp = Get-Process GNEZDO | Where-Object { $_.Path -like "*\program\GNEZDO.exe" }
+          if (-not $gp) { throw "program\GNEZDO.exe is not running" }
+          # the data works: parts list (empty), a setting saved
+          Invoke-RestMethod "$base/api/parts" | Out-Null
+          Invoke-RestMethod -Method Put "$base/api/settings/machines" -Body '{"value":[]}' -ContentType "application/json" | Out-Null
+          $req = Get-Content repo/nesting/nestprep/examples/demo_request.json -Raw
+          $run = Invoke-RestMethod -Method Post -Uri "$base/api/nest" -Body $req -ContentType "application/json"
+          for ($i = 0; $i -lt 120; $i++) {
+            Start-Sleep 2
+            $run = Invoke-RestMethod "$base/api/nest/$($run.id)"
+            if ($run.state -in @("done", "stopped", "error")) { break }
+          }
+          if ($run.state -ne "done" -or -not $run.result.valid) { throw "nest ended as $($run.state): $($run.error)" }
+          Write-Output "::notice title=Desktop nesting::demo job nested in $($run.seconds) s"
+          # started again: only opens a window and ends
+          $q = Start-Process GNEZDO/program/GNEZDO.exe -ArgumentList "--desktop" -WorkingDirectory GNEZDO -PassThru
+          if (-not $q.WaitForExit(30000)) { throw "a second start did not end" }
+          if (@(Get-Process GNEZDO -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*\program\GNEZDO.exe" }).Count -ne 1) { throw "two GNEZDO desktops are running" }
+          # a window (its connection) opens and closes: GNEZDO stops about 30 s later
+          $c = Start-Process curl.exe -ArgumentList "-sN", "$base/api/desktop/session" -PassThru -NoNewWindow
+          Start-Sleep 5
+          Stop-Process $c.Id
+          $t = [Diagnostics.Stopwatch]::StartNew()
+          if (-not $gp.WaitForExit(90000)) { throw "GNEZDO did not stop after its window closed" }
+          Write-Output "stopped $([int]$t.Elapsed.TotalSeconds) s after the window closed"
+          if ($t.Elapsed.TotalSeconds -lt 20) { throw "stopped too soon ($($t.Elapsed.TotalSeconds) s)" }
+          Get-Content GNEZDO/logs/*.log | Select-String '"kind":"desktop"' | ForEach-Object { $_.Line.Substring(0, [Math]::Min(220, $_.Line.Length)) }
+          Write-Output "::notice title=Desktop smoke test::GNEZDO desktop started on Windows, nested, stopped after the window closed"
+
+  # The Linux desktop build, made on an older Ubuntu so it runs on most current distributions
+  linux-desktop:
+    runs-on: ubuntu-22.04
+    env:
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: out-solver
+          key: solver-linux2204-${{ hashFiles('nesting/packingsolver/**', 'nesting/patches/**') }}
+      - name: PackingSolver for Linux
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          sudo apt-get install -y ninja-build g++-12
+          CC=gcc-12 CXX=g++-12 cmake -S nesting/packingsolver -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DPACKINGSOLVER_BUILD_TEST=OFF -DPACKINGSOLVER_USE_CLP=OFF -DPACKINGSOLVER_USE_HIGHS=ON
+          cmake --build build --target packingsolver_irregular -j4
+          mkdir -p out-solver && cp build/src/irregular/packingsolver_irregular out-solver/
+      - name: Web pages
+        working-directory: frontend
+        run: |
+          npm install --no-audit --no-fund
+          VITE_USE_API=true npx vite build --outDir ../out/web-db --emptyOutDir
+      - name: GNEZDO for Linux (self-contained)
+        run: dotnet publish backend/src/Gnezdo.Api -c Release -r linux-x64 --self-contained true -p:DebugType=none -o out/publish
+      - name: Nesting engine with a Python of its own
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          n=out/nesting
+          mkdir -p $n/lib $n/nestprep/nestprep
+          cp out-solver/packingsolver_irregular $n/
+          # OpenMP's library goes along: not every desktop Linux has it
+          cp /usr/lib/x86_64-linux-gnu/libgomp.so.1 $n/lib/
+          sudo apt-get install -y patchelf >/dev/null
+          patchelf --set-rpath '$ORIGIN/lib' $n/packingsolver_irregular
+          ldd $n/packingsolver_irregular
+          # a standalone Python 3.12 (python-build-standalone) with numpy
+          url=$(gh api repos/astral-sh/python-build-standalone/releases/latest --jq \
+            '[.assets[] | select(.name | test("^cpython-3\\.12\\.[0-9]+\\+[0-9]+-x86_64-unknown-linux-gnu-install_only_stripped\\.tar\\.gz$"))][0].browser_download_url')
+          echo "Python: $url"
+          curl -fsSL "$url" | tar xz -C $n
+          $n/python/bin/python3 -m pip install -q --no-cache-dir numpy==2.2.6
+          $n/python/bin/python3 -c "import numpy, sys; print(sys.version, numpy.__version__)"
+          cp nesting/nestprep/nestprep_cli.py $n/nestprep/
+          cp nesting/nestprep/nestprep/*.py $n/nestprep/nestprep/
+          cp nesting/PACKINGSOLVER_VERSION $n/
+          $n/python/bin/python3 $n/nestprep/nestprep_cli.py run nesting/nestprep/examples/demo_request.json run-check --solver $n/packingsolver_irregular
+          du -sh $n
+      - name: Assemble the tar.gz
+        run: |
+          set -e
+          d=out/desktop/gnezdo
+          mkdir -p $d
+          cp -r out/publish $d/program
+          mv $d/program/Gnezdo.Api $d/program/GNEZDO
+          rm -f $d/program/appsettings.Development.json $d/program/web.config
+          jq '.ConnectionStrings.Gnezdo = ""' out/publish/appsettings.json > $d/program/appsettings.json
+          cp -r out/web-db $d/program/wwwroot
+          cp -r out/nesting $d/nesting
+          cp packaging/desktop/gnezdo packaging/desktop/install-menu-entry.sh packaging/gnezdo.png $d/
+          cp packaging/desktop/INSTALL-desktop.txt $d/INSTALL.txt
+          echo "GNEZDO desktop test build $(date -u +%Y-%m-%d) from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}" > $d/VERSION.txt
+          chmod +x $d/gnezdo $d/install-menu-entry.sh $d/program/GNEZDO
+          tar czf out/gnezdo-desktop-linux.tar.gz -C out/desktop gnezdo
+          ls -la out/gnezdo-desktop-linux.tar.gz
+      - name: Smoke test (start, nest, close the window)
+        run: |
+          set -e
+          mkdir -p try && tar xzf out/gnezdo-desktop-linux.tar.gz -C try
+          g=try/gnezdo
+          # a stand-in browser: writes down how it was asked to open the window
+          printf '#!/bin/sh\nprintf "%%s\\n" "$@" >> "%s/browser-args.txt"\n' "$PWD" > fake-browser
+          chmod +x fake-browser
+          echo "{\"Gnezdo\": {\"Browser\": \"$PWD/fake-browser\"}}" > $g/config.json
+          $g/gnezdo > gnezdo-out.txt 2>&1 &
+          gp=$!
+          base=http://127.0.0.1:8095
+          for i in $(seq 1 40); do curl -fs $base/api/health > health.json && break; sleep 2; done
+          cat health.json; echo
+          python3 -c "import json; h=json.load(open('health.json')); assert h['desktop'] and not h['demo'], h"
+          test -f $g/data/gnezdo.db
+          sleep 2; cat browser-args.txt
+          grep -q -- "--app=$base/" browser-args.txt
+          grep -q -- "--user-data-dir=$(readlink -f $g)/data/browser" browser-args.txt
+          curl -fs $base/api/parts > /dev/null
+          curl -fs -X PUT -H 'Content-Type: application/json' -d '{"value":[]}' $base/api/settings/machines > /dev/null
+          id=$(curl -fs -X POST -H 'Content-Type: application/json' --data @nesting/nestprep/examples/demo_request.json $base/api/nest | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          for i in $(seq 1 120); do
+            st=$(curl -fs $base/api/nest/$id | python3 -c "import json,sys; r=json.load(sys.stdin); print(r['state'], (r.get('result') or {}).get('valid'))")
+            case "$st" in done*|stopped*|error*) break;; esac; sleep 2
+          done
+          echo "nest: $st"; test "$st" = "done True"
+          # a second start only opens a window
+          lines=$(wc -l < browser-args.txt)
+          timeout 30 $g/gnezdo
+          test $(wc -l < browser-args.txt) -gt $lines
+          # the window (its connection) opens and closes: GNEZDO stops about 30 s later
+          curl -sN $base/api/desktop/session > /dev/null & c=$!
+          sleep 5; kill $c
+          start=$(date +%s)
+          for i in $(seq 1 45); do kill -0 $gp 2>/dev/null || break; sleep 2; done
+          if kill -0 $gp 2>/dev/null; then cat gnezdo-out.txt; echo "::error::GNEZDO did not stop after its window closed"; exit 1; fi
+          took=$(( $(date +%s) - start )); echo "stopped $took s after the window closed"
+          test $took -ge 20
+          grep '"kind":"desktop"' $g/logs/*.log | cut -c1-220
+          echo "::notice title=Linux desktop::started, nested, stopped $took s after the window closed"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gnezdo-desktop-linux
+          path: out/gnezdo-desktop-linux.tar.gz
+
+  release:
+    needs: [smoke-test, desktop-smoke-windows, linux-desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dl
+          pattern: gnezdo-*
+          merge-multiple: true
+      - name: Publish as the test-build release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la dl
+          gh release delete test-build --yes --cleanup-tag || true
+          gh release create test-build dl/gnezdo-windows.zip dl/gnezdo-desktop-windows.zip dl/gnezdo-desktop-linux.tar.gz \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Test build ($(date -u +%Y-%m-%d), ${GITHUB_REF_NAME})" \
+            --notes "Server for Windows: gnezdo-windows.zip (unzip, start.bat, open http://localhost:8090; a demo until a database is set in config.json - see INSTALL.txt).
+          Desktop, one PC: gnezdo-desktop-windows.zip (unzip, double-click GNEZDO.exe) or gnezdo-desktop-linux.tar.gz - see INSTALL.txt inside."
+          echo "::notice title=Download::https://github.com/${GITHUB_REPOSITORY}/releases/tag/test-build"

@@ -66,6 +66,7 @@ public sealed class NestRunner : IDisposable
             .Select(Path.GetFullPath).FirstOrDefault(Directory.Exists) ?? Path.Combine(AppContext.BaseDirectory, "nesting");
         Python = o.Python is { Length: > 0 } p ? p
             : File.Exists(Path.Combine(nesting, "python", "python" + exe)) ? Path.Combine(nesting, "python", "python" + exe)
+            : File.Exists(Path.Combine(nesting, "python", "bin", "python3")) ? Path.Combine(nesting, "python", "bin", "python3")   // Linux desktop build
             : OperatingSystem.IsWindows() ? "python" : "python3";
         Script = o.Script is { Length: > 0 } s ? s : Path.Combine(nesting, "nestprep", "nestprep_cli.py");
         Solver = o.Solver is { Length: > 0 } v ? v : Path.Combine(nesting, "packingsolver_irregular" + exe);

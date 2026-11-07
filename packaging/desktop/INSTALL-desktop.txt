@@ -1,0 +1,64 @@
+GNEZDO - DESKTOP VERSION
+========================
+
+One person, one PC. No server, no database to set up, no sign-in. Everything GNEZDO
+keeps (parts, jobs, settings, the diagnostic log) is in the "data" and "logs" folders
+inside the GNEZDO folder. To move GNEZDO to another PC, copy the whole folder.
+
+
+1. WINDOWS
+----------
+Unzip gnezdo-desktop-windows.zip somewhere you can write to, e.g. Documents
+(not "Program Files"). Open the GNEZDO folder and double-click GNEZDO.exe.
+GNEZDO opens in its own Edge window (Edge comes with Windows 10 and 11).
+
+The first time Windows may say "Windows protected your PC": click "More info",
+then "Run anyway" (the program is not signed).
+
+A shortcut: right-click GNEZDO.exe -> Send to -> Desktop (create shortcut), or
+right-click it -> Pin to Start / Pin to taskbar.
+
+
+2. LINUX
+--------
+Needs: Chromium, Google Chrome, Microsoft Edge or Brave (any one; without one GNEZDO
+opens in the default browser). Everything else is in the folder.
+
+    tar xzf gnezdo-desktop-linux.tar.gz -C ~/
+    ~/gnezdo/install-menu-entry.sh      # GNEZDO in the applications menu and on the desktop
+    ~/gnezdo/gnezdo                     # or start it from a terminal
+
+Built for 64-bit PCs (x86-64) with Ubuntu 22.04 or newer, Debian 12, Fedora 36 or newer,
+or similar.
+
+
+3. USING IT
+-----------
+- Closing the GNEZDO window: when a job has unsaved changes or a nest is running,
+  GNEZDO asks first. GNEZDO itself stops 30 seconds after its window is closed. Start
+  it again within that time and it carries on where it was.
+- Starting GNEZDO when it already runs opens another window to it.
+- Saves and the diagnostic log carry the PC's user name.
+- GNEZDO can only be reached from this PC (it is not on the network). For several
+  people sharing parts and jobs, use the server version.
+
+
+4. UPDATING
+-----------
+Replace everything in the GNEZDO folder EXCEPT the "data" and "logs" folders
+(and config.json, if you made one). The data is brought up to date at the next start.
+Backup: copy the "data" folder while GNEZDO is closed.
+
+
+5. SETTINGS (optional)
+----------------------
+A config.json in the GNEZDO folder can change:
+
+    {
+      "Gnezdo": {
+        "DesktopPort": 8096,
+        "Browser": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+      }
+    }
+
+DesktopPort: when another program uses port 8095. Browser: a different browser.
