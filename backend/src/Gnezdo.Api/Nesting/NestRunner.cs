@@ -53,10 +53,11 @@ public sealed class NestRunner : IDisposable
     public string Script { get; }
     public string Solver { get; }
 
-    public NestRunner(IOptions<NestingOptions> options, ILogger<NestRunner> log, TimeProvider clock)
+    public NestRunner(IOptions<NestingOptions> options, ILogger<NestRunner> log, TimeProvider clock, Gnezdo.Api.Diagnostics.DiagLog diag)
     {
         var o = options.Value;
         _log = log;
+        _diag = diag;
         _clock = clock;
         _slots = new SemaphoreSlim(Math.Max(1, o.MaxRuns));
         var exe = OperatingSystem.IsWindows() ? ".exe" : "";
@@ -81,13 +82,32 @@ public sealed class NestRunner : IDisposable
         return null;
     }
 
-    public string Start(JsonObject request)
+    private readonly Gnezdo.Api.Diagnostics.DiagLog _diag;
+
+    /// <summary>What a nest request asks for, for the log: no outlines, only counts.</summary>
+    private static object Brief(JsonObject r)
+    {
+        static int Count(JsonNode? n) => n is JsonArray a ? a.Count : 0;
+        var parts = r["parts"] as JsonArray;
+        return new
+        {
+            mode = r["mode"]?.ToString(), minutes = r["custom"]?["minutes"]?.ToString(), blocks = r["blocks"]?.ToString(),
+            partTypes = Count(parts), pieces = parts?.Sum(p => (int?)p?["qty"]?.GetValue<double>() ?? 0) ?? 0,
+            materials = parts?.Select(p => $"{p?["material"]} {p?["thicknessMm"]} mm").Distinct().ToArray(),
+            stockSheets = Count(r["sheets"]), fixedSheets = Count(r["fixedSheets"]), searchGrowth = r["searchGrowth"]?.ToString(),
+        };
+    }
+
+    public string Start(JsonObject request, string? user = null, string? browser = null, string? client = null)
     {
         Prune();
         var id = Guid.NewGuid().ToString("N")[..12];
         var dir = Path.Combine(_runsDir, id);
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, "request.json"), request.ToJsonString());
+        object? brief = null;
+        try { brief = Brief(request); } catch (Exception e) when (e is InvalidOperationException or FormatException) { }
+        _diag.Write("nest", $"Nest {id} started", brief, user, browser, client);
         var run = new Run { Id = id, Dir = dir, Created = _clock.GetUtcNow() };
         _runs[id] = run;
         _ = Task.Run(() => ExecuteAsync(run));
@@ -147,10 +167,29 @@ public sealed class NestRunner : IDisposable
         {
             run.Finished = _clock.GetUtcNow();
             _slots.Release();
+            WriteEnd(run);
         }
     }
 
     private static string Tail(string s) => s.Length > 600 ? "..." + s[^600..] : s;
+
+    /// <summary>The run's end in the diagnostic log: how it went, and the engine's own error output when it failed.</summary>
+    private void WriteEnd(Run run)
+    {
+        var result = ReadJson(Path.Combine(run.Dir, "result.json"));
+        string stderr;
+        lock (run.Stderr) stderr = run.Stderr.ToString();
+        var waited = run.Started is { } s ? (s - run.Created).TotalSeconds : 0;
+        var took = run.Finished is { } f && run.Started is { } s2 ? (f - s2).TotalSeconds : 0;
+        _diag.Write(run.State == NestState.Error ? "error" : "nest", $"Nest {run.Id} {run.State.ToString().ToLowerInvariant()} after {took:0} s", new
+        {
+            waitedSeconds = Math.Round(waited, 1), seconds = Math.Round(took, 1),
+            sheets = (result?["sheets"] as JsonArray)?.Count, valid = result?["valid"]?.ToString(), bestAt = result?["bestAt"]?.ToString(),
+            skipped = (result?["skipped"] as JsonArray)?.Count, error = run.Error,
+            errors = result?["errors"]?.ToJsonString(),
+            engineOutput = run.State == NestState.Error && stderr.Length > 0 ? (stderr.Length > 4000 ? "..." + stderr[^4000..] : stderr) : null,
+        });
+    }
 
     /// <summary>How many runs are nesting now, and how many wait for a free slot.</summary>
     public (int Running, int Queued) Counts() =>

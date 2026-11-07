@@ -1,5 +1,6 @@
 using Gnezdo.Api;
 using Gnezdo.Api.Data;
+using Gnezdo.Api.Diagnostics;
 using Gnezdo.Api.Endpoints;
 using Gnezdo.Api.Nesting;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,12 @@ builder.Services.Configure<GnezdoOptions>(builder.Configuration.GetSection("Gnez
 builder.Services.AddSingleton<ShopTime>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.Configure<NestingOptions>(builder.Configuration.GetSection("Nesting"));
+// the diagnostic log (Settings -> Diagnostic log): GNEZDO\logs next to config.json (Windows build),
+// else logs next to the program; "Diagnostics:Dir" sets another folder
+var logDir = builder.Configuration["Diagnostics:Dir"] is { Length: > 0 } ld ? ld
+    : configFile is not null ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configFile))!, "logs")
+    : Path.Combine(AppContext.BaseDirectory, "logs");
+builder.Services.AddSingleton(sp => new DiagLog(logDir, sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<NestRunner>();
 builder.Services.AddSingleton<ServerLoad>();
 // Connection string is read when the first DbContext is created, so tests and Docker can override it.
@@ -38,12 +45,15 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseDiagLog();
+app.Services.GetRequiredService<DiagLog>().Write("start", $"GNEZDO started{(demo ? " (demo, no database)" : "")}", new { version = typeof(Program).Assembly.GetName().Version?.ToString(), machine = Environment.MachineName });
 
 if (!demo) await DbInitializer.InitializeAsync(app.Services, app.Logger);
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", demo }));
 // nesting works in the demo too: the job tab sends everything a run needs
 app.MapNestEndpoints();
+app.MapDiagEndpoints();
 if (!demo)
 {
     app.MapPartEndpoints();
