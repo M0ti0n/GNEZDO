@@ -217,7 +217,12 @@ jobs:
           # any failure also becomes an annotation (readable without the full log)
           trap { Write-Output "::error title=Smoke test::$($_.Exception.Message)"; break }
           Expand-Archive gnezdo-windows.zip -DestinationPath .
-          Copy-Item gnezdo/config.example.json gnezdo/config.json
+          # the shipped config asks for the database in the browser on the first start ("Setup": true;
+          # tested in the backend's SetupTests); here the demo is switched on as INSTALL.txt says
+          $cfg = Get-Content gnezdo/config.example.json -Raw | ConvertFrom-Json
+          if ($cfg.Gnezdo.Setup -ne $true) { throw "config.example.json should ask for the database (Setup: true)" }
+          $cfg.Gnezdo.Setup = $false
+          $cfg | ConvertTo-Json -Depth 10 | Set-Content gnezdo/config.json
           # start.bat asks the program first whether it may run here
           & gnezdo/program/GNEZDO.exe --check
           if ($LASTEXITCODE -ne 0) { throw "--check failed" }
