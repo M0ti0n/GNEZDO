@@ -19,6 +19,8 @@ import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, rotateSheet, sheet
 interface Props {
   title: string;
   parts: JobPart[] | undefined;                 // undefined = loading
+  /** part id -> the solutions (numbers) with it on their sheets: its material and thickness are locked */
+  nestedIn?: Record<string, number[]>;
   stock: StockSheet[];
   stockSettings: StockSettings;
   onStock: (stock: StockSheet[]) => void;
@@ -61,9 +63,12 @@ function DraftCombo({ value, options, onCommit, ...rest }: {
 }
 
 /** A part saved in the database again: its new values, but the job's own material / thickness stay. */
-function keepJobMaterial(parts: JobPart[] | undefined, now: PartSummary) {
+function keepJobMaterial(parts: JobPart[] | undefined, now: PartSummary, locked = false) {
   const jp = parts?.find((x) => x.part.id === now.id);
-  if (!jp || (jp.dbMaterial === undefined && jp.dbThicknessMm === undefined)) return { part: now };
+  if (!jp) return { part: now };
+  // nested: the job keeps what is on the sheets; the database's new values show as "in the database"
+  if (locked) return { part: { ...now, material: jp.part.material, thicknessMm: jp.part.thicknessMm }, dbMaterial: now.material, dbThicknessMm: now.thicknessMm };
+  if (jp.dbMaterial === undefined && jp.dbThicknessMm === undefined) return { part: now };
   const ownM = jp.dbMaterial !== undefined && jp.part.material !== jp.dbMaterial;
   const ownT = jp.dbThicknessMm !== undefined && jp.part.thicknessMm !== jp.dbThicknessMm;
   return {
@@ -97,7 +102,7 @@ const value = (jp: JobPart, c: Col): string | number => {
 };
 
 // Work parts screen of a job: the job part list (left) and the stock sheets (right).
-export function JobPage({ title, parts, stock, stockSettings, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice, machine, machines, onMachine }: Props) {
+export function JobPage({ title, parts, nestedIn, stock, stockSettings, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice, machine, machines, onMachine }: Props) {
   const [over, setOver] = useState(false);
 
   // the part's pop-up (double-click its name), and its versions
@@ -239,6 +244,18 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
                           const now = withMaterial(jp, patch);
                           onPart(jp.part.id, { part: now.part, dbMaterial: now.dbMaterial, dbThicknessMm: now.dbThicknessMm });
                         };
+                        // on the sheets of a solution: changing it would leave those sheets wrong
+                        const sols = nestedIn?.[jp.part.id] ?? [];
+                        if (sols.length) {
+                          const why = `Nested in solution ${sols.map((n) => `#${n}`).join(", ")}: to change the material or thickness, `
+                            + `take ${jp.part.name} off those sheets or remove ${sols.length === 1 ? "that solution" : "those solutions"} first.`;
+                          return (<>
+                            <td data-c={3} tabIndex={-1} className={`cell-mat is-locked${ownM ? " is-job-only" : ""}`} title={why}>
+                              <span className="cell-mat-row"><LockMark />{jp.part.material}</span></td>
+                            <td data-c={4} tabIndex={-1} className={`cell-mat is-locked${ownT ? " is-job-only" : ""}`} title={why}>
+                              <span className="cell-mat-row"><LockMark />{mmText(jp.part.thicknessMm)}</span></td>
+                          </>);
+                        }
                         return (<>
                           <td data-c={3} className={`cell-mat${ownM ? " is-job-only" : ""}`}
                             title={ownM ? `In this job only. In the database: ${jp.dbMaterial}` : "Material in this job (the part in the database is not changed)"}>
@@ -292,7 +309,7 @@ export function JobPage({ title, parts, stock, stockSettings, onStock, onDropPar
 
       {editing && (
         <PartPropertiesDialog part={editing} onClose={() => setEditing(null)}
-          onSaved={(now) => onPart(now.id, keepJobMaterial(parts, now))}
+          onSaved={(now) => onPart(now.id, keepJobMaterial(parts, now, (nestedIn?.[now.id]?.length ?? 0) > 0))}
           onDeleted={(id) => onRemove(id)}
           onVersions={(p) => { setEditing(null); setHistory(p); }} />
       )}
@@ -483,3 +500,16 @@ function dxfOutline(entities: Entity[], b: { minX: number; minY: number; maxX: n
   const rect = out.length === 1 && out[0].length === 4 && area(loops[0]) >= 0.999 * (b.maxX - b.minX) * (b.maxY - b.minY);
   return rect ? undefined : out;
 }
+
+const mmText = (t: number) => `${t} mm`;
+
+/** Material / thickness locked: the part is on nested sheets. */
+function LockMark() {
+  return (
+    <svg className="cell-lock" viewBox="0 0 12 14" width="10" height="12" aria-hidden="true">
+      <path d="M3 6V4.2a3 3 0 0 1 6 0V6" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="1" y="6" width="10" height="7.5" rx="1.5" fill="currentColor" />
+    </svg>
+  );
+}
+
