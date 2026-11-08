@@ -778,6 +778,18 @@ export function App() {
     // every sheet's parts times its cut number (how many times that layout is cut)
     return sol?.run?.result ? countsOf(sol.run.result.sheets) : null;
   };
+  // the solutions (their numbers) with a part on their sheets: its material and thickness are locked
+  const nestedSols = (jobId: string): Record<string, number[]> => {
+    const out: Record<string, number[]> = {};
+    for (const x of jobSol[jobId]?.list ?? []) {
+      for (const sh of x.run?.result?.sheets ?? x.run?.best?.sheets ?? [])
+        for (const pl of sh.parts) {
+          const l = (out[pl.partId] ??= []);
+          if (!l.includes(x.no)) l.push(x.no);
+        }
+    }
+    return out;
+  };
   // GNEZDO menu -> Export solution to DXF: the solution shown in the job tab, every sheet in one file
   const shownSolution = () => {
     if (!job) return null;
@@ -990,6 +1002,7 @@ export function App() {
                   const list = jobParts[job.id];
                   return counts && list ? list.map((jp) => ({ ...jp, nested: counts[jp.part.id] ?? 0 })) : list;
                 })()}
+                nestedIn={nestedSols(job.id)}
                 stock={jobStock[job.id] ?? []}
                 stockSettings={stockSettings}
                 onStock={(st) => setJobStock((m) => ({ ...m, [job.id]: st }))}
