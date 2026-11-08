@@ -669,17 +669,22 @@ th.num .th-sort { flex-direction: row-reverse; }
 .seg { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 8px; background: var(--sheet); }
 .seg button { height: 32px; text-align: center; border-radius: 6px; font-weight: 600; font-size: 14px; color: var(--ink-2); }
 .seg button.is-on { background: var(--plate); color: var(--blue-ink); box-shadow: 0 1px 3px rgba(20, 50, 60, .15); }
-.dropzone {
-  display: grid; justify-items: center; gap: 2px; padding: 18px 12px; cursor: pointer; text-align: center;
-  border: 2px dashed #9fc6d6; border-radius: 10px; background: var(--blue-tint); color: var(--blue-ink);
-  transition: background .12s, border-color .12s;
+.imp-note { margin: 0; padding: 6px 16px; font-size: 12.5px; color: var(--ink-3); }
+/* the list is the drop area (files and folders from Explorer) */
+.imp-drop { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid transparent; transition: background .12s; }
+.imp-drop.is-over { background: var(--blue-tint); }
+.imp-drop-hint {
+  position: absolute; inset: 4px 8px 8px; display: flex; align-items: center; justify-content: center; pointer-events: none;
+  border: 2px dashed var(--blue); border-radius: 10px; box-shadow: 0 0 0 3px var(--yellow); background: rgba(207, 234, 244, .55); color: var(--blue-ink); font-size: 15px;
 }
-.dropzone:hover, .dropzone.is-over { border-color: var(--blue); background: #cfeaf4; }
-.dropzone.is-over { box-shadow: 0 0 0 3px var(--yellow); }
-.dropzone svg { margin-bottom: 4px; }
-.dropzone b { font-size: 15px; }
-.dropzone span { font-size: 13px; color: var(--ink-2); }
-.imp-note { margin: -4px 0 0; font-size: 12.5px; color: var(--ink-3); }
+.imp-choose {
+  display: grid; justify-items: center; gap: 2px; width: 100%; padding: 22px 12px; margin-bottom: 8px; text-align: center;
+  border: 2px dashed #9fc6d6; border-radius: 10px; background: var(--blue-tint); color: var(--blue-ink); line-height: 1.35;
+}
+.imp-choose:hover { border-color: var(--blue); background: #cfeaf4; }
+.imp-choose b { font-size: 15px; }
+.imp-choose span { font-size: 13px; color: var(--ink-2); }
+.imp-empty-note { display: block; font-size: 12.5px; }
 .imp-props { display: grid; gap: 7px; padding-top: 10px; border-top: 1px dashed var(--line); }
 .imp-props h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
 .imp-props-icon svg { width: 34px; height: 21px; }
