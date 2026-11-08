@@ -8,13 +8,11 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PartPropertiesDialog } from "../components/PartPropertiesDialog";
 import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PARTS_MIME } from "../shell/Drawer";
-import { readDxf } from "../import/dxf";
-import { boxOf, checkGeometry, union, type Entity } from "../import/geometry";
-import { loopPoints } from "../import/toPart";
+import { sheetFromDxf } from "../job/dxfSheet";
 import { SheetPropertiesDialog } from "../components/SheetPropertiesDialog";
 import type { Machine, MachineList } from "../job/machine";
 import { partColor } from "../job/nest";
-import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, rotateSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
+import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
 
 interface Props {
   title: string;
@@ -382,28 +380,10 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
   };
 
   const fromDxf = async (f: File) => {
-    try {
-      const { drawing } = readDxf(await f.text(), f.name);
-      if (!drawing.entities.length) { onNotice(`${f.name}: no lines to take the sheet size from`); return; }
-      const b = drawing.entities.map(boxOf).reduce(union);
-      const r = (v: number) => Math.round(v * 10) / 10;
-      const l = r(b.maxX - b.minX), w = r(b.maxY - b.minY);
-      // too long in X but it fits turned: added turned (Sheet properties can turn it back)
-      const turn = !fitsMachine(l, w) && fitsMachine(w, l);
-      if (!fitsMachine(l, w) && !turn) { setTooBig({ file: f.name, l, w }); return; }
-      let sheet = newSheet({
-        ...gaps, source: "dxf", ...nextPair(), lengthMm: l, widthMm: w, qty: 1, unlimited: false,
-        fileName: f.name.replace(/\.dxf$/i, ""), outline: dxfOutline(drawing.entities, b),
-      });
-      if (turn) {
-        sheet = rotateSheet(sheet);
-        sheet = { ...sheet, original: { lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, outline: sheet.outline } };
-        onNotice(`${f.name}: turned 90° to fit the machine (${MACHINE_LIMIT.join(" × ")} mm)`);
-      }
-      onStock([...stock, sheet]);
-    } catch (e) {
-      onNotice(`${f.name}: ${(e as Error).message}`);
-    }
+    const r = await sheetFromDxf(f, newSheet({ ...gaps, source: "dxf", ...nextPair(), lengthMm: 0, widthMm: 0, qty: 1, unlimited: false }));
+    if (!r.ok) { if (r.tooBig) setTooBig({ file: f.name, ...r.tooBig }); else onNotice(r.message); return; }
+    if (r.turned) onNotice(`${f.name}: turned 90° to fit the machine (${MACHINE_LIMIT.join(" × ")} mm)`);
+    onStock([...stock, r.sheet]);
   };
 
   const set = (id: string, patch: Partial<StockSheet>) => onStock(stock.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -482,23 +462,6 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
       )}
     </aside>
   );
-}
-
-/**
- * A DXF sheet's own shape: its closed contours, mm, y down from the top-left of its extents; the
- * largest is the outline, the others holes. Null for a plain rectangle (the size says it all).
- */
-function dxfOutline(entities: Entity[], b: { minX: number; minY: number; maxX: number; maxY: number }): [number, number][][] | undefined {
-  const byId = new Map(entities.map((e) => [e.id, e]));
-  const area = (p: { x: number; y: number }[]) => Math.abs(p.reduce((a, q, i) => { const r = p[(i + 1) % p.length]; return a + q.x * r.y - r.x * q.y; }, 0)) / 2;
-  const loops = checkGeometry(entities.map((e) => ({ ...e, role: "cut" as const }))).contours
-    .filter((c) => c.closed).map((c) => loopPoints(c, byId)).filter((p) => p.length > 2)
-    .sort((a, c) => area(c) - area(a));
-  if (!loops.length) return undefined;
-  const r = (v: number) => Math.round(v * 100) / 100;
-  const out = loops.map((p) => p.map((q) => [r(q.x - b.minX), r(b.maxY - q.y)] as [number, number]));
-  const rect = out.length === 1 && out[0].length === 4 && area(loops[0]) >= 0.999 * (b.maxX - b.minX) * (b.maxY - b.minY);
-  return rect ? undefined : out;
 }
 
 const mmText = (t: number) => `${t} mm`;

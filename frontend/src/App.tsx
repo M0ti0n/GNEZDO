@@ -845,11 +845,13 @@ export function App() {
       sheetId = same.id;
       if (!same.unlimited) setJobStock((mm) => ({ ...mm, [jobId]: (mm[jobId] ?? []).map((x) => (x.id === same.id ? { ...x, qty: x.qty + 1 } : x)) }));
     } else {
-      setJobStock((mm) => ({ ...mm, [jobId]: [...(mm[jobId] ?? []), { ...s, original: { lengthMm: s.lengthMm, widthMm: s.widthMm } }] }));
+      // as added (Reset goes back to it); a DXF sheet turned to fit keeps the shape it came with
+      setJobStock((mm) => ({ ...mm, [jobId]: [...(mm[jobId] ?? []), { ...s, original: s.original ?? { lengthMm: s.lengthMm, widthMm: s.widthMm, outline: s.outline } }] }));
     }
     const nested: NestedSheet = {
       sheetId, lengthMm: s.lengthMm, widthMm: s.widthMm, material: s.material.trim(), thicknessMm: s.thicknessMm,
       trims: s.trims, partGapMm: s.partGapMm, kerfMm: s.kerfMm, parts: [],
+      ...(s.outline ? { outline: s.outline } : {}),   // a remnant's shape from its DXF
     };
     const st = solsOf(jobId);
     const sol = st.list.find((x) => x.id === st.sel.sol && !x.error && !x.outdated && isFinished(x.run) && x.run?.result);
@@ -868,7 +870,7 @@ export function App() {
     }
     setJobScreen((mm) => ({ ...mm, [jobId]: "nest" }));
     setOpenManual((o) => ({ sheet: at, n: o.n + 1 }));
-    diag("sheet", `Sheet added: ${s.material} ${s.thicknessMm} mm ${s.lengthMm}x${s.widthMm}${sol ? `, onto solution ${sol.no} as sheet ${at + 1}` : ", new manual solution"}`, { job: jobId });
+    diag("sheet", `Sheet added${s.source === "dxf" ? ` from ${s.fileName}.dxf` : s.source === "remnant" ? " (remnant)" : ""}: ${s.material} ${s.thicknessMm} mm ${s.lengthMm}x${s.widthMm}${sol ? `, onto solution ${sol.no} as sheet ${at + 1}` : ", new manual solution"}`, { job: jobId });
   };
 
   /** Delete sheet (Sheet properties of a nested sheet): a sheet with parts asks first. */

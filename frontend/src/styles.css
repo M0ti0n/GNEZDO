@@ -1750,3 +1750,9 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .cell-mat.is-locked .cell-mat-row { gap: 6px; padding-left: 4px; }
 .cell-lock { color: var(--ink-3); flex: none; }
 .cell-mat.is-locked.is-job-only { color: var(--blue-ink, #1565c0); font-weight: 600; }
+
+/* Add sheet (Manual nest): ADD FROM REMNANT / ADD FROM DXF */
+.sp-from { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.sp-from .btn { flex: 1; min-width: 150px; }
+.sp-from .btn.is-on { border-color: var(--green); background: #e6f6dc; color: var(--green-ink); }
+.sp-from p { flex-basis: 100%; margin: 0; }
