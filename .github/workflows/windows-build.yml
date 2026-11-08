@@ -155,7 +155,8 @@ jobs:
           mv $d/program/Gnezdo.Api.exe $d/program/GNEZDO.exe
           rm -f $d/program/appsettings.Development.json $d/program/web.config
           # program defaults; without config.json it runs as a demo (no database set here)
-          jq '.ConnectionStrings.Gnezdo = ""' out/publish/appsettings.json > $d/program/appsettings.json
+          # the desktop build however it is started (the gnezdo script, or program/GNEZDO found by a search)
+          jq '.ConnectionStrings.Gnezdo = "" | .Gnezdo.Desktop = true' out/publish/appsettings.json > $d/program/appsettings.json
           cp -r out/web-db $d/program/wwwroot
           cp -r out/web-demo $d/program/wwwroot-demo
           cp -r out/nesting $d/nesting
@@ -184,6 +185,9 @@ jobs:
           mkdir -p $d
           cp -r out/gnezdo/program out/gnezdo/nesting $d/
           rm -rf $d/program/wwwroot-demo
+          # the program itself is the desktop build too (started without the starter, it must not
+          # run as an invisible server)
+          jq '.Gnezdo.Desktop = true' $d/program/appsettings.json > $d/program/appsettings.tmp && mv $d/program/appsettings.tmp $d/program/appsettings.json
           cp out/launcher/GNEZDO.exe $d/
           cp packaging/desktop/INSTALL-desktop.txt $d/INSTALL.txt
           sed "s/test build/desktop test build/" out/gnezdo/VERSION.txt > $d/VERSION.txt
@@ -318,7 +322,8 @@ jobs:
           if ($run.state -ne "done" -or -not $run.result.valid) { throw "nest ended as $($run.state): $($run.error)" }
           Write-Output "::notice title=Desktop nesting::demo job nested in $($run.seconds) s"
           # started again: only opens a window and ends
-          $q = Start-Process GNEZDO/program/GNEZDO.exe -ArgumentList "--desktop" -WorkingDirectory GNEZDO -PassThru
+          # (program\GNEZDO.exe itself, no --desktop: still the desktop build)
+          $q = Start-Process GNEZDO/program/GNEZDO.exe -WorkingDirectory GNEZDO -PassThru
           if (-not $q.WaitForExit(30000)) { throw "a second start did not end" }
           if (@(Get-Process GNEZDO -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*\program\GNEZDO.exe" }).Count -ne 1) { throw "two GNEZDO desktops are running" }
           # a window (its connection) opens and closes: GNEZDO stops about 30 s later
@@ -417,7 +422,8 @@ jobs:
           printf '#!/bin/sh\nprintf "%%s\\n" "$@" >> "%s/browser-args.txt"\n' "$PWD" > fake-browser
           chmod +x fake-browser
           echo "{\"Gnezdo\": {\"Browser\": \"$PWD/fake-browser\"}}" > $g/config.json
-          $g/gnezdo > gnezdo-out.txt 2>&1 &
+          # program/GNEZDO itself, as found by a search (no script, no --desktop): the desktop build
+          $g/program/GNEZDO > gnezdo-out.txt 2>&1 &
           gp=$!
           base=http://127.0.0.1:8095
           for i in $(seq 1 40); do curl -fs $base/api/health > health.json && break; sleep 2; done
