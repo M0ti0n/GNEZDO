@@ -318,7 +318,7 @@ function hash(s: string): string {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   return (h >>> 0).toString(36);
 }
-const pairKey = (path: string, r: PartRules, gap: number) => `v2|${hash(path)}|${r.rotations.join(",")}|${r.mirror ? 1 : 0}|${gap}`;
+const pairKey = (path: string, r: PartRules, gap: number) => `v3|${hash(path)}|${r.rotations.join(",")}|${r.mirror ? 1 : 0}|${gap}`;
 
 /**
  * The best pair of a part: the second copy's pose against the first (at 0,0, not turned), or null
@@ -338,10 +338,14 @@ export function bestPair(path: string, r: PartRules, gap: number, deadline = Inf
     if (performance.now() > deadline) return undefined;
     const B0 = placed(path, { partId: "", x: 0, y: 0, angle, mirror });
     const bb = B0.box;
-    for (const axis of ["x", "y"] as const) for (let k = 0; k < K; k++) {
-      // the second copy beside the first (right of it / below it), at K places across, slid against it
+    for (const axis of ["x", "y"] as const) {
+      // the second copy beside the first (right of it / below it), at K places across, slid against it;
+      // and lined up with it: ends level or centred (where a copy turned 180° interlocks: trapezoids,
+      // L shapes - the K places alone never land exactly there)
       const lo = axis === "x" ? ab.y0 - bb.y1 : ab.x0 - bb.x1, hi = axis === "x" ? ab.y1 - bb.y0 : ab.x1 - bb.x0;
-      const o = lo + ((k + 0.5) / K) * (hi - lo);
+      const [a0, a1, b0, b1] = axis === "x" ? [ab.y0, ab.y1, bb.y0, bb.y1] : [ab.x0, ab.x1, bb.x0, bb.x1];
+      const across = [...Array.from({ length: K }, (_, k) => lo + ((k + 0.5) / K) * (hi - lo)), a0 - b0, a1 - b1, (a0 + a1 - b0 - b1) / 2];
+      for (const o of across) {
       const far = axis === "x" ? ab.x1 + gap + 2 - bb.x0 : ab.y1 + gap + 2 - bb.y0;
       const pose: Pose = axis === "x" ? { x: far, y: o, angle, mirror } : { x: o, y: far, angle, mirror };
       const B = placed(path, { ...pose, partId: "" });
@@ -350,6 +354,7 @@ export function bestPair(path: string, r: PartRules, gap: number, deadline = Inf
       const fin: Pose = axis === "x" ? { ...pose, x: pose.x - t } : { ...pose, y: pose.y - t };
       const area = minBoxArea([...A.loops, ...placed(path, { ...fin, partId: "" }).loops], gap);
       best.push({ pose: fin, area });
+      }
     }
     best.sort((a, b) => a.area - b.area);
     best = best.slice(0, 6);
@@ -420,17 +425,30 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
     const pr = bestPair(pathOf(id)!, ruleOf(id), gap, pairEnd);
     if (pr) pairOf.set(id, pr);
   }
-  const sets: Piece[][] = [singles];
-  if (pairOf.size) {
+  // the sets of pieces tried: every kind that pairs paired, none paired, and - a pair can be worse in
+  // the group than the copies apart (two trapezoids side by side vs stacked) - each kind paired alone
+  // and each kind left out; at most 8 sets (they share the time)
+  const setOf = (paired: Set<string>): Piece[] => {
     const ps: Piece[] = [];
     for (const [id, l] of byPart) {
-      const pr = pairOf.get(id);
+      const pr = paired.has(id) ? pairOf.get(id) : undefined;
       let j = 0;
       if (pr) for (; j + 1 < l.length; j += 2) ps.push({ key: `pair:${id}`, partId: id, members: [{ li: l[j], rel: ID }, { li: l[j + 1], rel: pr }] });
       for (; j < l.length; j++) ps.push(singles[chosen.indexOf(l[j])]);
     }
-    sets.unshift(ps);   // the paired set first
+    return ps;
+  };
+  const sets: Piece[][] = [];
+  const pairable = [...pairOf.keys()];
+  if (pairable.length) {
+    const choices: Set<string>[] = [new Set(pairable)];
+    if (pairable.length > 1) {
+      for (const id of pairable) choices.push(new Set([id]));
+      if (pairable.length > 2) for (const id of pairable) choices.push(new Set(pairable.filter((x) => x !== id)));
+    }
+    for (const ch of choices.slice(0, 7)) sets.push(setOf(ch));   // the paired sets first
   }
+  sets.push(singles);
 
   // the allowed poses of a piece: its rotations (and mirrored when allowed); a part alone also the pose it has now
   // the allowed poses of a piece: its rotation steps (and mirrored when allowed); a part alone also
