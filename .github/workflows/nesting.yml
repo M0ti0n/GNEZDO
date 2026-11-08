@@ -81,6 +81,14 @@ jobs:
           want = {x["id"]: x["qty"] for x in req["parts"] if x["id"] != "99"}
           assert r["nested"] == want, (r["nested"], want)
           EOF
+          # a remnant from a DXF with a repeated point in its outline, beside a standard sheet
+          python nestprep_cli.py run examples/demo_remnant_dxf.json out_remnant --solver $PS
+          python - <<'EOF'
+          import json
+          r = json.load(open("out_remnant/result.json"))
+          print({k: r[k] for k in ("state", "seconds", "valid", "errors")})
+          assert r["state"] == "done" and r["valid"] and r["nested"] == {"1": 10, "2": 6}, r
+          EOF
 
       - uses: actions/upload-artifact@v4
         with:

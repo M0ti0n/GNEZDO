@@ -1,0 +1,98 @@
+{
+ "//": "A remnant from a DXF whose outline repeats its first point at the end (a zero-length edge the engine refuses), next to a standard sheet",
+ "mode": "fast",
+ "partGapMm": 5,
+ "edgeGapMm": 5,
+ "parts": [
+  {
+   "id": "1",
+   "name": "BAR_300x120",
+   "path": "M0 0 L300 0 L300 120 L0 120Z",
+   "qty": 10,
+   "material": "S235",
+   "thicknessMm": 3,
+   "rotations": [
+    90
+   ],
+   "mirror": false
+  },
+  {
+   "id": "2",
+   "name": "PLATE_200",
+   "path": "M0 0 L200 0 L200 200 L0 200Z",
+   "qty": 6,
+   "material": "S235",
+   "thicknessMm": 3,
+   "rotations": [
+    90
+   ],
+   "mirror": false
+  }
+ ],
+ "sheets": [
+  {
+   "id": "r1",
+   "material": "S235",
+   "thicknessMm": 3,
+   "lengthMm": 1200,
+   "widthMm": 800,
+   "qty": 1,
+   "outline": [
+    [
+     [
+      0,
+      0
+     ],
+     [
+      1200,
+      0
+     ],
+     [
+      1200,
+      400
+     ],
+     [
+      700,
+      400
+     ],
+     [
+      700,
+      700
+     ],
+     [
+      700,
+      800
+     ],
+     [
+      0,
+      800
+     ],
+     [
+      0,
+      0
+     ]
+    ]
+   ],
+   "trims": {
+    "xMinus": 5,
+    "xPlus": 5,
+    "yMinus": 5,
+    "yPlus": 5
+   }
+  },
+  {
+   "id": "s2",
+   "material": "S235",
+   "thicknessMm": 3,
+   "lengthMm": 3000,
+   "widthMm": 1500,
+   "qty": null,
+   "trims": {
+    "xMinus": 5,
+    "xPlus": 5,
+    "yMinus": 5,
+    "yPlus": 5
+   }
+  }
+ ]
+}

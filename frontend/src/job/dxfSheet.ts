@@ -48,7 +48,16 @@ function dxfOutline(entities: Entity[], b: { minX: number; minY: number; maxX: n
     .sort((a, c) => area(c) - area(a));
   if (!loops.length) return undefined;
   const r = (v: number) => Math.round(v * 100) / 100;
-  const out = loops.map((p) => p.map((q) => [r(q.x - b.minX), r(b.maxY - q.y)] as [number, number]));
+  // no point twice in a row, and not the first again at the end (rounding can make two equal):
+  // the nesting engine refuses a sheet with a zero-length edge
+  const clean = (lp: [number, number][]) => {
+    const q: [number, number][] = [];
+    for (const p of lp) if (!q.length || Math.hypot(p[0] - q[q.length - 1][0], p[1] - q[q.length - 1][1]) > 0.01) q.push(p);
+    while (q.length > 2 && Math.hypot(q[0][0] - q[q.length - 1][0], q[0][1] - q[q.length - 1][1]) <= 0.01) q.pop();
+    return q;
+  };
+  const out = loops.map((p) => clean(p.map((q) => [r(q.x - b.minX), r(b.maxY - q.y)] as [number, number]))).filter((lp) => lp.length > 2);
+  if (!out.length) return undefined;
   const rect = out.length === 1 && out[0].length === 4 && area(loops[0]) >= 0.999 * (b.maxX - b.minX) * (b.maxY - b.minY);
   return rect ? undefined : out;
 }

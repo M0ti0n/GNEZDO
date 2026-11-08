@@ -77,6 +77,20 @@ def path_loops(path: str) -> list[list[tuple[float, float]]]:
     return out
 
 
+def clean_loop(lp, tol: float = 0.01) -> list[tuple[float, float]]:
+    """A loop without repeated points (consecutive, or the first repeated at the end): the engine
+    refuses a shape with a zero-length edge ("invalid input shape"). DXF outlines often have one where
+    the last line ends on the first, or two points made equal by rounding."""
+    q: list[tuple[float, float]] = []
+    for p in lp:
+        p = (float(p[0]), float(p[1]))
+        if not q or math.dist(p, q[-1]) > tol:
+            q.append(p)
+    while len(q) > 2 and math.dist(q[0], q[-1]) <= tol:
+        q.pop()
+    return q if len(q) > 2 else []
+
+
 def _area(lp) -> float:
     return sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(lp, lp[1:] + lp[:1])) / 2
 
@@ -165,6 +179,9 @@ def sheet_bin(s: dict, edge: float, flips: tuple[int, int] = (1, 1)) -> dict:
         return {"type": "general", "elements": _elements([(x0, y0), (x1, y0), (x1, y1), (x0, y1)]),
                 "item_bin_minimum_spacing": 0.0}
     sx, sy = flips
+    loops = [q for q in (clean_loop(lp) for lp in loops) if q]
+    if not loops:
+        raise ValueError("the sheet's outline has no area")
     fl = [[((L - x) if sx < 0 else x, (W - y) if sy < 0 else y) for x, y in lp] for lp in loops]
     pos = lambda lp: lp if _area(lp) > 0 else lp[::-1]
     b = {"type": "general", "elements": _elements(pos(fl[0])), "item_bin_minimum_spacing": max(tx0, tx1, ty0, ty1)}

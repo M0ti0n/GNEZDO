@@ -968,7 +968,7 @@ export function App() {
         <div className="workspace">
           {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq}
             onSection={(sec) => {
-              if (sec === "auto" || sec === "work") setLeaveManual((n) => n + 1);
+              if (sec === "auto" || sec === "work") { setLeaveManual((n) => n + 1); manualOn.current = false; }
               if (job && sec) setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" ? "nest" : m[job.id] }));
             }} />
             : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
@@ -979,6 +979,7 @@ export function App() {
                 onManual={(on) => { manualOn.current = on; setToolbarReq((r) => ({ section: on ? "manual" : "auto", n: r.n + 1 })); }}
                 leaveManual={leaveManual}
                 openManual={openManual}
+                onManualOpened={() => setOpenManual((o) => ({ ...o, sheet: -1 }))}
                 onDeleteSheet={(solId, i) => askDeleteSheet(job.id, solId, i)}
                 manualTool={manualTool}
                 parts={jobParts[job.id] ?? []}
