@@ -12,12 +12,17 @@ namespace Gnezdo.Api.Desktop;
 /// the browser profile are in the user's own app-data folder (see PickRoot); the program answers only this PC; the window is Edge (Windows) or Chromium / Chrome
 /// (Linux) in app mode. Closing the window stops GNEZDO 30 s later, unless the window comes back
 /// (a reload, or GNEZDO started again in the meantime). Started twice, the second start only opens a window.
+/// The window is seen by: its event stream (open while it is), any call it makes (it calls every 20 s),
+/// and a "closing" beacon when it closes. A dropped stream alone does not stop GNEZDO (Firefox drops it
+/// now and then); no sign of the window for 2 minutes does (a crashed browser sends no beacon).
 /// </summary>
 public sealed class DesktopHost
 {
     public const int DefaultPort = 8095;
     /// <summary>After the last window closes: time to come back before GNEZDO stops.</summary>
     public static readonly TimeSpan Grace = TimeSpan.FromSeconds(30);
+    /// <summary>No stream, no call, no "closing": the window is taken as gone after this.</summary>
+    public static readonly TimeSpan Silence = TimeSpan.FromMinutes(2);
     /// <summary>No window at all after the start (the browser did not open): GNEZDO stops.</summary>
     public static readonly TimeSpan StartWait = TimeSpan.FromMinutes(3);
 
@@ -33,8 +38,10 @@ public sealed class DesktopHost
     private FileStream? _lock;
     private readonly object _gate = new();
     private int _windows;
-    private DateTimeOffset _since = DateTimeOffset.UtcNow;
-    private bool _everOpened;
+    private readonly DateTimeOffset _started = DateTimeOffset.UtcNow;
+    private DateTimeOffset _seen = DateTimeOffset.UtcNow;   // the window's last sign of life
+    private bool _everSeen;
+    private bool _closing;                                   // its "closing" beacon came after that
 
     private DesktopHost(IConfiguration config, string root)
     {
@@ -193,22 +200,37 @@ public sealed class DesktopHost
     /// <summary>A window is open (its /api/desktop/session connection).</summary>
     public void WindowOpened()
     {
-        lock (_gate) { _windows++; _everOpened = true; }
+        lock (_gate) { _windows++; Saw(); }
     }
 
     public void WindowClosed()
     {
-        lock (_gate) { _windows--; _since = DateTimeOffset.UtcNow; }
+        lock (_gate) { _windows--; _seen = DateTimeOffset.UtcNow; }
     }
 
-    /// <summary>Time to stop: no window for the grace time (or none ever came).</summary>
+    /// <summary>A call from the window (any /api call; it calls every 20 s).</summary>
+    public void Seen()
+    {
+        lock (_gate) Saw();
+    }
+
+    private void Saw() { _seen = DateTimeOffset.UtcNow; _everSeen = true; _closing = false; }
+
+    /// <summary>The window says it is closing (page hidden for good: closed, reloaded, left).</summary>
+    public void Closing()
+    {
+        lock (_gate) { _closing = true; _seen = DateTimeOffset.UtcNow; }
+    }
+
+    /// <summary>Time to stop: the window closed for the grace time, silent for long, or never came.</summary>
     public string? ShouldStop(DateTimeOffset now)
     {
         lock (_gate)
         {
             if (_windows > 0) return null;
-            if (_everOpened && now - _since >= Grace) return "the window was closed";
-            if (!_everOpened && now - _since >= StartWait) return "no window was opened";
+            if (!_everSeen) return now - _started >= StartWait ? "no window was opened" : null;
+            if (_closing && now - _seen >= Grace) return "the window was closed";
+            if (now - _seen >= Silence) return "no sign of the window for 2 minutes";
             return null;
         }
     }
@@ -267,6 +289,16 @@ public static class DesktopEndpoints
     /// </summary>
     public static void MapDesktopEndpoints(this WebApplication app, DesktopHost host)
     {
+        // every call from the window is a sign it is there (but its "closing" beacon)
+        app.Use(async (ctx, next) =>
+        {
+            var path = ctx.Request.Path;
+            if (path.StartsWithSegments("/api") && !path.StartsWithSegments("/api/desktop/closing")) host.Seen();
+            await next(ctx);
+        });
+        app.MapPost("/api/desktop/alive", () => Results.NoContent());
+        app.MapPost("/api/desktop/closing", () => { host.Closing(); return Results.NoContent(); });
+
         app.MapGet("/api/desktop/session", async (HttpContext ctx) =>
         {
             var ct = ctx.RequestAborted;
