@@ -1756,3 +1756,10 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .sp-from .btn { flex: 1; min-width: 150px; }
 .sp-from .btn.is-on { border-color: var(--green); background: #e6f6dc; color: var(--green-ink); }
 .sp-from p { flex-basis: 100%; margin: 0; }
+
+/* Manual nest part tiles: more than Qty max nested (red, as in the work parts list); none left to add */
+.mn-tile.is-over { background: #fdecec; border-color: #ef9a9a; }
+.mn-tile.is-over .mn-tile-qty { color: #c62828; }
+.mn-tile.is-full { cursor: not-allowed; }
+.mn-tile.is-full:hover { border-color: var(--line); }
+.mn-tile.is-done.is-full:hover { border-color: #b7deA0; }
