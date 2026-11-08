@@ -43,7 +43,8 @@ public static class DiagEndpoints
             }
             var status = ctx.Response.StatusCode;
             var ms = sw.ElapsedMilliseconds;
-            var quiet = path.StartsWith("/api/logs", StringComparison.OrdinalIgnoreCase) || HttpMethods.IsGet(ctx.Request.Method);
+            var quiet = path.StartsWith("/api/logs", StringComparison.OrdinalIgnoreCase) || HttpMethods.IsGet(ctx.Request.Method)
+                || path.StartsWith("/api/desktop", StringComparison.OrdinalIgnoreCase);   // the desktop window's "still here"
             if (!quiet || status >= 400 || ms > 2000)
             {
                 var (u, b, c) = Who(ctx);

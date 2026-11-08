@@ -329,6 +329,12 @@ jobs:
           $c = Start-Process curl.exe -ArgumentList "-sN", "$base/api/desktop/session" -PassThru -NoNewWindow
           Start-Sleep 5
           Stop-Process $c.Id
+          # a dropped stream alone (Firefox does that) does not stop it
+          Start-Sleep 40
+          if ($gp.HasExited) { throw "GNEZDO stopped when the window's stream dropped" }
+          Invoke-RestMethod "$base/api/health" | Out-Null
+          # the window says it is closing: GNEZDO stops about 30 s later
+          Invoke-RestMethod -Method Post "$base/api/desktop/closing" | Out-Null
           $t = [Diagnostics.Stopwatch]::StartNew()
           if (-not $gp.WaitForExit(90000)) { throw "GNEZDO did not stop after its window closed" }
           Write-Output "stopped $([int]$t.Elapsed.TotalSeconds) s after the window closed"
@@ -450,6 +456,11 @@ jobs:
           # the window (its connection) opens and closes: GNEZDO stops about 30 s later
           curl -sN $base/api/desktop/session > /dev/null & c=$!
           sleep 5; kill $c
+          # a dropped stream alone (Firefox does that) does not stop it
+          sleep 40
+          kill -0 $gp && curl -fs $base/api/health > /dev/null
+          # the window says it is closing: GNEZDO stops about 30 s later
+          curl -fs -X POST $base/api/desktop/closing
           start=$(date +%s)
           for i in $(seq 1 45); do kill -0 $gp 2>/dev/null || break; sleep 2; done
           if kill -0 $gp 2>/dev/null; then cat gnezdo-out.txt; echo "::error::GNEZDO did not stop after its window closed"; exit 1; fi
