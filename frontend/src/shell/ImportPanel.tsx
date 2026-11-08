@@ -145,32 +145,9 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           ))}
         </div>
 
-        <div
-          className={`dropzone${over ? " is-over" : ""}`}
-          role="button" tabIndex={0}
-          onClick={() => input.current?.click()}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
-          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setOver(true); } }}
-          onDragLeave={() => setOver(false)}
-          onDrop={(e) => {
-            e.preventDefault(); setOver(false);
-            const hasFolder = [...e.dataTransfer.items].some((i) => i.webkitGetAsEntry?.()?.isDirectory);
-            void droppedFiles(e.dataTransfer).then((files) => take(files, hasFolder));
-          }}
-        >
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" /><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />
-          </svg>
-          <b>Drop a folder or DXF / DWG files here</b>
-          <span>or click to choose {mode === "folder" ? "a folder" : "files"}</span>
-          <input ref={input} type="file" hidden multiple accept=".dxf,.dwg"
-            {...(mode === "folder" ? { webkitdirectory: "", directory: "" } : {})}
-            onChange={(e) => { take([...(e.target.files ?? [])], mode === "folder"); e.target.value = ""; }} />
-        </div>
-        <p className={`imp-note${skipped ? " is-skipped" : ""}`}>
-          {skipped ? `${skipped} ${skipped === 1 ? "file was" : "files were"} not DXF or DWG and ${skipped === 1 ? "was" : "were"} left out.`
-            : "One file opens on the main screen; several go to the list."}
-        </p>
+        <input ref={input} type="file" hidden multiple accept=".dxf,.dwg"
+          {...(mode === "folder" ? { webkitdirectory: "", directory: "" } : {})}
+          onChange={(e) => { take([...(e.target.files ?? [])], mode === "folder"); e.target.value = ""; }} />
 
         <section className={`imp-props${p.propsOpen ? " is-open" : ""}`} aria-label="Properties">
           <button type="button" className="imp-props-head" aria-expanded={p.propsOpen} onClick={() => p.onPropsOpen(!p.propsOpen)}
@@ -252,6 +229,18 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           {toProcess > 0 && !p.busy && <span className="imp-btn-count">{toProcess}</span>}
         </button>
       </div>
+      {/* the whole list is where files and folders are dropped (no box of its own: room for the list) */}
+      <div className={`imp-drop${over ? " is-over" : ""}`}
+        onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setOver(true); } }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
+        onDrop={(e) => {
+          e.preventDefault(); setOver(false);
+          const hasFolder = [...e.dataTransfer.items].some((i) => i.webkitGetAsEntry?.()?.isDirectory);
+          void droppedFiles(e.dataTransfer).then((files) => take(files, hasFolder));
+        }}>
+      {skipped > 0 && (
+        <p className="imp-note is-skipped">{skipped} {skipped === 1 ? "file was" : "files were"} not DXF or DWG and {skipped === 1 ? "was" : "were"} left out.</p>
+      )}
       {(p.items.length > 0) && (
         <div className="result-bar">
           <span className="result-count">
@@ -259,7 +248,11 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
             {count("ok", "processed") > 0 && <> · <span className="t-ok">{count("ok", "processed")} ready</span></>}
             {toCheck > 0 && <> · <span className="t-bad">{toCheck} to check</span></>}
           </span>
-          <span className="result-actions"><button className="link" onClick={p.onClear}>Clear list</button></span>
+          <span className="result-actions">
+            <button className="link" onClick={() => input.current?.click()} title={mode === "folder" ? "Choose a folder (or drop one on the list)" : "Choose DXF / DWG files (or drop them on the list)"}>
+              {mode === "folder" ? "Add folder…" : "Add files…"}</button>
+            <button className="link" onClick={p.onClear}>Clear list</button>
+          </span>
         </div>
       )}
       {processHint && p.items.length > 0 && <p className="imp-hint">{processHint}</p>}
@@ -267,7 +260,14 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
       <ul className="imp-list" aria-label="Imported files">
         {p.items.length === 0 && (
           <li className="imp-empty">
-            No files yet.<br />
+            <button type="button" className="imp-choose" onClick={() => input.current?.click()}>
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" /><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />
+              </svg>
+              <b>Drop a folder or DXF / DWG files here</b>
+              <span>or click to choose {mode === "folder" ? "a folder" : "files"}</span>
+            </button>
+            <span className="imp-empty-note">One file opens on the main screen; several go to the list.</span>
             <button className="link" onClick={p.onSamples}>Try it with two sample drawings</button>
           </li>
         )}
@@ -296,6 +296,8 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           );
         })}
       </ul>
+      {over && <div className="imp-drop-hint" aria-hidden="true"><b>Drop to add to the list</b></div>}
+      </div>
     </>
   );
 }
