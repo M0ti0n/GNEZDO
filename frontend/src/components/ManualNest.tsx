@@ -464,6 +464,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const ref = id ? byId.get(id) : undefined;
     if (!edit || !ref || working) return;
     e.preventDefault();
+    // not beyond the part's max (or required) number
+    const over = overLimit([{ partId: id, x: 0, y: 0, angle: 0, mirror: false }], "Not added");
+    if (over) { setNote(over); return; }
     const p = local(e);
     const [x, y] = toMm(p.x, p.y);
     const lp = partLoops(ref.path)[0] ?? [];
@@ -504,7 +507,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     setNote(`Copied ${ids.length} ${ids.length === 1 ? "part" : "parts"}: Ctrl+V to paste`);
   };
   /** Why the copy may not go on this sheet: a part would go over its required (or max) number. */
-  const overLimit = (parts: PlacedPart[]): string | null => {
+  const overLimit = (parts: PlacedPart[], what = "Not pasted"): string | null => {
     const per = sheet.cutNumber ?? 1;
     const n = new Map<string, number>();
     for (const p of parts) n.set(p.partId, (n.get(p.partId) ?? 0) + per);
@@ -513,7 +516,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       if (!jp) continue;
       const limit = Math.max(jp.qty, jp.qtyMax ?? 0);
       if ((counts[id] ?? 0) + k > limit) {
-        return `Not pasted: ${jp.part.name} would be ${(counts[id] ?? 0) + k} of ${limit}${jp.qtyMax && jp.qtyMax > jp.qty ? " (max)" : " required"}.`;
+        return `${what}: ${jp.part.name} would be ${(counts[id] ?? 0) + k} of ${limit}${jp.qtyMax && jp.qtyMax > jp.qty ? " (max)" : " required"}.`;
       }
     }
     return null;
@@ -947,13 +950,19 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
         {!list.length && <p className="mn-none">{all ? "No parts in the job." : `No parts of ${sheet.material} ${sheet.thicknessMm} mm. The menu shows all parts.`}</p>}
         {list.map((jp) => {
           const n = counts[jp.part.id] ?? 0;
+          // green from Qty req up to Qty max; red below and above (as in the work parts list)
+          const limit = Math.max(jp.qty, jp.qtyMax ?? 0);
+          const full = jp.qty > 0 && n + (sheet.cutNumber ?? 1) > limit;
           const lp = partLoops(jp.part.path);
           const xs = lp[0]?.map((p) => p[0]) ?? [0], ys = lp[0]?.map((p) => p[1]) ?? [0];
           const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0 || 1, h = Math.max(...ys) - y0 || 1;
           const c = partColor(jp.no);
           return (
-            <div key={jp.part.id} className={`mn-tile${jp.qty > 0 && n >= jp.qty ? " is-done" : ""}${edit ? "" : " is-off"}`} draggable={edit}
-              title={`${jp.part.name}\nDrag onto the sheet (Ctrl on a part: next to it)`}
+            <div key={jp.part.id} className={`mn-tile${jp.qty > 0 && n >= jp.qty && n <= limit ? " is-done" : ""}${n > limit ? " is-over" : ""}${full ? " is-full" : ""}${edit ? "" : " is-off"}`}
+              draggable={edit && !full}
+              title={n > limit ? `${jp.part.name}\n${n} nested: ${n - limit} more than ${jp.qtyMax && jp.qtyMax > jp.qty ? "Qty max" : "required"} (${limit})`
+                : full ? `${jp.part.name}\nAll ${limit} nested${jp.qtyMax && jp.qtyMax > jp.qty ? " (Qty max)" : ""}: no more to add`
+                : `${jp.part.name}\nDrag onto the sheet (Ctrl on a part: next to it)`}
               onDragStart={(e) => {
                 e.dataTransfer.setData("text/gnezdo-part", jp.part.id);
                 e.dataTransfer.effectAllowed = "copy";
@@ -965,7 +974,7 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
                 <path d={jp.part.path} fillRule="evenodd" style={{ fill: c.fill, stroke: c.stroke }} vectorEffect="non-scaling-stroke" />
               </svg>
               <span className="mn-tile-name">{jp.part.name}</span>
-              <span className="mn-tile-qty">{n} / {jp.qty}</span>
+              <span className="mn-tile-qty">{n} / {jp.qty}{limit > jp.qty ? ` (max ${limit})` : ""}</span>
               <span className="mn-tile-size">{Math.round(jp.part.w)} × {Math.round(jp.part.h)}</span>
             </div>
           );
