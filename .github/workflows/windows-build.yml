@@ -155,8 +155,7 @@ jobs:
           mv $d/program/Gnezdo.Api.exe $d/program/GNEZDO.exe
           rm -f $d/program/appsettings.Development.json $d/program/web.config
           # program defaults; without config.json it runs as a demo (no database set here)
-          # the desktop build however it is started (the gnezdo script, or program/GNEZDO found by a search)
-          jq '.ConnectionStrings.Gnezdo = "" | .Gnezdo.Desktop = true' out/publish/appsettings.json > $d/program/appsettings.json
+          jq '.ConnectionStrings.Gnezdo = ""' out/publish/appsettings.json > $d/program/appsettings.json
           cp -r out/web-db $d/program/wwwroot
           cp -r out/web-demo $d/program/wwwroot-demo
           cp -r out/nesting $d/nesting
@@ -404,7 +403,8 @@ jobs:
           cp -r out/publish $d/program
           mv $d/program/Gnezdo.Api $d/program/GNEZDO
           rm -f $d/program/appsettings.Development.json $d/program/web.config
-          jq '.ConnectionStrings.Gnezdo = ""' out/publish/appsettings.json > $d/program/appsettings.json
+          # the desktop build however it is started (the gnezdo script, or program/GNEZDO found by a search)
+          jq '.ConnectionStrings.Gnezdo = "" | .Gnezdo.Desktop = true' out/publish/appsettings.json > $d/program/appsettings.json
           cp -r out/web-db $d/program/wwwroot
           cp -r out/nesting $d/nesting
           cp packaging/desktop/gnezdo packaging/desktop/install-menu-entry.sh packaging/gnezdo.png $d/
