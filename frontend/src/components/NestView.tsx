@@ -41,8 +41,10 @@ interface Props {
   manualTool?: { tool: string; n: number };
   /** Delete sheet (Sheet properties of a nested sheet) */
   onDeleteSheet?: (solId: string, index: number) => void;
-  /** opens this sheet of the shown solution in Manual nest (a new n each time) */
+  /** opens this sheet of the shown solution in Manual nest (a new n each time; sheet -1: done) */
   openManual?: { sheet: number; n: number };
+  /** the request above was acted on: it is not done again when this screen shows next time */
+  onManualOpened?: () => void;
   /** "solId:index" of the sheet being nested again */
   renesting: string | null;
 }
@@ -84,7 +86,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onDeleteSheet }: Props) {
+export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -97,7 +99,12 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
   const setFull = (i: number | null) => { if ((i === null) !== (full === null)) onManual?.(i !== null); setFullState(i); };
   useEffect(() => { if (leaveManual) setFullState(null); }, [leaveManual]);
   // Add sheet / Delete sheet: this sheet opens in Manual nest
-  useEffect(() => { if (openManual?.n) setFull(openManual.sheet); }, [openManual?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // (once: back from Work parts this screen shows again and must not open Manual nest by itself)
+  useEffect(() => {
+    if (!openManual?.n || openManual.sheet < 0) return;
+    setFull(openManual.sheet);
+    onManualOpened?.();
+  }, [openManual?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
   const grid = useRef<HTMLDivElement>(null);
 
   // the chosen sheet scrolls into view (chosen from the SOLUTIONS panel)
