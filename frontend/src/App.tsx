@@ -782,6 +782,7 @@ export function App() {
   const nestedSols = (jobId: string): Record<string, number[]> => {
     const out: Record<string, number[]> = {};
     for (const x of jobSol[jobId]?.list ?? []) {
+      if (x.error) continue;   // a failed solution's last layout so far is not a nest
       for (const sh of x.run?.result?.sheets ?? x.run?.best?.sheets ?? [])
         for (const pl of sh.parts) {
           const l = (out[pl.partId] ??= []);
@@ -837,7 +838,9 @@ export function App() {
    * the shown solution, or a new Manual nest solution when there is none to add to; then opened. */
   const addSheet = (jobId: string, s: StockSheet) => {
     const stock = jobStock[jobId] ?? [];
-    const same = stock.find((x) => !x.outline && x.material.trim().toLowerCase() === s.material.trim().toLowerCase()
+    // an identical stock sheet gets one more; never a remnant or a DXF sheet (each is a piece of its own)
+    const own = s.source === "remnant" || s.source === "dxf";
+    const same = own ? undefined : stock.find((x) => !x.outline && x.source !== "remnant" && x.source !== "dxf" && x.material.trim().toLowerCase() === s.material.trim().toLowerCase()
       && Math.abs(x.thicknessMm - s.thicknessMm) < 1e-6 && x.lengthMm === s.lengthMm && x.widthMm === s.widthMm
       && JSON.stringify(x.trims) === JSON.stringify(s.trims) && x.partGapMm === s.partGapMm && x.kerfMm === s.kerfMm);
     let sheetId = s.id;
