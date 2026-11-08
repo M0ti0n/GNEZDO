@@ -515,6 +515,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       const jp = jobParts.find((x) => x.part.id === id);
       if (!jp) continue;
       const limit = Math.max(jp.qty, jp.qtyMax ?? 0);
+      if (!jp.qty) return `${what}: set the Qty req of ${jp.part.name} in Work parts first.`;
       if ((counts[id] ?? 0) + k > limit) {
         return `${what}: ${jp.part.name} would be ${(counts[id] ?? 0) + k} of ${limit}${jp.qtyMax && jp.qtyMax > jp.qty ? " (max)" : " required"}.`;
       }
@@ -952,7 +953,8 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
           const n = counts[jp.part.id] ?? 0;
           // green from Qty req up to Qty max; red below and above (as in the work parts list)
           const limit = Math.max(jp.qty, jp.qtyMax ?? 0);
-          const full = jp.qty > 0 && n + (sheet.cutNumber ?? 1) > limit;
+          const noQty = !jp.qty;   // Qty req not set yet (Work parts)
+          const full = noQty || n + (sheet.cutNumber ?? 1) > limit;
           const lp = partLoops(jp.part.path);
           const xs = lp[0]?.map((p) => p[0]) ?? [0], ys = lp[0]?.map((p) => p[1]) ?? [0];
           const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0 || 1, h = Math.max(...ys) - y0 || 1;
@@ -961,6 +963,7 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
             <div key={jp.part.id} className={`mn-tile${jp.qty > 0 && n >= jp.qty && n <= limit ? " is-done" : ""}${n > limit ? " is-over" : ""}${full ? " is-full" : ""}${edit ? "" : " is-off"}`}
               draggable={edit && !full}
               title={n > limit ? `${jp.part.name}\n${n} nested: ${n - limit} more than ${jp.qtyMax && jp.qtyMax > jp.qty ? "Qty max" : "required"} (${limit})`
+                : noQty ? `${jp.part.name}\nSet its Qty req in Work parts first`
                 : full ? `${jp.part.name}\nAll ${limit} nested${jp.qtyMax && jp.qtyMax > jp.qty ? " (Qty max)" : ""}: no more to add`
                 : `${jp.part.name}\nDrag onto the sheet (Ctrl on a part: next to it)`}
               onDragStart={(e) => {
