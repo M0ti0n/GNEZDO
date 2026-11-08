@@ -33,6 +33,12 @@ opens in the default browser). Everything else is in the folder.
     ~/gnezdo/install-menu-entry.sh      # GNEZDO in the applications menu and on the desktop
     ~/gnezdo/gnezdo                     # or start it from a terminal
 
+Or in the file manager: open the gnezdo folder, right-click install-menu-entry.sh ->
+"Run as a Program" (or double-click it and choose Run); then start GNEZDO from the
+applications menu or the desktop icon. GNEZDO opens in a window of its own (Chromium /
+Chrome / Edge / Brave), or as a tab in the default browser when none of those is installed.
+If nothing opens, see logs in ~/.local/share/gnezdo.
+
 Built for 64-bit PCs (x86-64) with Ubuntu 22.04 or newer, Debian 12, Fedora 36 or newer,
 or similar.
 

@@ -14,6 +14,18 @@ if (args.Contains("--check")) { Console.WriteLine("GNEZDO can run on this PC"); 
 // "--desktop": the desktop build (one person, one PC, SQLite, its own window); see DesktopHost
 var desktopMode = args.Contains("--desktop");
 var builder = WebApplication.CreateBuilder(args.Where(a => a != "--desktop").ToArray());
+// appsettings.json next to the program, whatever folder it was started from (a file manager, the
+// applications menu, start.bat): the lowest of the settings, under the usual ones
+if (!string.Equals(Path.GetFullPath(builder.Environment.ContentRootPath).TrimEnd(Path.DirectorySeparatorChar),
+        Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
+    && File.Exists(Path.Combine(AppContext.BaseDirectory, "appsettings.json")))
+{
+    ((IConfigurationBuilder)builder.Configuration).Sources.Insert(0, new Microsoft.Extensions.Configuration.Json.JsonConfigurationSource
+    {
+        Path = "appsettings.json", Optional = true, ReloadOnChange = false,
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(AppContext.BaseDirectory),
+    });
+}
 
 // Windows build: settings in config.json (database, port) - in the GNEZDO folder, next to start.bat
 // (the program itself sits in its "program" subfolder), or next to the exe, or where GNEZDO_CONFIG
