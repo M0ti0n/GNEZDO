@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconClose } from "./Icons";
 import { Combobox } from "./Combobox";
@@ -9,6 +9,7 @@ import {
   type StockSheet, type Trims,
 } from "../job/stock";
 import type { Machine, Origin } from "../job/machine";
+import { sheetFromDxf } from "../job/dxfSheet";
 
 const SOURCE: Record<string, string> = {
   parts: "From the job part list", default1: "Default 1", default2: "Default 2", default3: "Default 3", remnant: "Remnant", dxf: "From a DXF file", manual: "Added in Manual nest",
@@ -34,6 +35,20 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
   const [s, setS] = useState<StockSheet>(() => ({ ...sheet, trims: sheet.trims ?? defaultTrims(), partGapMm: sheet.partGapMm ?? DEFAULT_PART_GAP_MM }));
   const lists = usePickLists(s.material);
   const set = (patch: Partial<StockSheet>) => setS((x) => ({ ...x, ...patch }));
+  // Add sheet: ADD FROM REMNANT (one piece, its size to fill in) / ADD FROM DXF (size and shape from the file)
+  const file = useRef<HTMLInputElement>(null);
+  const [fromNote, setFromNote] = useState<{ bad: boolean; text: string } | null>(null);
+  const fromRemnant = () => {
+    setFromNote(null);
+    setS((x) => ({ ...x, source: "remnant", qty: 1, unlimited: false, fileName: undefined, outline: undefined, original: undefined,
+      ...(x.outline ? { lengthMm: 0, widthMm: 0 } : {}) }));
+  };
+  const fromDxf = async (f: File) => {
+    const r = await sheetFromDxf(f, s);
+    if (!r.ok) { setFromNote({ bad: true, text: r.message }); return; }
+    setS(r.sheet);
+    setFromNote(r.turned ? { bad: false, text: `${f.name}: turned 90° to fit the machine (${MACHINE_LIMIT.join(" × ")} mm)` } : null);
+  };
   const setTrim = (k: keyof Trims, v: number) => setS((x) => ({ ...x, trims: { ...(x.trims ?? defaultTrims()), [k]: v } }));
   const trims = s.trims ?? defaultTrims();
 
@@ -68,7 +83,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
           </span>
           <div className="dlg-title">
             <h2 id="sp-title">{adding ? "Add sheet" : "Sheet properties"}</h2>
-            <p>{adding ? "A new sheet for manual nesting: it goes into the stock and opens empty in Manual nest" : nested ? `Nested sheet ${index + 1}: changes apply to this sheet only` : `Sheet ${index + 1} · ${SOURCE[s.source] ?? s.source}${s.fileName ? ` (${s.fileName}.dxf)` : ""}`}</p>
+            <p>{adding ? `A new sheet for manual nesting: it goes into the stock and opens empty in Manual nest${s.source === "remnant" || s.source === "dxf" ? ` · ${SOURCE[s.source]}${s.fileName ? ` (${s.fileName}.dxf)` : ""}` : ""}` : nested ? `Nested sheet ${index + 1}: changes apply to this sheet only` : `Sheet ${index + 1} · ${SOURCE[s.source] ?? s.source}${s.fileName ? ` (${s.fileName}.dxf)` : ""}`}</p>
           </div>
           <button type="button" className="icon-btn dlg-close" onClick={onClose} aria-label="Close" title="Close (Esc)"><IconClose size={16} /></button>
         </header>
@@ -139,6 +154,17 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
               <span />
             </div>
             {s.outline && <p className="sp-note">Shaped sheet from the DXF: its size follows the shape (rotate and mirror turn it).</p>}
+            {adding && (
+              <div className="sp-from">
+                <button type="button" className={`btn btn-plain${s.source === "remnant" ? " is-on" : ""}`} onClick={fromRemnant}
+                  title="A remnant: one piece; fill in its size (or turn it so its straight edges are at 0,0)">ADD FROM REMNANT</button>
+                <button type="button" className={`btn btn-plain${s.source === "dxf" ? " is-on" : ""}`} onClick={() => file.current?.click()}
+                  title="A sheet or remnant drawn in a DXF file: its size and shape">ADD FROM DXF</button>
+                <input ref={file} type="file" accept=".dxf" hidden
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void fromDxf(f); }} />
+                {fromNote && <p className={fromNote.bad ? "sp-warn" : "sp-hint"} role="status">{fromNote.text}</p>}
+              </div>
+            )}
           </div>
         </div>
 
