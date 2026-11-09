@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { NavClose } from "./NavClose";
 import { flush, logDownloadUrl, logSettings, reportProblem, setLogEnabled, type LogSettings as LogSettingsData } from "../job/diag";
 import { Combobox } from "../components/Combobox";
 import { DatabaseForm } from "../components/DatabaseSetup";
@@ -20,7 +21,9 @@ const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
 ];
 
 // GNEZDO menu -> Settings. Stock: the global sheet size and the three default sheet slots.
-export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true }: {
+export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose }: {
+  /** Close (bottom of the list): back to Home */
+  onClose?: () => void;
   stock: StockSettings; onStock: (s: StockSettings) => void;
   machines: MachineList; onMachines: (m: MachineList) => void;
   /** Machines are kept on the server (false: in this browser, the demo). */
@@ -62,6 +65,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
             {s.label}
           </button>
         ))}
+        {onClose && <NavClose onClose={onClose} />}
       </nav>
 
       {section === "keys" && <KeysSettings />}

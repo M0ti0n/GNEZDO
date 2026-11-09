@@ -1030,7 +1030,7 @@ export function App() {
         } : undefined}
         onActivate={(id) => dispatch({ type: "activate", id })}
         onClose={(id) => requestClose(id)}
-        onMenu={(id) => (id === "exportDxf" ? void exportDxf() : id === "close" ? showView("home") : showView(id))}
+        onMenu={(id) => (id === "exportDxf" ? void exportDxf() : showView(id))}
         menuOff={{ exportDxf: exportProblem() ?? undefined }}
         undo={undoState}
         save={job ? { onSave: () => void saveJob(job.id, job.title), onSaveAs: () => setSaveAsFor({ jobId: job.id, name: `${job.title} copy` }) } : null}
@@ -1200,12 +1200,12 @@ export function App() {
                 undone={undone} />
               </ErrorBoundary>
             )}
-            {active.kind === "rules" && <RulesPage rules={rules} onChange={(r) => {
+            {active.kind === "rules" && <RulesPage rules={rules} onClose={() => showView("home")} onChange={(r) => {
               setRules(r);
               // a list that has not been touched yet follows the new defaults
               if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller }));
             }} />}
-            {active.kind === "settings" && <SettingsPage stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
+            {active.kind === "settings" && <SettingsPage onClose={() => showView("home")} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
           </main>
         </div>

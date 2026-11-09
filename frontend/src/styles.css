@@ -739,6 +739,9 @@ th.num .th-sort { flex-direction: row-reverse; }
 .settings { display: grid; grid-template-columns: 220px 1fr; min-height: 100%; }
 .settings-nav { display: flex; flex-direction: column; gap: 2px; padding: 22px 12px; background: var(--plate); border-right: 1px solid var(--line); }
 .settings-nav h1 { font-size: 24px; padding: 0 10px 12px; }
+/* Close: under the categories, after a line; back to Home */
+.settings-close { position: relative; display: flex; align-items: center; gap: 8px; margin-top: 13px; }
+.settings-close::before { content: ""; position: absolute; left: 0; right: 0; top: -7px; border-top: 1px solid var(--line); }
 .settings-link { text-align: left; padding: 9px 12px; border-radius: 6px; font-weight: 600; color: var(--ink-2); }
 .settings-link:hover:not(:disabled) { background: var(--sheet); }
 .settings-link.is-on { background: var(--green-tint); color: var(--green-ink); box-shadow: inset 3px 0 0 var(--green); }
