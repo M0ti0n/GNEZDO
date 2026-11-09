@@ -558,6 +558,8 @@ export function App() {
   const [jobServerId, setJobServerId] = useState<Record<string, string>>({});
   const [closingJob, setClosingJob] = useState<{ jobId: string; title: string } | null>(null);
   const [removingSol, setRemovingSol] = useState<{ jobId: string; id: string } | null>(null);
+  // Work parts -> remove a part that is on nested sheets: asked first (not nested: removed at once)
+  const [removingPart, setRemovingPart] = useState<{ jobId: string; partId: string; name: string; sols: number[]; pieces: number } | null>(null);
   /** Unsaved changes: the job differs from how it was opened or last saved (a new job: once it has parts). */
   const jobDirty = (jobId: string) => {
     const parts = jobParts[jobId];
@@ -885,6 +887,43 @@ export function App() {
     if (!sheets[i].parts.length) deleteSheet(jobId, sol.id, i);
     else setDeleteAsk({ jobId, solId: sol.id, index: i, parts: sheets[i].parts.length });
   };
+  /** Work parts -> remove: not nested, at once; nested, asked first (its pieces come off the sheets). */
+  const askRemovePart = (jobId: string, partId: string) => {
+    const jp = (jobParts[jobId] ?? []).find((x) => x.part.id === partId);
+    const list = solsOf(jobId).list;
+    // a nest still running (it nests every part of the job) would bring its pieces back
+    if (list.some((x) => x.run && !x.error && !isFinished(x.run))) { setToast("A nest is running: stop it first, then remove the part"); return; }
+    let pieces = 0;
+    const sols: number[] = [];
+    for (const x of list) {
+      if (x.error || !x.run?.result) continue;
+      let n = 0;
+      for (const sh of x.run.result.sheets) n += sh.parts.filter((pl) => pl.partId === partId).length * (sh.cutNumber ?? 1);
+      if (n) { pieces += n; sols.push(x.no); }
+    }
+    if (!sols.length) { removePart(jobId, partId); return; }
+    setRemovingPart({ jobId, partId, name: jp?.part.name ?? "the part", sols, pieces });
+  };
+  const removePart = (jobId: string, partId: string) => {
+    setJobParts((m) => ({ ...m, [jobId]: (m[jobId] ?? []).filter((jp) => jp.part.id !== partId) }));
+    // its pieces off every sheet; a sheet left with nothing goes (and a solution left with no sheet)
+    setSols(jobId, (st) => {
+      const list = st.list.flatMap((x) => {
+        const sheets = x.run?.result?.sheets;
+        if (x.error || !sheets || !sheets.some((sh) => sh.parts.some((pl) => pl.partId === partId))) return [x];
+        const keep = sheets.map((sh, k) => ({ sh: { ...sh, parts: sh.parts.filter((pl) => pl.partId !== partId) }, k, was: sh.parts.length }))
+          .filter(({ sh, was }) => sh.parts.length > 0 || was === 0);
+        if (!keep.length) return [];
+        const at = new Map(keep.map(({ k }, i) => [k, i]));
+        return [{ ...x, locked: x.locked.filter((n) => at.has(n)).map((n) => at.get(n)!),
+          run: { ...x.run!, result: { ...x.run!.result!, sheets: keep.map(({ sh }) => sh) } } }];
+      });
+      const sel = list.some((x) => x.id === st.sel.sol) ? { sol: st.sel.sol, sheet: Math.min(st.sel.sheet, Math.max(0, (list.find((x) => x.id === st.sel.sol)?.run?.result?.sheets.length ?? 1) - 1)) }
+        : { sol: list.at(-1)?.id ?? null, sheet: 0 };
+      return { list, sel };
+    });
+  };
+
   const deleteSheet = (jobId: string, solId: string, i: number) => {
     const st = solsOf(jobId);
     const sol = st.list.find((x) => x.id === solId);
@@ -1020,7 +1059,7 @@ export function App() {
                 machine={machineFor(job.id)}
                 machines={machines}
                 onMachine={(id) => changeMachine(job.id, id)}
-                onRemove={(pid) => setJobParts((m) => ({ ...m, [job.id]: (m[job.id] ?? []).filter((jp) => jp.part.id !== pid) }))}
+                onRemove={(pid, deleted) => (deleted ? removePart(job.id, pid) : askRemovePart(job.id, pid))}
                 onOpenParts={() => setDrawer("parts")}
               />
             )}
@@ -1071,6 +1110,18 @@ export function App() {
                     sel: st.sel.sol === id ? { sol: st.list.filter((x) => x.id !== id).at(-1)?.id ?? null, sheet: 0 } : st.sel }));
                 }}>
                 Its sheets are gone from the job (the saved job keeps it until the job is saved again).
+              </ConfirmDialog>
+            )}
+            {removingPart && (
+              <ConfirmDialog title={`Remove ${removingPart.name} from the job?`} confirmLabel="Remove"
+                onCancel={() => setRemovingPart(null)}
+                onConfirm={() => {
+                  const r = removingPart; setRemovingPart(null);
+                  removePart(r.jobId, r.partId);
+                  diag("parts", `Removed ${r.name} from the job: ${r.pieces} nested pieces taken off solution ${r.sols.map((n) => `#${n}`).join(", ")}`, { job: r.jobId });
+                }}>
+                It is nested: {removingPart.pieces} {removingPart.pieces === 1 ? "piece" : "pieces"} in solution {removingPart.sols.map((n) => `#${n}`).join(", ")}.
+                {" "}{removingPart.pieces === 1 ? "It is" : "They are"} taken off the sheets; the rest of the layout stays as it is (a sheet left empty goes).
               </ConfirmDialog>
             )}
             {saveAsFor && (
