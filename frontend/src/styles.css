@@ -690,7 +690,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .imp-props-icon svg { width: 34px; height: 21px; }
 .imp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px 10px; }
 .imp-btn { display: flex; align-items: center; justify-content: center; gap: 8px; height: 40px; border: 1.5px solid #3a3a3a; background: #fff; font-weight: 600; }
-.imp-btn:hover:not(:disabled) { background: var(--blue-tint); }
+.imp-btn:hover:not(:disabled) { background: var(--green-tint); }
 .imp-btn-go:not(:disabled) { border-color: var(--green-ink); background: var(--green-tint); color: var(--green-ink); }
 .imp-btn-go:hover:not(:disabled) { background: #d3ecc6; }
 .imp-btn-icon svg { width: 26px; height: 26px; }
