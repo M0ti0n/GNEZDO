@@ -22,6 +22,12 @@ export type Entity = (
   role?: Role;     // missing = cut
   /** Hole: a cutting contour cut slowly (machines / post processors that support it). */
   slow?: boolean;
+  /**
+   * Common cut: a straight cutting line on a closed contour (the outside or a window) that may be
+   * shared with a neighbouring part or the sheet edge, cut once for both. Only straight lines of
+   * closed cutting contours keep it (commonCutOk).
+   */
+  common?: boolean;
   /** The role the line got on import (from its layer / color); while it still has it, it shows its DXF color. */
   fileRole?: Role;
   layer?: string;
@@ -30,6 +36,9 @@ export type Entity = (
 };
 
 export const roleOf = (e: Entity): Role => e.role ?? "cut";
+
+/** Marked common cut and can be: a straight cutting line (the contour being closed is checked when marking and saving). */
+export const isCommon = (e: Entity): boolean => !!e.common && e.kind === "line" && roleOf(e) === "cut";
 
 export interface Drawing {
   id: string;
@@ -651,22 +660,40 @@ export function markRuleBreaks(entities: Entity[]): { outer: string[]; outerNotC
   return { outer, outerNotCut, closedOpenCut };
 }
 
+/** Lines that may be common cut: straight cutting lines on a closed contour (the outside or a window). */
+export function commonCutOk(entities: Entity[]): Set<string> {
+  const ok = new Set<string>();
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  for (const c of buildContours(entities.filter((e) => roleOf(e) === "cut")))
+    if (c.closed) for (const id of c.entityIds) if (byId.get(id)?.kind === "line") ok.add(id);
+  return ok;
+}
+
+/** Lines marked common cut that can't be (not straight, not cutting, not on a closed contour) lose the mark. */
+export function dropBadCommon(entities: Entity[]): Entity[] {
+  if (!entities.some((e) => e.common)) return entities;
+  const ok = commonCutOk(entities);
+  return entities.map((e) => (e.common && !ok.has(e.id) ? { ...e, common: undefined } : e));
+}
+
 /** Puts the contour rules right: the outside becomes plain cutting, closed contours lose open cut. */
 export function fixMarkRules(entities: Entity[]): { entities: Entity[]; changed: number } {
   const r = markRuleBreaks(entities);
   const bad = new Set([...r.outerNotCut, ...r.closedOpenCut]);
-  if (!bad.size) return { entities, changed: 0 };
-  return { entities: entities.map((e) => (bad.has(e.id) ? { ...e, role: "cut" as Role, slow: undefined } : e)), changed: bad.size };
+  if (!bad.size) return { entities: dropBadCommon(entities), changed: 0 };
+  return { entities: dropBadCommon(entities.map((e) => (bad.has(e.id) ? { ...e, role: "cut" as Role, slow: undefined } : e))), changed: bad.size };
 }
 
 /**
  * A marking (tracing, open cut, hole) checked against the contour rules: lines it would put
  * against them keep what they had before. Says how many were held back, and how many changed.
  */
-export function keepMarkRules(before: Entity[], after: Entity[]): { entities: Entity[]; outer: number; closed: number; changed: number } {
+export function keepMarkRules(before: Entity[], marked: Entity[]): { entities: Entity[]; outer: number; closed: number; changed: number } {
+  // a line that is no longer cutting is no longer common cut
+  const after = marked.map((e) => (e.common && roleOf(e) !== "cut" ? { ...e, common: undefined } : e));
   const r = markRuleBreaks(after);
   const was = new Map(before.map((e) => [e.id, e]));
-  const differs = (e: Entity) => { const b = was.get(e.id); return !!b && (roleOf(b) !== roleOf(e) || !!b.slow !== !!e.slow); };
+  const differs = (e: Entity) => { const b = was.get(e.id); return !!b && (roleOf(b) !== roleOf(e) || !!b.slow !== !!e.slow || !!b.common !== !!e.common); };
   const outerBad = new Set(r.outerNotCut), closedBad = new Set(r.closedOpenCut);
   let outer = 0, closed = 0;
   const entities = after.map((e) => {

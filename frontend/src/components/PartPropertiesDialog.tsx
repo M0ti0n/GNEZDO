@@ -4,6 +4,7 @@ import { api, type PartDetail } from "../api/api";
 import type { PartSummary } from "../api/types";
 import { ROTATIONS, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
+import { COMMON_CUT_TIP } from "../import/commonCut";
 import { Combobox } from "./Combobox";
 import { fullDate, when } from "./format";
 import { PartThumb } from "./PartThumb";
@@ -22,7 +23,7 @@ interface Props {
 
 interface Form {
   name: string; project: string; description: string; material: string; thicknessMm: string;
-  rotations: Rotation[]; mirror: boolean; filler: boolean;
+  rotations: Rotation[]; mirror: boolean; filler: boolean; commonCut: boolean;
 }
 
 // Properties of a saved part (Parts search -> click a part): change them, see versions, or delete.
@@ -48,7 +49,7 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
       setDetail(d);
       setF({
         name: d.part.name, project: d.part.project, description: d.part.description, material: d.part.material,
-        thicknessMm: String(d.part.thicknessMm), rotations: ROTATIONS.filter((r) => d.rotations.includes(r)), mirror: d.mirror, filler: d.filler,
+        thicknessMm: String(d.part.thicknessMm), rotations: ROTATIONS.filter((r) => d.rotations.includes(r)), mirror: d.mirror, filler: d.filler, commonCut: !!d.commonCut,
       });
     }, (e: Error) => setError(e.message));
   }, [part.id]);
@@ -62,7 +63,7 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
   const p = detail?.part ?? part;
   const changed = !!(f && detail) && (
     f.name.trim() !== detail.part.name || f.project.trim() !== detail.part.project || f.description.trim() !== detail.part.description ||
-    f.material.trim() !== detail.part.material || Number(f.thicknessMm) !== detail.part.thicknessMm || f.mirror !== detail.mirror || f.filler !== detail.filler ||
+    f.material.trim() !== detail.part.material || Number(f.thicknessMm) !== detail.part.thicknessMm || f.mirror !== detail.mirror || f.filler !== detail.filler || f.commonCut !== !!detail.commonCut ||
     f.rotations.join() !== ROTATIONS.filter((r) => detail.rotations.includes(r)).join());
   const projectMissing = !!f && lists.projectsLoaded && !lists.projectKnown(f.project);
   const missing = f ? [!f.name.trim() && "name", !f.material.trim() && "material", !(Number(f.thicknessMm) > 0) && "thickness",
@@ -75,7 +76,7 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
     try {
       const d = await api.updatePart(part.id, {
         name: f.name, project: f.project, description: f.description, material: f.material,
-        thicknessMm: Number(f.thicknessMm), rotations: f.rotations, mirror: f.mirror, filler: f.filler,
+        thicknessMm: Number(f.thicknessMm), rotations: f.rotations, mirror: f.mirror, filler: f.filler, commonCut: f.commonCut,
       });
       onSaved(d.part);
       onClose();
@@ -166,6 +167,10 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
                   <label className="chk chk-box chk-filler" title={FILLER_TIP}>
                     <input type="checkbox" checked={f.filler} onChange={(e) => set({ filler: e.target.checked })} />
                     Filler
+                  </label>
+                  <label className="chk chk-box chk-common" title={COMMON_CUT_TIP}>
+                    <input type="checkbox" checked={f.commonCut} onChange={(e) => set({ commonCut: e.target.checked })} />
+                    Common cut
                   </label>
                 </div>
               </div>

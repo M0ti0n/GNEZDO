@@ -62,6 +62,11 @@ public class Part
     /// left among the other parts, and never adds or fills a sheet just for fillers.
     /// </summary>
     public bool Filler { get; set; }
+    /// <summary>
+    /// Common cut: the part may share straight cut lines with its neighbours on the sheet (cut once
+    /// for both). Off by default; which lines may be shared is in the geometry (operations).
+    /// </summary>
+    public bool CommonCut { get; set; }
     /// <summary>File the part was imported from.</summary>
     public string SourceFile { get; set; } = "";
     /// <summary>Version number: 1 when first saved, +1 on every replace or restore.</summary>
@@ -93,6 +98,7 @@ public class PartRevision
     public string Rotations { get; set; } = "";
     public bool Mirror { get; set; }
     public bool Filler { get; set; }
+    public bool CommonCut { get; set; }
     public double WidthMm { get; set; }
     public double HeightMm { get; set; }
     public double AreaMm2 { get; set; }

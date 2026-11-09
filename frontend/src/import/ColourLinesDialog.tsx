@@ -1,24 +1,27 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { IconClose } from "../components/Icons";
-import { roleOf, type Entity } from "./geometry";
+import { commonCutOk, isCommon, roleOf, type Entity } from "./geometry";
 import { colourKey } from "./rules";
 import { IMPORT_TOOLS } from "./ImportTools";
 
 /**
  * The tool applied to all lines of a color, as if each line had been clicked with it:
- * Cut = no tool (plain cutting), Trace, Open cut or Hole. Each gives the line a property that
+ * Cut = no tool (plain cutting), Trace, Open cut, Hole or Common cut (straight lines of closed
+ * contours only; the other lines of that color stay as they are). Each gives the line a property that
  * path generation and the post processor read later.
  */
-export type Operation = "cut" | "trace" | "openCut" | "hole";
+export type Operation = "cut" | "trace" | "openCut" | "hole" | "commonCut";
 
 export const OPERATION_LABEL: Record<Operation, string> = {
   cut: "Cut",
   trace: "Trace",
   openCut: "Open cut",
   hole: "Hole",
+  commonCut: "Common cut",
 };
 
-const operationOf = (e: Entity): Operation => (roleOf(e) === "cut" ? (e.slow ? "hole" : "cut") : roleOf(e) === "trace" ? "trace" : "openCut");
+const operationOf = (e: Entity): Operation =>
+  (roleOf(e) === "cut" ? (isCommon(e) ? "commonCut" : e.slow ? "hole" : "cut") : roleOf(e) === "trace" ? "trace" : "openCut");
 
 interface Group { key: string; name: string; hex: string; count: number; now: Operation; mixed: boolean }
 
@@ -118,7 +121,7 @@ export function ColourLinesDialog({ entities, onCancel, onApply }: Props) {
           </tbody>
         </table>
         <footer className="dlg-foot">
-          <span className="proc-missing">The outer contour always stays cut; a hole needs a closed contour; a closed contour can't be open cut.</span>
+          <span className="proc-missing">The outer contour always stays cut; a hole needs a closed contour; a closed contour can't be open cut; common cut takes only straight lines of closed contours.</span>
           <button type="button" className="btn btn-plain" onClick={onCancel}>Cancel</button>
           <button type="submit" className="btn btn-save" disabled={!changed.length}>Apply</button>
         </footer>
@@ -129,9 +132,14 @@ export function ColourLinesDialog({ entities, onCancel, onApply }: Props) {
 
 /** Lines get the operation of their color group. */
 export function applyColours(entities: Entity[], byColour: Map<string, Operation>): Entity[] {
-  return entities.map((e) => {
-    const op = byColour.get(colourKey(e).key);
-    if (!op) return e;
-    return { ...e, role: op === "hole" ? "cut" : op, slow: op === "hole" ? true : undefined };
+  const opOf = (e: Entity) => byColour.get(colourKey(e).key);
+  // roles first (they decide which contours are closed), then common cut on the lines that can take it
+  const roled = entities.map((e): Entity => {
+    const op = opOf(e);
+    if (!op || op === "commonCut") return e;
+    return { ...e, role: op === "hole" ? "cut" : op, slow: op === "hole" ? true : undefined, common: undefined };
   });
+  if (![...byColour.values()].includes("commonCut")) return roled;
+  const ok = commonCutOk(roled);
+  return roled.map((e) => (opOf(e) === "commonCut" && ok.has(e.id) ? { ...e, role: "cut", slow: undefined, common: true } : e));
 }

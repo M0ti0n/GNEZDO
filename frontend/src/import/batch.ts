@@ -19,9 +19,9 @@ export interface ImportItem {
   duplicate?: boolean;
   /** Opened from the database (EDIT): the part's own properties, used by Process instead of the batch's. */
   source?: { partId: string; name: string; project: string; description: string; material: string; thicknessMm: string;
-    rotations: Rotation[]; mirror: boolean; filler: boolean };
+    rotations: Rotation[]; mirror: boolean; filler: boolean; commonCut: boolean };
   /** Rotations and mirror the part got when it was processed. */
-  applied?: { rotations: Rotation[]; mirror: boolean; filler: boolean };
+  applied?: { rotations: Rotation[]; mirror: boolean; filler: boolean; commonCut: boolean };
 }
 
 /** Properties (Import panel): used for every part in the list, kept for the next import. */
@@ -35,6 +35,8 @@ export interface BatchProperties {
   mirror: boolean;
   /** Filler: nested only into gaps among the other parts (see filler.ts). */
   filler: boolean;
+  /** Common cut: may share straight cut lines with neighbouring parts (see commonCut.ts); off by default. */
+  commonCut: boolean;
 }
 
 /** New properties start from the import rules in Settings. */
@@ -43,6 +45,7 @@ export const propertiesFrom = (rules: ImportRules): BatchProperties => ({
   rotations: [...rules.defaultRotations],
   mirror: rules.mirrorWithoutOpenCut,
   filler: rules.defaultFiller,
+  commonCut: false,
 });
 
 const PROPS_KEY = "gnezdo.importProperties";

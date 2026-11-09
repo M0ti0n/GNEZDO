@@ -249,6 +249,9 @@ namespace Gnezdo.Api.Data.SqliteMigrations
                     b.Property<double>("AreaMm2")
                         .HasColumnType("REAL");
 
+                    b.Property<bool>("CommonCut")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long>("CreatedAt")
                         .HasColumnType("INTEGER");
 
@@ -355,6 +358,9 @@ namespace Gnezdo.Api.Data.SqliteMigrations
 
                     b.Property<double>("AreaMm2")
                         .HasColumnType("REAL");
+
+                    b.Property<bool>("CommonCut")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Description")
                         .IsRequired()

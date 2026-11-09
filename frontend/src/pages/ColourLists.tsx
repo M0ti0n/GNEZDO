@@ -1,14 +1,15 @@
 import { useState } from "react";
 import {
-  ACI_RGB, LINE_ROLES, SHADE_WIDTHS, colourConflicts, hexOf, hsvHex, parseHex, rgbHsv, shadeSwatch,
-  type ColourEntry, type ColourRules, type LineRole,
+  ACI_RGB, COLOUR_LISTS, LINE_ROLES, LIST_NAME, SHADE_WIDTHS, colourConflicts, hexOf, hsvHex, parseHex, rgbHsv, shadeSwatch,
+  type ColourEntry, type ColourList, type ColourRules, type LineRole,
 } from "../import/rules";
 
-const ROLE_LABEL: Record<LineRole, string> = { cut: "Cut contour", trace: "Trace", openCut: "Open cut" };
-const ROLE_HELP: Record<LineRole, string> = {
+const ROLE_LABEL: Record<ColourList, string> = LIST_NAME;
+const ROLE_HELP: Record<ColourList, string> = {
   cut: "Cut through: outside contours, windows and holes.",
   trace: "Marked, not cut through (engraving, bend lines, labels).",
   openCut: "Cut along an open line (a slit), not a closed contour.",
+  common: "A shared edge, cut once for two parts. Only straight lines of closed contours take it; the rest is cut.",
 };
 
 /** A color's everyday name from its hue (for "any shade of" ranges). */
@@ -28,12 +29,12 @@ function describe(x: ColourEntry): { swatch: string[]; text: string } {
 
 // Settings -> Rules -> Import rules -> Line colors: which colors mean cutting, tracing and open cut.
 export function ColourLists({ value, onChange }: { value: ColourRules; onChange: (c: ColourRules) => void }) {
-  const [adding, setAdding] = useState<LineRole | null>(null);
+  const [adding, setAdding] = useState<ColourList | null>(null);
   const conflicts = colourConflicts(value);
-  const setList = (r: LineRole, list: ColourEntry[]) => onChange({ ...value, [r]: list });
+  const setList = (r: ColourList, list: ColourEntry[]) => onChange({ ...value, [r]: list });
   return (
     <div className="colour-lists">
-      {LINE_ROLES.map((r) => (
+      {COLOUR_LISTS.map((r) => (
         <div key={r} className={`colour-list role-${r}`}>
           <div className="colour-list-head"><b>{ROLE_LABEL[r]}</b><small>{ROLE_HELP[r]}</small></div>
           <ul>
@@ -61,7 +62,7 @@ export function ColourLists({ value, onChange }: { value: ColourRules; onChange:
             {value[r].length === 0 && <li className="colour-none">No colors</li>}
           </ul>
           {adding === r
-            ? <AddColour onAdd={(x) => { setList(r, [...value[r], x]); setAdding(null); }} onCancel={() => setAdding(null)} hasGrays={LINE_ROLES.some((q) => value[q].some((y) => y.kind === "grays"))} />
+            ? <AddColour onAdd={(x) => { setList(r, [...value[r], x]); setAdding(null); }} onCancel={() => setAdding(null)} hasGrays={COLOUR_LISTS.some((q) => value[q].some((y) => y.kind === "grays"))} />
             : <button type="button" className="link colour-add" onClick={() => setAdding(r)}>+ Add a color</button>}
         </div>
       ))}
@@ -75,7 +76,7 @@ export function ColourLists({ value, onChange }: { value: ColourRules; onChange:
         <div className="sp-warn colour-conflicts" role="alert">
           <b>In two lists:</b>
           <ul>{conflicts.map((c) => <li key={c}>{c}</li>)}</ul>
-          Then an exact color goes to the first of its lists (Cut contour, Trace, Open cut), and overlapping ranges to the closer one:
+          Then an exact color goes to the first of its lists (Cut contour, Trace, Open cut, Common cut), and overlapping ranges to the closer one:
           better to keep each color in one list.
         </div>
       )}

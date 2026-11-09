@@ -246,6 +246,9 @@ namespace Gnezdo.Api.Data.Migrations
                     b.Property<double>("AreaMm2")
                         .HasColumnType("float");
 
+                    b.Property<bool>("CommonCut")
+                        .HasColumnType("bit");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -348,6 +351,9 @@ namespace Gnezdo.Api.Data.Migrations
 
                     b.Property<double>("AreaMm2")
                         .HasColumnType("float");
+
+                    b.Property<bool>("CommonCut")
+                        .HasColumnType("bit");
 
                     b.Property<string>("Description")
                         .IsRequired()

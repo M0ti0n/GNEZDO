@@ -3,9 +3,10 @@ import { IconClose } from "../components/Icons";
 import { api } from "../api/api";
 import { Combobox, type ComboOption } from "../components/Combobox";
 import { usePickLists } from "../components/pickLists";
-import { checkGeometry, pathOf, roleOf, type Drawing } from "./geometry";
+import { checkGeometry, isCommon, pathOf, roleOf, type Drawing } from "./geometry";
 import { ROTATIONS, type Rotation } from "./rules";
 import { FILLER_TIP } from "./filler";
+import { COMMON_CUT_TIP } from "./commonCut";
 import { IMPORT_TOOLS } from "./ImportTools";
 import { loopPoints } from "./toPart";
 
@@ -19,6 +20,7 @@ export interface ProcessValues {
   rotations: Rotation[];
   mirror: boolean;
   filler: boolean;
+  commonCut: boolean;
 }
 
 interface Props {
@@ -160,6 +162,10 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
                   <input type="checkbox" checked={v.filler} onChange={(e) => set({ filler: e.target.checked })} />
                   Filler
                 </label>
+                <label className="chk chk-box chk-common" title={COMMON_CUT_TIP}>
+                  <input type="checkbox" checked={v.commonCut} onChange={(e) => set({ commonCut: e.target.checked })} />
+                  Common cut
+                </label>
               </div>
               {mirrorBlocked && <small className="proc-note">No mirror: the part has open cut lines.</small>}
             </div>
@@ -228,7 +234,7 @@ export function Preview({ drawing }: { drawing: Drawing }) {
       <g transform="scale(1 -1)">
         {fill && <path className="proc-fill" d={fill} fillRule="evenodd" />}
         {drawing.entities.map((e) => (
-          <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}`} />
+          <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}${isCommon(e) ? " is-common" : ""}`} />
         ))}
       </g>
     </svg>

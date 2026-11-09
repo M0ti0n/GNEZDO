@@ -587,13 +587,13 @@ th.num .th-sort { flex-direction: row-reverse; }
 }
 /* every tool the same width, so the boxes are evenly spaced; long names go on two lines */
 .itool { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; padding: 0; width: 72px; }
-.itool.is-wide { width: 112px; }
+.itool.is-wide { width: 97px; }
 .itool-box {
   display: grid; place-items: center; width: 64px; height: 58px;
   background: #fff; border: 1.5px solid #3a3a3a; border-radius: 10px;
   transition: background .12s, box-shadow .12s, transform .06s;
 }
-.itool.is-wide .itool-box { width: 104px; border-radius: 16px; }
+.itool.is-wide .itool-box { width: 89px; border-radius: 16px; }
 .itool-label {
   font-family: var(--font-cond); font-size: 12.5px; font-weight: 600; letter-spacing: .02em;
   text-transform: uppercase; color: var(--ink-2); white-space: normal; text-align: center; line-height: 1.1; max-width: 100%;
@@ -1132,6 +1132,11 @@ th.num .th-sort { flex-direction: row-reverse; }
 :root { --ln-hole: #f08c00; }
 .ent.is-slow, .is-processed .ent.is-slow { stroke: var(--ln-hole); stroke-width: 2.4; }
 .sw-hole { background: var(--ln-hole); }
+
+/* Common cut: a straight cutting line shared with a neighbouring part (blue, before and after processing) */
+:root { --ln-common: #045efd; }
+.ent.is-common, .is-processed .ent.is-common { stroke: var(--ln-common); stroke-width: 2.4; }
+.sw-common { background: var(--ln-common); }
 
 /* Colour lines pop-up */
 .colour-dlg { width: min(560px, calc(100vw - 32px)); }
@@ -1775,6 +1780,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .colour-list.role-cut { border-left-color: #1b1b1b; }
 .colour-list.role-trace { border-left-color: var(--ln-trace); }
 .colour-list.role-openCut { border-left-color: var(--ln-open-done); }
+.colour-list.role-common { border-left-color: var(--ln-common); }
 .colour-list-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .colour-list-head small { color: var(--ink-3); font-size: 13px; }
 .colour-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }

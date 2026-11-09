@@ -206,6 +206,7 @@ public sealed class PartSaveTests(ApiFixture api)
         res.EnsureSuccessStatusCode();
         var other = Assert.Single((await res.Content.ReadFromJsonAsync<List<SavedPartDto>>())!).Id!;
         Assert.False((await api.Client.GetFromJsonAsync<PartDetailDto>($"/api/parts/{other}"))!.Filler);
+        Assert.False((await api.Client.GetFromJsonAsync<PartDetailDto>($"/api/parts/{other}"))!.CommonCut);   // off unless asked
     }
 
     [Fact]
@@ -216,18 +217,21 @@ public sealed class PartSaveTests(ApiFixture api)
         var id = Assert.Single(await Save(Part("SAVE_I_flange", "N26-0800", material: "S235", t: 4, description: "old"))).Id!;
 
         var res = await api.Client.PutAsJsonAsync($"/api/parts/{id}",
-            new PartUpdateRequest("SAVE_I_flange_B", "N26-0801", "new", "S355", 6, [90, 30], false, Filler: true));
+            new PartUpdateRequest("SAVE_I_flange_B", "N26-0801", "new", "S355", 6, [90, 30], false, Filler: true, CommonCut: true));
         res.EnsureSuccessStatusCode();
         var d = (await res.Content.ReadFromJsonAsync<PartDetailDto>())!;
         Assert.Equal(("SAVE_I_flange_B", "N26-0801", "new", "S355", 6m, 2), (d.Part.Name, d.Part.Project, d.Part.Description, d.Part.Material, d.Part.ThicknessMm, d.Part.Revision));
         Assert.Equal([90, 30], d.Rotations);
         Assert.False(d.Mirror);
         Assert.True(d.Filler);
+        Assert.True(d.CommonCut);
 
         var h = await History(id);
         Assert.Equal(("old", "S235", "N26-0800"), (h[1].Description, h[1].Material, h[1].Project));
         Assert.True(h[0].Filler);
         Assert.False(h[1].Filler);
+        Assert.True(h[0].CommonCut);
+        Assert.False(h[1].CommonCut);
     }
 
     [Fact]

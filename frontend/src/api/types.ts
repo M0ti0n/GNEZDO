@@ -78,6 +78,8 @@ export interface PartVersion {
   mirror: boolean;
   /** Nested only into gaps among other parts; never fills a sheet on its own. */
   filler: boolean;
+  /** May share straight cut lines with neighbouring parts (common cut). */
+  commonCut: boolean;
   w: number;
   h: number;
   areaMm2: number;
