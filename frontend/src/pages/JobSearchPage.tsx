@@ -209,11 +209,37 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters }: {
 
 /* ---- preview ----------------------------------------------------------------------- */
 
+// sheets in the preview: 2 x 2 grid, or one sheet per row (bigger); remembered in this browser
+const GRID_KEY = "gnezdo.jobPreview.cols";
+function loadGrid(): 1 | 2 {
+  try { return localStorage.getItem(GRID_KEY) === "1" ? 1 : 2; } catch { return 2; }
+}
+
+function ColsToggle({ cols, onChange }: { cols: 1 | 2; onChange: (c: 1 | 2) => void }) {
+  return (
+    <span className="cols-toggle" role="radiogroup" aria-label="Sheets shown">
+      <button type="button" role="radio" aria-checked={cols === 2} className={cols === 2 ? "is-on" : ""}
+        title="Sheets in a 2 × 2 grid" onClick={() => onChange(2)}>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <rect x="1.5" y="1.5" width="5.5" height="5.5" /><rect x="9" y="1.5" width="5.5" height="5.5" />
+          <rect x="1.5" y="9" width="5.5" height="5.5" /><rect x="9" y="9" width="5.5" height="5.5" />
+        </svg>
+      </button>
+      <button type="button" role="radio" aria-checked={cols === 1} className={cols === 1 ? "is-on" : ""}
+        title="One sheet at a time" onClick={() => onChange(1)}>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" /></svg>
+      </button>
+    </span>
+  );
+}
+
 function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
   const [parts, setParts] = useState<JobPart[] | null>(null);
   const [sheets, setSheets] = useState<NestedSheet[] | null>(null);   // the saved nest's shown solution
   const [mats, setMats] = useState<Set<string>>(new Set());       // pink buttons switched on
   const [thks, setThks] = useState<Set<number>>(new Set());       // purple buttons switched on
+  const [cols, setColsState] = useState<1 | 2>(loadGrid);
+  const setCols = (c: 1 | 2) => { setColsState(c); try { localStorage.setItem(GRID_KEY, String(c)); } catch { /* not kept */ } };
 
   useEffect(() => {
     let alive = true;
@@ -249,6 +275,7 @@ function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
       <div className="pane-head preview-head">
         <h2 title={job.name}>{job.name}</h2>
         <span className={`status status-${job.status}`}>{STATUS[job.status]}</span>
+        {job.sheetCount > 0 && <ColsToggle cols={cols} onChange={setCols} />}
         <button className="btn btn-primary" onClick={onOpen}>Open job</button>
       </div>
 
@@ -256,7 +283,7 @@ function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
       <div className="sheets-area">
         {job.sheetCount > 0 && (sheets === null || !parts) && <p className="sheets-empty">Loading the nest…</p>}
         {job.sheetCount > 0 && sheets && parts && sheets.length > 0 && (
-          <ul className="sheet-tiles" aria-label={`${sheets.length} sheets`}>
+          <ul className={`sheet-tiles${cols === 1 ? " is-single" : ""}`} aria-label={`${sheets.length} sheets`}>
             {shownSheets.map(({ sh, i }) => (
               <li key={i} className="sheet-tile has-nest" title={`Sheet ${i + 1}: ${sh.material} ${mm(sh.thicknessMm)}, ${sh.lengthMm} × ${sh.widthMm}`}>
                 <SheetSvg sheet={sh} parts={byId} titles />
