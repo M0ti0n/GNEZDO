@@ -20,11 +20,47 @@ export interface ImportRules {
   /** Layer names (parts of names) that mean tracing / open cut, when layers are used. */
   traceLayers: string;
   openCutLayers: string;
-  /** Colors decide: black/white cutting, green or red tracing, light blue open cut. */
+  /** Line colors decide what the laser does (the lists below). */
   coloursAsCuts: boolean;
-  /** Only the basic colors 1 red, 3 green, 4 cyan count; otherwise every shade of them does. */
-  exactColours: boolean;
+  /** Which colors mean cutting, tracing and open cut. */
+  colours: ColourRules;
 }
+
+/**
+ * One color of a list:
+ *   exact  - one color: a HEX (#00ff00), the same as an AutoCAD color that has it
+ *   aci    - one AutoCAD color number (1-255), the same as its HEX
+ *   shade  - any shade of a color: its hue (0-360) within +-width degrees, any brightness and
+ *            paleness; colors too gray or too dark to have a hue are left out
+ *   grays  - black, white and grays (no hue)
+ */
+export type ColourEntry =
+  | { kind: "exact"; rgb: number }
+  | { kind: "aci"; aci: number }
+  | { kind: "shade"; hue: number; width: number }
+  | { kind: "grays" };
+
+export type LineRole = "cut" | "trace" | "openCut";
+export const LINE_ROLES: LineRole[] = ["cut", "trace", "openCut"];
+
+export interface ColourRules {
+  cut: ColourEntry[];
+  trace: ColourEntry[];
+  openCut: ColourEntry[];
+  /** colors in no list */
+  other: LineRole;
+}
+
+/** As before the lists existed: grays cutting, greens and reds tracing, light blues open cut. */
+export const DEFAULT_COLOURS: ColourRules = {
+  cut: [{ kind: "grays" }],
+  trace: [{ kind: "shade", hue: 115, width: 45 }, { kind: "shade", hue: 0, width: 20 }],
+  openCut: [{ kind: "shade", hue: 187, width: 27 }],
+  other: "cut",
+};
+
+/** The width of "any shade": narrow, normal, wide (degrees each way on the color wheel). */
+export const SHADE_WIDTHS = [{ label: "Narrow", deg: 10 }, { label: "Normal", deg: 25 }, { label: "Wide", deg: 40 }] as const;
 
 export const DEFAULT_RULES: ImportRules = {
   qtyFromName: false,
@@ -35,19 +71,107 @@ export const DEFAULT_RULES: ImportRules = {
   traceLayers: "MARK, ENGRAV, GRAV, TRACE, SIGN",
   openCutLayers: "OPEN, SLIT",
   coloursAsCuts: true,
-  exactColours: false,
+  colours: DEFAULT_COLOURS,
 };
 
-/**
- * Color groups, when colors decide. "shades" are examples for the Rules page;
- * any color whose hue falls in the range counts (dark, light or True Color).
- * Black, white, grays, very dark colors and other hues (blue, yellow, magenta) are cutting.
- */
-export const COLOUR_ROLES: { name: string; aci: number; hue: [number, number]; shades: string[]; role: Role }[] = [
-  { name: "Greens", aci: 3, hue: [70, 160], role: "trace", shades: ["#00ff00", "#00bd00", "#008100", "#3f803f", "#7fff7f"] },
-  { name: "Reds", aci: 1, hue: [340, 20], role: "trace", shades: ["#ff0000", "#bd0000", "#810000", "#ff3f00", "#ff7f7f"] },
-  { name: "Light blues and cyans", aci: 4, hue: [160, 215], role: "openCut", shades: ["#00ffff", "#00bfff", "#00a5bd", "#3fbfff", "#7fdfff"] },
+/** AutoCAD's 256 colors (index 0 unused), as RGB. From ezdxf (MIT License, Manfred Moitzi). */
+export const ACI_RGB: number[] = [
+  0x000000, 0xff0000, 0xffff00, 0x00ff00, 0x00ffff, 0x0000ff, 0xff00ff, 0xffffff,
+  0x808080, 0xc0c0c0, 0xff0000, 0xff7f7f, 0xa50000, 0xa55252, 0x7f0000, 0x7f3f3f,
+  0x4c0000, 0x4c2626, 0x260000, 0x261313, 0xff3f00, 0xff9f7f, 0xa52900, 0xa56752,
+  0x7f1f00, 0x7f4f3f, 0x4c1300, 0x4c2f26, 0x260900, 0x261713, 0xff7f00, 0xffbf7f,
+  0xa55200, 0xa57c52, 0x7f3f00, 0x7f5f3f, 0x4c2600, 0x4c3926, 0x261300, 0x261c13,
+  0xffbf00, 0xffdf7f, 0xa57c00, 0xa59152, 0x7f5f00, 0x7f6f3f, 0x4c3900, 0x4c4226,
+  0x261c00, 0x262113, 0xffff00, 0xffff7f, 0xa5a500, 0xa5a552, 0x7f7f00, 0x7f7f3f,
+  0x4c4c00, 0x4c4c26, 0x262600, 0x262613, 0xbfff00, 0xdfff7f, 0x7ca500, 0x91a552,
+  0x5f7f00, 0x6f7f3f, 0x394c00, 0x424c26, 0x1c2600, 0x212613, 0x7fff00, 0xbfff7f,
+  0x52a500, 0x7ca552, 0x3f7f00, 0x5f7f3f, 0x264c00, 0x394c26, 0x132600, 0x1c2613,
+  0x3fff00, 0x9fff7f, 0x29a500, 0x67a552, 0x1f7f00, 0x4f7f3f, 0x134c00, 0x2f4c26,
+  0x092600, 0x172613, 0x00ff00, 0x7fff7f, 0x00a500, 0x52a552, 0x007f00, 0x3f7f3f,
+  0x004c00, 0x264c26, 0x002600, 0x132613, 0x00ff3f, 0x7fff9f, 0x00a529, 0x52a567,
+  0x007f1f, 0x3f7f4f, 0x004c13, 0x264c2f, 0x002609, 0x135817, 0x00ff7f, 0x7fffbf,
+  0x00a552, 0x52a57c, 0x007f3f, 0x3f7f5f, 0x004c26, 0x264c39, 0x002613, 0x13581c,
+  0x00ffbf, 0x7fffdf, 0x00a57c, 0x52a591, 0x007f5f, 0x3f7f6f, 0x004c39, 0x264c42,
+  0x00261c, 0x135858, 0x00ffff, 0x7fffff, 0x00a5a5, 0x52a5a5, 0x007f7f, 0x3f7f7f,
+  0x004c4c, 0x264c4c, 0x002626, 0x135858, 0x00bfff, 0x7fdfff, 0x007ca5, 0x5291a5,
+  0x005f7f, 0x3f6f7f, 0x00394c, 0x26427e, 0x001c26, 0x135858, 0x007fff, 0x7fbfff,
+  0x0052a5, 0x527ca5, 0x003f7f, 0x3f5f7f, 0x00264c, 0x26397e, 0x001326, 0x131c58,
+  0x003fff, 0x7f9fff, 0x0029a5, 0x5267a5, 0x001f7f, 0x3f4f7f, 0x00134c, 0x262f7e,
+  0x000926, 0x131758, 0x0000ff, 0x7f7fff, 0x0000a5, 0x5252a5, 0x00007f, 0x3f3f7f,
+  0x00004c, 0x26267e, 0x000026, 0x131358, 0x3f00ff, 0x9f7fff, 0x2900a5, 0x6752a5,
+  0x1f007f, 0x4f3f7f, 0x13004c, 0x2f267e, 0x090026, 0x171358, 0x7f00ff, 0xbf7fff,
+  0x5200a5, 0x7c52a5, 0x3f007f, 0x5f3f7f, 0x26004c, 0x39267e, 0x130026, 0x1c1358,
+  0xbf00ff, 0xdf7fff, 0x7c00a5, 0x9152a5, 0x5f007f, 0x6f3f7f, 0x39004c, 0x42264c,
+  0x1c0026, 0x581358, 0xff00ff, 0xff7fff, 0xa500a5, 0xa552a5, 0x7f007f, 0x7f3f7f,
+  0x4c004c, 0x4c264c, 0x260026, 0x581358, 0xff00bf, 0xff7fdf, 0xa5007c, 0xa55291,
+  0x7f005f, 0x7f3f6f, 0x4c0039, 0x4c2642, 0x26001c, 0x581358, 0xff007f, 0xff7fbf,
+  0xa50052, 0xa5527c, 0x7f003f, 0x7f3f5f, 0x4c0026, 0x4c2639, 0x260013, 0x58131c,
+  0xff003f, 0xff7f9f, 0xa50029, 0xa55267, 0x7f001f, 0x7f3f4f, 0x4c0013, 0x4c262f,
+  0x260009, 0x581317, 0x000000, 0x656565, 0x666666, 0x999999, 0xcccccc, 0xffffff,
 ];
+
+/** A line's color as RGB: its True Color, or its AutoCAD color's; null without a color. */
+export function lineRgb(e: { color?: number; rgb?: number }): number | null {
+  if (e.rgb !== undefined) return e.rgb;
+  if (e.color !== undefined && e.color >= 1 && e.color <= 255) return ACI_RGB[e.color];
+  return null;
+}
+
+export const hexOf = (rgb: number) => `#${rgb.toString(16).padStart(6, "0")}`;
+/** "#00ff00" / "00FF00" / "#0f0" -> RGB; null when it is not a HEX color. */
+export function parseHex(s: string): number | null {
+  let t = s.trim().replace(/^#/, "");
+  if (/^[0-9a-f]{3}$/i.test(t)) t = t.split("").map((c) => c + c).join("");
+  return /^[0-9a-f]{6}$/i.test(t) ? parseInt(t, 16) : null;
+}
+
+/** Too gray or too dark to have a hue: only "black, white and grays" takes it. (The darkest
+ *  AutoCAD shades, e.g. 98 = #002600, still count as their color.) */
+const isGray = ([, s, v]: [number, number, number]) => s < 0.25 || v < 0.14;
+const hueDist = (a: number, b: number) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+
+/** Does the entry take this color? (exact first, see colourRole) */
+export function entryTakes(x: ColourEntry, e: { color?: number; rgb?: number }): boolean {
+  const rgb = lineRgb(e) ?? 0xffffff;   // no color: as white / black (AutoCAD 7)
+  if (x.kind === "exact") return x.rgb === rgb;
+  if (x.kind === "aci") return e.rgb === undefined && e.color !== undefined ? e.color === x.aci : ACI_RGB[x.aci] === rgb;
+  const hsv = rgbHsv(rgb);
+  if (x.kind === "grays") return isGray(hsv);
+  return !isGray(hsv) && hueDist(hsv[0], x.hue) <= x.width;
+}
+
+/** The two colors at the ends of a shade range and its middle, for its swatch. */
+export const shadeSwatch = (x: { hue: number; width: number }) =>
+  [x.hue - x.width, x.hue, x.hue + x.width].map((h) => hsvHex((h + 360) % 360, 1, 1));
+
+export function hsvHex(h: number, s: number, v: number): string {
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  const to = (n: number) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+/**
+ * Colors that two lists both take (the Rules page warns): the same exact color twice, or ranges
+ * that overlap. An exact color wins over a range, so an exact color inside another list's range
+ * is fine (that is how one shade is taken out of a range).
+ */
+export function colourConflicts(c: ColourRules): string[] {
+  const out: string[] = [];
+  const name = (r: LineRole) => ({ cut: "Cut contour", trace: "Trace", openCut: "Open cut" })[r];
+  const exactRgb = (x: ColourEntry) => (x.kind === "exact" ? x.rgb : x.kind === "aci" ? ACI_RGB[x.aci] : null);
+  for (let i = 0; i < LINE_ROLES.length; i++) for (let j = i + 1; j < LINE_ROLES.length; j++) {
+    const a = LINE_ROLES[i], b = LINE_ROLES[j];
+    for (const x of c[a]) for (const y of c[b]) {
+      const ex = exactRgb(x), ey = exactRgb(y);
+      if (ex !== null && ey !== null && ex === ey) out.push(`${hexOf(ex)} is in ${name(a)} and ${name(b)}`);
+      if (x.kind === "shade" && y.kind === "shade" && hueDist(x.hue, y.hue) < x.width + y.width)
+        out.push(`The shades around ${Math.round(x.hue)}° (${name(a)}) and ${Math.round(y.hue)}° (${name(b)}) overlap`);
+      if (x.kind === "grays" && y.kind === "grays") out.push(`Black, white and grays are in ${name(a)} and ${name(b)}`);
+    }
+  }
+  return out;
+}
 
 /** Hue (degrees), saturation and value (0..1) of an AutoCAD color index. */
 export function aciHsv(i: number): [number, number, number] {
@@ -72,15 +196,21 @@ export function rgbHsv(rgb: number): [number, number, number] {
   return [(h + 360) % 360, max === 0 ? 0 : d / max, max];
 }
 
-const inHue = (h: number, [from, to]: [number, number]) => (from <= to ? h >= from && h <= to : h >= from || h <= to);
-
-/** Role from a line's color, or "cut" when the color means nothing special. */
-export function colourRole(e: { color?: number; rgb?: number }, exact: boolean): Role {
-  if (exact) return COLOUR_ROLES.find((c) => c.aci === e.color)?.role ?? "cut";
-  if (e.rgb === undefined && e.color === undefined) return "cut";
-  const [h, sat, val] = e.rgb !== undefined ? rgbHsv(e.rgb) : aciHsv(e.color!);
-  if (sat < 0.25 || val < 0.2) return "cut";           // black, white, grays, almost black
-  return COLOUR_ROLES.find((c) => inHue(h, c.hue))?.role ?? "cut";
+/**
+ * Role from a line's color: an exact color (HEX or AutoCAD number) of any list first, then the
+ * ranges (any shade; black, white and grays; the closest hue when two take it), else "Other colors".
+ */
+export function colourRole(e: { color?: number; rgb?: number }, c: ColourRules = DEFAULT_COLOURS): Role {
+  for (const r of LINE_ROLES) if (c[r].some((x) => (x.kind === "exact" || x.kind === "aci") && entryTakes(x, e))) return r;
+  const hsv = rgbHsv(lineRgb(e) ?? 0xffffff);
+  let best: { r: LineRole; d: number } | null = null;
+  for (const r of LINE_ROLES) for (const x of c[r]) {
+    if ((x.kind === "shade" || x.kind === "grays") && entryTakes(x, e)) {
+      const d = x.kind === "grays" ? 0 : hueDist(hsv[0], x.hue) / Math.max(1, x.width);
+      if (!best || d < best.d) best = { r, d };
+    }
+  }
+  return best?.r ?? c.other;
 }
 
 const KEY = "gnezdo.importRules";
@@ -88,7 +218,15 @@ const KEY = "gnezdo.importRules";
 export function loadRules(): ImportRules {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? { ...DEFAULT_RULES, ...JSON.parse(raw) } : DEFAULT_RULES;
+    if (!raw) return DEFAULT_RULES;
+    const saved = JSON.parse(raw) as Partial<ImportRules> & { exactColours?: boolean };
+    // saved before the color lists: "exact colors only" becomes AutoCAD red / green -> trace, cyan -> open cut
+    const colours = saved.colours ?? (saved.exactColours
+      ? { cut: [{ kind: "grays" }], trace: [{ kind: "aci", aci: 3 }, { kind: "aci", aci: 1 }], openCut: [{ kind: "aci", aci: 4 }], other: "cut" } as ColourRules
+      : DEFAULT_COLOURS);
+    const { exactColours: _old, ...rest } = saved;
+    void _old;
+    return { ...DEFAULT_RULES, ...rest, colours };
   } catch {
     return DEFAULT_RULES;
   }
@@ -111,27 +249,12 @@ export function roleFromRules(e: Entity, rules: ImportRules): Role {
     if (words(rules.openCutLayers).some((w) => layer.includes(w))) return "openCut";
     if (words(rules.traceLayers).some((w) => layer.includes(w))) return "trace";
   }
-  if (rules.coloursAsCuts) return colourRole(e, rules.exactColours);
+  if (rules.coloursAsCuts) return colourRole(e, rules.colours);
   return "cut";
 }
 
 export const applyRules = (entities: Entity[], rules: ImportRules): Entity[] =>
   entities.map((e) => { const role = roleFromRules(e, rules); return { ...e, role, fileRole: role }; });
-
-/**
- * Color a line is drawn in on the canvas: its own color from the DXF, as in CAD (white / black /
- * grays show dark on the light canvas; very light colors are darkened a little). Null when the
- * line should show its role color instead: it has no color, or its role was set by hand or by
- * layer and differs from what its color means (a line marked as tracing shows purple).
- */
-export function lineColour(e: { color?: number; rgb?: number; role?: Role; slow?: boolean; fileRole?: Role }): string | null {
-  if (e.rgb === undefined && e.color === undefined) return null;
-  // changed by a tool since import (marked as tracing, open cut or hole): show what it does now
-  if (e.slow || (e.role ?? "cut") !== (e.fileRole ?? colourRole(e, false))) return null;
-  const [, sat] = e.rgb !== undefined ? rgbHsv(e.rgb) : aciHsv(e.color!);
-  if (sat < 0.15) return null;   // black, white, grays: the normal cutting color
-  return colourHex(e);
-}
 
 /** The DXF color as #rrggbb for the light canvas (white shows black; very light colors a little darker). */
 export function colourHex(e: { color?: number; rgb?: number }): string {
