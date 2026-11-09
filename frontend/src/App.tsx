@@ -1200,12 +1200,12 @@ export function App() {
                 undone={undone} />
               </ErrorBoundary>
             )}
-            {active.kind === "rules" && <RulesPage rules={rules} onChange={(r) => {
+            {active.kind === "rules" && <RulesPage rules={rules} onClose={() => showView("home")} onChange={(r) => {
               setRules(r);
               // a list that has not been touched yet follows the new defaults
               if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller }));
             }} />}
-            {active.kind === "settings" && <SettingsPage stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
+            {active.kind === "settings" && <SettingsPage onClose={() => showView("home")} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
           </main>
         </div>

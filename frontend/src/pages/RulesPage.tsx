@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { NavClose } from "./NavClose";
 import { NumInput } from "../components/NumInput";
 import { DEFAULT_RULES, ROTATIONS, type ImportRules } from "../import/rules";
 import { ColourLists } from "./ColourLists";
@@ -13,7 +14,7 @@ const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
 
 
 // GNEZDO menu -> Rules. Import rules decide how new drawings are read; nesting rules how parts are nested.
-export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (r: ImportRules) => void }) {
+export function RulesPage({ rules, onChange, onClose }: { rules: ImportRules; onChange: (r: ImportRules) => void; onClose?: () => void }) {
   const [section, setSection] = useState<Section>("import");
   const set = (patch: Partial<ImportRules>) => onChange({ ...rules, ...patch });
 
@@ -27,6 +28,7 @@ export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (
             {s.label}
           </button>
         ))}
+        {onClose && <NavClose onClose={onClose} />}
       </nav>
 
       {section === "nesting" ? <NestingRulesPane /> : <div className="settings-main">
