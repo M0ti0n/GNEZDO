@@ -41,7 +41,7 @@ public static class DatabaseSetup
     }.ConnectionString;
 
     /// <summary>
-    /// Can GNEZDO use this server and database? A database of another program (SAOP, Libellula, ...)
+    /// Can GNEZDO use this server and database? A database of another program (an ERP, other nesting software, ...)
     /// is refused: GNEZDO must have a database of its own.
     /// </summary>
     public static async Task<DbCheck> Check(DbForm f, CancellationToken ct)

@@ -22,7 +22,7 @@ All runs were on a 2-core cloud box with the same objective as the online test
 
 | Run                                   | Sheets | Sheet-equivalents | Parts in holes |
 |---------------------------------------|--------|-------------------|----------------|
-| Libellula CUT (report)                | 8      | ≈ 7.49 (last sheet 1475 mm) | yes  |
+| Commercial nesting program (report)  | 8      | ≈ 7.49 (last sheet 1475 mm) | yes  |
 | PackingSolver, anytime 30 s           | 8      | 7.96              | 0              |
 | **Pre-pass + PackingSolver, anytime 30 s** | 8 | **7.34** (last sheet 1012 mm) | 251 |
 | PackingSolver, deterministic 30 s     | 8      | 8.00              | 0              |
@@ -69,7 +69,7 @@ Options: `--min-hole` (60 mm), `--sub-time` (0.3 s per hole), `--pair-time`,
    are all pool parts that pass a bounding-box/area pre-check, and profit is the
    material area. Small hosts are filled first, so their composites become
    candidates for bigger holes. That gives multi-level nesting
-   (#30 in #19 in #24 in #6), as Libellula does.
+   (#30 in #19 in #24 in #6), as commercial nesting programs do.
 3. The fill is replicated on as many host copies as the pool allows. The
    leftover host copies are re-solved with what remains.
 4. Composite rotations = the host rotations for which every inner part still

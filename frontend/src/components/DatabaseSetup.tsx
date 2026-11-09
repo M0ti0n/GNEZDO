@@ -62,7 +62,7 @@ export function DatabaseSetupPage({ onDone }: { onDone: () => void }) {
         <div className="signin-brand"><GnezdoIcon size={34} /><span>GNEZDO</span></div>
         <h1>Set up the database</h1>
         <p className="signin-help">GNEZDO keeps parts, jobs and settings in a Microsoft SQL Server database of its own (Express is enough).
-          Never use the database of another program such as SAOP or Libellula: GNEZDO refuses one that is not empty.</p>
+          Never use the database of another program (an ERP, other nesting software): GNEZDO refuses one that is not empty.</p>
         <DatabaseForm saveLabel="Save and continue" onSaved={() => onDone()} />
       </div>
     </div>

@@ -32,8 +32,9 @@ else has to be installed.
 ---------------
 GNEZDO keeps parts, jobs and settings in a Microsoft SQL Server database
 (Express is enough). It uses its OWN database (called "gnezdo" unless you
-choose another name) and creates it itself. Never point it at the SAOP or
-Libellula database: GNEZDO refuses a database that belongs to another program.
+choose another name) and creates it itself. Never point it at the database of
+another program (an ERP, other nesting software): GNEZDO refuses a database that
+belongs to another program.
 
 The first time GNEZDO starts, the browser shows "Set up the database":
 1. SQL Server: the server name, e.g. SERVERNAME\SQLEXPRESS (or SERVERNAME,1433).
