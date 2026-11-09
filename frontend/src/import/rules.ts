@@ -1,4 +1,4 @@
-import type { Entity, Role } from "./geometry";
+import { dropBadCommon, type Entity, type Role } from "./geometry";
 
 // Settings -> Rules -> Import rules.
 // Kept in this browser for now; they move to the server with user settings.
@@ -22,7 +22,7 @@ export interface ImportRules {
   openCutLayers: string;
   /** Line colors decide what the laser does (the lists below). */
   coloursAsCuts: boolean;
-  /** Which colors mean cutting, tracing and open cut. */
+  /** Which colors mean cutting, tracing, open cut and common cut. */
   colours: ColourRules;
 }
 
@@ -42,11 +42,17 @@ export type ColourEntry =
 
 export type LineRole = "cut" | "trace" | "openCut";
 export const LINE_ROLES: LineRole[] = ["cut", "trace", "openCut"];
+/** The color lists: the three roles, and common cut (cutting lines shared with a neighbouring part). */
+export type ColourList = LineRole | "common";
+export const COLOUR_LISTS: ColourList[] = ["cut", "trace", "openCut", "common"];
+export const LIST_NAME: Record<ColourList, string> = { cut: "Cut contour", trace: "Trace", openCut: "Open cut", common: "Common cut" };
 
 export interface ColourRules {
   cut: ColourEntry[];
   trace: ColourEntry[];
   openCut: ColourEntry[];
+  /** Common cut: only straight lines of closed cutting contours take it; other lines of these colors are cut. */
+  common: ColourEntry[];
   /** colors in no list */
   other: LineRole;
 }
@@ -56,6 +62,7 @@ export const DEFAULT_COLOURS: ColourRules = {
   cut: [{ kind: "grays" }],
   trace: [{ kind: "shade", hue: 115, width: 45 }, { kind: "shade", hue: 0, width: 20 }],
   openCut: [{ kind: "shade", hue: 187, width: 27 }],
+  common: [],
   other: "cut",
 };
 
@@ -158,10 +165,10 @@ export function hsvHex(h: number, s: number, v: number): string {
  */
 export function colourConflicts(c: ColourRules): string[] {
   const out: string[] = [];
-  const name = (r: LineRole) => ({ cut: "Cut contour", trace: "Trace", openCut: "Open cut" })[r];
+  const name = (r: ColourList) => LIST_NAME[r];
   const exactRgb = (x: ColourEntry) => (x.kind === "exact" ? x.rgb : x.kind === "aci" ? ACI_RGB[x.aci] : null);
-  for (let i = 0; i < LINE_ROLES.length; i++) for (let j = i + 1; j < LINE_ROLES.length; j++) {
-    const a = LINE_ROLES[i], b = LINE_ROLES[j];
+  for (let i = 0; i < COLOUR_LISTS.length; i++) for (let j = i + 1; j < COLOUR_LISTS.length; j++) {
+    const a = COLOUR_LISTS[i], b = COLOUR_LISTS[j];
     for (const x of c[a]) for (const y of c[b]) {
       const ex = exactRgb(x), ey = exactRgb(y);
       if (ex !== null && ey !== null && ex === ey) out.push(`${hexOf(ex)} is in ${name(a)} and ${name(b)}`);
@@ -197,14 +204,15 @@ export function rgbHsv(rgb: number): [number, number, number] {
 }
 
 /**
- * Role from a line's color: an exact color (HEX or AutoCAD number) of any list first, then the
+ * List of a line's color: an exact color (HEX or AutoCAD number) of any list first, then the
  * ranges (any shade; black, white and grays; the closest hue when two take it), else "Other colors".
  */
-export function colourRole(e: { color?: number; rgb?: number }, c: ColourRules = DEFAULT_COLOURS): Role {
-  for (const r of LINE_ROLES) if (c[r].some((x) => (x.kind === "exact" || x.kind === "aci") && entryTakes(x, e))) return r;
+export function colourRole(e: { color?: number; rgb?: number }, c: ColourRules = DEFAULT_COLOURS): ColourList {
+  const lists = COLOUR_LISTS.filter((r) => c[r]);   // rules saved before common cut have no such list
+  for (const r of lists) if (c[r].some((x) => (x.kind === "exact" || x.kind === "aci") && entryTakes(x, e))) return r;
   const hsv = rgbHsv(lineRgb(e) ?? 0xffffff);
-  let best: { r: LineRole; d: number } | null = null;
-  for (const r of LINE_ROLES) for (const x of c[r]) {
+  let best: { r: ColourList; d: number } | null = null;
+  for (const r of lists) for (const x of c[r]) {
     if ((x.kind === "shade" || x.kind === "grays") && entryTakes(x, e)) {
       const d = x.kind === "grays" ? 0 : hueDist(hsv[0], x.hue) / Math.max(1, x.width);
       if (!best || d < best.d) best = { r, d };
@@ -222,11 +230,11 @@ export function loadRules(): ImportRules {
     const saved = JSON.parse(raw) as Partial<ImportRules> & { exactColours?: boolean };
     // saved before the color lists: "exact colors only" becomes AutoCAD red / green -> trace, cyan -> open cut
     const colours = saved.colours ?? (saved.exactColours
-      ? { cut: [{ kind: "grays" }], trace: [{ kind: "aci", aci: 3 }, { kind: "aci", aci: 1 }], openCut: [{ kind: "aci", aci: 4 }], other: "cut" } as ColourRules
+      ? { cut: [{ kind: "grays" }], trace: [{ kind: "aci", aci: 3 }, { kind: "aci", aci: 1 }], openCut: [{ kind: "aci", aci: 4 }], common: [], other: "cut" } as ColourRules
       : DEFAULT_COLOURS);
     const { exactColours: _old, ...rest } = saved;
     void _old;
-    return { ...DEFAULT_RULES, ...rest, colours };
+    return { ...DEFAULT_RULES, ...rest, colours: { ...colours, common: colours.common ?? [] } };
   } catch {
     return DEFAULT_RULES;
   }
@@ -243,7 +251,7 @@ const words = (s: string) => s.split(",").map((w) => w.trim().toUpperCase()).fil
  * (a layer called MARK is tracing whatever its color); with "all layers as one"
  * only colors count, and with neither everything is cutting.
  */
-export function roleFromRules(e: Entity, rules: ImportRules): Role {
+export function roleFromRules(e: Entity, rules: ImportRules): ColourList {
   if (!rules.allLayersAsOne && e.layer) {
     const layer = e.layer.toUpperCase();
     if (words(rules.openCutLayers).some((w) => layer.includes(w))) return "openCut";
@@ -253,8 +261,13 @@ export function roleFromRules(e: Entity, rules: ImportRules): Role {
   return "cut";
 }
 
+/** Roles from the rules; a common cut color marks only straight lines of closed cutting contours (the rest cut). */
 export const applyRules = (entities: Entity[], rules: ImportRules): Entity[] =>
-  entities.map((e) => { const role = roleFromRules(e, rules); return { ...e, role, fileRole: role }; });
+  dropBadCommon(entities.map((e) => {
+    const list = roleFromRules(e, rules);
+    const role: Role = list === "common" ? "cut" : list;
+    return { ...e, role, fileRole: role, common: list === "common" ? true : undefined };
+  }));
 
 /** The DXF color as #rrggbb for the light canvas (white shows black; very light colors a little darker). */
 export function colourHex(e: { color?: number; rgb?: number }): string {

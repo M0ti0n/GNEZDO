@@ -184,6 +184,25 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     ),
   },
   {
+    // Fab's icon: two parts (green, blue) sharing a cut with a plate (black, with a window);
+    // the shared cut lines in red
+    id: "commonCut", label: "Common cut",
+    icon: (
+      <Ico>
+        <path d="M7 7.2H22.8L25.6 10V22L23.3 24.3H7Z" fill="#22b14c" />
+        <circle cx="14.3" cy="14.4" r="2.8" fill="#fff" />
+        <path d="M7 25.6H23.3L25.6 27.9V38.8L23 42.5H13.9V34.5H7Z" fill="#00a2e8" />
+        <rect x="7" y="23.6" width="16.3" height="2.2" fill={R} />
+        <rect x="26.5" y="5.5" width="14.3" height="37" fill={K} />
+        <rect x="34.7" y="14.1" width="4.1" height="19.4" fill="#fff" />
+        <path d="M35.2 14.1V33H38.8" stroke={R} strokeWidth="1.1" strokeLinecap="butt" />
+        <path d="M26.2 5.5V42.5" stroke={R} strokeWidth="0.9" strokeLinecap="butt" />
+        <rect x="25.2" y="10.4" width="2.3" height="10.9" rx="1.15" fill={R} />
+        <rect x="25.2" y="28.3" width="2.3" height="10.5" rx="1.15" fill={R} />
+      </Ico>
+    ),
+  },
+  {
     // Fab's icon: four colored bars
     id: "colourLines", label: "Color lines",
     icon: (

@@ -100,7 +100,7 @@ export function App() {
   };
   /** Values saved in the Process pop-up become the Properties for the next parts. */
   const carryOver = (v: BatchProperties) =>
-    setImportProps({ project: v.project, description: v.description, material: v.material, thicknessMm: v.thicknessMm, rotations: [...v.rotations], mirror: v.mirror, filler: v.filler });
+    setImportProps({ project: v.project, description: v.description, material: v.material, thicknessMm: v.thicknessMm, rotations: [...v.rotations], mirror: v.mirror, filler: v.filler, commonCut: v.commonCut });
   const patchItem = (id: string, patch: Partial<ImportItem>) =>
     setImports((list) => list.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   const [toast, setToastState] = useState<string | null>(null);
@@ -201,7 +201,7 @@ export function App() {
           state: "ready", drawing, checked: true, processed: false,
           source: {
             partId: part.id, name: part.name, project: part.project, description: part.description, material: part.material,
-            thicknessMm: String(part.thicknessMm), rotations: detail.rotations as Rotation[], mirror: detail.mirror, filler: detail.filler,
+            thicknessMm: String(part.thicknessMm), rotations: detail.rotations as Rotation[], mirror: detail.mirror, filler: detail.filler, commonCut: detail.commonCut,
           },
         };
         setImports((list) => [...list, item]);
@@ -277,7 +277,7 @@ export function App() {
   const toSave = (i: ImportItem, v: ProcessValues, replace: boolean): SavePart => ({
     name: v.name.trim(), project: v.project.trim(), description: v.description.trim(),
     material: v.material.trim(), thicknessMm: Number(v.thicknessMm),
-    rotations: [...v.rotations], mirror: v.mirror, filler: v.filler,
+    rotations: [...v.rotations], mirror: v.mirror, filler: v.filler, commonCut: v.commonCut,
     ...partGeometry(i.drawing!),
     sourceFile: i.fileName, replace,
     qty: rules.qtyFromName ? i.qty ?? 0 : 0,
@@ -1173,14 +1173,14 @@ export function App() {
                 processed={shownItem.processed}
                 properties={shownItem.source ? { ...importProps, ...shownItem.source } : importProps}
                 nestRules={shownItem.source
-                  ? { rotations: shownItem.source.rotations, mirror: shownItem.source.mirror, filler: shownItem.source.filler }
-                  : { rotations: importProps.rotations, mirror: importProps.mirror, filler: importProps.filler }}
+                  ? { rotations: shownItem.source.rotations, mirror: shownItem.source.mirror, filler: shownItem.source.filler, commonCut: shownItem.source.commonCut }
+                  : { rotations: importProps.rotations, mirror: importProps.mirror, filler: importProps.filler, commonCut: importProps.commonCut }}
                 onProcess={() => setProcessing(shownItem.id)}
                 onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
                 onNestRules={(r) => shownItem.source
                   // a part from the database: its own rules change, not the batch's
-                  ? patchItem(shownItem.id, { source: { ...shownItem.source, rotations: r.rotations, mirror: r.mirror, filler: r.filler } })
-                  : setImportProps((p) => ({ ...p, rotations: r.rotations, mirror: r.mirror, filler: r.filler }))}
+                  ? patchItem(shownItem.id, { source: { ...shownItem.source, rotations: r.rotations, mirror: r.mirror, filler: r.filler, commonCut: r.commonCut } })
+                  : setImportProps((p) => ({ ...p, rotations: r.rotations, mirror: r.mirror, filler: r.filler, commonCut: r.commonCut }))}
                 mirrorBlocked={mirrorBlocked(shownItem, rules)}
                 fromDatabase={!!shownItem.source}
                 onEdit={(drawing, label) => editDrawing(shownItem.id, shownItem.drawing!, drawing, label)}

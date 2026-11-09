@@ -4,12 +4,12 @@ using Microsoft.EntityFrameworkCore;
 namespace Gnezdo.Api.Endpoints;
 
 /// <summary>A part with everything its Properties window shows.</summary>
-public record PartDetailDto(PartDto Part, IReadOnlyList<int> Rotations, bool Mirror, string SourceFile, bool Filler);
+public record PartDetailDto(PartDto Part, IReadOnlyList<int> Rotations, bool Mirror, string SourceFile, bool Filler, bool CommonCut);
 
 /// <summary>Changed properties of a saved part (geometry stays as it is).</summary>
 public record PartUpdateRequest(
     string Name, string? Project, string? Description, string Material, decimal ThicknessMm,
-    IReadOnlyList<int>? Rotations, bool Mirror, bool Filler);
+    IReadOnlyList<int>? Rotations, bool Mirror, bool Filler, bool CommonCut = false);
 
 public record ProjectCreateRequest(string Code, string? Name, string? Customer);
 
@@ -29,10 +29,10 @@ public static class PartEdit
                 p.Id.ToString(), p.Name, p.Project != null ? p.Project.Code : "", p.Material.Name, p.ThicknessMm, p.Qty,
                 p.WidthMm, p.HeightMm, p.AreaMm2, p.OutlinePath, p.Description, p.Engraved,
                 p.ImportBatchId.ToString(), p.ImportBatch.ImportedAt, p.CreatedAt, p.ModifiedAt, p.Revision),
-                p.Rotations, p.Mirror, p.SourceFile, p.Filler })
+                p.Rotations, p.Mirror, p.SourceFile, p.Filler, p.CommonCut })
             .FirstOrDefaultAsync(ct);
         return row is null ? Results.NotFound()
-            : Results.Ok(new PartDetailDto(row.Dto, PartSave.RotationList(row.Rotations), row.Mirror, row.SourceFile, row.Filler));
+            : Results.Ok(new PartDetailDto(row.Dto, PartSave.RotationList(row.Rotations), row.Mirror, row.SourceFile, row.Filler, row.CommonCut));
     }
 
     /// <summary>
@@ -76,6 +76,7 @@ public static class PartEdit
         part.Rotations = string.Join(",", (r.Rotations ?? []).Distinct().OrderDescending());
         part.Mirror = r.Mirror;
         part.Filler = r.Filler;
+        part.CommonCut = r.CommonCut;
         part.ModifiedAt = now;
         if (await PartSave.SaveOrClashAsync(db, ct) is { } refused) return refused;
         return await GetAsync(id, db, ct);

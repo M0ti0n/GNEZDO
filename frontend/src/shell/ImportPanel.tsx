@@ -8,6 +8,7 @@ import { droppedFiles } from "../import/dropped";
 import { isDrawingFile, statusOf, type BatchProperties, type ImportItem, type Verdict } from "../import/batch";
 import { ROTATIONS, type ImportRules, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
+import { COMMON_CUT_TIP } from "../import/commonCut";
 
 
 export interface ImportPanelProps {
@@ -45,13 +46,14 @@ const TITLE: Record<Verdict, string> = {
   processed: "Processed",
 };
 
-/** One line for the collapsed Properties: "N26-0246 · S355 6 mm · 90°, 45° · mirror · filler". */
+/** One line for the collapsed Properties: "N26-0246 · S355 6 mm · 90°, 45° · mirror · filler · common cut". */
 const summary = (p: BatchProperties) => [
   p.project.trim(),
   [p.material.trim(), p.thicknessMm && `${p.thicknessMm} mm`].filter(Boolean).join(" "),
   p.rotations.length ? p.rotations.map((r) => `${r}°`).join(", ") : "no rotation",
   p.mirror ? "mirror" : "",
   p.filler ? "filler" : "",
+  p.commonCut ? "common cut" : "",
 ].filter(Boolean).join(" · ");
 
 const toggle = (list: Rotation[], r: Rotation, on: boolean) =>
@@ -196,6 +198,10 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                   <label className="chk chk-filler" title={FILLER_TIP}>
                     <input type="checkbox" checked={p.properties.filler} onChange={(e) => setProp({ filler: e.target.checked })} />
                     Filler
+                  </label>
+                  <label className="chk chk-common" title={COMMON_CUT_TIP}>
+                    <input type="checkbox" checked={!!p.properties.commonCut} onChange={(e) => setProp({ commonCut: e.target.checked })} />
+                    Common cut
                   </label>
                   {p.properties.mirror && p.rules.mirrorWithoutOpenCut && <span className="imp-rules-note">no mirror with open cut</span>}
                 </div>

@@ -2,17 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
 import { ROTATIONS, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
+import { COMMON_CUT_TIP } from "../import/commonCut";
 import { ColourLinesDialog, applyColours } from "../import/ColourLinesDialog";
 import { angleOf, diameterOf, dimensionOf, pickEntity, radiusOf, type Measure, type Pick } from "../import/measure";
 import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
 import {
   endsOf,
-  boxOf, checkGeometry, keepMarkRules, markRulesText, pathOf, pointsAlong, roleOf, union,
+  boxOf, checkGeometry, commonCutOk, isCommon, keepMarkRules, markRulesText, pathOf, pointsAlong, roleOf, union,
   type Box, type CheckId, type Drawing, type Entity, type Pt, type Role,
 } from "../import/geometry";
 
-type NestRules = { rotations: Rotation[]; mirror: boolean; filler: boolean };
+type NestRules = { rotations: Rotation[]; mirror: boolean; filler: boolean; commonCut: boolean };
 
 /** Screen = (x * s + tx, -y * s + ty): s pixels per mm, y flipped (CAD y points up). */
 interface View { s: number; tx: number; ty: number }
@@ -30,6 +31,7 @@ const MARKING: Record<string, { role: Role; hint: string }> = {
 /** Pixels within which a point snaps to the end of a line. */
 const SNAP_PX = 12;
 const HOLE_HINT = "Click a closed cutting contour, or drag a window, to mark it as a hole: cut at slower speed by machines that can (e.g. plasma). Again to unmark.";
+const COMMON_HINT = "Common cut: a straight line of a closed cutting contour (the outside or a window) shared with a neighbouring part, cut once. Click a line, or drag a window, to mark it; again to unmark.";
 const SWEEP_HINT = "Highlighted: lines on top of other lines (within 0.1 mm), lines outside the part outline and loose points. Click a line to keep it; Delete removes the rest.";
 const LINE_HINT = "Click the start point, then the end point; the line goes on from there. Ends of lines snap (green square). Esc or right click finishes.";
 
@@ -227,7 +229,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     if ((e.target as Element).closest(".gcheck, .canvas-ui")) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    if (e.button === 0 && tool && (MARKING[tool] || tool === "hole")) {
+    if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut")) {
       const p = local(e);
       setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
       return;
@@ -306,6 +308,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       if (id) holeAt(id);
       return;
     }
+    if (tool === "commonCut" && b && view) {
+      if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) > 4) { commonBox(b, view); return; }
+      const id = lineUnder(e.clientX, e.clientY);
+      if (id) commonAt(id);
+      return;
+    }
     const mark = tool ? MARKING[tool] : undefined;
     if (!b || !mark || !view) return;
     if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) > 4) { markBox(b, mark.role, view); return; }
@@ -351,6 +359,38 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     });
     if (!hit.length) { setMessage({ text: crossing ? "No closed contour touches the box" : "No closed contour is fully inside the box" }); return; }
     toggleHoles(hit);
+  };
+
+  // Common cut: straight lines of closed cutting contours, line by line; again unmarks.
+  const commonOk = useMemo(() => commonCutOk(drawing.entities), [drawing.entities]);
+  const toggleCommon = (ids: string[]) => {
+    const set = new Set(ids);
+    const all = drawing.entities.filter((e) => set.has(e.id)).every((e) => e.common);
+    commit({ ...drawing, entities: drawing.entities.map((e) => (set.has(e.id) ? { ...e, common: all ? undefined : true } : e)) }, all ? "Unmark common cut" : "Mark common cut");
+    setSelected(null);
+    const n = set.size;
+    setMessage({ text: all ? `${n} ${n === 1 ? "line" : "lines"} unmarked (plain cutting)` : `${n} ${n === 1 ? "line" : "lines"} → common cut` });
+  };
+  const commonAt = (id: string) => {
+    const e = drawing.entities.find((x) => x.id === id);
+    if (!e) return;
+    if (roleOf(e) !== "cut") { setMessage({ text: "Only cutting lines can be common cut (this line is tracing or open cut)", bad: true }); return; }
+    if (e.kind !== "line") { setMessage({ text: "Only straight lines can be common cut", bad: true }); return; }
+    if (!commonOk.has(id)) { setMessage({ text: "This contour is not closed: close it first (see Geometry check)", bad: true }); return; }
+    toggleCommon([id]);
+  };
+  const commonBox = (b: { x0: number; y0: number; x1: number; y1: number }, v: View) => {
+    const toMm = (x: number, y: number): Pt => ({ x: (x - v.tx) / v.s, y: -(y - v.ty) / v.s });
+    const a = toMm(Math.min(b.x0, b.x1), Math.max(b.y0, b.y1)), c = toMm(Math.max(b.x0, b.x1), Math.min(b.y0, b.y1));
+    const rect = { minX: a.x, minY: a.y, maxX: c.x, maxY: c.y };
+    const crossing = b.x1 < b.x0;
+    const ids = drawing.entities.filter((e) => {
+      if (!commonOk.has(e.id)) return false;
+      const pts = pointsAlong(e);
+      return crossing ? touchesRect(pts, rect) : pts.every((p) => inRect(p, rect));
+    }).map((e) => e.id);
+    if (!ids.length) { setMessage({ text: `No straight line of a closed cutting contour is ${crossing ? "touching" : "fully inside"} the box` }); return; }
+    toggleCommon(ids);
   };
 
   // Color lines: a pop-up with every color in the part and the operation its lines get
@@ -505,7 +545,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : "not built yet") : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -517,7 +557,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         blocked={problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
-        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "line" || tool === "sweep" || tool === "hole") ? " is-marking" : ""}`}
+        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "line" || tool === "sweep" || tool === "hole" || tool === "commonCut") ? " is-marking" : ""}`}
         onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -535,7 +575,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   from the color rules, a layer, or marked by hand - not the drawing's own color */}
               {drawing.entities.map((e) => (
                 <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke"
-                  className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
+                  className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}${isCommon(e) ? " is-common" : ""}${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
               ))}
               {/* wide invisible strokes so thin lines are easy to click */}
               {preview?.removed.map((e) => <path key={`rm-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="pv-remove" />)}
@@ -547,7 +587,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {tool === "sweep" && drawing.entities.filter((e) => sweptIds.has(e.id)).map((e) => (
                 <path key={`sw-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={keep.has(e.id) ? "sweep-keep" : "sweep-hl"} />
               ))}
-              {tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep" || tool === "hole") && drawing.entities.map((e) => (
+              {tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep" || tool === "hole" || tool === "commonCut") && drawing.entities.map((e) => (
                 <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
             </g>
@@ -679,6 +719,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
             <li title="Engraved, not cut through"><i className="sw sw-trace" />Tracing</li>
             <li title="Cut with no lead-in or lead-out, from one end"><i className="sw sw-open" />Open cut</li>
             <li title="Cutting contour cut at slower speed (Hole tool)"><i className="sw sw-hole" />Hole</li>
+            <li title="Straight cutting line shared with a neighbouring part (Common cut tool)"><i className="sw sw-common" />Common cut</li>
             <li title="A line with a problem keeps its color and gets a red glow"><i className="sw sw-bad" />Problem</li>
           </ul>
           <h3 className="gc-sec">Part</h3>
@@ -709,6 +750,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 <label className="chk chk-box chk-filler" title={FILLER_TIP}>
                   <input type="checkbox" checked={nestRules.filler} onChange={(e) => onNestRules({ ...nestRules, filler: e.target.checked })} />
                   Filler
+                </label>
+                <label className="chk chk-box chk-common" title={COMMON_CUT_TIP}>
+                  <input type="checkbox" checked={nestRules.commonCut} onChange={(e) => onNestRules({ ...nestRules, commonCut: e.target.checked })} />
+                  Common cut
                 </label>
               </div>
               <p className="gc-note">{mirrorBlocked ? "No mirror: this part has open cut lines. " : ""}{fromDatabase ? "This part's own rules (opened from the database); Process saves them back with it." : "Same as Properties: applies to every part in the list."}</p>
