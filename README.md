@@ -6,6 +6,8 @@
 
 Run it as a web app on your work server, or as a desktop app on Windows and Linux.
 
+*In development: usable for importing parts and nesting; cutting paths and reports come next.*
+
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
 ![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
@@ -35,12 +37,20 @@ It is meant for professional industrial shops, not just hobbyists.
 
 ## Features
 
-- **Part import** (DXF, DWG, SVG) with cutting and engraving contours detected per part
-- **SQL database** for parts, jobs, projects, remnants
-- **Auto nesting** with multiple strategies (Fast, Thorough, Custom) and side-by-side sheet solutions
-- **Manual nesting** with mirror, rotate, arrange, stack and align tools
-- **Work part list** with materials, thicknesses, quantities and stock sheet assignment
-- **Processing and post-processing** for toolpaths and machine-specific features
+Working now:
+
+- **Part import from DXF** (files or whole folders, dropped anywhere), with cutting, tracing (engraving), open cut, hole and common cut lines detected from layers and colors, and editing tools for fixing broken parts: geometry check, trim, extend, line, align, erase, sweep, color lines, measuring
+- **Database** of parts, jobs and projects (SQL Server on a server, SQLite in the desktop version), with part versions that can be restored, part search and job search
+- **Auto nesting** with Fast, Thorough and Custom strategies, blocks, common cut, continuing a solution, and several solutions side by side
+- **Manual nesting** with add sheet, mirror, rotate, arrange, stack, align edge, common cut, lock, copy and paste
+- **Work part list** with materials, thicknesses, required / nested / maximum quantities and stock sheets, including remnants from DXF
+- **Server version** with users and sign-in, and a **desktop version** for one PC
+
+Coming:
+
+- **Part import from DWG and SVG**
+- **Remnant database**
+- **Processing and post-processing**: cut order, lead-ins, toolpaths and machine-specific features
 - **Nesting and cost reports**
 
 ## Roadmap
@@ -49,10 +59,10 @@ It is meant for professional industrial shops, not just hobbyists.
 
 **Stage 1 (currently implementing)**
 
-- [ ] 2D import (DXF, DWG, SVG) with powerful, easy-to-use tools for fixing broken parts
+- [ ] 2D import with powerful, easy-to-use tools for fixing broken parts: DXF and the repair tools done; DWG and SVG to follow
 - [x] SQL database for parts and jobs (remnants to follow)
-- [ ] Job creation with powerful auto nesting algorithms and clever strategies
-- [ ] Manual nesting with a variety of tools
+- [x] Job creation with auto nesting algorithms and strategies: Fast, Thorough and Custom work; tuning goes on
+- [x] Manual nesting with a variety of tools: the core tools are done
 - [ ] Processing and post-processing tools for path generation and special features
 - [ ] Nesting reports and cost reports
 
@@ -61,8 +71,6 @@ It is meant for professional industrial shops, not just hobbyists.
 - [ ] Import 3D parts from STEP files with a sheet unfolder
 - [ ] Tube and profile nesting with STEP import and database
 - [ ] 2D drawing environment
-
-> The checkboxes are my best reading of the current state. Adjust them as things land.
 
 ## Screenshots
 
@@ -94,9 +102,11 @@ Import parts from drawing files into the database, review them and fix problems 
 
 | Folder | What | Language |
 |---|---|---|
-| `frontend/` | Screens: home, tabs, imported parts panel, job part list | TypeScript + React (Vite) |
-| `backend/` | Web server and database: parts, imports, projects, jobs | C# / .NET 10, SQL Server |
+| `frontend/` | Screens: home, tabs, importer and its tools, parts and job search, job part list, auto and manual nesting, settings and rules | TypeScript + React (Vite) |
+| `backend/` | Web server and database: parts, imports, projects, jobs, nesting runs, users, drafts; also the desktop host | C# / .NET 10, SQL Server or SQLite |
 | `nesting/` | Nesting engine: PackingSolver with our fixes, and our pre-pass (hole filling, pairs, blocks, common cut) and post-pass ([nesting/README.md](nesting/README.md)); started by the backend for every auto nest | C++, Python |
+
+| `packaging/` | The Windows server zip (`start.bat`) and the desktop builds for Windows and Linux | |
 
 Planned: postprocessor.
 
@@ -130,7 +140,7 @@ docker compose up -d --build
 docker compose --profile sqlserver up -d --build
 ```
 
-Open `http://<server>:8080`. The API creates its tables on first start.
+Open `http://<server>:8080`. The API creates its tables on first start; the first person to open it makes the admin account, who then adds the other users.
 
 ## Develop
 
@@ -147,12 +157,12 @@ npm run dev                      # http://localhost:5173, sample data built in
 echo "VITE_USE_API=true" > .env.local   # use the backend instead (proxied to :5080)
 ```
 
-Tests: `dotnet test backend/Gnezdo.slnx` with `GNEZDO_TEST_SQL` set to a SQL Server connection string without a database name; every run uses and drops its own database. GitHub Actions runs the frontend type-check/build, the backend tests on SQL Server and SQLite, the Docker builds and an end-to-end run of the server on every push.
+Tests: `dotnet test backend/Gnezdo.slnx` with `GNEZDO_TEST_SQL` set to a SQL Server connection string without a database name; every run uses and drops its own database (the SQLite tests need nothing set up). GitHub Actions runs the frontend type-check/build, the backend tests on SQL Server and SQLite, the Docker builds and an end-to-end run of the server on every push.
 
 ## Technical reference
 
 <details>
-<summary><b>API (so far)</b></summary>
+<summary><b>API (main endpoints)</b></summary>
 
 | Endpoint | Returns |
 |---|---|
@@ -163,8 +173,14 @@ Tests: `dotnet test backend/Gnezdo.slnx` with `GNEZDO_TEST_SQL` set to a SQL Ser
 | `GET /api/imports/recent`, `GET /api/imports` | import batches |
 | `GET /api/jobs/recent` | latest changed jobs |
 | `GET /api/jobs?name=&material=&thicknessMm=&project=&created=on:2026-10-24&modified=upTo:2026-10-24&part=` | job search: `project` = jobs containing parts of that project, `part` = jobs a part is used in |
+| `GET /api/parts/{id}`, `PUT /api/parts/{id}`, `DELETE /api/parts/{id}` | one part with its nesting rules (rotations, mirror, filler, common cut); change its properties; delete it (kept for the jobs that use it) |
+| `GET /api/parts/{id}/geometry` | the part's drawing and operations (see *Saved part geometry*) |
+| `GET /api/parts/{id}/history`, `POST /api/parts/{id}/restore` | earlier versions of a part; make one current again |
 | `GET /api/jobs/{id}/parts` | parts in a job with quantities |
-| `GET /api/projects/recent` | projects by last activity |
+| `GET /api/jobs/{id}`, `POST /api/jobs`, `PUT /api/jobs/{id}` | a job with its stock and nest; save a new job; save changes |
+| `POST /api/nest`, `GET /api/nest/{id}`, `POST /api/nest/{id}/stop` | start an auto nest (Fast, Thorough, Custom), its progress and result, stop it keeping the best layout |
+| `GET /api/projects/recent`, `POST /api/projects` | projects by last activity; save a new project |
+| `GET /api/auth/state`, `POST /api/auth/signin`, `/api/users` | sign-in and users (server version) |
 | `GET /api/health` | `{ "status": "ok" }` |
 
 Sorting (parts and jobs): `sort=name|created|modified|material|thickness|project`, `dir=asc|desc` (default: modified, newest first). Jobs sort by the smallest material/thickness/project among their parts.
@@ -193,9 +209,9 @@ Parts saved before this (version 1) hold only the entity list with roles; the op
 <details>
 <summary><b>Database updates (migrations)</b></summary>
 
-The database is updated by EF Core migrations in `backend/src/Gnezdo.Api/Data/Migrations`. On start GNEZDO applies the migrations that have not run yet, each in a transaction; existing parts, jobs and projects are kept.
+The database is updated by EF Core migrations: `backend/src/Gnezdo.Api/Data/Migrations` for SQL Server and `Data/SqliteMigrations` for SQLite (the desktop version). On start GNEZDO applies the migrations that have not run yet, each in a transaction; existing parts, jobs and projects are kept.
 
-- **Changing the model** (entities or `GnezdoDb`): add a migration in the same branch. Without the dotnet tools on your PC: write the migration name (e.g. `AddSheetStock`) on the first line of `backend/migration-request.txt` and push; the *EF migration* workflow adds it and pushes it back. CI fails while the model has changes without a migration.
+- **Changing the model** (entities or `GnezdoDb`): add a migration in the same branch. Without the dotnet tools on your PC: write the migration name (e.g. `AddSheetStock`) on the first line of `backend/migration-request.txt` and push; the *EF migration* workflow adds it for both databases and pushes it back. CI fails while the model has changes without a migration.
 - **Databases from before migrations** (made with `EnsureCreated`, test data only): GNEZDO stops with a message on start. Drop that database once and start GNEZDO again.
 - **Before updating the server**: back up the database. To see the SQL first: `dotnet ef migrations script --idempotent --project backend/src/Gnezdo.Api`.
 
