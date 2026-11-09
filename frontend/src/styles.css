@@ -491,6 +491,14 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 .preview-head h2 { flex: 1; }
 .sheets-area { max-height: 42%; overflow: auto; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--sheet); }
 .sheet-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.sheet-tiles.is-single { grid-template-columns: minmax(0, 1fr); }
+/* 2 x 2 grid / one sheet: two small square buttons */
+.cols-toggle { display: inline-flex; border: 1.5px solid var(--green-ink); border-radius: 6px; overflow: hidden; }
+.cols-toggle button { display: grid; place-items: center; width: 32px; height: 30px; border: 0; background: #fff; color: var(--ink-2); cursor: pointer; padding: 0; }
+.cols-toggle button + button { border-left: 1.5px solid var(--green-ink); }
+.cols-toggle button.is-on { background: var(--green-tint); color: var(--green-ink); }
+.cols-toggle svg rect { fill: none; stroke: currentColor; stroke-width: 1.6; }
+.cols-toggle button.is-on svg rect { fill: currentColor; fill-opacity: .25; }
 .sheet-tile {
   position: relative; aspect-ratio: 2 / 1; border: 2px solid #7d8a93; border-radius: 3px;
   background-color: #f4f7f7; background-image: radial-gradient(var(--dot) 1px, transparent 1.2px); background-size: 12px 12px;
