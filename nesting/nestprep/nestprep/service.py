@@ -446,11 +446,16 @@ class Run:
                 common, minutes = self.common_trials(i, opts, minutes, on_progress)
                 if common["share"] > 0:
                     opts = dataclasses.replace(opts, common={"edges": g["common"], "kerf": g["kerf"], "share": common["share"]})
-            job = run_job(g["instance"], self.bin, level, opts,
-                          os.path.join(self.dir, f"group{i + 1}"), quiet=True,
-                          minutes=minutes, stop_after=stop_after * 60 if stop_after else None,
-                          should_stop=self.stop_requested, on_progress=on_progress, variants=variants,
-                          growth=growth)
+            tried = common.pop("_job", None) if common else None
+            if tried is not None and self.stop_requested():
+                # stopped during the trials: the best trial is the layout kept
+                job = tried
+            else:
+                job = run_job(g["instance"], self.bin, level, opts,
+                              os.path.join(self.dir, f"group{i + 1}"), quiet=True,
+                              minutes=minutes, stop_after=stop_after * 60 if stop_after else None,
+                              should_stop=self.stop_requested, on_progress=on_progress, variants=variants,
+                              growth=growth)
         except NestError as e:
             with self.lock:
                 self.status[i].update(stage="error", error=str(e))
@@ -485,8 +490,10 @@ class Run:
 
     def common_trials(self, i: int, opts: Options, minutes, on_progress) -> tuple[dict, float | None]:
         """Which common cut block size to nest with: a short nest of each (and of none) within a
-        quarter of the time, the fewest sheets (then the shortest last sheet) wins. One block size
-        only: no trials. Returns the choice (for the result) and the minutes left for the nest."""
+        quarter of the time: the most parts placed (limited sheets), then the fewest sheets, then the
+        shortest last sheet wins. One block size only: no trials. Returns the choice (for the result;
+        its "_job": the best trial's nest, used when the run is stopped during the trials) and the
+        minutes left for the nest."""
         g = self.groups[i]
         t0 = time.perf_counter()
         base = {"edges": g["common"], "kerf": g["kerf"]}
@@ -518,14 +525,17 @@ class Run:
                             quiet=True, should_stop=self.stop_requested, budget=each)
             except NestError:
                 continue
-            m = metrics(r["instance"], expand(r["solution"], r["mapping"]))
-            trials.append({"share": sh, "sheets": m["sheets"], "equiv": m["sheet_equivalents"]})
+            placed = expand(r["solution"], r["mapping"])
+            m = metrics(r["instance"], placed)
+            trials.append({"share": sh, "sheets": m["sheets"], "equiv": m["sheet_equivalents"],
+                           "placed": sum(len(s["parts"]) for s in placed), "_job": r})
         if not trials:
             return {"share": plans[0], "trials": []}, minutes
-        best = min(trials, key=lambda t: (t["sheets"], t["equiv"], -t["share"]))
+        best = min(trials, key=lambda t: (-t["placed"], t["sheets"], t["equiv"], -t["share"]))
         spent = (time.perf_counter() - t0) / 60.0
         left = None if minutes is None else max(0.5, minutes - spent)
-        return {"share": best["share"], "trials": trials}, left
+        shown = [{k: v for k, v in t.items() if k != "_job"} for t in trials]
+        return {"share": best["share"], "trials": shown, "_job": best["_job"]}, left
 
     def run(self) -> dict:
         self.progress("start")

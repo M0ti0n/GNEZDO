@@ -12,15 +12,16 @@ export interface CommonEdge { a: Pt; b: Pt; n: Pt; len: number }
 
 const MIN_EDGE = 10;
 
-const edgeCache = new Map<string, Promise<[number, number, number, number][]>>();
-/** A part's common cut lines when it has the Common cut nesting rule ticked (else none). */
+const edgeCache = new Map<string, { at: number; lines: Promise<[number, number, number, number][]> }>();
+/** A part's common cut lines when it has the Common cut nesting rule ticked (else none). Looked up
+ * again after a minute: the rule or the drawing may have been changed meanwhile (part properties). */
 export function partCommonLines(partId: string): Promise<[number, number, number, number][]> {
   let r = edgeCache.get(partId);
-  if (!r) {
-    r = api.part(partId).then((d) => (d.commonCut ? commonEdgesOf(partId) : []), () => []);
+  if (!r || Date.now() - r.at > 60_000) {
+    r = { at: Date.now(), lines: api.part(partId).then((d) => (d.commonCut ? commonEdgesOf(partId) : []), () => []) };
     edgeCache.set(partId, r);
   }
-  return r;
+  return r.lines;
 }
 
 /** The lines with their outward normals (lines that are not on the part's outside are left out). */
