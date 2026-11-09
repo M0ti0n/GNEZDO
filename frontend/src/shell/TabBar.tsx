@@ -115,7 +115,7 @@ function AppMenu({ onMenu, off }: { onMenu: (id: MenuId) => void; off: Partial<R
               {m.icon}<span>{m.label}</span>
             </button>
           ))}
-          <div className="menu-foot">GNEZDO 0.1, BO-DA d.o.o.</div>
+          <div className="menu-foot">GNEZDO 0.1</div>
         </div>
       )}
     </div>

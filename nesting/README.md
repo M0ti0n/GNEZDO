@@ -44,13 +44,13 @@ no overlaps, gap ≥ 5 mm).
 
 | Run | Sheets | Sheet-equivalents | Parts in holes |
 |---|---|---|---|
-| Libellula CUT (report) | 8 | ≈ 7.49 | yes |
+| Commercial nesting program (its report) | 8 | ≈ 7.49 | yes |
 | PackingSolver 2026-10-23 alone | 8 | 7.96 | 0 |
 | PackingSolver 2026-10-23 + pre-pass | 8 | 7.34 | 251 |
 | PackingSolver 2026-10-26 alone | 8 | 8.00 | 0 |
 | **PackingSolver 2026-10-26 + pre-pass** | **7** | **7.00** | 247 |
 
-With the newer PackingSolver the pre-pass job fits on **7 sheets, one fewer than Libellula**. The
+With the newer PackingSolver the pre-pass job fits on **7 sheets, one fewer than the commercial program**. The
 older version on the same machine still gives 7.34, so the gain comes from the upgrade. The
 "anytime" and "deterministic" modes gave the same layouts here.
 
@@ -104,7 +104,7 @@ used length of the last sheet). Every layout passed the validator.
 
 | | test 1 (Miha2787, 531 parts) | test 2 (532) | test 3 (532) |
 |---|---|---|---|
-| Libellula | 8 · ≈ 7.49 · 1475 mm | – | – |
+| Commercial program | 8 · ≈ 7.49 · 1475 mm | – | – |
 | PackingSolver alone (30 s) | 8 · 8.00 · 3000 mm | 9 · 8.76 · 2271 mm | 9 · 8.86 · 2585 mm |
 | **quick** (30 s total) | 8 · 7.43 · 1287 mm | 8 · 7.76 · 2287 mm | 8 · 7.57 · 1714 mm |
 | **thorough** (90 s total) | **7 · 7.00** · 2991 mm | **8 · 7.68** · 2033 mm | **8 · 7.54** · 1607 mm |
