@@ -1203,6 +1203,11 @@ th.num .th-sort { flex-direction: row-reverse; }
 .jsec-tile:active { transform: translateY(1px); }
 .jsec-icon { display: block; height: 66px; width: auto; max-width: 140px; object-fit: contain; }
 .jsec-label { font-family: var(--font); font-size: 16px; font-weight: 500; letter-spacing: .01em; text-transform: uppercase; white-space: nowrap; line-height: 1; }
+/* a section open: the closed tiles get narrower, so the open tools and every tile fit a 1080p screen
+   (also at 125 % scaling, or with the side panel open) */
+.jtools:has(.jsec.is-open) .jsec-tile { width: 118px; }
+.jtools:has(.jsec.is-open) .jsec-icon { height: 56px; max-width: 106px; }
+.jtools:has(.jsec.is-open) .jsec-label { font-size: 13px; }
 .jsec.is-open {
   display: flex; align-items: flex-start; gap: 6px; padding: 4px 10px 4px 4px;
   background: #fff; border: 2px solid var(--js-ink);
