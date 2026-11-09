@@ -8,7 +8,6 @@ import { isDrawingFile, statusOf, type BatchProperties, type ImportItem, type Ve
 import { ROTATIONS, type ImportRules, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
 
-type Mode = "folder" | "files";
 
 /** Every file in what was dropped: folders are read through, subfolders included. */
 async function droppedFiles(dt: DataTransfer): Promise<File[]> {
@@ -82,10 +81,10 @@ const toggle = (list: Rotation[], r: Rotation, on: boolean) =>
 const icon = (id: string) => IMPORT_TOOLS.find((t) => t.id === id)?.icon;
 
 export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
-  const [mode, setMode] = useState<Mode>("files");
   const [skipped, setSkipped] = useState(0);
   const [over, setOver] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
+  const input = useRef<HTMLInputElement>(null);        // DXF / DWG files
+  const folderInput = useRef<HTMLInputElement>(null);  // a folder
   const lists = usePickLists(p.properties.material);
   // a project typed but not saved: parts can only be saved under saved projects
   const projectMissing = lists.projectsLoaded && !lists.projectKnown(p.properties.project);
@@ -136,18 +135,28 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
       <PanelHead title="Import" onClose={p.onClose} />
 
       <div className="imp-body">
-        <div className="seg" role="tablist" aria-label="Import mode">
-          {(["folder", "files"] as const).map((m) => (
-            <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? "is-on" : ""} onClick={() => setMode(m)}
-              title={m === "folder" ? "Choose a folder: all DXF and DWG files in it are imported" : "Choose one or more DXF or DWG files"}>
-              {m === "folder" ? "Folder import" : "File import"}
-            </button>
-          ))}
+        {/* choose a folder or files (or drop them on the list below) */}
+        <div className="imp-pick">
+          <button type="button" className="btn imp-btn" onClick={() => folderInput.current?.click()}
+            title="Choose a folder: all DXF and DWG files in it are imported (or drop a folder on the list)">
+            <svg className="imp-pick-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5h-7.2L10.4 5H4.5A1.5 1.5 0 0 0 3 6.5Z" />
+            </svg>
+            Folder import
+          </button>
+          <button type="button" className="btn imp-btn" onClick={() => input.current?.click()}
+            title="Choose one or more DXF or DWG files (or drop them on the list)">
+            <svg className="imp-pick-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M14 3v4h4" />
+            </svg>
+            File import
+          </button>
         </div>
 
         <input ref={input} type="file" hidden multiple accept=".dxf,.dwg"
-          {...(mode === "folder" ? { webkitdirectory: "", directory: "" } : {})}
-          onChange={(e) => { take([...(e.target.files ?? [])], mode === "folder"); e.target.value = ""; }} />
+          onChange={(e) => { take([...(e.target.files ?? [])], false); e.target.value = ""; }} />
+        <input ref={folderInput} type="file" hidden multiple {...{ webkitdirectory: "", directory: "" }}
+          onChange={(e) => { take([...(e.target.files ?? [])], true); e.target.value = ""; }} />
 
         <section className={`imp-props${p.propsOpen ? " is-open" : ""}`} aria-label="Properties">
           <button type="button" className="imp-props-head" aria-expanded={p.propsOpen} onClick={() => p.onPropsOpen(!p.propsOpen)}
@@ -248,11 +257,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
             {count("ok", "processed") > 0 && <> · <span className="t-ok">{count("ok", "processed")} ready</span></>}
             {toCheck > 0 && <> · <span className="t-bad">{toCheck} to check</span></>}
           </span>
-          <span className="result-actions">
-            <button className="link" onClick={() => input.current?.click()} title={mode === "folder" ? "Choose a folder (or drop one on the list)" : "Choose DXF / DWG files (or drop them on the list)"}>
-              {mode === "folder" ? "Add folder…" : "Add files…"}</button>
-            <button className="link" onClick={p.onClear}>Clear list</button>
-          </span>
+          <span className="result-actions"><button className="link" onClick={p.onClear}>Clear list</button></span>
         </div>
       )}
       {processHint && p.items.length > 0 && <p className="imp-hint">{processHint}</p>}
@@ -265,7 +270,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                 <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" /><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />
               </svg>
               <b>Drop a folder or DXF / DWG files here</b>
-              <span>or click to choose {mode === "folder" ? "a folder" : "files"}</span>
+              <span>or click to choose files</span>
             </button>
             <span className="imp-empty-note">One file opens on the main screen; several go to the list.</span>
             <button className="link" onClick={p.onSamples}>Try it with two sample drawings</button>

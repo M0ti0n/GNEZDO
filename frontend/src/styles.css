@@ -1803,3 +1803,8 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .colour-chip .chip-width.field { width: auto; min-width: 0; flex: none; }
 .seg.colour-kind { display: grid; grid-template-columns: repeat(3, auto); }
 .seg.colour-kind button { white-space: nowrap; padding-left: 12px; padding-right: 12px; }
+
+/* Import: Folder import / File import open the chooser (drop on the list works for both) */
+.imp-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.imp-pick .imp-btn { gap: 8px; }
+.imp-pick-icon { flex: none; }
