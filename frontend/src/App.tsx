@@ -1030,7 +1030,7 @@ export function App() {
         } : undefined}
         onActivate={(id) => dispatch({ type: "activate", id })}
         onClose={(id) => requestClose(id)}
-        onMenu={(id) => (id === "exportDxf" ? void exportDxf() : showView(id))}
+        onMenu={(id) => (id === "exportDxf" ? void exportDxf() : id === "close" ? showView("home") : showView(id))}
         menuOff={{ exportDxf: exportProblem() ?? undefined }}
         undo={undoState}
         save={job ? { onSave: () => void saveJob(job.id, job.title), onSaveAs: () => setSaveAsFor({ jobId: job.id, name: `${job.title} copy` }) } : null}
