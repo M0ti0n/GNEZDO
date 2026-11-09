@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NumInput } from "../components/NumInput";
-import { COLOUR_ROLES, DEFAULT_RULES, ROTATIONS, type ImportRules } from "../import/rules";
+import { DEFAULT_RULES, ROTATIONS, type ImportRules } from "../import/rules";
+import { ColourLists } from "./ColourLists";
 import { DEFAULT_NESTING_RULES, SEARCH_GROWTH_MAX, SEARCH_GROWTH_MIN, loadNestingRules, saveNestingRules, type NestingRules } from "../job/nestRules";
 
 type Section = "import" | "nesting";
@@ -10,7 +11,6 @@ const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "nesting", label: "Nesting rules", ready: true },
 ];
 
-const ROLE_NAME = { cut: "Cutting", trace: "Tracing", openCut: "Open cut" } as const;
 
 // GNEZDO menu -> Rules. Import rules decide how new drawings are read; nesting rules how parts are nested.
 export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (r: ImportRules) => void }) {
@@ -106,35 +106,12 @@ export function RulesPage({ rules, onChange }: { rules: ImportRules; onChange: (
           <label className="rule-check">
             <input type="checkbox" checked={rules.coloursAsCuts} onChange={(e) => set({ coloursAsCuts: e.target.checked })} />
             <span><b>Treat different colors as different cuts</b>
-              <small>Line colors from the drawing decide what the laser does.</small></span>
+              <small>Line colors from the drawing decide what the laser does: each list below says which colors mean what.
+                Layer names (above) win over colors.</small></span>
           </label>
           {rules.coloursAsCuts && (
             <div className="rule-sub">
-              <ul className="colour-map">
-                <li>
-                  <span className="shades"><i style={{ background: "#1b1b1b" }} /><i style={{ background: "#fff" }} /><i style={{ background: "#8c8c8c" }} /></span>
-                  <span>Black, white and grays</span><span className="arrow">→</span><b>Cutting</b>
-                </li>
-                {COLOUR_ROLES.map((c) => (
-                  <li key={c.name}>
-                    <span className="shades">
-                      {(rules.exactColours ? c.shades.slice(0, 1) : c.shades).map((css) => <i key={css} style={{ background: css }} />)}
-                    </span>
-                    <span>{rules.exactColours ? `${c.name.split(" ")[0].replace(/s$/, "")} (color ${c.aci}) only` : `${c.name}, any shade`}</span>
-                    <span className="arrow">→</span>
-                    <b className={`role-${c.role}`}>{ROLE_NAME[c.role]}</b>
-                  </li>
-                ))}
-                <li className="colour-other">
-                  <span className="shades"><i /></span>
-                  <span>Other colors (blue, yellow …)</span><span className="arrow">→</span><b>Cutting</b>
-                </li>
-              </ul>
-              <label className="rule-check rule-check-small">
-                <input type="checkbox" checked={rules.exactColours} onChange={(e) => set({ exactColours: e.target.checked })} />
-                <span><b>Exact colors only</b>
-                  <small>Only the basic colors red (1), green (3) and cyan (4) count. Off: dark, light and True Color (RGB) shades count too, e.g. a darker green that plots better on paper.</small></span>
-              </label>
+              <ColourLists value={rules.colours} onChange={(colours) => set({ colours })} />
             </div>
           )}
         </section>

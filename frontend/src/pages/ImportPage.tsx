@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
-import { ROTATIONS, lineColour, type Rotation } from "../import/rules";
+import { ROTATIONS, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
 import { ColourLinesDialog, applyColours } from "../import/ColourLinesDialog";
 import { angleOf, diameterOf, dimensionOf, pickEntity, radiusOf, type Measure, type Pick } from "../import/measure";
@@ -531,10 +531,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {drawing.entities.filter((e) => flagged.has(e.id)).map((e) => (
                 <path key={`glow-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-glow" />
               ))}
-              {/* each line in its own DXF color, as in CAD; after processing, the role colors */}
+              {/* each line in the color of what it does (cut / trace / open cut), however it got that:
+                  from the color rules, a layer, or marked by hand - not the drawing's own color */}
               {drawing.entities.map((e) => (
                 <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke"
-                  style={!processed && lineColour(e) ? { stroke: lineColour(e)! } : undefined}
                   className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
               ))}
               {/* wide invisible strokes so thin lines are easy to click */}
