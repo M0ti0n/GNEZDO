@@ -27,6 +27,8 @@ import toolStackGrid from "./jobtools/tool-stackGrid.png";
 import toolAlignEdge from "./jobtools/tool-alignEdge.png";
 import toolAddSheet from "./jobtools/tool-addSheet.png";
 import toolNestReport from "./jobtools/tool-nestReport.png";
+import toolAutoCut from "./jobtools/tool-autoCut.png";
+import toolManualCut from "./jobtools/tool-manualCut.png";
 import toolCostReport from "./jobtools/tool-costReport.png";
 
 // The icons are cut from Fab's design sheet as they are (tile icons on their tile colour).
@@ -62,7 +64,13 @@ const SECTIONS: Section[] = [
         hint: "Common cut (on / off): parts with the Common cut rule snap together on their marked lines, cut once (Alt: place without snapping); Arrange makes blocks of them" },
     ],
   },
-  { id: "process", label: "Process", icon: tileProcess, tools: [] },
+  {
+    // Fab's icons; what they do comes later
+    id: "process", label: "Process", icon: tileProcess, tools: [
+      { id: "autoCut", label: "Auto cut", icon: toolAutoCut, hint: "Auto cut: the cut order and lead-ins worked out for the sheet" },
+      { id: "manualCut", label: "Manual cut", icon: toolManualCut, hint: "Manual cut: set the cut order by hand" },
+    ],
+  },
   {
     id: "report", label: "Report", icon: tileReport, tools: [
       { id: "nestReport", label: "Nest report", icon: toolNestReport },
