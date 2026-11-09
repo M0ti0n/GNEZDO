@@ -24,7 +24,8 @@ interface Props {
   onStock: (stock: StockSheet[]) => void;
   onDropParts: (parts: PartSummary[]) => void;
   onPart: (partId: string, patch: Partial<Pick<JobPart, "qty" | "qtyMax" | "part" | "dbMaterial" | "dbThicknessMm">>) => void;
-  onRemove: (partId: string) => void;
+  /** deleted: the part was deleted from the database (its properties): gone without asking */
+  onRemove: (partId: string, deleted?: boolean) => void;
   onOpenParts: () => void;
   onNotice: (text: string) => void;
   /** The machine the job is nested for: gaps of new sheets, 0,0, cutting area. */
@@ -308,7 +309,7 @@ export function JobPage({ title, parts, nestedIn, stock, stockSettings, onStock,
       {editing && (
         <PartPropertiesDialog part={editing} onClose={() => setEditing(null)}
           onSaved={(now) => onPart(now.id, keepJobMaterial(parts, now, (nestedIn?.[now.id]?.length ?? 0) > 0))}
-          onDeleted={(id) => onRemove(id)}
+          onDeleted={(id) => onRemove(id, true)}
           onVersions={(p) => { setEditing(null); setHistory(p); }} />
       )}
       {history && (
