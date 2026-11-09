@@ -1,79 +1,126 @@
+<div align="center">
+
 # GNEZDO
 
-Laser nesting software A web app on the work server or a desktop version for windows and linux.
-Users work in the browser; parts, jobs and nests live in SQL Server, or on personal pc if using desktop version.
+**Laser nesting software built by a metal-shop engineer, for metal shops.**
 
-I started the project because we are disappointed with the commercial software. It is expensive, fragile, and support is bad,... So i sad f-it im making my own software that i will actually enjoy using it.
-Im building it from my experience using various nesting software over time.  Working as mechanical engineer in metal processing company  i tailoring it as i see it bets fits the workflow im using.. IT should suit not just hobbies but professional industrial environment  as well. 
+Run it as a web app on your work server, or as a desktop app on Windows and Linux.
 
-I name it GNEZDO because all NEST  / NESTING are already used and i dont want my app to be another one  :D  [although GNEZDO means NEST in my language :)]
+![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
+![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![SQL Server](https://img.shields.io/badge/SQL%20Server-CC2927?logo=microsoftsqlserver&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 
-here is my ko-fi link if you want to support me in development
+[**⬇ Download test build**](#download-a-test-build) ·
+[**Test parts**](https://github.com/M0ti0n/GNEZDO/raw/main/test-parts/TEST_PARTS_FOR_GNEZDO.7z) ·
+[Roadmap](#roadmap) ·
+[Run on a server](#run-on-the-server-docker)
 
-https://ko-fi.com/m0ti0n
-
-https://paypal.me/FabG03D
-
-https://buymeacoffee.com/M0ti0n
-
-For more info you can reach me on mail fab.go3d(4ttt)gmail.com
-
-## GNEZDO – Application Screenshots
-
-### JOB – AUTO NESTING
 ![JOB-AUTONEST](images/JOB-AUTONEST.png)
 
+</div>
 
-Automatically arranges imported parts onto available material sheets to optimize material utilization and minimize waste. Supports multiple nesting strategies, including Fast, Thorough and Custom, to balance processing speed and nesting quality. Provides multiple sheet solutions with material usage statistics and nesting results for easy comparison.
+---
 
+## Why GNEZDO?
 
-### JOB – MANUAL NESTING
+Users work in the browser. Parts, jobs and nests live in SQL Server, or on a personal PC when using the desktop version.
+
+I work as a mechanical engineer in a metal processing company. The commercial nesting software we used was expensive, fragile and poorly supported, so I decided to build my own: one I would actually enjoy using. It is based on my experience with many nesting programs over the years and shaped around the workflow I use every day.
+
+It is meant for professional industrial shops, not just hobbyists.
+
+*Why the name?* Every "nest" and "nesting" name was already taken, and "gnezdo" means "nest" in my language. :)
+
+## Features
+
+- **Part import** (DXF, DWG, SVG) with cutting and engraving contours detected per part
+- **SQL database** for parts, jobs, projects, remnants
+- **Auto nesting** with multiple strategies (Fast, Thorough, Custom) and side-by-side sheet solutions
+- **Manual nesting** with mirror, rotate, arrange, stack and align tools
+- **Work part list** with materials, thicknesses, quantities and stock sheet assignment
+- **Processing and post-processing** for toolpaths and machine-specific features
+- **Nesting and cost reports**
+
+## Roadmap
+
+![GNEZDO roadmap](images/ROADMAP.svg)
+
+**Stage 1 (currently implementing)**
+
+- [ ] 2D import (DXF, DWG, SVG) with powerful, easy-to-use tools for fixing broken parts
+- [x] SQL database for parts and jobs (remnants to follow)
+- [ ] Job creation with powerful auto nesting algorithms and clever strategies
+- [ ] Manual nesting with a variety of tools
+- [ ] Processing and post-processing tools for path generation and special features
+- [ ] Nesting reports and cost reports
+
+**Future stages**
+
+- [ ] Import 3D parts from STEP files with a sheet unfolder
+- [ ] Tube and profile nesting with STEP import and database
+- [ ] 2D drawing environment
+
+> The checkboxes are my best reading of the current state. Adjust them as things land.
+
+## Screenshots
+
+### Job: auto nesting
+
+![JOB-AUTONEST](images/JOB-AUTONEST.png)
+
+Automatically arranges imported parts onto the available material sheets to improve material utilization and reduce waste. Supports several nesting strategies (Fast, Thorough, Custom) to balance speed and quality, and shows multiple sheet solutions with material usage statistics for easy comparison.
+
+### Job: manual nesting
+
 ![JOB-MANUALNEST](images/JOB-MANUALNEST.png)
 
+An interactive workspace for positioning parts on material sheets by hand. Includes tools for mirroring, rotating, arranging, stacking and aligning, and shows the available job parts and sheet dimensions.
 
-Provides an interactive workspace for manually positioning and arranging parts on material sheets. Includes tools for mirroring, rotating, arranging, stacking and aligning parts to achieve the desired layout. Gives users precise control over the nesting process while displaying available job parts and sheet dimensions.
+### Job: work part list
 
-
-### JOB – WORK PART LIST
 ![JOB-WORK-PART-LIST](images/JOB-WORK-PART-LIST.png)
 
-Centralizes all parts assigned to a production job in one organized list. Allows users to review part names, materials, thicknesses, required quantities, nested quantities and maximum quantities. Supports filtering imported parts and assigning material sheets and stock dimensions before starting the nesting process.
+All parts assigned to a production job in one list: names, materials, thicknesses, required, nested and maximum quantities. Filter imported parts and assign material sheets and stock dimensions before nesting.
 
+### Part importer
 
-### PART IMPORTER
 ![PART IMPORTER](images/PART%20IMPORTER.png)
 
+Import parts from drawing files into the database, review them and fix problems before they are used in jobs.
 
-Centralizes all parts assigned to a production job in one organized list. Allows users to review part names, materials, thicknesses, required quantities, nested quantities and maximum quantities. Supports filtering imported parts and assigning material sheets and stock dimensions before starting the nesting process.
-
-
-### APP MODULES
+## App modules
 
 | Folder | What | Language |
 |---|---|---|
 | `frontend/` | Screens: home, tabs, imported parts panel, job part list | TypeScript + React (Vite) |
 | `backend/` | Web server and database: parts, imports, projects, jobs | C# / .NET 10, SQL Server |
-| `nesting/` | Nesting engine kept at hand: PackingSolver with our fixes, and our hole-filling pre-pass ([nesting/README.md](nesting/README.md)); not called by the app yet | C++, Python |
+| `nesting/` | Nesting engine: PackingSolver with our fixes, and our pre-pass (hole filling, pairs, blocks, common cut) and post-pass ([nesting/README.md](nesting/README.md)); started by the backend for every auto nest | C++, Python |
 
-Planned: DXF/DWG import worker (Python, ezdxf), connecting the nesting engine, postprocessor.
+Planned: postprocessor.
 
-## Download a test build (Windows)
+## Quick start
 
-**[⬇ Download gnezdo-windows.zip](https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-windows.zip)**
-(rebuilt on every change to `main`)
+### Download a test build
 
-Unzip it, double-click `start.bat`, and open http://localhost:8090. Nothing to install. It runs as a
-**demo** (sample data, nothing saved) until a SQL Server connection is put in `config.json` — see
-[packaging/INSTALL.txt](packaging/INSTALL.txt).
+Nothing to install: unzip and start. Test builds are made by hand when a set of changes is ready.
 
-## Test parts
+| Download | For | Start |
+|---|---|---|
+| **[⬇ gnezdo-desktop-windows.zip](https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-desktop-windows.zip)** | Desktop, Windows: one person, one PC, no database to set up | `GNEZDO.exe` (opens in its own Edge window) |
+| **[⬇ gnezdo-desktop-linux.tar.gz](https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-desktop-linux.tar.gz)** | Desktop, Linux | `gnezdo` (Chromium, Chrome, Edge or Brave; else the default browser) |
+| **[⬇ gnezdo-windows.zip](https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-windows.zip)** | Server on a Windows PC, used from the browser on <http://localhost:8090> and other PCs | `start.bat`; the first start asks for the SQL Server database |
 
-**[⬇ Download TEST_PARTS_FOR_GNEZDO.7z](https://github.com/M0ti0n/GNEZDO/raw/main/test-parts/TEST_PARTS_FOR_GNEZDO.7z)**
-(in [`test-parts/`](test-parts/))
+The desktop version keeps its data in your own app-data folder (`%LOCALAPPDATA%\GNEZDO`, `~/.local/share/gnezdo`), not in the GNEZDO folder. See [INSTALL-desktop.txt](packaging/desktop/INSTALL-desktop.txt) and [INSTALL.txt](packaging/INSTALL.txt).
+
+### Test parts
+
+**[⬇ Download TEST_PARTS_FOR_GNEZDO.7z](https://github.com/M0ti0n/GNEZDO/raw/main/test-parts/TEST_PARTS_FOR_GNEZDO.7z)** (in [`test-parts/`](test-parts/))
 
 DXF parts for trying the import: unpack the archive (7-Zip) and drop the folder on the Import panel.
 
-## Run on the server (Docker)
+### Run on the server (Docker)
 
 ```bash
 cp .env.example .env     # set GNEZDO_DB to a new, empty database
@@ -100,12 +147,12 @@ npm run dev                      # http://localhost:5173, sample data built in
 echo "VITE_USE_API=true" > .env.local   # use the backend instead (proxied to :5080)
 ```
 
-Tests: `dotnet test backend/Gnezdo.slnx` with `GNEZDO_TEST_SQL` set to a SQL Server
-connection string without a database name; every run uses and drops its own database.
-GitHub Actions runs the frontend type-check/build, the backend tests on SQL Server, and
-the Docker builds on every push.
+Tests: `dotnet test backend/Gnezdo.slnx` with `GNEZDO_TEST_SQL` set to a SQL Server connection string without a database name; every run uses and drops its own database. GitHub Actions runs the frontend type-check/build, the backend tests on SQL Server and SQLite, the Docker builds and an end-to-end run of the server on every push.
 
-## API (so far)
+## Technical reference
+
+<details>
+<summary><b>API (so far)</b></summary>
 
 | Endpoint | Returns |
 |---|---|
@@ -120,42 +167,48 @@ the Docker builds on every push.
 | `GET /api/projects/recent` | projects by last activity |
 | `GET /api/health` | `{ "status": "ok" }` |
 
-Sorting (parts and jobs): `sort=name|created|modified|material|thickness|project`, `dir=asc|desc`
-(default: modified, newest first). Jobs sort by the smallest material/thickness/project among their parts.
+Sorting (parts and jobs): `sort=name|created|modified|material|thickness|project`, `dir=asc|desc` (default: modified, newest first). Jobs sort by the smallest material/thickness/project among their parts.
 
-Date filters: `on:` that calendar day, `upTo:` up to and including that day, `from:` from that
-day on; days are shop days (Europe/Ljubljana).
+Date filters: `on:` that calendar day, `upTo:` up to and including that day, `from:` from that day on; days are shop days (Europe/Ljubljana).
 
+</details>
 
-## Saved part geometry
+<details>
+<summary><b>Saved part geometry</b></summary>
 
-`Part.Geometry` is JSON (`format: "gnezdo-part"`, `version: 2`, in mm, y up): the drawing's
-`entities` (line, arc, circle, spline, each with its role) and the `operations` for path generation:
+`Part.Geometry` is JSON (`format: "gnezdo-part"`, `version: 2`, in mm, y up): the drawing's `entities` (line, arc, circle, spline, each with its role) and the `operations` for path generation:
 
 | op | what | leads | start / direction |
 |---|---|---|---|
-| `cut` | closed cutting contour (`outer: true` for the outside; `slow: true` = marked with the **Hole** tool: cut at slower speed by machines / post processors that can, e.g. plasma) | from the technology table | path generation |
+| `cut` | closed cutting contour (`outer: true` for the outside; `slow: true` = marked with the **Hole** tool: cut at slower speed by machines / post processors that can, e.g. plasma; `common` = its straight lines marked with the **Common cut** tool, shared with a neighboring part) | from the technology table | path generation |
 | `openCut` | connected open cut lines, cut in one go inside the part | lead-in 0, lead-out 0: piercing exactly at one end | one of `ends`, chosen by the cut order rules on the sheet |
 | `engrave` | tracing (engraving), a separate operation, not cut through | none | path generation (shortest travel) |
 
-Entities keep their DXF colour (`color` / `rgb`) and the `slow` flag. Each machine decides what it
-does with the operations: one that cannot engrave (e.g. plasma) skips `engrave` as if it were not
-there; one without a slow mode cuts `slow` contours normally.
+Entities keep their DXF color (`color` / `rgb`) and the `slow` and `common` flags. Each machine decides what it does with the operations: one that cannot engrave (e.g. plasma) skips `engrave` as if it were not there; one without a slow mode cuts `slow` contours normally.
 
-Parts saved before this (version 1) hold only the entity list with roles; the operations can be
-rebuilt from the roles.
+Parts saved before this (version 1) hold only the entity list with roles; the operations can be rebuilt from the roles.
 
-## Database updates (migrations)
+</details>
 
-The database is updated by EF Core migrations in `backend/src/Gnezdo.Api/Data/Migrations`.
-On start GNEZDO applies the migrations that have not run yet, each in a transaction; existing parts,
-jobs and projects are kept.
+<details>
+<summary><b>Database updates (migrations)</b></summary>
 
-- **Changing the model** (entities or `GnezdoDb`): add a migration in the same branch. Without the
-  dotnet tools on your PC: write the migration name (e.g. `AddSheetStock`) on the first line of
-  `backend/migration-request.txt` and push; the *EF migration* workflow adds it and pushes it back.
-  CI fails while the model has changes without a migration.
-- **Databases from before migrations** (made with `EnsureCreated`, test data only): GNEZDO stops with a
-  message on start. Drop that database once and start GNEZDO again.
-- **Before updating the server**: back up the database. To see the SQL first:
-  `dotnet ef migrations script --idempotent --project backend/src/Gnezdo.Api`.
+The database is updated by EF Core migrations in `backend/src/Gnezdo.Api/Data/Migrations`. On start GNEZDO applies the migrations that have not run yet, each in a transaction; existing parts, jobs and projects are kept.
+
+- **Changing the model** (entities or `GnezdoDb`): add a migration in the same branch. Without the dotnet tools on your PC: write the migration name (e.g. `AddSheetStock`) on the first line of `backend/migration-request.txt` and push; the *EF migration* workflow adds it and pushes it back. CI fails while the model has changes without a migration.
+- **Databases from before migrations** (made with `EnsureCreated`, test data only): GNEZDO stops with a message on start. Drop that database once and start GNEZDO again.
+- **Before updating the server**: back up the database. To see the SQL first: `dotnet ef migrations script --idempotent --project backend/src/Gnezdo.Api`.
+
+</details>
+
+## Support the project
+
+If GNEZDO is useful to you, you can support development:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/m0ti0n)
+[![PayPal](https://img.shields.io/badge/PayPal-donate-00457C?logo=paypal&logoColor=white)](https://paypal.me/FabG03D)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/M0ti0n)
+
+## Contact
+
+For more info, write to **fab.go3d(4ttt)gmail.com**.
