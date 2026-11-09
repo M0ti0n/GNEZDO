@@ -8,7 +8,7 @@ export type JobStatus = "draft" | "nested" | "released" | "cut";
 
 export interface JobSummary {
   id: string;
-  name: string;            // job / work name, e.g. "Miha2787"
+  name: string;            // job / work name, e.g. "TEST-2787"
   material: string;        // e.g. "HARDOX"
   thicknessMm: number;
   partCount: number;

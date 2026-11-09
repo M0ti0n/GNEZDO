@@ -1,13 +1,10 @@
-# GNEZDO demo (Windows)
+# GNEZDO demo
 
-`gnezdo-windows.zip` is a snapshot of the Windows test build, taken from `main` at commit 895726c (2026-11-01).
+The test builds are on the release page, no longer in this folder:
+https://github.com/M0ti0n/GNEZDO/releases/tag/test-build
 
-1. Unzip it anywhere.
-2. Double-click `run gnezdo,exe as admin`.
-3. Open http://localhost:#### (last line in opened CMD window)  in broser
+- `gnezdo-desktop-windows.zip`: desktop version for Windows (start `GNEZDO.exe`)
+- `gnezdo-desktop-linux.tar.gz`: desktop version for Linux
+- `gnezdo-windows.zip`: server version on a Windows PC (start `start.bat`)
 
-It runs as a demo with sample parts and jobs (no database) until a database is set in `config.json`; see `INSTALL.txt` in the zip. Nesting runs on this computer.
-
-The newest build is always at
-https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-windows.zip
-(the file here is replaced only when someone updates it by hand).
+See the README in the repository root, "Download a test build".

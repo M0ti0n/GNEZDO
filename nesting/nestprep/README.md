@@ -9,9 +9,9 @@ individual parts.
 It needs only Python 3.10+, numpy and matplotlib (for PNGs), plus the
 `packingsolver_irregular` binary.
 
-## Results on test job Miha2787 (first version, PackingSolver 2026-10-23)
+## Results on test job TEST-2787 (first version, PackingSolver 2026-10-23)
 
-Newer results, with the upgraded PackingSolver: [../README.md](../README.md#results-test-job-miha2787-531-parts-30-types-hardox-1-mm-sheet-3000--1500-5-mm-spacing).
+Newer results, with the upgraded PackingSolver: [../README.md](../README.md#results-test-job-test-2787-531-parts-30-types-hardox-1-mm-sheet-3000--1500-5-mm-spacing).
 
 ### Original numbers (531 parts, 30 types, HARDOX 1 mm, 3000×1500, 5 mm spacing)
 

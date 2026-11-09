@@ -113,14 +113,14 @@ sheets = res.get("sheets") or []
 placed = sum((res.get("nested") or {}).values())
 ok(res.get("valid") is True and placed == 20, f"all 20 parts placed, no overlaps ({len(sheets)} sheets, {placed} parts)")
 
-s, u = call(o, "POST", "/api/users", {"name": "Miha", "password": "", "isAdmin": False})
+s, u = call(o, "POST", "/api/users", {"name": "Alex", "password": "", "isAdmin": False})
 ok(s in (200, 201), f"the admin adds a user without a password ({s} {u})")
 
 o2 = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))   # another browser
-s, b = call(o2, "POST", "/api/auth/signin", {"name": "miha", "password": ""})
-ok(s == 200, f"Miha signs in by name only ({s} {b})")
+s, b = call(o2, "POST", "/api/auth/signin", {"name": "alex", "password": ""})
+ok(s == 200, f"Alex signs in by name only ({s} {b})")
 s, b = call(o2, "PUT", "/api/settings/machines", {"value": []})
-ok(s == 403, f"Miha may not change the machines ({s})")
+ok(s == 403, f"Alex may not change the machines ({s})")
 s, b = call(o2, "POST", "/api/auth/signin", {"name": "Admin", "password": "wrong"})
 ok(s == 401, "a wrong password is refused")
 
