@@ -6,10 +6,8 @@ import { api, demoMode } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
 import { sampleDrawings } from "./import/sampleDrawing";
-import {
-  loadProperties, mirrorBlocked, mirrorFor, newItem, readItem, saveProperties, statusOf,
-  type BatchProperties, type ImportItem,
-} from "./import/batch";
+import { isDrawingFile, loadProperties, mirrorBlocked, mirrorFor, newItem, readItem, saveProperties, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
+import { draggingFiles, droppedFiles, droppedFolder } from "./import/dropped";
 import { ProcessDialog, type ProcessValues } from "./import/ProcessDialog";
 import { CloseUnsavedDialog } from "./import/CloseUnsavedDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -223,6 +221,36 @@ export function App() {
     open(drawingTab(item.id, item.name));
   };
 
+  // A DXF / DWG (or a folder) dropped anywhere outside a drop area goes to the importer, as if dropped
+  // on its list. Without this the browser opens the file itself: the page turns into the DXF's text
+  // or, on a job, asks to leave the page and closes the job tab.
+  const addFilesRef = useRef<(files: File[], openFirst: boolean) => void>(() => {});
+  useEffect(() => {
+    const over = (e: DragEvent) => {
+      if (!draggingFiles(e.dataTransfer)) return;
+      if (!e.defaultPrevented) e.dataTransfer!.dropEffect = "copy";   // (a drop area sets its own)
+      e.preventDefault();   // the browser does not open it
+    };
+    const drop = (e: DragEvent) => {
+      if (!draggingFiles(e.dataTransfer)) return;
+      const handled = e.defaultPrevented;   // a drop area (the import list, the stock's DXF) took it
+      e.preventDefault();
+      if (handled) return;
+      const dt = e.dataTransfer!;
+      const folder = droppedFolder(dt);
+      void droppedFiles(dt).then((all) => {
+        const files = all.filter(isDrawingFile);
+        if (!files.length) { setToast("Only DXF and DWG files can be dropped into GNEZDO"); return; }
+        setDrawer("import");
+        addFilesRef.current(files, !folder && files.length === 1);
+        diag("import", `${files.length} ${files.length === 1 ? "file" : "files"} dropped outside the import list: sent to the importer`);
+      });
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => { window.removeEventListener("dragover", over); window.removeEventListener("drop", drop); };
+  }, []);
+
   const addFiles = async (files: File[], openFirst: boolean) => {
     const fresh = files.map((f) => ({ file: f, item: newItem(f) }));
     setImports((list) => [...list, ...fresh.map((x) => x.item)]);
@@ -232,6 +260,7 @@ export function App() {
     const failed = read.filter((r) => r.state === "failed").length;
     if (failed) setToast(`${failed} ${failed === 1 ? "file" : "files"} could not be read`);
   };
+  addFilesRef.current = (f, o) => { void addFiles(f, o); };
 
   /** Parts leave the import list: their tabs close and their Undo history ends. */
   const closeTabs = (ids: string[]) => ids.forEach((id) => { history.forget(id); dispatch({ type: "close", id: `drawing:${id}` }); });

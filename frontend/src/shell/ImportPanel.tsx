@@ -4,32 +4,11 @@ import { usePickLists } from "../components/pickLists";
 import { PanelHead } from "../components/FilterFields";
 import { IMPORT_TOOLS } from "../import/ImportTools";
 import { HIDDEN } from "../import/dxf";
+import { droppedFiles } from "../import/dropped";
 import { isDrawingFile, statusOf, type BatchProperties, type ImportItem, type Verdict } from "../import/batch";
 import { ROTATIONS, type ImportRules, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
 
-
-/** Every file in what was dropped: folders are read through, subfolders included. */
-async function droppedFiles(dt: DataTransfer): Promise<File[]> {
-  const entries = [...dt.items].map((i) => i.webkitGetAsEntry?.()).filter((e): e is FileSystemEntry => !!e);
-  if (!entries.length) return [...dt.files];
-  const out: File[] = [];
-  const walk = async (e: FileSystemEntry): Promise<void> => {
-    if (e.isFile) {
-      out.push(await new Promise<File>((ok, bad) => (e as FileSystemFileEntry).file(ok, bad)));
-    } else if (e.isDirectory) {
-      const reader = (e as FileSystemDirectoryEntry).createReader();
-      // a directory reader hands its entries out in batches until an empty one
-      for (;;) {
-        const batch = await new Promise<FileSystemEntry[]>((ok, bad) => reader.readEntries(ok, bad));
-        if (!batch.length) break;
-        for (const c of batch) await walk(c);
-      }
-    }
-  };
-  for (const e of entries) await walk(e).catch(() => undefined);
-  return out;
-}
 
 export interface ImportPanelProps {
   items: ImportItem[];
