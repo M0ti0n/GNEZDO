@@ -1194,7 +1194,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 /* proportions of the design: tile 1.47 : 1, icon about two thirds of its height */
 .jsec { flex-shrink: 0; height: 106px; }
 .jsec-tile {
-  width: 156px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  width: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
   background: var(--js-fill); color: var(--js-ink); border-radius: 10px;
   padding: 6px 4px 7px;
   transition: filter .12s, transform .06s;
@@ -1203,11 +1203,6 @@ th.num .th-sort { flex-direction: row-reverse; }
 .jsec-tile:active { transform: translateY(1px); }
 .jsec-icon { display: block; height: 66px; width: auto; max-width: 140px; object-fit: contain; }
 .jsec-label { font-family: var(--font); font-size: 16px; font-weight: 500; letter-spacing: .01em; text-transform: uppercase; white-space: nowrap; line-height: 1; }
-/* a section open: the closed tiles get narrower, so the open tools and every tile fit a 1080p screen
-   (also at 125 % scaling, or with the side panel open) */
-.jtools:has(.jsec.is-open) .jsec-tile { width: 118px; }
-.jtools:has(.jsec.is-open) .jsec-icon { height: 56px; max-width: 106px; }
-.jtools:has(.jsec.is-open) .jsec-label { font-size: 13px; }
 .jsec.is-open {
   display: flex; align-items: flex-start; gap: 6px; padding: 4px 10px 4px 4px;
   background: #fff; border: 2px solid var(--js-ink);
