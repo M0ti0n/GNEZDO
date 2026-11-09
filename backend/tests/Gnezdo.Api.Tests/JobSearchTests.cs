@@ -18,7 +18,7 @@ public sealed class JobSearchTests(ApiFixture api)
     {
         var jobs = await Search("");
         Assert.Equal(6, jobs.Count);
-        Assert.Equal("Miha2787", jobs[0].Name);
+        Assert.Equal("TEST-2787", jobs[0].Name);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public sealed class JobSearchTests(ApiFixture api)
     public async Task Part_name_finds_every_job_it_is_used_in()
     {
         Assert.Equal(new[] { "26-0398 Supports", "Remnants week 43" }, Names(await Search("?part=CONNECTING_PLATE")));
-        Assert.Equal(new[] { "Miha2787" }, Names(await Search("?part=triangle")));
+        Assert.Equal(new[] { "TEST-2787" }, Names(await Search("?part=triangle")));
     }
 
     [Theory]
@@ -77,9 +77,9 @@ public sealed class JobSearchTests(ApiFixture api)
     [Fact]
     public async Task Results_carry_projects_and_created_date()
     {
-        var miha = (await Search("?name=Miha2787")).Single();
-        Assert.Equal(new[] { "Miha2787" }, miha.Projects);
-        Assert.True(miha.CreatedAt <= miha.ModifiedAt);
+        var alex = (await Search("?name=TEST-2787")).Single();
+        Assert.Equal(new[] { "TEST-2787" }, alex.Projects);
+        Assert.True(alex.CreatedAt <= alex.ModifiedAt);
     }
 
     [Fact]
@@ -90,9 +90,9 @@ public sealed class JobSearchTests(ApiFixture api)
         Assert.Equal(new[] { "INOX 1.4301", "S235" }, remnants.Materials);
         Assert.Equal(new[] { 2m, 3m, 8m }, remnants.Thicknesses);
         Assert.Equal(new[] { 10m, 15m }, all.Single(j => j.Name == "26-0409 Flanges").Thicknesses);
-        var miha = all.Single(j => j.Name == "Miha2787");
-        Assert.Equal(new[] { "HARDOX" }, miha.Materials);
-        Assert.Equal(new[] { 1m }, miha.Thicknesses);
+        var alex = all.Single(j => j.Name == "TEST-2787");
+        Assert.Equal(new[] { "HARDOX" }, alex.Materials);
+        Assert.Equal(new[] { 1m }, alex.Thicknesses);
     }
 
     [Fact]

@@ -61,24 +61,24 @@ interface SampleJob {
   parts: [partId: string, qty: number][] | "test30";
 }
 const sampleJobRows: SampleJob[] = [
-  { id: "j-2787", name: "Miha2787", status: "nested", sheetCount: 8, createdHoursAgo: 0.5, modifiedHoursAgo: 0.4, modifiedBy: "Miha", parts: "test30" },
-  { id: "j-2786", name: "26-0412 Brackets", status: "released", sheetCount: 3, createdHoursAgo: 3.5, modifiedHoursAgo: 3, modifiedBy: "Miha", parts: [["k-01", 24], ["k-02", 12], ["k-03", 48]] },
-  { id: "j-2785", name: "26-0409 Flanges", status: "cut", sheetCount: 2, createdHoursAgo: 25, modifiedHoursAgo: 20, modifiedBy: "Rok", parts: [["p-01", 4], ["p-02", 2]] },
-  { id: "j-2784", name: "26-0410 Housing", status: "draft", sheetCount: 0, createdHoursAgo: 26.5, modifiedHoursAgo: 26, modifiedBy: "Miha", parts: [["o-01", 2], ["o-02", 1]] },
-  { id: "j-2781", name: "Remnants week 43", status: "cut", sheetCount: 1, createdHoursAgo: 60, modifiedHoursAgo: 50, modifiedBy: "Rok", parts: [["n-02", 5], ["k-03", 2], ["o-02", 1]] },
-  { id: "j-2779", name: "26-0398 Supports", status: "cut", sheetCount: 4, createdHoursAgo: 78, modifiedHoursAgo: 75, modifiedBy: "Miha", parts: [["n-01", 16], ["n-02", 15]] },
+  { id: "j-2787", name: "TEST-2787", status: "nested", sheetCount: 8, createdHoursAgo: 0.5, modifiedHoursAgo: 0.4, modifiedBy: "Alex", parts: "test30" },
+  { id: "j-2786", name: "26-0412 Brackets", status: "released", sheetCount: 3, createdHoursAgo: 3.5, modifiedHoursAgo: 3, modifiedBy: "Alex", parts: [["k-01", 24], ["k-02", 12], ["k-03", 48]] },
+  { id: "j-2785", name: "26-0409 Flanges", status: "cut", sheetCount: 2, createdHoursAgo: 25, modifiedHoursAgo: 20, modifiedBy: "Sam", parts: [["p-01", 4], ["p-02", 2]] },
+  { id: "j-2784", name: "26-0410 Housing", status: "draft", sheetCount: 0, createdHoursAgo: 26.5, modifiedHoursAgo: 26, modifiedBy: "Alex", parts: [["o-01", 2], ["o-02", 1]] },
+  { id: "j-2781", name: "Remnants week 43", status: "cut", sheetCount: 1, createdHoursAgo: 60, modifiedHoursAgo: 50, modifiedBy: "Sam", parts: [["n-02", 5], ["k-03", 2], ["o-02", 1]] },
+  { id: "j-2779", name: "26-0398 Supports", status: "cut", sheetCount: 4, createdHoursAgo: 78, modifiedHoursAgo: 75, modifiedBy: "Alex", parts: [["n-01", 16], ["n-02", 15]] },
 ];
 
 const sampleImports: ImportSummary[] = [
-  { id: "i-912", source: "TEST_30_industrial", project: "Miha2787", partCount: 30, materials: ["HARDOX 1 mm"], importedAt: hoursAgo(0.6), importedBy: "Miha", warnings: 0 },
-  { id: "i-911", source: "26-0412_brackets.dwg", project: "26-0412", partCount: 12, materials: ["S235 3 mm"], importedAt: hoursAgo(4), importedBy: "Miha", warnings: 2 },
-  { id: "i-910", source: "26-0410 Housing", project: "26-0410", partCount: 9, materials: ["INOX 1.4301 2 mm"], importedAt: hoursAgo(27), importedBy: "Miha", warnings: 0 },
-  { id: "i-909", source: "26-0409_flanges", project: "26-0409", partCount: 6, materials: ["S355 10 mm", "S355 15 mm"], importedAt: hoursAgo(30), importedBy: "Rok", warnings: 1 },
-  { id: "i-905", source: "26-0398 Supports", project: "26-0398", partCount: 18, materials: ["S235 8 mm"], importedAt: hoursAgo(80), importedBy: "Miha", warnings: 0 },
+  { id: "i-912", source: "TEST_30_industrial", project: "TEST-2787", partCount: 30, materials: ["HARDOX 1 mm"], importedAt: hoursAgo(0.6), importedBy: "Alex", warnings: 0 },
+  { id: "i-911", source: "26-0412_brackets.dwg", project: "26-0412", partCount: 12, materials: ["S235 3 mm"], importedAt: hoursAgo(4), importedBy: "Alex", warnings: 2 },
+  { id: "i-910", source: "26-0410 Housing", project: "26-0410", partCount: 9, materials: ["INOX 1.4301 2 mm"], importedAt: hoursAgo(27), importedBy: "Alex", warnings: 0 },
+  { id: "i-909", source: "26-0409_flanges", project: "26-0409", partCount: 6, materials: ["S355 10 mm", "S355 15 mm"], importedAt: hoursAgo(30), importedBy: "Sam", warnings: 1 },
+  { id: "i-905", source: "26-0398 Supports", project: "26-0398", partCount: 18, materials: ["S235 8 mm"], importedAt: hoursAgo(80), importedBy: "Alex", warnings: 0 },
 ];
 
 const sampleProjects: ProjectSummary[] = [
-  { id: "p-2787", code: "Miha2787", name: "Test job – 30 industrial parts", partCount: 30, jobCount: 1, cutPercent: 0, lastActivityAt: hoursAgo(0.4) },
+  { id: "p-2787", code: "TEST-2787", name: "Test job – 30 industrial parts", partCount: 30, jobCount: 1, cutPercent: 0, lastActivityAt: hoursAgo(0.4) },
   { id: "p-0412", code: "26-0412", name: "Conveyor brackets", customer: "Metalworks Ltd.", partCount: 12, jobCount: 1, cutPercent: 40, lastActivityAt: hoursAgo(3) },
   { id: "p-0410", code: "26-0410", name: "Control cabinet housing", customer: "Electro Supply Ltd.", partCount: 9, jobCount: 1, cutPercent: 0, lastActivityAt: hoursAgo(26) },
   { id: "p-0409", code: "26-0409", name: "Flanges DN200", customer: "Hydro Systems Ltd.", partCount: 6, jobCount: 1, cutPercent: 100, lastActivityAt: hoursAgo(20) },
@@ -97,7 +97,7 @@ const MODIFIED_LATER: Record<string, number> = { "pt-12": 0.2, "k-01": 1, "o-02"
 
 const sampleParts: PartSummary[] = [
   ...testJobParts.map((p) => ({
-    ...p, project: "Miha2787", material: "HARDOX", thicknessMm: 1, importId: "i-912",
+    ...p, project: "TEST-2787", material: "HARDOX", thicknessMm: 1, importId: "i-912",
   })),
   ...otherParts,
 ].map((p) => {
@@ -470,7 +470,7 @@ export const api = {
             thicknessMm: Math.min(...j.lines.map((l) => l.part.thicknessMm)),
             project: j.projects[0] ?? "",
           })).map(summary)),
-  /** Parts already in a job (sample: Miha2787 holds the 30-part test job). */
+  /** Parts already in a job (sample: TEST-2787 holds the 30-part test job). */
   jobParts: (jobId: string) =>
     useApi
       // the job's own material / thickness (set on the work part list) over the part's

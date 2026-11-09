@@ -73,16 +73,16 @@ public sealed class AuthTests : IAsyncLifetime
     public async Task A_user_without_a_password_signs_in_by_name_and_is_not_an_admin()
     {
         var admin = await Admin();
-        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/users", new { name = "Miha", isAdmin = false })).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsJsonAsync("/api/users", new { name = "miha" })).StatusCode);   // the same name
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/users", new { name = "Alex", isAdmin = false })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsJsonAsync("/api/users", new { name = "alex" })).StatusCode);   // the same name
 
-        var miha = Browser();
-        Assert.Equal(HttpStatusCode.OK, (await miha.PostAsJsonAsync("/api/auth/signin", new { name = "MIHA" })).StatusCode);   // case does not matter
-        Assert.Equal(HttpStatusCode.OK, (await miha.GetAsync("/api/jobs")).StatusCode);
+        var alex = Browser();
+        Assert.Equal(HttpStatusCode.OK, (await alex.PostAsJsonAsync("/api/auth/signin", new { name = "ALEX" })).StatusCode);   // case does not matter
+        Assert.Equal(HttpStatusCode.OK, (await alex.GetAsync("/api/jobs")).StatusCode);
         // admin only: users, the machine settings, the log switch
-        Assert.Equal(HttpStatusCode.Forbidden, (await miha.GetAsync("/api/users")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await miha.PutAsJsonAsync("/api/settings/machines", new { value = new JsonObject() })).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await miha.PutAsJsonAsync("/api/logs/settings", new { enabled = false })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await alex.GetAsync("/api/users")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await alex.PutAsJsonAsync("/api/settings/machines", new { value = new JsonObject() })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await alex.PutAsJsonAsync("/api/logs/settings", new { enabled = false })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync("/api/settings/machines", new { value = new JsonObject() })).StatusCode);
     }
 
@@ -93,23 +93,23 @@ public sealed class AuthTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, (await Browser().PostAsJsonAsync("/api/auth/signin", new { name = "Fab", password = "nope" })).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await Browser().PostAsJsonAsync("/api/auth/signin", new { name = "Nobody" })).StatusCode);
 
-        var u = (await (await admin.PostAsJsonAsync("/api/users", new { name = "Rok", password = "a1" })).Content.ReadFromJsonAsync<JsonObject>())!;
-        var rok = Browser();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await rok.PostAsJsonAsync("/api/auth/signin", new { name = "Rok" })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await rok.PostAsJsonAsync("/api/auth/signin", new { name = "Rok", password = "a1" })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await rok.GetAsync("/api/jobs")).StatusCode);
+        var u = (await (await admin.PostAsJsonAsync("/api/users", new { name = "Sam", password = "a1" })).Content.ReadFromJsonAsync<JsonObject>())!;
+        var sam = Browser();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await sam.PostAsJsonAsync("/api/auth/signin", new { name = "Sam" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await sam.PostAsJsonAsync("/api/auth/signin", new { name = "Sam", password = "a1" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await sam.GetAsync("/api/jobs")).StatusCode);
 
-        // the admin gives Rok a new password: Rok's browser is signed out
+        // the admin gives Sam a new password: Sam's browser is signed out
         var id = u["id"]!.GetValue<int>();
         Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync($"/api/users/{id}", new { password = "b2" })).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await rok.GetAsync("/api/jobs")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await rok.PostAsJsonAsync("/api/auth/signin", new { name = "Rok", password = "b2" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await sam.GetAsync("/api/jobs")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await sam.PostAsJsonAsync("/api/auth/signin", new { name = "Sam", password = "b2" })).StatusCode);
 
-        // Rok changes his own password; removed, he is signed out for good
-        Assert.Equal(HttpStatusCode.OK, (await rok.PostAsJsonAsync("/api/auth/password", new { current = "b2", password = "c3" })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await rok.GetAsync("/api/jobs")).StatusCode);   // this browser stays signed in
+        // Sam changes his own password; removed, he is signed out for good
+        Assert.Equal(HttpStatusCode.OK, (await sam.PostAsJsonAsync("/api/auth/password", new { current = "b2", password = "c3" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await sam.GetAsync("/api/jobs")).StatusCode);   // this browser stays signed in
         Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync($"/api/users/{id}")).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await rok.GetAsync("/api/jobs")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await sam.GetAsync("/api/jobs")).StatusCode);
     }
 
     [Fact]
@@ -136,18 +136,18 @@ public sealed class AuthTests : IAsyncLifetime
     public async Task Each_user_sees_only_their_own_drafts()
     {
         var admin = await Admin();
-        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/users", new { name = "Miha", isAdmin = false })).StatusCode);
-        var miha = Browser();
-        Assert.Equal(HttpStatusCode.OK, (await miha.PostAsJsonAsync("/api/auth/signin", new { name = "Miha" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/users", new { name = "Alex", isAdmin = false })).StatusCode);
+        var alex = Browser();
+        Assert.Equal(HttpStatusCode.OK, (await alex.PostAsJsonAsync("/api/auth/signin", new { name = "Alex" })).StatusCode);
 
         var id = Guid.NewGuid().ToString();
         var draft = new { name = "Fab's job", parts = 1, solutions = 0, content = new JsonObject { ["x"] = 1 } };
         Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync($"/api/drafts/{id}", draft)).StatusCode);
         Assert.Single((await admin.GetFromJsonAsync<JsonArray>("/api/drafts"))!);
-        Assert.Empty((await miha.GetFromJsonAsync<JsonArray>("/api/drafts"))!);
-        Assert.Equal(HttpStatusCode.NotFound, (await miha.GetAsync($"/api/drafts/{id}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await miha.PutAsJsonAsync($"/api/drafts/{id}", draft)).StatusCode);
-        await miha.DeleteAsync($"/api/drafts/{id}");   // not hers: nothing happens
+        Assert.Empty((await alex.GetFromJsonAsync<JsonArray>("/api/drafts"))!);
+        Assert.Equal(HttpStatusCode.NotFound, (await alex.GetAsync($"/api/drafts/{id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await alex.PutAsJsonAsync($"/api/drafts/{id}", draft)).StatusCode);
+        await alex.DeleteAsync($"/api/drafts/{id}");   // not hers: nothing happens
         Assert.Single((await admin.GetFromJsonAsync<JsonArray>("/api/drafts"))!);
     }
 }

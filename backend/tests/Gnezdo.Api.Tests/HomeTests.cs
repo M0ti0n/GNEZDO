@@ -32,12 +32,12 @@ public sealed class HomeTests(ApiFixture api)
         var list = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs/recent");
         Assert.NotNull(list);
         Assert.Equal(6, list.Count);
-        var miha = list[0];
-        Assert.Equal("Miha2787", miha.Name);
-        Assert.Equal(531, miha.PartCount);
-        Assert.Equal("HARDOX", miha.Material);
-        Assert.Equal(1m, miha.ThicknessMm);
-        Assert.Equal("nested", miha.Status);
+        var alex = list[0];
+        Assert.Equal("TEST-2787", alex.Name);
+        Assert.Equal(531, alex.PartCount);
+        Assert.Equal("HARDOX", alex.Material);
+        Assert.Equal(1m, alex.ThicknessMm);
+        Assert.Equal("nested", alex.Status);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public sealed class HomeTests(ApiFixture api)
     [Fact]
     public async Task Job_parts_of_the_test_job()
     {
-        var jobs = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs?name=Miha2787");
+        var jobs = await api.Client.GetFromJsonAsync<List<JobSummaryDto>>("/api/jobs?name=TEST-2787");
         var parts = await api.Client.GetFromJsonAsync<List<JobPartDto>>($"/api/jobs/{jobs![0].Id}/parts");
         Assert.Equal(30, parts!.Count);
         Assert.Equal(531, parts.Sum(p => p.Qty));
@@ -65,7 +65,7 @@ public sealed class HomeTests(ApiFixture api)
         var list = await api.Client.GetFromJsonAsync<List<ProjectSummaryDto>>("/api/projects/recent");
         Assert.NotNull(list);
         Assert.Equal(5, list.Count);
-        Assert.Equal("Miha2787", list[0].Code);
+        Assert.Equal("TEST-2787", list[0].Code);
         var p0398 = list.Single(p => p.Code == "26-0398");
         Assert.Equal(2, p0398.PartCount);
         Assert.Equal(2, p0398.JobCount);

@@ -36,7 +36,7 @@ fixed versions, so it needs internet. CLP is off because it needs extra system p
 The GitHub workflow **Nesting** builds it and runs nestprep on a small demo job whenever
 something here changes, and keeps the built program as a download (artifact `packingsolver-linux`).
 
-## Results (test job Miha2787: 531 parts, 30 types, HARDOX 1 mm, sheet 3000 × 1500, 5 mm spacing)
+## Results (test job TEST-2787: 531 parts, 30 types, HARDOX 1 mm, sheet 3000 × 1500, 5 mm spacing)
 
 Sheet-equivalents = full sheets + used length of the last sheet / 3000. 30 s per solve, 2-core
 machine, every layout checked by nestprep's own validator (all parts placed, inside the sheet,
@@ -102,7 +102,7 @@ python nestprep_cli.py nest job.json --level quick --workers 8      # workers = 
 Results on the three test jobs, measured on a **2-core** machine (sheets · sheet-equivalents ·
 used length of the last sheet). Every layout passed the validator.
 
-| | test 1 (Miha2787, 531 parts) | test 2 (532) | test 3 (532) |
+| | test 1 (TEST-2787, 531 parts) | test 2 (532) | test 3 (532) |
 |---|---|---|---|
 | Commercial program | 8 · ≈ 7.49 · 1475 mm | – | – |
 | PackingSolver alone (30 s) | 8 · 8.00 · 3000 mm | 9 · 8.76 · 2271 mm | 9 · 8.86 · 2585 mm |

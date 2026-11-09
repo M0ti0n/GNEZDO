@@ -84,12 +84,12 @@ public sealed class SortingTests(ApiFixture api)
         // Remnants week 43 mixes INOX 2 mm, S235 3 mm and S235 8 mm; Flanges has 10 and 15 mm.
         var byMat = await Jobs("?sort=material");
         Assert.Equal(
-            new[] { "Miha2787", "26-0410 Housing", "Remnants week 43", "26-0398 Supports", "26-0412 Brackets", "26-0409 Flanges" },
+            new[] { "TEST-2787", "26-0410 Housing", "Remnants week 43", "26-0398 Supports", "26-0412 Brackets", "26-0409 Flanges" },
             byMat.Select(j => j.Name));
 
         var byThk = await Jobs("?sort=thickness&dir=desc");
         Assert.Equal(
-            new[] { "26-0409 Flanges", "26-0398 Supports", "26-0412 Brackets", "26-0410 Housing", "Remnants week 43", "Miha2787" },
+            new[] { "26-0409 Flanges", "26-0398 Supports", "26-0412 Brackets", "26-0410 Housing", "Remnants week 43", "TEST-2787" },
             byThk.Select(j => j.Name));
 
         var byProject = await Jobs("?sort=project");
