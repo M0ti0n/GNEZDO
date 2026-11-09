@@ -1219,6 +1219,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .jsec .jtool .itool-label { white-space: nowrap; }   /* one line: a longer name (DELETE SHEET) widens its tool, the row stays level */
 .jsec .jtool .itool-box { width: 72px; height: 72px; border-radius: 12px; }
 .jsec .jtool .itool-box img { width: 56px; height: 56px; display: block; mix-blend-mode: multiply; }   /* the icons' white takes the box colour (hover) */
+.jsec .jtool .itool-box.is-svg svg { width: 60px; height: 60px; display: block; }
 .jsec .jtool .itool-label { font-family: var(--font); font-weight: 500; font-size: 13px; letter-spacing: 0; }
 .jsec-empty { align-self: center; padding: 0 18px 0 6px; color: var(--ink-3); font-size: 13.5px; font-style: italic; white-space: nowrap; }
 
@@ -1320,6 +1321,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .cn-check { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 15px; cursor: pointer; }
 .cn-check input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--green); }
 .cn-check .cn-num:disabled { opacity: .5; }
+.cn-check.is-off { color: var(--ink-3); cursor: default; }
 .cn-note { margin: 0 0 8px; padding: 10px 12px; border-radius: 8px; background: #f2f7f5; font-size: 14px; color: var(--ink-2, #444); line-height: 1.45; }
 .cn-hint { margin: 8px 0 0; font-size: 13px; color: var(--ink-3); line-height: 1.4; }
 
@@ -1652,6 +1654,7 @@ html.is-busy, html.is-busy * { cursor: progress !important; }
 /* Align edge: the edge under the pointer (orange) and the one that stays (green) */
 .mn-edge { stroke: #f2a33a; stroke-linecap: round; pointer-events: none; }
 .mn-edge.is-fixed { stroke: #2e9d3a; }
+.mn-common { stroke: var(--ln-common); stroke-linecap: round; pointer-events: none; }
 .mn-canvas.is-align { cursor: crosshair; }
 .mn-canvas.is-paste { cursor: copy; }
 .mn-tile.is-done { background: #e6f6dc; border-color: #b7deA0; }

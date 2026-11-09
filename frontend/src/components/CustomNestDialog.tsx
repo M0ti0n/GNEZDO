@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { IconClose } from "./Icons";
 import { NumInput } from "./NumInput";
+import { api } from "../api/api";
 import icon from "../shell/jobtools/tool-customNest.png";
 
 /** How long a custom nest runs. minutes = null: until it is stopped. */
@@ -10,10 +11,12 @@ export interface CustomNestSettings {
   stopAfterMinutes: number | null;
   /** Blocks: big parts get their pockets filled before the nest; false (missing): the standard packer. */
   blocks?: boolean;
+  /** Common cut: parts with Common cut ticked join along their marked lines (this run only, never remembered). */
+  commonCut?: boolean;
 }
 
 /** How a Custom nest was made, as shown with the solution. */
-export const strategyLabel = (c?: CustomNestSettings) => (c?.blocks ? "Blocks" : "Standard");
+export const strategyLabel = (c?: CustomNestSettings) => `${c?.blocks ? "Blocks" : "Standard"}${c?.commonCut ? ", common cut" : ""}`;
 
 const PRESETS: { label: string; minutes: number | null }[] = [
   { label: "5 min", minutes: 5 },
@@ -30,20 +33,37 @@ const DEFAULTS: CustomNestSettings = { minutes: 15, stopAfterMinutes: 5, blocks:
 function load(): CustomNestSettings {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    if (s && typeof s === "object") return { ...DEFAULTS, ...s };
+    // common cut starts off every time: it is chosen job by job
+    if (s && typeof s === "object") return { ...DEFAULTS, ...s, commonCut: false };
   } catch { /* no saved choice */ }
   return DEFAULTS;
 }
 
 function save(s: CustomNestSettings) {
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* not kept, fine */ }
+  const { commonCut: _, ...kept } = s;
+  void _;
+  try { localStorage.setItem(KEY, JSON.stringify(kept)); } catch { /* not kept, fine */ }
 }
 
 const clock = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 // Before a custom nest: how long it may run, and whether it stops early once nothing better turns up.
 // The best layout so far is kept the whole time; "Stop and keep best" ends it at any moment.
-export function CustomNestDialog({ onStart, onCancel }: { onStart: (s: CustomNestSettings) => void; onCancel: () => void }) {
+export function CustomNestDialog({ onStart, onCancel, partIds = [] }: {
+  onStart: (s: CustomNestSettings) => void; onCancel: () => void;
+  /** the job's parts (with a quantity): how many have the Common cut nesting rule is looked up */
+  partIds?: string[];
+}) {
+  // parts of the job with the Common cut nesting rule ticked (null: still looking)
+  const [commonParts, setCommonParts] = useState<number | null>(null);
+  const idsKey = partIds.join(",");
+  useEffect(() => {
+    let alive = true;
+    Promise.all(partIds.map((id) => api.part(id).then((d) => !!d.commonCut, () => false)))
+      .then((v) => { if (alive) setCommonParts(v.filter(Boolean).length); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
   const [s, setS] = useState<CustomNestSettings>(load);
   const [stopEarly, setStopEarly] = useState(s.stopAfterMinutes !== null);
   const [stopAfter, setStopAfter] = useState(s.stopAfterMinutes ?? 5);
@@ -63,7 +83,7 @@ export function CustomNestDialog({ onStart, onCancel }: { onStart: (s: CustomNes
 
   const minutes = useOther ? other : s.minutes;
   const start = () => {
-    const out = { minutes, stopAfterMinutes: stopEarly ? stopAfter : null, blocks: !!s.blocks };
+    const out = { minutes, stopAfterMinutes: stopEarly ? stopAfter : null, blocks: !!s.blocks, commonCut: !!s.commonCut && !!commonParts };
     save(out);
     onStart(out);
   };
@@ -117,6 +137,20 @@ export function CustomNestDialog({ onStart, onCancel }: { onStart: (s: CustomNes
             <p className="cn-hint">{s.blocks
               ? "Blocks (experimental): big parts with pockets are filled first, so they nest as near-rectangles. On real jobs so far it never beat the standard packer; worth a try on jobs full of pocket parts (L, U, comb shapes)."
               : "Standard: the parts are nested as they are (pairs and filled holes only). The best choice on every real job so far."}</p>
+          </section>
+
+          <section className="cn-sec">
+            <label className={`cn-check${commonParts ? "" : " is-off"}`}
+              title={commonParts === 0 ? "No part of this job has the Common cut nesting rule ticked" : undefined}>
+              <input type="checkbox" checked={!!s.commonCut && !!commonParts} disabled={!commonParts}
+                onChange={(e) => setS({ ...s, commonCut: e.target.checked })} />
+              <span>Common cut{commonParts === null ? " (looking at the parts…)" : commonParts
+                ? ` (${commonParts} ${commonParts === 1 ? "part has" : "parts have"} the rule)` : ": no part of this job has the rule"}</span>
+            </label>
+            {s.commonCut && !!commonParts && (
+              <p className="cn-hint">Copies of a part join along their common cut lines into blocks, cut once down the middle. A quarter
+                of the time tries a few block sizes and no blocks; the best is nested.</p>
+            )}
           </section>
 
           <section className="cn-sec">

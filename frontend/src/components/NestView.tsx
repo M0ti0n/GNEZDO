@@ -39,6 +39,8 @@ interface Props {
   leaveManual?: number;
   /** a Manual nest tool clicked on the toolbar (a new n each click) */
   manualTool?: { tool: string; n: number };
+  /** Common cut switched on (Manual nest toolbar) */
+  commonCut?: boolean;
   /** Delete sheet (Sheet properties of a nested sheet) */
   onDeleteSheet?: (solId: string, index: number) => void;
   /** opens this sheet of the shown solution in Manual nest (a new n each time; sheet -1: done) */
@@ -86,7 +88,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet }: Props) {
+export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -131,7 +133,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
     return (
       <div className="nest-page is-manual">
         <ManualNest sol={sol} index={full} sheets={sheets} jobParts={parts} parts={byId} edit={editable(full)}
-          origin={sol.origin ?? machine.origin} counts={countsOf(sheets)} tool={manualTool}
+          origin={sol.origin ?? machine.origin} counts={countsOf(sheets)} tool={manualTool} commonCut={commonCut}
           onIndex={(i) => { setFull(i); onSelect({ sol: sol.id, sheet: i }); }}
           onClose={() => setFull(null)}
           locked={sol.locked.includes(full)} onToggleLock={() => onToggleLock(sol.id, full)}

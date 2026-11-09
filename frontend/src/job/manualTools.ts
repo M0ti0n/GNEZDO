@@ -3,6 +3,7 @@
 import { api } from "../api/api";
 import type { Origin } from "./machine";
 import { unlocked, type PlacedPart } from "./nest";
+import { blockPoses, blockSizes, type CommonLayout } from "./commonCut";
 import {
   clearOf, partLoops, placed, slideDistance, transform, unionBox,
   type Box, type Dir, type Placed, type Pt,
@@ -379,6 +380,9 @@ export interface ArrangeInput {
   budgetMs?: number;
   /** without the pairing prepass (to compare) */
   noPairs?: boolean;
+  /** Common cut on: parts that join along their common cut lines, by part id; their copies are
+   * arranged as blocks (as big as fit, or half that; the tighter wins) */
+  common?: Map<string, CommonLayout>;
 }
 
 /** What the packer places: one part, or a pair of the same part placed as one. */
@@ -418,7 +422,7 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
   const singles: Piece[] = chosen.map((li) => ({ key: list[li].partId, partId: list[li].partId, members: [{ li, rel: ID }], pose0: list[li] }));
   const byPart = new Map<string, number[]>();
   for (const li of chosen) byPart.set(list[li].partId, [...(byPart.get(list[li].partId) ?? []), li]);
-  const kinds = [...byPart].filter(([, l]) => l.length >= 2).sort((a, b) => b[1].length - a[1].length);
+  const kinds = [...byPart].filter(([id, l]) => l.length >= 2 && !inp.common?.has(id)).sort((a, b) => b[1].length - a[1].length);
   const pairOf = new Map<string, Pose>();
   for (const [id] of inp.noPairs ? [] : kinds) {
     await pause();
@@ -449,6 +453,31 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
     for (const ch of choices.slice(0, 7)) sets.push(setOf(ch));   // the paired sets first
   }
   sets.push(singles);
+
+  // common cut: copies of a kind that joins become blocks; the block sizes take the place of the sets above
+  if (inp.common?.size) {
+    const uw = usable.x1 - usable.x0, uh = usable.y1 - usable.y0;
+    const blockSets: Piece[][] = [];
+    const seen = new Set<string>();
+    for (const share of [1, 0.5]) {
+      const ps: Piece[] = [];
+      let sig = "";
+      for (const [id, l] of byPart) {
+        const lay = inp.common.get(id);
+        const sizes = lay ? blockSizes(pathOf(id)!, lay, l.length, uw, uh, share) : [];
+        let j = 0;
+        for (const [a, b] of sizes) {
+          const rels = blockPoses(lay!, a, b);
+          ps.push({ key: `cc:${id}:${a}x${b}`, partId: id, members: rels.map((rel, m) => ({ li: l[j + m], rel })) });
+          j += rels.length;
+          sig += `${id}:${a}x${b};`;
+        }
+        for (; j < l.length; j++) ps.push(singles[chosen.indexOf(l[j])]);
+      }
+      if (sig && !seen.has(sig)) { seen.add(sig); blockSets.push(ps); }
+    }
+    if (blockSets.length) { sets.length = 0; sets.push(...blockSets); }
+  }
 
   // the allowed poses of a piece: its rotations (and mirrored when allowed); a part alone also the pose it has now
   // the allowed poses of a piece: its rotation steps (and mirrored when allowed); a part alone also
@@ -710,9 +739,12 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
   // back to the sheet: the piece's lowest a, b goes to the cell; its parts follow
   const out = list.slice();
   const placedIdx: number[] = [];
+  // the parts of a common cut block move together in the last step (they share their lines)
+  const unitOf = new Map<number, number[]>();
   plans[win.set].pieces.forEach((pc, j) => {
     const a = win.at[j];
     if (!a) return;
+    if (pc.key.startsWith("cc:")) { const lis = pc.members.map((m) => m.li); for (const li of lis) unitOf.set(li, lis); }
     const da = a.ia * c - a.m.offA, db = a.ib * c - a.m.offB;
     const [du, dv] = win.axis === "u" ? [da, db] : [db, da];
     const pose: Pose = { x: right ? -du : du, y: bottom ? -dv : dv, angle: a.m.angle, mirror: a.m.mirror };
@@ -731,15 +763,18 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
     const gp = geos[p]!.box, gq = geos[q]!.box;
     return (right ? -gp.x1 : gp.x0) + (bottom ? -gp.y1 : gp.y0) - ((right ? -gq.x1 : gq.x0) + (bottom ? -gq.y1 : gq.y0));
   });
-  for (let round = 0; round < 2; round++) for (const i of order) for (const d of dirs) {
-    const me = geos[i];
-    if (!me) continue;
-    const rest = geos.filter((g, j): g is Placed => j !== i && !!g);
-    const t = slideDistance([me], rest, usable, gap, d, outline, edgeGap);
-    if (t < 0.3) continue;
-    const [dx, dy] = d === "up" ? [0, -t] : d === "down" ? [0, t] : d === "left" ? [-t, 0] : [t, 0];
-    out[i] = { ...out[i], x: out[i].x + dx, y: out[i].y + dy };
-    geos[i] = geoOf(i);
+  for (let round = 0; round < 2; round++) for (const i of order) {
+    const unit = unitOf.get(i) ?? [i];
+    if (unit[0] !== i && unitOf.has(i)) continue;      // a block moves once, with its first part
+    for (const d of dirs) {
+      const me = unit.map((u) => geos[u]).filter((g): g is Placed => !!g);
+      if (!me.length) continue;
+      const rest = geos.filter((g, j): g is Placed => !unit.includes(j) && !!g);
+      const t = slideDistance(me, rest, usable, gap, d, outline, edgeGap);
+      if (t < 0.3) continue;
+      const [dx, dy] = d === "up" ? [0, -t] : d === "down" ? [0, t] : d === "left" ? [-t, 0] : [t, 0];
+      for (const u of unit) { out[u] = { ...out[u], x: out[u].x + dx, y: out[u].y + dy }; geos[u] = geoOf(u); }
+    }
   }
   return out;
 }

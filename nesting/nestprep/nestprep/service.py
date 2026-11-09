@@ -15,7 +15,11 @@ request.json (written by GNEZDO from the job tab):
                                     {"index", "id", "material", "thicknessMm", "lengthMm", "widthMm",
                                      "outline"?, "trims", "partGapMm"?, "kerfMm"?,
                                      "parts": [{"path", "x", "y", "angle", "mirror"}]}  (sheet frame, y down)
-   "parts":  [{"id", "name", "path", "qty", "rotations": [90], "mirror", "material", "thicknessMm"}],
+   "commonCut": true | false,       Custom only: parts with common cut edges are joined into blocks
+                                    along them before the nest (commoncut.py); a few block sizes and no
+                                    blocks are tried first (a quarter of the time), the best is nested
+   "parts":  [{"id", "name", "path", "qty", "rotations": [90], "mirror", "material", "thicknessMm",
+               "commonEdges"?: [[x1, y1, x2, y2], ...]}],   marked common cut lines, in the path's frame
    "sheets": [{"id", "material", "thicknessMm", "lengthMm", "widthMm", "qty": 3 | null, "source"}]}
 
 `path` is the part's outline as on its thumbnail: closed loops "M x y L x y ... Z", outline and
@@ -30,6 +34,7 @@ A file named `stop` in RUNDIR ends the run: every group keeps its best layout so
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import os
@@ -41,7 +46,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
 from . import geom
-from .holefill import Options
+from .holefill import Options, PrePass
 from .job import NestError, run_job
 from .solution import expand, metrics, validate
 
@@ -259,7 +264,9 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
         if not sheets and not fixed:
             skipped += [{"partId": p["id"], "reason": f"No stock sheet for {label}"} for p in parts]
             continue
-        items, ids, shifts = [], [], []
+        items, ids, shifts, common = [], [], [], {}
+        use_common = bool(req.get("commonCut")) and req.get("mode") == "custom"
+        sx, sy = flips
         for p in parts:
             try:
                 shape, shift = path_shape(p.get("path", ""), flips)
@@ -269,6 +276,10 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
             items.append({"shapes": [shape], "copies": int(p["qty"]),
                           "allowed_rotations": rotations(p.get("rotations")),
                           "allow_mirroring": bool(p.get("mirror"))})
+            if use_common and p.get("commonEdges"):
+                # into the engine's frame, as the outline (flipped to the origin corner, moved by shift)
+                common[len(items) - 1] = [[sx * e[0] + shift[0], sy * e[1] + shift[1], sx * e[2] + shift[0], sy * e[3] + shift[1]]
+                                          for e in p["commonEdges"] if len(e) == 4]
             ids.append(p["id"])
             shifts.append(shift)
         if not items:
@@ -302,7 +313,10 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
         inst = {"objective": "knapsack" if limited else "variable-sized-bin-packing",
                 "parameters": {"item_item_minimum_spacing": group_gap},
                 "bin_types": bins, "item_types": items}
-        groups.append({"label": label, "material": parts[0].get("material", ""),
+        # common cut: the shared line is cut down the middle, the copies a kerf apart
+        kerf = max([float(s["kerfMm"]) for s in sheets if s.get("kerfMm")] or [0.0])
+        groups.append({"common": common, "kerf": kerf,
+                       "label": label, "material": parts[0].get("material", ""),
                        "thicknessMm": parts[0].get("thicknessMm"), "instance": inst,
                        "partIds": ids, "sheets": sheets, "flips": flips, "shifts": shifts})
     return groups, skipped
@@ -426,9 +440,15 @@ class Run:
                 opts.block_margin = margin / 100.0
             if isinstance(self.req.get("blocks"), bool):
                 opts.blocks = self.req["blocks"]
+            minutes = self.req.get("minutes")
+            common = None
+            if g.get("common") and level == "custom":
+                common, minutes = self.common_trials(i, opts, minutes, on_progress)
+                if common["share"] > 0:
+                    opts = dataclasses.replace(opts, common={"edges": g["common"], "kerf": g["kerf"], "share": common["share"]})
             job = run_job(g["instance"], self.bin, level, opts,
                           os.path.join(self.dir, f"group{i + 1}"), quiet=True,
-                          minutes=self.req.get("minutes"), stop_after=stop_after * 60 if stop_after else None,
+                          minutes=minutes, stop_after=stop_after * 60 if stop_after else None,
                           should_stop=self.stop_requested, on_progress=on_progress, variants=variants,
                           growth=growth)
         except NestError as e:
@@ -450,12 +470,62 @@ class Run:
         with self.lock:
             self.status[i].update(stage="done", sheets=len(sheets), stopped=job["stopped"])
         self.progress()
-        return {"sheets": sheets, "valid": v["ok"], "errors": v["errors"][:10],
+        if common is not None:
+            st = (job["mapping"].get("stats") or {})
+            common.update(blocks=int(st.get("common_blocks", 0)), sharedLines=int(st.get("common_lines", 0)), sheets=len(sheets))
+        return {"commonCut": common, "sheets": sheets, "valid": v["ok"], "errors": v["errors"][:10],
                 "sheetEquivalents": m.get("sheet_equivalents"), "seconds": job["seconds"], "steps": job["steps"],
                 "bestAt": job.get("bestAt"),
                 "tooBig": [{"partId": g["partIds"][n], "reason": f"Bigger than every stock sheet ({t})"}
                            for n, t in job["skipped"]],
                 "counts": {g["partIds"][t]: c for t, c in counts.items()}}
+
+    # -- common cut: block sizes tried first -------------------------------------------------
+    SHARES = (1.0, 0.5, 0.25)
+
+    def common_trials(self, i: int, opts: Options, minutes, on_progress) -> tuple[dict, float | None]:
+        """Which common cut block size to nest with: a short nest of each (and of none) within a
+        quarter of the time, the fewest sheets (then the shortest last sheet) wins. One block size
+        only: no trials. Returns the choice (for the result) and the minutes left for the nest."""
+        g = self.groups[i]
+        t0 = time.perf_counter()
+        base = {"edges": g["common"], "kerf": g["kerf"]}
+        pre = PrePass(g["instance"], self.bin, dataclasses.replace(opts, common={**base, "share": 1.0}, verbose=False))
+        plans, seen = [], set()
+        for sh in self.SHARES:
+            plan = pre.common_plan(sh)
+            key = tuple((pid, tuple(bl)) for pid, _, bl in plan)
+            if plan and key not in seen:
+                seen.add(key)
+                plans.append(sh)
+        if not plans:
+            return {"share": 0.0, "note": "No part has common cut edges that join (straight, facing, same length)"}, minutes
+        if len(plans) == 1:
+            return {"share": plans[0], "trials": []}, minutes
+        total = 90.0 if minutes is None else max(30.0, 0.25 * minutes * 60.0)
+        options = plans + [0.0]
+        each = total / len(options)
+        trials = []
+        for sh in options:
+            if self.stop_requested():
+                break
+            with self.lock:
+                self.status[i].update(stage=f"common cut: trying {'no blocks' if sh == 0 else f'blocks {round(sh * 100)} %'}")
+            self.progress()
+            o = dataclasses.replace(opts, common={**base, "share": sh} if sh > 0 else None)
+            try:
+                r = run_job(g["instance"], self.bin, "trial", o, os.path.join(self.dir, f"group{i + 1}", f"trial{len(trials) + 1}"),
+                            quiet=True, should_stop=self.stop_requested, budget=each)
+            except NestError:
+                continue
+            m = metrics(r["instance"], expand(r["solution"], r["mapping"]))
+            trials.append({"share": sh, "sheets": m["sheets"], "equiv": m["sheet_equivalents"]})
+        if not trials:
+            return {"share": plans[0], "trials": []}, minutes
+        best = min(trials, key=lambda t: (t["sheets"], t["equiv"], -t["share"]))
+        spent = (time.perf_counter() - t0) / 60.0
+        left = None if minutes is None else max(0.5, minutes - spent)
+        return {"share": best["share"], "trials": trials}, left
 
     def run(self) -> dict:
         self.progress("start")
@@ -480,6 +550,8 @@ class Run:
                   "bestAt": max(at) if at else None,
                   "sheets": sheets, "nested": dict(nested), "skipped": skipped,
                   "valid": valid, "errors": errors,
+                  "commonCut": [dict(material=g["material"], thicknessMm=g["thicknessMm"], **r["commonCut"])
+                                for g, r in zip(self.groups, results) if r.get("commonCut")] or None,
                   "groups": [{"material": g["material"], "thicknessMm": g["thicknessMm"],
                               **{k: r.get(k) for k in ("sheetEquivalents", "seconds", "valid", "error", "steps", "bestAt")}}
                              for g, r in zip(self.groups, results)]}

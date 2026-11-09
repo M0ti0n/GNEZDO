@@ -50,6 +50,13 @@ LEVELS = {
                      pre_opts=dict(blocks=False, block_budget=30.0),
                      post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, fill_max=30.0, empty_time=3.0, tail_time=3.0,
                                     pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
+    # a short try of one way to nest (common cut block sizes, service.py): `budget` seconds in all,
+    # most of it nest, the rest a quick post-pass (as Fast)
+    "trial": dict(total=None, post=0.0, post_per_sheet=0.0, post_max=0.0, grace=10.0, min_nest=None, max_nest=None,
+                  two_phase=False, variants=1,
+                  pre_opts=dict(pair_max_fill=0.75, blocks=False),
+                  post_opts=dict(pool_time=1.5, fill_time=1.5, fill_rounds=2, empty=True, empty_first=True, empty_again=False,
+                                 tail=False, pairs=False, chain=False, compact_time=3.0)),
     # the user sets the nest time (or none: until stopped); then the thorough post-pass
     "custom": dict(total=None, two_phase=False, post=30.0, post_per_sheet=2.5, post_max=150.0, grace=60.0, min_nest=None, max_nest=None,
                    variants=2,
@@ -163,7 +170,7 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
             minutes: float | None = None, stop_after: float | None = None,
             should_stop: Callable[[], bool] | None = None,
             on_progress: Callable[[dict], None] | None = None, variants: int = 1,
-            growth: float | None = None) -> dict:
+            growth: float | None = None, budget: float | None = None) -> dict:
     """The whole nesting job within the level's time budget: pre-pass, nest, post-pass.
 
     level custom: the nest runs `minutes` (None: until stopped). stop_after: seconds with no
@@ -192,7 +199,11 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     say({"stage": "prepare"})
     pre, mapping = PrePass(inst, binary, pre_options(level, pre_opts)).build()
     pre_t = time.perf_counter() - t0
-    if level == "custom":
+    if level == "trial":
+        budget = budget or 30.0
+        nest_t = max(5.0, 0.7 * budget - pre_t)
+        stop_after = max(3.0, 0.2 * budget)
+    elif level == "custom":
         nest_t = FOREVER if minutes is None else max(10.0, minutes * 60.0 - pre_t - L["post"] - L["post_per_sheet"] * 10)
     else:
         nest_t = min(L["max_nest"], max(L["min_nest"], L["total"] - pre_t - L["post"]))
@@ -258,7 +269,7 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
             opts = PostOptions(fill=False, tail=False, pairs=False, chain=False, compact_time=5.0, budget=6.0, quiet=quiet)
         else:
             n = sum(int(b.get("copies", 1)) for b in r["solution"].get("bins", []))
-            opts = post_options(level, post_budget(level, n), quiet)
+            opts = post_options(level, 0.3 * budget if level == "trial" else post_budget(level, n), quiet)
         opts.workers = max(1, pre_opts.workers // n_var)
         pp = PostPass(pre, r["solution"], binary, opts, pool=small)
         sol = pp.run()
