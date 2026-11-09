@@ -752,7 +752,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   Filler
                 </label>
                 <label className="chk chk-box chk-common" title={COMMON_CUT_TIP}>
-                  <input type="checkbox" checked={nestRules.commonCut} onChange={(e) => onNestRules({ ...nestRules, commonCut: e.target.checked })} />
+                  <input type="checkbox" checked={!!nestRules.commonCut} onChange={(e) => onNestRules({ ...nestRules, commonCut: e.target.checked })} />
                   Common cut
                 </label>
               </div>

@@ -163,7 +163,7 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
                   Filler
                 </label>
                 <label className="chk chk-box chk-common" title={COMMON_CUT_TIP}>
-                  <input type="checkbox" checked={v.commonCut} onChange={(e) => set({ commonCut: e.target.checked })} />
+                  <input type="checkbox" checked={!!v.commonCut} onChange={(e) => set({ commonCut: e.target.checked })} />
                   Common cut
                 </label>
               </div>
