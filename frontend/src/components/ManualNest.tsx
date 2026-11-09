@@ -12,6 +12,7 @@ import {
 import { arrange, arrangeAgain, mirrorGroup, partRules, stack, type PartRules } from "../job/manualTools";
 import { loadNestingRules } from "../job/nestRules";
 import { loadManualView } from "../job/manualView";
+import { commonEdges, commonLayout, partCommonLines, placedEdges, sharedLines, snapMove, type CommonEdge, type CommonLayout } from "../job/commonCut";
 
 /** Ctrl+C: the copied parts, around the middle of their box (kept across sheets of the job). */
 let clipboard: PlacedPart[] | null = null;
@@ -22,8 +23,10 @@ type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 // the mouse or the keys (Settings -> Manual nest), parts come from the JOB PARTS panel by drag and
 // drop, overlapping parts glow red. Every finished change goes to the solution at once; FINISH
 // goes back to the sheets.
-export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool }: {
+export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool, commonCut = false }: {
   locked: boolean; onToggleLock: () => void;
+  /** Common cut (Manual nest toolbar): dragged parts snap to share their common cut lines; Arrange makes blocks */
+  commonCut?: boolean;
   /** a Manual nest tool clicked on the toolbar (a new n each click) */
   tool?: { tool: string; n: number };
   sol: Solution; index: number; sheets: NestedSheet[]; jobParts: JobPart[]; parts: Map<string, PartRef>;
@@ -62,15 +65,40 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   }, [index, onChange]);
 
   const geo = useMemo(() => items.map((p) => { const r = byId.get(p.partId); return r ? placed(r.path, p) : null; }), [items, byId]);
+
+  // common cut lines of the parts (those with the Common cut nesting rule), part frame
+  const kerf = sheet.kerfMm ?? 0;
+  const [edgesById, setEdgesById] = useState<Map<string, CommonEdge[]>>(new Map());
+  const partIdsKey = [...new Set([...items.map((p) => p.partId), ...jobParts.map((jp) => jp.part.id)])].sort().join(",");
+  useEffect(() => {
+    let alive = true;
+    const ids = partIdsKey ? partIdsKey.split(",") : [];
+    Promise.all(ids.map((id) => partCommonLines(id).then((lines) => [id, lines] as const))).then((got) => {
+      if (!alive) return;
+      const m = new Map<string, CommonEdge[]>();
+      for (const [id, lines] of got) { const path = byId.get(id)?.path; if (path && lines.length) m.set(id, commonEdges(path, lines)); }
+      setEdgesById(m);
+    });
+    return () => { alive = false; };
+  }, [partIdsKey, byId]);
+  const edgesOf = (list: PlacedPart[], i: number) => { const e = edgesById.get(list[i].partId); return e ? placedEdges(list[i], e) : []; };
+  // parts that share a common cut line: closer than the gap there, the line drawn blue
+  const shared = useMemo(() => {
+    if (!edgesById.size) return { pairs: new Set<string>(), lines: [] as [Pt, Pt][] };
+    return sharedLines(items.map((_, i) => ({ edges: geo[i] ? edgesOf(items, i) : [], box: geo[i]?.box ?? { x0: 0, y0: 0, x1: 0, y1: 0 } })), kerf);
+  }, [items, geo, edgesById, kerf]);   // eslint-disable-line react-hooks/exhaustive-deps
   // parts reaching past the usable area (e.g. left outside when the sheet was made smaller)
   const outside = useMemo(() => new Set(geo.flatMap((g, i) => (g && (g.box.x0 < usable.x0 - 0.05 || g.box.y0 < usable.y0 - 0.05
     || g.box.x1 > usable.x1 + 0.05 || g.box.y1 > usable.y1 + 0.05) ? [i] : []))), [geo, usable]);
   const bad = useMemo(() => {
     const idx: number[] = [];
     geo.forEach((g, i) => g && idx.push(i));
-    const b = problems(idx.map((i) => geo[i]!), usable, gap, outline);
+    // shared pairs in the numbering of the parts checked
+    const at = new Map(idx.map((i, k) => [i, k]));
+    const sh = new Set([...shared.pairs].map((key) => { const [i, j] = key.split("|").map(Number); const a = at.get(i)!, b = at.get(j)!; return a < b ? `${a}|${b}` : `${b}|${a}`; }));
+    const b = problems(idx.map((i) => geo[i]!), usable, gap, outline, sh);
     return new Set([...b].map((k) => idx[k]));
-  }, [geo, usable, gap, outline]);
+  }, [geo, usable, gap, outline, shared]);
 
   // -- view: mm -> screen px, fitted to the canvas; wheel zooms, middle / right button pans --------
   const host = useRef<HTMLDivElement>(null);
@@ -311,6 +339,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   // before: the parts the drag offset applies to (turned by a key while held: the turned parts, from
   // where the mouse is then); orig: the sheet when the drag started (for undo)
   const dragging = useRef<{ start: Pt; before: PlacedPart[]; orig: PlacedPart[]; ids: Set<number>; moved: boolean; px: { x: number; y: number } } | null>(null);
+  // Ctrl+click on a selected part takes it out of the selection, when the click did not move it
+  const unpick = useRef<{ i: number; px: { x: number; y: number } } | null>(null);
   const pan = useRef<{ x: number; y: number; from: { x: number; y: number }; button: number } | null>(null);
   // right click (no drag) on a part: Lock / Unlock it, or the selection it is in
   const [menu, setMenu] = useState<{ x: number; y: number; ids: number[] } | null>(null);
@@ -358,15 +388,19 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const [x, y] = toMm(p.x, p.y);
     const i = hit(x, y);
     if (i >= 0) {
+      // Ctrl+click adds a part to the selection, or (if it does not move) takes it out again;
+      // Ctrl held while dragging still snaps on drop
       let ids = sel;
-      if (e.shiftKey) { ids = new Set(sel); if (ids.has(i)) ids.delete(i); else ids.add(i); }
+      const ctrl = e.ctrlKey || e.metaKey;
+      unpick.current = ctrl && sel.has(i) ? { i, px: p } : null;
+      if (ctrl) { if (!sel.has(i)) ids = new Set([...sel, i]); }
       else if (!sel.has(i)) ids = new Set([i]);
       setSel(ids);
       if (edit && ids.has(i)) dragging.current = { start: [x, y], before: items, orig: items, ids, moved: false, px: p };
       return;
     }
     setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
-    if (!e.shiftKey) setSel(new Set());
+    if (!(e.ctrlKey || e.metaKey)) setSel(new Set());
   };
   const onPointerMove = (e: React.PointerEvent) => {
     { const q = local(e); lastPt.current = toMm(q.x, q.y); }
@@ -386,7 +420,18 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       if (!d.moved && Math.hypot(p.x - d.px.x, p.y - d.px.y) < 3) return;
       if (!d.moved) setMoving(true);
       d.moved = true;
-      setItems(moved(d.before, d.ids, x - d.start[0], y - d.start[1]));
+      let dx = x - d.start[0], dy = y - d.start[1];
+      // Common cut on: a marked line of the dragged parts snaps onto one of a still part (Alt: no snap)
+      if (commonCut && !e.altKey && edgesById.size && view) {
+        const trial = moved(d.before, d.ids, dx, dy);
+        const mine = [...d.ids].flatMap((i) => edgesOf(trial, i));
+        if (mine.length) {
+          const still = trial.flatMap((_, i) => (d.ids.has(i) ? [] : edgesOf(trial, i)));
+          const v = snapMove(mine, still, kerf, 12 / view.s);
+          if (v) { dx += v[0]; dy += v[1]; }
+        }
+      }
+      setItems(moved(d.before, d.ids, dx, dy));
       return;
     }
     setHover(hit(x, y));
@@ -416,7 +461,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       const crossing = b.x1 < b.x0;
       const [ax, ay] = toMm(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1));
       const [bx, by] = toMm(Math.max(b.x0, b.x1), Math.max(b.y0, b.y1));
-      const ids = new Set(e.shiftKey ? sel : []);
+      const ids = new Set(e.ctrlKey || e.metaKey ? sel : []);
       geo.forEach((g, i) => {
         if (!g) return;
         const q = g.box;
@@ -431,6 +476,12 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const d = dragging.current;
     dragging.current = null;
     setMoving(false);
+    const up = unpick.current;
+    unpick.current = null;
+    if (up && !d?.moved) {
+      const q = local(e);
+      if (Math.hypot(q.x - up.px.x, q.y - up.px.y) < 3) { setSel((s) => { const n = new Set(s); n.delete(up.i); return n; }); return; }
+    }
     // held without moving, but turned by a key meanwhile: that turn is saved now
     if (d && !d.moved && itemsRef.current !== d.orig) { commit(itemsRef.current, d.orig); return; }
     if (!d || !d.moved) return;
@@ -685,6 +736,15 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       try {
         const got = await Promise.all(uniq.map(partRules));
         const rules = new Map<string, PartRules>(uniq.map((id, k) => [id, got[k]]));
+        // Common cut on: the kinds that join become blocks
+        const common = new Map<string, CommonLayout>();
+        if (commonCut) for (const id of uniq) {
+          const ed = edgesById.get(id), path = partPath(id);
+          if (!ed?.length || !path || ids.filter((i) => before[i].partId === id).length < 2) continue;
+          const lay = commonLayout(path, ed, kerf, gap);
+          // a turned pair needs the part to be allowed to turn 180 degrees
+          if (lay && !(lay.kind === "pair" && !(rules.get(id)?.rotations ?? []).some((r) => r > 0 && 180 % r === 0))) common.set(id, lay);
+        }
         // the note and the spinning ring show before the work starts (the ring keeps turning on its own while it runs)
         await new Promise((r) => window.setTimeout(r, 50));
         if (itemsRef.current !== before) { setNote(null); return; }
@@ -699,9 +759,10 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           };
         }
         const input = { list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable: area, outline, edgeGap, gap, origin,
-          budgetMs: limit - 60 - (performance.now() - t0) };
+          budgetMs: limit - 60 - (performance.now() - t0), common: common.size ? common : undefined };
+        // Arrange again moves parts one by one: blocks are arranged afresh instead
         const out = !(area.x1 > area.x0 && area.y1 > area.y0) ? null
-          : again ? await arrangeAgain({ ...input, round: again }) : await arrange(input);
+          : again && !common.size ? await arrangeAgain({ ...input, round: again }) : await arrange(input);
         // left the sheet, or it changed meanwhile: not used
         if (!alive.current || alive.current.index !== index || itemsRef.current !== before) { setNote(null); return; }
         if (!out) { setNote(toOrigin ? "No room to arrange these parts on this sheet." : "No room to arrange these parts where they are."); return; }
@@ -769,7 +830,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           {selInfo ? (<>
             <div><b>{selInfo.title}</b><span>{selInfo.size}</span></div>
             <div><span className="mn-info-name">{selInfo.sub}</span><span>{selInfo.qty}</span></div>
-          </>) : <div className="mn-info-none">{edit ? "Click a part, or drag a window, to select. Drag parts in from JOB PARTS." : "Locked sheet: look only."}</div>}
+          </>) : <div className="mn-info-none">{edit ? "Click a part, or drag a window, to select (Ctrl: add or remove). Drag parts in from JOB PARTS." : "Locked sheet: look only."}</div>}
         </div>
       </div>
 
@@ -805,6 +866,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                   </path>
                 );
               })}
+              {shared.lines.map(([a, b], k) => (
+                <line key={`cc${k}`} className="mn-common" x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} style={{ strokeWidth: 3 / v.s }}>
+                  <title>Common cut: one cut for both parts</title>
+                </line>
+              ))}
               {align?.fixed && <line className="mn-edge is-fixed" x1={align.fixed.a[0]} y1={align.fixed.a[1]} x2={align.fixed.b[0]} y2={align.fixed.b[1]} style={{ strokeWidth: 5 / v.s }} />}
               {align && edgeHover && <line className="mn-edge" x1={edgeHover.a[0]} y1={edgeHover.a[1]} x2={edgeHover.b[0]} y2={edgeHover.b[1]} style={{ strokeWidth: 5 / v.s }} />}
               {ghost.map(({ p, g }, k) => {

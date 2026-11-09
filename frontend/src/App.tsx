@@ -25,7 +25,7 @@ import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
-import { buildRequest, continuedSheets, countsOf, isFinished, missingParts, nestApi, nestProblem, nestsOfJob, solutionsFromSaved, type NestMode, type NestRun, type NestedSheet, type Solution } from "./job/nest";
+import { buildRequest, commonCutNote, continuedSheets, countsOf, isFinished, missingParts, nestApi, nestProblem, nestsOfJob, solutionsFromSaved, type NestMode, type NestRun, type NestedSheet, type Solution } from "./job/nest";
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
@@ -508,6 +508,8 @@ export function App() {
           { job: jobId, error: run.error, errors: run.result?.errors?.slice(0, 5), skipped: run.result?.skipped?.length, bestAt: run.result?.bestAt });
         // a finished solution with sheets is shown
         if (run.result?.sheets.length) setSols(jobId, (st) => ({ ...st, sel: { sol: solId, sheet: 0 } }));
+        const cc = commonCutNote(run.result);
+        if (cc) { setToast(cc.charAt(0).toUpperCase() + cc.slice(1)); diag("nest", `Nest ${run.id}: ${cc}`, { job: jobId }); }
         return;
       }
     }
@@ -533,7 +535,7 @@ export function App() {
     try {
       const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom, machineFor(jobId).origin);
       const run = await nestApi.start(req);
-      diag("nest", `Nest ${run.id} started: ${mode}${custom ? ` ${custom.minutes ?? "until stopped"} min ${custom.blocks ? "blocks" : "standard"}` : ""}, new solution ${no}`,
+      diag("nest", `Nest ${run.id} started: ${mode}${custom ? ` ${custom.minutes ?? "until stopped"} min ${custom.blocks ? "blocks" : "standard"}${custom.commonCut ? " common cut" : ""}` : ""}, new solution ${no}`,
         { job: jobId, partTypes: req.parts.length, pieces: req.parts.reduce((n, p) => n + p.qty, 0), stockSheets: req.sheets.length });
       patchSol(jobId, id, (x) => ({ ...x, run }));
       void pollNest(jobId, id, run.id);
@@ -846,6 +848,8 @@ export function App() {
   const [leaveManual, setLeaveManual] = useState(0);
   // Manual nest tools: to the sheet open in manual nest (a new n each click)
   const [manualTool, setManualTool] = useState<{ tool: string; n: number }>({ tool: "", n: 0 });
+  // Manual nest -> Common cut, per job (not kept: off when GNEZDO is opened again)
+  const [commonSnap, setCommonSnap] = useState<Record<string, boolean>>({});
   // -- Manual nest: Add sheet / Delete sheet ------------------------------------------------------
   const [addSheetFor, setAddSheetFor] = useState<{ jobId: string; sheet: StockSheet } | null>(null);
   const [deleteAsk, setDeleteAsk] = useState<{ jobId: string; solId: string; index: number; parts: number } | null>(null);
@@ -982,6 +986,13 @@ export function App() {
     if (!job) return;
     diag("tool", `${section}: ${tool}`, { job: job.id, custom });
     if (section === "manual" && tool === "addSheet") { askAddSheet(job.id); return; }
+    if (section === "manual" && tool === "commonCut") {
+      // a switch for this job (off when the job is opened again): snapping and Arrange blocks
+      const on = !commonSnap[job.id];
+      setCommonSnap((m) => ({ ...m, [job.id]: on }));
+      setToast(on ? "Common cut on: marked lines snap together (Alt: place without snapping); Arrange makes blocks" : "Common cut off");
+      return;
+    }
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (tool === "fastNest") void startNest(job.id, "fast");
     else if (tool === "thoroughNest") void startNest(job.id, "thorough");
@@ -1037,7 +1048,7 @@ export function App() {
           importPanel={importPanel}
         />
         <div className="workspace">
-          {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq}
+          {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq} lit={{ commonCut: !!(job && commonSnap[job.id]) }}
             onSection={(sec) => {
               if (sec === "auto" || sec === "work") { setLeaveManual((n) => n + 1); manualOn.current = false; }
               if (job && sec) setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" ? "nest" : m[job.id] }));
@@ -1053,6 +1064,7 @@ export function App() {
                 onManualOpened={() => setOpenManual((o) => ({ ...o, sheet: -1 }))}
                 onDeleteSheet={(solId, i) => askDeleteSheet(job.id, solId, i)}
                 manualTool={manualTool}
+                commonCut={!!commonSnap[job.id]}
                 parts={jobParts[job.id] ?? []}
                 solutions={solsOf(job.id).list}
                 selected={solsOf(job.id).sel}
@@ -1160,6 +1172,7 @@ export function App() {
             {newJobOpen && <NewJobDialog defaultName={newJobOpen} machines={machines} onCreate={createJob} onCancel={() => setNewJobOpen(null)} />}
             {customFor && (
               <CustomNestDialog onCancel={() => setCustomFor(null)}
+                partIds={(jobParts[customFor.jobId] ?? []).filter((jp) => jp.qty > 0).map((jp) => jp.part.id)}
                 onStart={(c) => { const cf = customFor; setCustomFor(null); void startNest(cf.jobId, "custom", c, cf.fresh); }} />
             )}
             {active.kind === "jobSearch" && (

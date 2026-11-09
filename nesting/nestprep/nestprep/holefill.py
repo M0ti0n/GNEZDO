@@ -51,9 +51,10 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import freemap, geom
+from . import commoncut, freemap, geom
 from .geom import Xf
 from .psrun import solve
+from .solution import _xf_poly
 
 QUARTER = (0.0, 90.0, 180.0, 270.0)
 
@@ -80,7 +81,7 @@ class Part:
     placements: list[tuple[float, bool]]     # allowed (angle, mirror), discrete
     members: list[Member]
     remaining: int
-    kind: str = "original"                   # original | holefill | pair
+    kind: str = "original"                   # original | holefill | pair | block | common
     rot_json: list | None = None             # original allowed_rotations (kept verbatim)
     source_json: dict | None = None          # original item JSON (originals only)
     _poly: list = field(default=None, repr=False)
@@ -189,6 +190,9 @@ class Options:
     block_parallel: bool = True         # all blocks worked out at once (parts shared up front)
     workers: int = 4                    # parallel solver processes
     verbose: bool = True
+    # common cut blocks (commoncut.py), before everything else: {"edges": {item type: [[x1, y1, x2, y2],
+    # ...]}, "kerf": mm, "share": 1.0 | 0.5 | 0.25 (0: none)}; None: no common cut
+    common: dict | None = None
 
 
 class PrePass:
@@ -918,7 +922,116 @@ class PrePass:
         return f"C{pid}[#{p.members[0].orig_type + 1}+" + \
             "+".join(f"{n}x#{t}" for t, n in sorted(inner.items())) + "]"
 
+    # -- common cut ----------------------------------------------------------------
+    def common_plan(self, share: float) -> list[tuple]:
+        """Blocks per part for a block size share: [(pid, layout, [(a, b, blocks)])], copies left
+        over not in it. Nothing is changed."""
+        c = self.opt.common or {}
+        kerf = float(c.get("kerf") or 0.0)
+        out = []
+        if share <= 0:
+            return out
+        for pid, edges in sorted((c.get("edges") or {}).items()):
+            pid = int(pid)
+            if pid >= self.n_orig or not edges:
+                continue
+            p = self.parts[pid]
+            if p.remaining < 2 or len(p.polys) != 1:
+                continue
+            lay = commoncut.layout_of(p.polys[0], edges, kerf, self.s)
+            if lay is None:
+                continue
+            box_cache = {}
+
+            def dims(a, b):
+                if (a, b) not in box_cache:
+                    pts = np.vstack([_xf_poly(p.polys[0].outer, xf) for xf in lay.offsets(a, b)])
+                    box_cache[(a, b)] = (float(pts[:, 0].max() - pts[:, 0].min()), float(pts[:, 1].max() - pts[:, 1].min()))
+                return box_cache[(a, b)]
+            pls = self.compatible_placements(p.placements, [Member(pid, xf, 0) for xf in lay.offsets(2, 1)])
+
+            def fits(a, b):
+                w, h = dims(a, b)
+                tmp = Part(-1, [{"type": "general", "elements": geom.polygon_to_elements(
+                    np.array([[0, 0], [w, 0], [w, h], [0, h]], float))}], pls, [], 0, "common")
+                return bool(pls) and self.fits_sheet(tmp)
+            # the biggest block that fits a sheet: along the first join, then the second (grid)
+            if lay.kind == "pair":
+                sizes = [(2, 1)] if fits(2, 1) else []
+            else:
+                amax = 1
+                while amax < p.remaining and fits(amax + 1, 1):
+                    amax += 1
+                bmax = 1
+                if lay.kind == "grid":
+                    while bmax < p.remaining and fits(1, bmax + 1):
+                        bmax += 1
+                sizes = [(a, b) for a in range(1, amax + 1) for b in range(1, bmax + 1)
+                         if 2 <= a * b <= p.remaining and (b == 1 or fits(a, b))]
+            if not sizes:
+                continue
+            kmax = max(a * b for a, b in sizes)
+            want = max(2, math.ceil(kmax * share))
+
+            def best(k):
+                # the most copies up to k; then the squarest block
+                cands = [(a, b) for a, b in sizes if a * b <= k]
+                if not cands:
+                    return None
+
+                def squareness(ab):
+                    w, h = dims(*ab)
+                    return max(w, h) / max(min(w, h), 1e-9)
+                return max(cands, key=lambda ab: (ab[0] * ab[1], -squareness(ab)))
+            ab = best(want)
+            if ab is None:
+                continue
+            k = ab[0] * ab[1]
+            n, rest = divmod(p.remaining, k)
+            blocks = [(ab[0], ab[1], n)]
+            if rest >= 2 and (ab2 := best(rest)) is not None:
+                blocks.append((ab2[0], ab2[1], 1))
+            out.append((pid, lay, blocks))
+        return out
+
+    def common_part(self, p: Part, lay, a: int, b: int) -> Part | None:
+        xfs = lay.offsets(a, b)
+        shapes = [geom.transform_shape(s, xf) for xf in xfs for s in p.shapes]
+        comp = Part(len(self.parts), shapes, [], [Member(p.pid, xf, 0) for xf in xfs], 0, "common")
+        x0, y0, _, _ = comp.bbox
+        shift = Xf(0, False, -x0, -y0)
+        comp.shapes = [geom.transform_shape(s, shift) for s in shapes]
+        comp.members = [Member(m.orig_type, m.xf.then(shift), 0) for m in comp.members]
+        comp._poly = None
+        comp.placements = self.compatible_placements(p.placements, comp.members)
+        return comp if comp.placements else None
+
+    def run_common(self):
+        share = float((self.opt.common or {}).get("share") or 0.0)
+        for pid, lay, blocks in self.common_plan(share):
+            p = self.parts[pid]
+            for a, b, n in blocks:
+                comp = self.common_part(p, lay, a, b)
+                if comp is None or n <= 0:
+                    continue
+                k = a * b
+                n = min(n, p.remaining // k)
+                if n <= 0:
+                    continue
+                comp.pid = len(self.parts)
+                comp.remaining = n
+                p.remaining -= n * k
+                self.parts.append(comp)
+                self.stats["common_blocks"] += n
+                self.stats["common_lines"] += n * lay.shared_lines(a, b)
+                self.say(f"  common cut {self.label(pid)}: {n} x block of {a}{f' x {b}' if b > 1 else ''} ({lay.kind})")
+
     def build(self) -> tuple[dict, dict]:
+        t = time.perf_counter()
+        if self.opt.common:
+            self.say("Common cut:")
+            self.run_common()
+        self.stats["common_s"] = round(time.perf_counter() - t, 1)
         t = time.perf_counter()
         if self.opt.pairing:
             self.say("Pairing:")

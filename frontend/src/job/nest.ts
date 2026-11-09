@@ -7,6 +7,7 @@ import { DEFAULT_PART_GAP_MM, MACHINE_LIMIT, defaultTrims, fitsMachine, type Sto
 import type { Origin } from "./machine";
 import { loadNestingRules } from "./nestRules";
 import { diag, diagHeaders } from "./diag";
+import { checkGeometry, isCommon, type Entity } from "../import/geometry";
 
 /** manual: a solution started by Add sheet (Manual nest), nested by hand */
 export type NestMode = "fast" | "thorough" | "custom" | "manual";
@@ -20,6 +21,8 @@ export const EDGE_GAP_MM = 5;
 export interface NestRequestPart {
   id: string; name: string; path: string; qty: number;
   rotations: number[]; mirror: boolean; material: string; thicknessMm: number;
+  /** Custom with common cut: the part's marked common cut lines, in the path's frame (y down, box corner at 0,0) */
+  commonEdges?: [number, number, number, number][];
 }
 
 export interface NestRequestSheet {
@@ -48,6 +51,8 @@ export interface NestRequest {
   searchGrowth?: number;
   /** blocks before the nest (Custom when chosen, experimental) */
   blocks?: boolean;
+  /** Custom: parts with common cut join into blocks along their marked lines (parts with Common cut ticked) */
+  commonCut?: boolean;
   parts: NestRequestPart[];
   sheets: NestRequestSheet[];
   /**
@@ -152,6 +157,9 @@ export interface NestResult {
   errors: string[];
   /** when the nest found its best layout [s from the start of the run] (the last of the materials) */
   bestAt?: number | null;
+  /** Custom with common cut: per material, the block size used (share 0: none) and the trials */
+  commonCut?: { material: string; thicknessMm: number; share: number; blocks?: number; sharedLines?: number; sheets?: number; note?: string;
+    trials?: { share: number; sheets: number; equiv: number }[] }[] | null;
 }
 
 export interface NestGroupProgress {
@@ -241,9 +249,14 @@ export function nestProblem(parts: JobPart[] | undefined, stock: StockSheet[]): 
 /** The request for a job: parts with their nesting rules (fetched per part), the stock sheets. */
 export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: NestMode, custom?: CustomNestSettings, origin: Origin = "top-left"): Promise<NestRequest> {
   const withQty = parts.filter((jp) => jp.qty > 0);
+  const common = mode === "custom" && !!custom?.commonCut;
   const details = await Promise.all(withQty.map((jp) =>
-    api.part(jp.part.id).then((d) => ({ rotations: d.rotations, mirror: d.mirror }))
-      .catch(() => ({ rotations: [90], mirror: false }))));
+    api.part(jp.part.id).then(async (d) => ({
+      rotations: d.rotations, mirror: d.mirror,
+      // common cut: only for parts that allow it (their Common cut nesting rule)
+      commonEdges: common && d.commonCut ? await commonEdgesOf(jp.part.id) : undefined,
+    }))
+      .catch(() => ({ rotations: [90], mirror: false, commonEdges: undefined }))));
   return {
     mode,
     origin,
@@ -252,6 +265,7 @@ export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: 
     // blocks: Custom as chosen in its pop-up (experimental); Fast and Thorough never (on real jobs
     // they never beat the standard nest)
     blocks: mode === "custom" ? !!custom?.blocks : false,
+    commonCut: common,
     partGapMm: PART_GAP_MM,
     edgeGapMm: EDGE_GAP_MM,
     blockMarginPct: loadNestingRules().blockMarginPct,
@@ -260,6 +274,7 @@ export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: 
       id: jp.part.id, name: jp.part.name, path: jp.part.path, qty: jp.qty,
       rotations: details[i].rotations, mirror: details[i].mirror,
       material: jp.part.material, thicknessMm: jp.part.thicknessMm,
+      ...(details[i].commonEdges?.length ? { commonEdges: details[i].commonEdges } : {}),
     })),
     sheets: stock.map((s) => ({
       id: s.id, material: s.material, thicknessMm: s.thicknessMm, lengthMm: s.lengthMm, widthMm: s.widthMm,
@@ -267,6 +282,40 @@ export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: 
       trims: s.trims ?? defaultTrims(), partGapMm: s.partGapMm ?? DEFAULT_PART_GAP_MM, kerfMm: s.kerfMm, outline: s.outline,
     })),
   };
+}
+
+/** A part's common cut lines in its outline's frame (as the thumbnail path: y down, box corner at 0,0). */
+export async function commonEdgesOf(partId: string): Promise<[number, number, number, number][]> {
+  const g = await api.partGeometry(partId).catch(() => null);
+  return g ? commonEdgesIn(g.entities) : [];
+}
+
+export function commonEdgesIn(entities: Entity[]): [number, number, number, number][] {
+  const lines = entities.filter(isCommon);
+  if (!lines.length) return [];
+  const report = checkGeometry(entities);
+  const box = report.contours.find((c) => c.closed && c.outer)?.box ?? report.box;
+  const r = (n: number) => +n.toFixed(3);
+  return lines.flatMap((e) => (e.kind === "line" ? [[r(e.a.x - box.minX), r(box.maxY - e.a.y), r(e.b.x - box.minX), r(box.maxY - e.b.y)] as [number, number, number, number]] : []));
+}
+
+/** What a Custom nest with common cut did, for the message when it ends; null without common cut. */
+export function commonCutNote(r: NestResult | null | undefined): string | null {
+  const list = r?.commonCut;
+  if (!list?.length) return null;
+  return list.map((c) => {
+    const pre = list.length > 1 ? `${c.material} ${c.thicknessMm} mm: ` : "";
+    const none = c.trials?.find((t) => t.share === 0);
+    const withBlocks = c.trials?.filter((t) => t.share > 0) ?? [];
+    if (c.note) return `${pre}common cut not used: ${c.note.charAt(0).toLowerCase()}${c.note.slice(1)}`;
+    if (!c.blocks) {
+      const b = withBlocks.length ? Math.min(...withBlocks.map((t) => t.sheets)) : null;
+      return `${pre}common cut not used: ${b !== null && none ? `in the trials blocks took ${b} ${b === 1 ? "sheet" : "sheets"}, without ${none.sheets}` : "no blocks were made"}`;
+    }
+    const cmp = none ? (none.sheets < (c.trials?.find((t) => t.share === c.share)?.sheets ?? 0)
+      ? ` (in the trials without it: ${none.sheets} ${none.sheets === 1 ? "sheet" : "sheets"})` : "") : "";
+    return `${pre}common cut: ${c.blocks} ${c.blocks === 1 ? "block" : "blocks"}, ${c.sharedLines} shared ${c.sharedLines === 1 ? "line" : "lines"}${cmp}`;
+  }).join(" · ");
 }
 
 export const isFinished = (r: NestRun | null | undefined) => !!r && (r.state === "done" || r.state === "stopped" || r.state === "error");

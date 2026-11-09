@@ -89,6 +89,21 @@ jobs:
           print({k: r[k] for k in ("state", "seconds", "valid", "errors")})
           assert r["state"] == "done" and r["valid"] and r["nested"] == {"1": 10, "2": 6}, r
           EOF
+          # common cut (Custom): copies joined along their marked lines, a kerf apart, then split back
+          python nestprep_cli.py run examples/demo_common_cut.json out_common --solver $PS
+          python - <<'EOF'
+          import json
+          r = json.load(open("out_common/result.json"))
+          cc = r["commonCut"][0]
+          print({k: r[k] for k in ("state", "seconds", "valid", "errors", "nested")}, cc)
+          assert r["state"] == "done" and r["valid"] and r["nested"] == {"1": 6, "2": 2, "3": 3}, r
+          assert cc["trials"] and cc["blocks"] > 0 and cc["sharedLines"] > 0, cc
+          ys = sorted(p["y"] if abs(p["angle"]) < 1e-6 or abs(p["angle"] - 180) < 1e-6 else p["x"]
+                      for s in r["sheets"] for p in s["parts"] if p["partId"] == "1")
+          steps = [round(b - a, 2) for a, b in zip(ys, ys[1:])]
+          print("strip steps", steps)
+          assert any(abs(d - 150.3) < 0.01 for d in steps), "no two strips a kerf apart"
+          EOF
 
       - uses: actions/upload-artifact@v4
         with:

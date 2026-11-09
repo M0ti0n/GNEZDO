@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { IMPORT_TOOLS } from "../import/ImportTools";
 import { SideScroll } from "../components/SideScroll";
 import type { CustomNestSettings } from "../components/CustomNestDialog";
 
@@ -29,7 +30,7 @@ import toolNestReport from "./jobtools/tool-nestReport.png";
 import toolCostReport from "./jobtools/tool-costReport.png";
 
 // The icons are cut from Fab's design sheet as they are (tile icons on their tile colour).
-interface SectionTool { id: string; label: string; icon: string; hint?: string; ready?: boolean }
+interface SectionTool { id: string; label: string; icon: string; hint?: string; ready?: boolean; svg?: ReactNode }
 interface Section {
   id: SectionId; label: string; icon: string; tools: SectionTool[];
   /** false: the tile does not open into tools (none yet); a click only switches to its screen */
@@ -56,6 +57,9 @@ const SECTIONS: Section[] = [
       { id: "stackH", label: "Stack H", icon: toolStackH, ready: true, hint: "Stack H: copies of the selection along X until the edge or the next part" },
       { id: "stackGrid", label: "Stack grid", icon: toolStackGrid, ready: true, hint: "Stack grid: rows and columns of copies of the selection until the edges or other parts" },
       { id: "alignEdge", label: "Align edge", icon: toolAlignEdge, ready: true, hint: "Align edge: click the edge that stays (a part's or the sheet's), then an edge of the part to turn: it turns until the two are parallel" },
+      // the importer's Common cut icon; a switch: on, marked lines snap together and Arrange makes blocks
+      { id: "commonCut", label: "Common cut", icon: "", svg: IMPORT_TOOLS.find((t) => t.id === "commonCut")?.icon, ready: true,
+        hint: "Common cut (on / off): parts with the Common cut rule snap together on their marked lines, cut once (Alt: place without snapping); Arrange makes blocks of them" },
     ],
   },
   { id: "process", label: "Process", icon: tileProcess, tools: [] },
@@ -67,7 +71,9 @@ const SECTIONS: Section[] = [
   },
 ];
 
-export function JobToolbar({ onTool, onSection, request }: {
+export function JobToolbar({ onTool, onSection, request, lit = {} }: {
+  /** switches that are on (Common cut) */
+  lit?: Record<string, boolean>;
   onTool?: (section: SectionId, tool: string, custom?: CustomNestSettings) => void;
   /** a section was opened (null: closed) */
   onSection?: (section: SectionId | null) => void;
@@ -99,9 +105,10 @@ export function JobToolbar({ onTool, onSection, request }: {
             <svg viewBox="0 0 20 60" width="20" height="60" aria-hidden="true"><path d="M16 2 3 30l13 28Z" fill="currentColor" /></svg>
           </button>
           {s.tools.length ? s.tools.map((t) => (
-            <button key={t.id} type="button" className="itool jtool" title={t.ready ? t.hint ?? t.label : `${t.hint ?? t.label} (not built yet)`}
+            <button key={t.id} type="button" className={`itool jtool${lit[t.id] ? " is-on" : ""}`} title={t.ready ? t.hint ?? t.label : `${t.hint ?? t.label} (not built yet)`}
+              aria-pressed={t.id in lit ? !!lit[t.id] : undefined}
               onClick={() => onTool?.(s.id, t.id)}>
-              <span className="itool-box"><img src={t.icon} alt="" draggable={false} /></span>
+              <span className={`itool-box${t.svg ? " is-svg" : ""}`}>{t.svg ?? <img src={t.icon} alt="" draggable={false} />}</span>
               <span className="itool-label">{t.label}</span>
             </button>
           )) : <span className="jsec-empty">Tools for {s.label.toLowerCase()} come next</span>}

@@ -16,8 +16,11 @@ from .geom import Xf
 
 
 def expand(solution: dict, mapping: dict | None, n_orig: int | None = None) -> list[dict]:
-    """Return [{'bin_type', 'parts': [{'orig_type', 'xf', 'depth', 'group'}]}]."""
+    """Return [{'bin_type', 'parts': [{'orig_type', 'xf', 'depth', 'group', 'joined'?}]}].
+    joined: copies of a common cut block share it (a number per block in the solution): they lie
+    `kerf` apart along their shared lines, closer than the part gap."""
     sheets = []
+    blocks = 0
     for b in solution.get("bins", []):
         for _ in range(int(b.get("copies", 1))):
             parts = []
@@ -27,10 +30,16 @@ def expand(solution: dict, mapping: dict | None, n_orig: int | None = None) -> l
                 if mapping is None:
                     parts.append({"orig_type": it["id"], "xf": outer, "depth": 0, "group": gi})
                     continue
-                for m in mapping["item_types"][it["id"]]["members"]:
+                entry = mapping["item_types"][it["id"]]
+                joined = None
+                if entry.get("kind") == "common":
+                    blocks += 1
+                    joined = blocks
+                for m in entry["members"]:
                     inner = Xf(m["angle"], m["mirror"], m["x"], m["y"])
                     parts.append({"orig_type": m["orig_type"], "xf": inner.then(outer),
-                                  "depth": m["depth"], "group": gi})
+                                  "depth": m["depth"], "group": gi,
+                                  **({"joined": joined} if joined is not None else {})})
             sheets.append({"bin_type": b["id"], "parts": parts})
     return sheets
 
@@ -109,6 +118,10 @@ def validate(instance: dict, sheets: list[dict], spacing: float | None = None,
             for j in near:
                 pj, q, B, bb = polys[j]
                 if pi == pj:
+                    continue
+                if p.get("joined") is not None and p.get("joined") == q.get("joined"):
+                    # copies of one common cut block: kerf apart along their shared lines (the
+                    # pre-pass checked the join when it made the block)
                     continue
                 d = min(geom.contour_distance(ca, cb) for ca in A.contours() for cb in B.contours())
                 inside = geom.point_in_material(*B.outer[0], A) or \

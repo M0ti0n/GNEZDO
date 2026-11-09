@@ -1,0 +1,11 @@
+{"mode": "custom", "minutes": 1, "stopAfterMinutes": null, "partGapMm": 5, "edgeGapMm": 5, "commonCut": true,
+ "parts": [
+  {"id": "1", "name": "STRIP", "path": "M0 0 L2000 0 L2000 150 L0 150Z", "qty": 6, "rotations": [90], "mirror": false,
+   "material": "S235", "thicknessMm": 4, "commonEdges": [[0, 0, 2000, 0], [0, 150, 2000, 150]]},
+  {"id": "2", "name": "WEDGE", "path": "M0 0 L400 0 L0 300Z", "qty": 2, "rotations": [90], "mirror": false,
+   "material": "S235", "thicknessMm": 4, "commonEdges": [[400, 0, 0, 300]]},
+  {"id": "3", "name": "PLATE", "path": "M0 0 L300 0 L300 300 L0 300Z", "qty": 3, "rotations": [90], "mirror": false,
+   "material": "S235", "thicknessMm": 4}
+ ],
+ "sheets": [{"id": "s1", "material": "S235", "thicknessMm": 4, "lengthMm": 3000, "widthMm": 1500, "qty": null, "source": "stock",
+             "trims": {"xMinus": 5, "xPlus": 5, "yMinus": 5, "yPlus": 5}, "partGapMm": 5, "kerfMm": 0.3}]}
