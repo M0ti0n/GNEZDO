@@ -210,16 +210,16 @@ function SheetDrawing({ sheet, rep }: { sheet: NestedSheet; rep: SheetReport }) 
     if (!jp) return null;
     const e = placedExtentOf(jp.part.path, p);
     const cx = ((e.minX + e.maxX) / 2) * s, cy = ((e.minY + e.maxY) / 2) * s;
-    const big = (e.maxX - e.minX) * s >= 16 && (e.maxY - e.minY) * s >= 13;
+    const big = (e.maxX - e.minX) * s >= 24 && (e.maxY - e.minY) * s >= 19;
     return { jp, p, cx, cy, big };
   }).filter((m): m is NonNullable<typeof m> => !!m);
   // small parts: numbered above the sheet, a line down to the part (at most 40)
   const small = marks.filter((m) => !m.big).sort((a, b) => a.cx - b.cx).slice(0, 40);
   let lastX = -99;
-  const callouts = small.map((m) => { const x = Math.max(m.cx, lastX + 14); lastX = x; return { ...m, lx: Math.min(w, x) }; });
+  const callouts = small.map((m) => { const x = Math.max(m.cx, lastX + 21); lastX = x; return { ...m, lx: Math.min(w, x) }; });
   const step = [50, 100, 200, 250, 500, 1000].find((d) => d * s >= 36) ?? 1000;
   const ticks = (len: number) => Array.from({ length: Math.floor(len / step) + 1 }, (_, i) => i * step);
-  const PAD = 32, TOP = small.length ? 20 : 4;
+  const PAD = 32, TOP = small.length ? 27 : 4;
   return (
     <svg className="rp-sheet" width={w + PAD + 6} height={h + TOP + PAD + 2} viewBox={`${-PAD} ${-TOP} ${w + PAD + 6} ${h + TOP + PAD + 2}`}>
       {sheet.outline?.length
@@ -234,11 +234,11 @@ function SheetDrawing({ sheet, rep }: { sheet: NestedSheet; rep: SheetReport }) 
             style={{ fill: c.fill, stroke: c.stroke }} strokeWidth={0.8 / s} />;
         })}
       </g>
-      {marks.filter((m) => m.big).map((m, i) => <text key={i} className="rp-no" x={m.cx} y={m.cy + 3.5}>{m.jp.no}</text>)}
+      {marks.filter((m) => m.big).map((m, i) => <text key={i} className="rp-no" x={m.cx} y={m.cy + 5.5}>{m.jp.no}</text>)}
       {callouts.map((m, i) => (
         <g key={`c${i}`}>
           <line className="rp-lead" x1={m.lx} y1={-6} x2={m.cx} y2={m.cy} />
-          <text className="rp-no rp-no-out" x={m.lx} y={-9}>{m.jp.no}</text>
+          <text className="rp-no rp-no-out" x={m.lx} y={-11}>{m.jp.no}</text>
         </g>
       ))}
       {/* rulers: along the bottom and the left side */}
