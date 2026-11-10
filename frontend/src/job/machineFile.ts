@@ -1,6 +1,7 @@
 // A machine's configuration as a file (Settings -> Machines -> Export / Import machine): a .zip with
-// machine.json (everything about the machine, its technology tables included) and technology.csv
-// (the same tables to read in a spreadsheet; not read back). A bare machine.json imports too.
+// machine.json (everything about the machine, its technology tables included), postprocessor.js (its
+// NC postprocessor, if it has one) and technology.csv (the tables to read in a spreadsheet; not read
+// back). A bare machine.json imports too.
 
 import { newMachine, type Machine } from "./machine";
 import { technologiesCsv } from "./technology";
@@ -84,9 +85,13 @@ export const machineFileName = (m: Machine) => `${(m.name || "machine").replace(
 export function machineZip(m: Machine): Uint8Array {
   const machine: Omit<Machine, "id"> & { id?: string } = { ...m };
   delete machine.id;
+  const pp = machine.postprocessor;
+  // the postprocessor's source goes in its own file (to read and change); machine.json names it
+  if (pp) machine.postprocessor = { ...pp, source: "postprocessor.js" };
   const file: MachineFile = { format: FORMAT, version: 1, exportedAt: new Date().toISOString(), machine };
   const enc = new TextEncoder();
   const files = [{ name: "machine.json", data: enc.encode(JSON.stringify(file, null, 2)) }];
+  if (pp) files.push({ name: "postprocessor.js", data: enc.encode(pp.source) });
   if (m.technologies?.length) files.push({ name: "technology.csv", data: enc.encode("﻿" + technologiesCsv(m.technologies)) });
   return zip(files);
 }
@@ -95,15 +100,23 @@ export function machineZip(m: Machine): Uint8Array {
 export async function readMachineFile(buf: ArrayBuffer): Promise<Machine> {
   const u8 = new Uint8Array(buf);
   let json: string;
+  let ppSource: string | undefined;
   if (u8[0] === 0x50 && u8[1] === 0x4b) {
     const files = await unzip(buf);
     const key = [...files.keys()].find((k) => k.toLowerCase().endsWith("machine.json"));
     if (!key) throw new Error("There is no machine.json in this zip");
     json = new TextDecoder().decode(files.get(key));
+    const pk = [...files.keys()].find((k) => k.toLowerCase().endsWith("postprocessor.js"));
+    if (pk) ppSource = new TextDecoder().decode(files.get(pk));
   } else json = new TextDecoder().decode(u8);
   let f: Partial<MachineFile>;
   try { f = JSON.parse(json.replace(/^﻿/, "")); } catch { throw new Error("machine.json is not valid"); }
   if (f.format !== FORMAT || !f.machine) throw new Error("This is not a GNEZDO machine file");
   const base = newMachine(1);
-  return { ...base, ...f.machine, trims: { ...base.trims, ...(f.machine.trims ?? {}) }, id: `m${Date.now().toString(36)}` };
+  const m: Machine = { ...base, ...f.machine, trims: { ...base.trims, ...(f.machine.trims ?? {}) }, id: `m${Date.now().toString(36)}` };
+  if (m.postprocessor) {
+    if (ppSource !== undefined) m.postprocessor = { ...m.postprocessor, source: ppSource };
+    else if (m.postprocessor.source === "postprocessor.js") delete m.postprocessor;   // named but missing
+  }
+  return m;
 }
