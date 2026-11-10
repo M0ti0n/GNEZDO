@@ -19,7 +19,7 @@ import { RulesPage } from "./pages/RulesPage";
 import { quantityFromName } from "./import/geometry";
 import { HomePage, type HomeAction } from "./pages/HomePage";
 import { JobPage } from "./pages/JobPage";
-import { JobSearchPage } from "./pages/JobSearchPage";
+import { JobSearchPage, type SheetParts } from "./pages/JobSearchPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
@@ -420,6 +420,22 @@ export function App() {
   const removingChanged = removing ? imports.filter((i) => removing.includes(i.id) && history.changed(i.id)) : [];
 
   const openJob = (j: JobSummary) => open(jobTab(j.id, j.name));
+
+  // Job search: a sheet's parts and pieces added to an open job (to fill leftover plates of other jobs):
+  // parts already in the job get the pieces on top of what they need, new ones come in with that many
+  const addSheetParts = (jobId: string, title: string, sheet: SheetParts) => {
+    const pieces = sheet.items.reduce((n, x) => n + x.qty, 0);
+    setJobParts((m) => {
+      const list = m[jobId] ?? [];
+      let next = list.reduce((n, jp) => Math.max(n, jp.no ?? 0), 0);
+      const more = new Map(sheet.items.map((x) => [x.part.id, x.qty]));
+      const updated = list.map((jp) => (more.has(jp.part.id) ? { ...jp, qty: jp.qty + more.get(jp.part.id)!, qtyMax: Math.max(jp.qtyMax ?? 0, jp.qty) + more.get(jp.part.id)! } : jp));
+      const fresh = sheet.items.filter((x) => !list.some((jp) => jp.part.id === x.part.id))
+        .map((x) => ({ part: x.part, qty: x.qty, qtyMax: x.qty, no: ++next, nested: 0 }));
+      return { ...m, [jobId]: [...updated, ...fresh] };
+    });
+    setToast(`Added ${sheet.items.length} ${sheet.items.length === 1 ? "part" : "parts"} (${pieces} ${pieces === 1 ? "piece" : "pieces"}) from ${sheet.from} to ${title}`);
+  };
 
   const addParts = (jobId: string, title: string, parts: PartSummary[]) => {
     const current = jobParts[jobId] ?? [];
@@ -1177,6 +1193,8 @@ export function App() {
             )}
             {active.kind === "jobSearch" && (
               <JobSearchPage filter={jobSearch.filter} run={jobSearch.run} onOpenJob={openJob}
+                openJobs={state.tabs.flatMap((t) => (t.kind === "job" && t.jobId ? [{ id: t.jobId, title: t.title }] : []))}
+                onSendSheet={addSheetParts}
                 onShowFilters={() => setDrawer("jobs")} />
             )}
             {shownItem?.drawing && (

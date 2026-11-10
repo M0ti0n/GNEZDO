@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { api } from "../api/api";
 import {
   DEFAULT_SORT, defaultDir,
-  type DateFilter, type JobFilter, type JobPart, type JobStatus, type JobSummary, type SortKey, type SortOrder,
+  type DateFilter, type JobFilter, type JobPart, type JobStatus, type JobSummary, type PartSummary, type SortKey, type SortOrder,
 } from "../api/types";
 import { SortArrow, loadSort, saveSort } from "../components/SortControl";
 import { SheetSvg } from "../components/NestView";
@@ -78,11 +78,17 @@ function loadCols(): ColId[] {
 
 // Job search on the main screen: result list on the left, preview of the selected job
 // on the right. Enter or double-click opens the job in its own tab.
-export function JobSearchPage({ filter, run, onOpenJob, onShowFilters }: {
+/** A sheet's parts sent to a job: each part and how many pieces the sheet holds (times its cut number). */
+export interface SheetParts { from: string; items: { part: PartSummary; qty: number }[] }
+
+export function JobSearchPage({ filter, run, onOpenJob, onShowFilters, openJobs = [], onSendSheet }: {
   filter: JobFilter | null;          // null = no search yet
   run: number;                       // changes on every Search press
   onOpenJob: (job: JobSummary) => void;
   onShowFilters: () => void;
+  /** jobs open in tabs: a selected sheet's parts can be sent to one of them */
+  openJobs?: { id: string; title: string }[];
+  onSendSheet?: (jobId: string, title: string, sheet: SheetParts) => void;
 }) {
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -199,7 +205,8 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters }: {
 
         {/* ---- selected job preview ---- */}
         <section className="pane preview-pane" aria-label="Selected job">
-          {selected ? <JobPreview job={selected} onOpen={() => onOpenJob(selected)} />
+          {selected ? <JobPreview job={selected} onOpen={() => onOpenJob(selected)}
+            targets={openJobs.filter((j) => j.id !== selected.id)} onSend={onSendSheet} />
             : <p className="state">{jobs?.length ? "Select a job to see it here." : ""}</p>}
         </section>
       </div>
@@ -233,7 +240,14 @@ function ColsToggle({ cols, onChange }: { cols: 1 | 2; onChange: (c: 1 | 2) => v
   );
 }
 
-function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
+function JobPreview({ job, onOpen, targets, onSend }: {
+  job: JobSummary; onOpen: () => void;
+  targets: { id: string; title: string }[];
+  onSend?: (jobId: string, title: string, sheet: SheetParts) => void;
+}) {
+  // a sheet picked (click a tile): its parts can be sent to an open job
+  const [picked, setPicked] = useState<number | null>(null);
+  const [menu, setMenu] = useState(false);
   const [parts, setParts] = useState<JobPart[] | null>(null);
   const [sheets, setSheets] = useState<NestedSheet[] | null>(null);   // the saved nest's shown solution
   const [mats, setMats] = useState<Set<string>>(new Set());       // pink buttons switched on
@@ -241,6 +255,7 @@ function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
   const [cols, setColsState] = useState<1 | 2>(loadGrid);
   const setCols = (c: 1 | 2) => { setColsState(c); try { localStorage.setItem(GRID_KEY, String(c)); } catch { /* not kept */ } };
 
+  useEffect(() => { setPicked(null); setMenu(false); }, [job.id]);
   useEffect(() => {
     let alive = true;
     setParts(null);
@@ -270,12 +285,38 @@ function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
 
   const flip = <T,>(set: Set<T>, v: T) => { const n = new Set(set); if (n.has(v)) n.delete(v); else n.add(v); return n; };
 
+  // the picked sheet's parts: pieces on the sheet times how many times it is cut
+  const sheetParts = (i: number): SheetParts | null => {
+    const sh = sheets?.[i];
+    if (!sh || !parts) return null;
+    const count = new Map<string, number>();
+    for (const p of sh.parts) count.set(p.partId, (count.get(p.partId) ?? 0) + (sh.cutNumber ?? 1));
+    const items = [...count].flatMap(([id, qty]) => { const jp = parts.find((x) => x.part.id === id); return jp ? [{ part: jp.part, qty }] : []; });
+    return { from: `sheet ${i + 1} of ${job.name}`, items };
+  };
+  const pickedParts = picked !== null ? sheetParts(picked) : null;
+  const pieces = pickedParts?.items.reduce((n, x) => n + x.qty, 0) ?? 0;
+
   return (
     <>
       <div className="pane-head preview-head">
         <h2 title={job.name}>{job.name}</h2>
         <span className={`status status-${job.status}`}>{STATUS[job.status]}</span>
         {job.sheetCount > 0 && <ColsToggle cols={cols} onChange={setCols} />}
+        {onSend && pickedParts && (
+          <span className="send-sheet">
+            <button type="button" className="btn btn-plain" disabled={!targets.length} aria-expanded={menu}
+              title={targets.length ? `Add the parts of sheet ${picked! + 1} (${pieces} pieces) to an open job` : "Open the job to add them to first (in a tab)"}
+              onClick={() => setMenu((m) => !m)}>Send to ▾</button>
+            {menu && (
+              <ul className="send-sheet-menu" role="menu">
+                {targets.map((t) => (
+                  <li key={t.id}><button type="button" role="menuitem" onClick={() => { setMenu(false); onSend(t.id, t.title, pickedParts); }}>{t.title}</button></li>
+                ))}
+              </ul>
+            )}
+          </span>
+        )}
         <button className="btn btn-primary" onClick={onOpen}>Open job</button>
       </div>
 
@@ -285,7 +326,9 @@ function JobPreview({ job, onOpen }: { job: JobSummary; onOpen: () => void }) {
         {job.sheetCount > 0 && sheets && parts && sheets.length > 0 && (
           <ul className={`sheet-tiles${cols === 1 ? " is-single" : ""}`} aria-label={`${sheets.length} sheets`}>
             {shownSheets.map(({ sh, i }) => (
-              <li key={i} className="sheet-tile has-nest" title={`Sheet ${i + 1}: ${sh.material} ${mm(sh.thicknessMm)}, ${sh.lengthMm} × ${sh.widthMm}`}>
+              <li key={i} className={`sheet-tile has-nest${picked === i ? " is-picked" : ""}`} aria-selected={picked === i}
+                title={`Sheet ${i + 1}: ${sh.material} ${mm(sh.thicknessMm)}, ${sh.lengthMm} × ${sh.widthMm}. Click to pick it (its parts can then be sent to an open job)`}
+                onClick={() => { setPicked((p) => (p === i ? null : i)); setMenu(false); }}>
                 <SheetSvg sheet={sh} parts={byId} titles />
                 <span className="sheet-no">Sheet {i + 1}{(sh.cutNumber ?? 1) > 1 ? ` ×${sh.cutNumber}` : ""}</span>
               </li>

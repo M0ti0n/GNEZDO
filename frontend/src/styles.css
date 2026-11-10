@@ -1828,3 +1828,12 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .imp-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .imp-pick .imp-btn { gap: 8px; }
 .imp-pick-icon { flex: none; }
+
+/* Job search: a picked sheet, and sending its parts to an open job */
+.sheet-tile.has-nest { cursor: pointer; }
+.sheet-tile.is-picked { outline: 3px solid var(--green); outline-offset: -1px; }
+.send-sheet { position: relative; }
+.send-sheet-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; list-style: none; margin: 0; padding: 4px; min-width: 200px;
+  background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .14); }
+.send-sheet-menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; background: none; border-radius: 6px; cursor: pointer; font: inherit; }
+.send-sheet-menu button:hover { background: var(--green-tint); }
