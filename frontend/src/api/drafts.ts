@@ -19,7 +19,7 @@ export interface DraftContent {
   stock: StockSheet[];
   /** Finished solutions (a nest still running is not kept). */
   nest: JobNests | null;
-  screen?: "parts" | "nest";
+  screen?: "parts" | "nest" | "nestReport" | "costReport";
 }
 
 const headers = (json = false): Record<string, string> => ({ Accept: "application/json", ...(json ? { "Content-Type": "application/json" } : {}), ...diagHeaders() });

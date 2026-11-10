@@ -83,8 +83,8 @@ const SECTIONS: Section[] = [
   },
   {
     id: "report", label: "Report", icon: tileReport, tools: [
-      { id: "nestReport", label: "Nest report", icon: toolNestReport },
-      { id: "costReport", label: "Cost report", icon: toolCostReport },
+      { id: "nestReport", label: "Nest report", icon: toolNestReport, ready: true, hint: "Nest report: a page per sheet with its parts, weights and times; print all, the changed pages or chosen ones" },
+      { id: "costReport", label: "Cost report", icon: toolCostReport, ready: true, hint: "Cost report: a price per part from its weight and cutting time, per project, with the sum" },
     ],
   },
 ];
