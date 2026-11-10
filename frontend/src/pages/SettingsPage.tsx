@@ -9,6 +9,7 @@ import { data, type DataInfo } from "../api/data";
 import { NumInput } from "../components/NumInput";
 import { TechnologySettings } from "../components/TechnologySettings";
 import { LeadsSettings } from "../components/LeadsSettings";
+import { NcOutputSettings } from "../components/NcOutputSettings";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
 import { DEFAULT_CUT_ORDER, LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, cutOrderOf, machineCan, newMachine, type Machine, type MachineList } from "../job/machine";
@@ -52,7 +53,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
     setMSel(list[0].id);
   };
   const [section, setSection] = useState<Section>("stock");
-  const [mPage, setMPage] = useState<"machine" | "tech" | "leads">("machine");
+  const [mPage, setMPage] = useState<"machine" | "tech" | "leads" | "nc">("machine");
   // a machine's configuration as a file: Export gives a .zip, Import adds it (or replaces one of the same name)
   const mFile = useRef<HTMLInputElement>(null);
   const [mMsg, setMMsg] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -122,8 +123,9 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
           <button type="button" role="tab" aria-selected={mPage === "machine"} className={mPage === "machine" ? "is-on" : ""} onClick={() => setMPage("machine")}>Machine</button>
           <button type="button" role="tab" aria-selected={mPage === "tech"} className={mPage === "tech" ? "is-on" : ""} onClick={() => setMPage("tech")}>Technology</button>
           <button type="button" role="tab" aria-selected={mPage === "leads"} className={mPage === "leads" ? "is-on" : ""} onClick={() => setMPage("leads")}>Leads &amp; cutting</button>
-          <button type="button" role="tab" disabled title="Comes later">NC output</button>
+          <button type="button" role="tab" aria-selected={mPage === "nc"} className={mPage === "nc" ? "is-on" : ""} onClick={() => setMPage("nc")}>NC output</button>
         </div>
+        {mPage === "nc" && <NcOutputSettings key={machine.id} machine={machine} onChange={(pp) => setM({ postprocessor: pp })} />}
         {mPage === "leads" && <LeadsSettings machine={machine} onChange={(r) => setM({ leads: r })} />}
         {mPage === "tech" && <TechnologySettings key={machine.id} techs={machine.technologies ?? []} machineName={machine.name} onChange={(t) => setM({ technologies: t })} />}
         {mPage === "machine" && (<>
