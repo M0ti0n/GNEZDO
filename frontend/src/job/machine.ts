@@ -38,6 +38,8 @@ export interface Machine {
   kerfMm: number;
   /** Which line properties it cuts; the others are skipped for its jobs (missing = it can). */
   lines?: Partial<Record<LineCapability, boolean>>;
+  /** How the automatic cut orders the parts (missing = the defaults). */
+  cutOrder?: Partial<CutOrderRules>;
   /** Where the automatic cut puts which lead pair (Settings -> Machines -> Leads & cutting); missing = the defaults. */
   leads?: Partial<LeadRules>;
   /** Technology tables: cutting values per material and thickness (Settings -> Machines -> Technology). */
@@ -53,6 +55,33 @@ export const LINE_CAPABILITIES: { id: LineCapability; label: string; help: strin
   { id: "trace", label: "Tracing", help: "Marking / engraving lines, not cut through" },
   { id: "hole", label: "Holes", help: "Holes cut at the small-hole speed" },
 ];
+
+/** How Generate path orders a sheet: the directions it may use (more ticked: the one with the least travel
+ * is kept) and the rules always applied. */
+export interface CutOrderRules {
+  bottomUp: boolean;
+  leftRight: boolean;
+  shortest: boolean;
+  /** Within a part: holes (and tracing) first, the outline last */
+  holesFirst: boolean;
+  /** A part lying inside another part's outline / window is cut before that part (no islands) */
+  insideFirst: boolean;
+  /** Significantly bigger parts last, so heat expansion does not shift the plate */
+  bigLast: boolean;
+  /** "Significantly bigger": area over this many times the sheet's median part ... */
+  bigTimesMedian: number;
+  /** ... or over this share of the sheet [%] */
+  bigSheetPct: number;
+}
+
+export const DEFAULT_CUT_ORDER: CutOrderRules = {
+  bottomUp: true, leftRight: true, shortest: false, holesFirst: true, insideFirst: true, bigLast: true, bigTimesMedian: 5, bigSheetPct: 20,
+};
+
+export const cutOrderOf = (m: Machine | undefined): CutOrderRules => {
+  const r = { ...DEFAULT_CUT_ORDER, ...(m?.cutOrder ?? {}) };
+  return r.bottomUp || r.leftRight || r.shortest ? r : { ...r, bottomUp: true };   // at least one direction
+};
 
 /** Does the machine do this line property? */
 export const machineCan = (m: Machine | undefined, c: LineCapability) => m?.lines?.[c] !== false;
