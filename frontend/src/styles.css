@@ -1915,3 +1915,31 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .tech-pick { display: grid; gap: 6px; margin: 2px 0 10px; }
 .tech-pick .chk { gap: 8px; }
 .mc-lines { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 8px; }
+
+/* Settings -> Machines -> Leads & cutting */
+.leads { display: grid; gap: 14px; width: min(1180px, calc(100vw - 420px)); }
+.lead-top { display: flex; flex-wrap: wrap; gap: 14px 30px; align-items: center; justify-content: space-between; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+.lead-top .rule-help { margin-top: 6px; max-width: 640px; }
+.lead-legend { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; margin-left: 16px; font-size: 12.5px; color: var(--ink-2); }
+.lead-legend i { display: inline-block; width: 16px; height: 3.5px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+.lead-place { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.lead-corners { display: inline-grid; grid-template-columns: repeat(2, 24px); gap: 4px; padding: 5px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--sheet); }
+.lead-corner { width: 24px; height: 17px; border: 1.5px solid var(--line); border-radius: 4px; background: #fff; padding: 0; cursor: pointer; }
+.lead-corner:hover { border-color: var(--yellow); }
+.lead-corner.is-on { background: var(--yellow); border-color: var(--yellow); }
+.lead-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 14px; }
+.lead-sec { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px 14px; display: grid; gap: 6px; align-content: start; }
+.lead-sec h3 { margin: 0 0 2px; }
+.lead-sec h3 small, .lead-sub small { font-family: var(--font); text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink-3); font-size: 12.5px; margin-left: 6px; }
+.lead-sub { font-weight: 600; margin-top: 6px; }
+.lead-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.lead-card { display: grid; justify-items: center; gap: 1px; padding: 6px 6px 8px; border: 1.5px solid var(--line); border-radius: 10px; background: #fff; font: inherit; cursor: pointer; }
+.lead-card:hover:not(:disabled) { border-color: var(--yellow); }
+.lead-card b { font-size: 12.5px; font-weight: 600; }
+.lead-card small { font-size: 11px; color: var(--ink-3); }
+.lead-card.is-on { border-color: var(--yellow); background: var(--yellow-tint); box-shadow: 0 0 0 2px var(--yellow); }
+.lead-card:disabled { opacity: .38; cursor: default; }
+.lead-sec .chk { margin-top: 4px; font-size: 13.5px; }
+.lead-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lead-sharp { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.lead-sharp .field { width: 58px; height: 30px; text-align: right; }

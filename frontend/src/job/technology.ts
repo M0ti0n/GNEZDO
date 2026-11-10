@@ -1,4 +1,4 @@
-// TechSet tables (Settings -> Machines -> TechSet): per machine, the cutting values for each
+// Technology tables (Settings -> Machines -> Technology): per machine, the cutting values for each
 // thickness. A technology (e.g. "ST37 80 A O2/Air") is used for the materials tagged on it and the
 // thicknesses in its range; its rows hold kerf, speeds, pierce time, lead lengths and gaps.
 
@@ -15,10 +15,18 @@ export interface TechRow {
   pierceS: number;
   holeLeadInMm: number;
   holeLeadOutMm: number;
+  /** Gap between the lead-in and lead-out points along the contour [mm]: + cuts past the start, − leaves a tab */
+  holeGapMm?: number;
+  /** Arc leads: radius [mm] */
+  holeLeadRadiusMm?: number;
   outLeadInMm: number;
   outLeadOutMm: number;
-  /** Lead-in arc radius on the outline [mm] (0: straight) */
+  outGapMm?: number;
+  /** Arc leads on the outline: radius [mm] */
   outLeadRadiusMm: number;
+  /** Angled leads: lead-in / lead-out angle to the edge [°]; 0 = the type's default (corner 90°, angled 45°) */
+  leadInAngle?: number;
+  leadOutAngle?: number;
   partGapMm: number;
   borderMm: number;
   /** Other values of an imported table, kept as they came (by their name there) */
@@ -39,7 +47,7 @@ export interface TechSet {
 export type RowKey = Exclude<keyof TechRow, "extra">;
 
 /** The table's columns, in groups, as shown and exported. */
-export const TECH_COLUMNS: { group: string; cols: { key: RowKey; label: string; unit: string }[] }[] = [
+export const TECH_COLUMNS: { group: string; cols: { key: RowKey; label: string; unit: string; min?: number; max?: number }[] }[] = [
   { group: "Cutting", cols: [
     { key: "kerfMm", label: "Kerf", unit: "mm" },
     { key: "speed", label: "Speed", unit: "mm/min" },
@@ -50,11 +58,18 @@ export const TECH_COLUMNS: { group: string; cols: { key: RowKey; label: string; 
   { group: "Holes · leads", cols: [
     { key: "holeLeadInMm", label: "Lead-in", unit: "mm" },
     { key: "holeLeadOutMm", label: "Lead-out", unit: "mm" },
+    { key: "holeGapMm", label: "Gap", unit: "mm", min: -1000 },
+    { key: "holeLeadRadiusMm", label: "Arc radius", unit: "mm" },
   ] },
   { group: "Outline · leads", cols: [
     { key: "outLeadInMm", label: "Lead-in", unit: "mm" },
     { key: "outLeadOutMm", label: "Lead-out", unit: "mm" },
+    { key: "outGapMm", label: "Gap", unit: "mm", min: -1000 },
     { key: "outLeadRadiusMm", label: "Arc radius", unit: "mm" },
+  ] },
+  { group: "Angled leads", cols: [
+    { key: "leadInAngle", label: "In angle", unit: "°", max: 180 },
+    { key: "leadOutAngle", label: "Out angle", unit: "°", max: 180 },
   ] },
   { group: "Gaps", cols: [
     { key: "partGapMm", label: "Parts", unit: "mm" },
@@ -64,7 +79,8 @@ export const TECH_COLUMNS: { group: string; cols: { key: RowKey; label: string; 
 
 export const emptyRow = (thicknessMm: number): TechRow => ({
   thicknessMm, kerfMm: 0, speed: 0, smallHoleSpeed: 0, smallHoleMm: 0, pierceS: 0,
-  holeLeadInMm: 0, holeLeadOutMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outLeadRadiusMm: 0, partGapMm: 0, borderMm: 0,
+  holeLeadInMm: 0, holeLeadOutMm: 0, holeGapMm: 0, holeLeadRadiusMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outGapMm: 0, outLeadRadiusMm: 0,
+  leadInAngle: 0, leadOutAngle: 0, partGapMm: 0, borderMm: 0,
 });
 
 export const newTechnology = (name = "New technology"): TechSet => ({
@@ -103,7 +119,7 @@ export function techRowFor(techs: TechSet[] | undefined, material: string, thick
 /** The fields of a HACO material table (S_MAT.DBF), as named in its GEO / TIME / geolim files. */
 const DBF_FIELDS: Partial<Record<RowKey, string>> = {
   kerfMm: "S13", speed: "S101", smallHoleSpeed: "S102", smallHoleMm: "S65", pierceS: "S107",
-  holeLeadInMm: "S10", holeLeadOutMm: "S11", outLeadInMm: "S40", outLeadOutMm: "S41", outLeadRadiusMm: "S42",
+  holeLeadInMm: "S10", holeLeadOutMm: "S11", holeLeadRadiusMm: "S12", outLeadInMm: "S40", outLeadOutMm: "S41", outLeadRadiusMm: "S42",
   partGapMm: "S17", borderMm: "S18",
 };
 
@@ -176,6 +192,6 @@ export function technologiesCsv(techs: TechSet[]): string {
   function g(k: RowKey) { return TECH_COLUMNS.find((x) => x.cols.some((c) => c.key === k))!.group.replace(" · leads", ""); }
   const lines = [head.map(q).join(";")];
   for (const t of techs) for (const r of t.rows)
-    lines.push([t.name, t.materials.join(", "), String(t.minMm), String(t.maxMm), String(r.thicknessMm), ...cols.map((c) => String(r[c.key]))].map(q).join(";"));
+    lines.push([t.name, t.materials.join(", "), String(t.minMm), String(t.maxMm), String(r.thicknessMm), ...cols.map((c) => String(r[c.key] ?? 0))].map(q).join(";"));
   return lines.join("\r\n") + "\r\n";
 }
