@@ -35,9 +35,24 @@ export interface Machine {
   partGapMm: number;
   /** Cutting beam diameter [mm]; 0 = not set. */
   kerfMm: number;
+  /** Which line properties it cuts; the others are skipped for its jobs (missing = it can). */
+  lines?: Partial<Record<LineCapability, boolean>>;
   /** Technology tables: cutting values per material and thickness (Settings -> Machines -> Technology). */
   technologies?: TechSet[];
 }
+
+/** Line properties of a part a machine may or may not do (contours it always cuts). */
+export type LineCapability = "commonCut" | "openCut" | "trace" | "hole";
+
+export const LINE_CAPABILITIES: { id: LineCapability; label: string; help: string }[] = [
+  { id: "commonCut", label: "Common cut", help: "Shared straight edges of neighbouring parts cut once" },
+  { id: "openCut", label: "Open cut", help: "Cut along open lines (slits)" },
+  { id: "trace", label: "Tracing", help: "Marking / engraving lines, not cut through" },
+  { id: "hole", label: "Holes", help: "Holes cut at the small-hole speed" },
+];
+
+/** Does the machine do this line property? */
+export const machineCan = (m: Machine | undefined, c: LineCapability) => m?.lines?.[c] !== false;
 
 export interface MachineList { defaultId: string; list: Machine[] }
 

@@ -10,7 +10,7 @@ import { NumInput } from "../components/NumInput";
 import { TechnologySettings } from "../components/TechnologySettings";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
-import { ORIGINS, TECHNOLOGIES, newMachine, type Machine, type MachineList } from "../job/machine";
+import { LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, machineCan, newMachine, type Machine, type MachineList } from "../job/machine";
 import { DEFAULT_KEYS, KEY_ACTIONS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
@@ -141,7 +141,8 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
               {machine.id === machines.defaultId ? "★ Default for new jobs" : "Make default for new jobs"}</button>
             <button type="button" className="btn btn-danger-plain" disabled={machines.list.length < 2} onClick={removeMachine}
               title={machines.list.length < 2 ? "There must be one machine" : undefined}>Delete machine</button>
-            <span className="mc-grow" />
+          </div>
+          <div className="mc-row">
             <button type="button" className="btn btn-plain" onClick={exportMachine} title="This machine and its technology tables as a .zip file">Export machine…</button>
             <button type="button" className="btn btn-plain" onClick={() => mFile.current?.click()} title="A machine .zip exported from GNEZDO">Import machine…</button>
             <input ref={mFile} type="file" accept=".zip,.json" hidden onChange={(e) => importMachine(e.target.files?.[0])} />
@@ -156,6 +157,19 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
               </ConfirmDialog>
             );
           })()}
+        </section>
+
+        <section className="rule">
+          <h3>What it cuts</h3>
+          <p className="rule-help">Line properties of a part this machine does. Lines with a property it does not do are skipped for its jobs (common cut cannot be switched on).</p>
+          <div className="mc-lines">
+            <label className="chk" title="Closed cutting contours: every machine"><input type="checkbox" checked disabled /> Contours</label>
+            {LINE_CAPABILITIES.map((c) => (
+              <label key={c.id} className="chk" title={c.help}>
+                <input type="checkbox" checked={machineCan(machine, c.id)} onChange={(e) => setM({ lines: { ...machine.lines, [c.id]: e.target.checked } })} /> {c.label}
+              </label>
+            ))}
+          </div>
         </section>
 
         <section className="rule">
