@@ -463,8 +463,10 @@ export const api = {
           (!f.part || j.lines.some((l) => matches(l.part.name, f.part))) &&
           inDate(j.createdAt, f.created) &&
           inDate(j.modifiedAt, f.modified) &&
-          (!f.status || j.status === f.status)), sort, (j) => ({
+          (!f.status || j.status === f.status) &&
+          (!f.machine || f.machine.split(",").includes(savedJobDetails.get(j.id)?.machine ?? j.machine ?? ""))), sort, (j) => ({
             ...j,
+            machine: savedJobDetails.get(j.id)?.machine ?? j.machine ?? "",
             // jobs sort by the smallest material / thickness / project among their parts
             material: [...new Set(j.lines.map((l) => l.part.material))].sort(text)[0] ?? "",
             thicknessMm: Math.min(...j.lines.map((l) => l.part.thicknessMm)),

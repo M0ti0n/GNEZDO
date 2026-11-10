@@ -3,6 +3,7 @@ import { api, type PartFacets } from "../api/api";
 import type { JobFilter } from "../api/types";
 import { DateLine, EMPTY_DATE, PanelHead, dateFilterOf, type DateDraft } from "../components/FilterFields";
 import { IconSearch } from "../components/Icons";
+import type { MachineList } from "../job/machine";
 
 /** What is typed in the Job search panel. Dates only count when ticked. */
 interface JobDraft {
@@ -13,17 +14,20 @@ interface JobDraft {
   created: DateDraft;
   modified: DateDraft;
   part: string;
+  machine: string;          // machine id, "" = any
 }
 
 const EMPTY: JobDraft = {
   name: "", material: "", thicknessMm: "", project: "",
-  created: EMPTY_DATE, modified: EMPTY_DATE, part: "",
+  created: EMPTY_DATE, modified: EMPTY_DATE, part: "", machine: "",
 };
 
 const text = (v: string) => (v.trim() === "" ? undefined : v.trim());
 
-export function toJobFilter(d: JobDraft): JobFilter {
+export function toJobFilter(d: JobDraft, defaultMachine?: string): JobFilter {
   return {
+    // the default machine also finds the jobs saved without one
+    machine: d.machine === "" ? undefined : d.machine === defaultMachine ? `${d.machine},` : d.machine,
     name: text(d.name),
     material: text(d.material),
     thicknessMm: d.thicknessMm === "" ? undefined : Number(d.thicknessMm),
@@ -35,7 +39,7 @@ export function toJobFilter(d: JobDraft): JobFilter {
 }
 
 // Job search filters. Pressing Search (or Enter) shows the results on the main screen.
-export function JobsPanel({ onSearch, onClose }: { onSearch: (f: JobFilter) => void; onClose: () => void }) {
+export function JobsPanel({ onSearch, onClose, machines }: { onSearch: (f: JobFilter) => void; onClose: () => void; machines?: MachineList }) {
   const [d, setD] = useState<JobDraft>(EMPTY);
   const [lastSearched, setLastSearched] = useState<string | null>(null);
   const [facets, setFacets] = useState<PartFacets>({ materials: [], thicknesses: [] });
@@ -49,11 +53,11 @@ export function JobsPanel({ onSearch, onClose }: { onSearch: (f: JobFilter) => v
       .map((t) => t.thicknessMm))].sort((a, b) => a - b),
     [facets, d.material]);
 
-  const filter = toJobFilter(d);
+  const filter = toJobFilter(d, machines?.defaultId);
   const key = JSON.stringify(filter);
   const dirty = lastSearched !== null && key !== lastSearched;
   const search = () => { setLastSearched(key); onSearch(filter); };
-  const reset = () => { setD(EMPTY); setLastSearched(JSON.stringify(toJobFilter(EMPTY))); onSearch(toJobFilter(EMPTY)); };
+  const reset = () => { setD(EMPTY); setLastSearched(JSON.stringify(toJobFilter(EMPTY, machines?.defaultId))); onSearch(toJobFilter(EMPTY, machines?.defaultId)); };
   const active = Object.values(filter).filter((v) => v !== undefined).length;
 
   return (
@@ -79,6 +83,13 @@ export function JobsPanel({ onSearch, onClose }: { onSearch: (f: JobFilter) => v
             {thicknesses.map((t) => <option key={t} value={t}>{t} mm</option>)}
           </select>
         </div>
+        {machines && machines.list.length > 0 && (
+          <select className="field" value={d.machine} aria-label="Machine" title="Jobs nested for this machine"
+            onChange={(e) => set({ machine: e.target.value })}>
+            <option value="">Machine</option>
+            {machines.list.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        )}
         <input className="field" type="search" value={d.project} placeholder="Project"
           aria-label="Project" title="Jobs that contain parts of this project"
           onChange={(e) => set({ project: e.target.value })} />

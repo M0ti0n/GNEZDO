@@ -21,7 +21,9 @@ public record JobSummaryDto(
     /// <summary>All materials in the job, A–Z.</summary>
     IReadOnlyList<string> Materials,
     /// <summary>All thicknesses in the job, thin to thick.</summary>
-    IReadOnlyList<decimal> Thicknesses);
+    IReadOnlyList<decimal> Thicknesses,
+    /// <summary>The machine the job is nested for (id in the "machines" setting); empty = the default machine.</summary>
+    string Machine = "");
 
 /// <summary>A part of a job: Qty req, Qty max and its ID number in the job's part list.</summary>
 /// <summary>A part of a job. Material / ThicknessMm: set in this job only (null = the part's own, in Part).</summary>
