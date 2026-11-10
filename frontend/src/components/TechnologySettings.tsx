@@ -138,8 +138,8 @@ export function TechnologySettings({ techs, onChange, machineName }: {
                     </th>
                     {cols.map((c) => (
                       <td key={c.key}>
-                        <NumInput className="tech-cell" value={r[c.key]} min={0} aria-label={`${r.thicknessMm} mm ${c.label} (${c.unit})`}
-                          onFocusCapture={() => setRowSel(i)} onCommit={(n) => setCell(i, c.key, n)} />
+                        <NumInput className="tech-cell" value={r[c.key] ?? 0} min={c.min ?? 0} aria-label={`${r.thicknessMm} mm ${c.label} (${c.unit})`}
+                          onFocusCapture={() => setRowSel(i)} onCommit={(n) => setCell(i, c.key, c.max !== undefined ? Math.min(c.max, n) : n)} />
                       </td>
                     ))}
                   </tr>
@@ -162,7 +162,7 @@ export function TechnologySettings({ techs, onChange, machineName }: {
       </>)}
 
       {msg && <p className={`tech-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
-      <p className="rule-help">Click a value to change it; Tab goes to the next one. A new thickness starts as a copy of the next thicker row.
+      <p className="rule-help">Click a value to change it; Tab goes to the next one. A new thickness starts as a copy of the next thicker row. Gap: + cuts past the start, − leaves a tab. Angles left empty: 90° (corner at an angle), 45° (angled with gap).
         A job's sheet uses the technology tagged with its material whose thickness range has the sheet's thickness.</p>
 
       {ask?.kind === "delete" && tech && (

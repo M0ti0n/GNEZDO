@@ -3,6 +3,7 @@
 
 /** The sheet corner where the machine's 0,0 is; nesting packs the parts towards it. */
 import type { TechSet } from "./technology";
+import type { LeadRules } from "./leads";
 
 export type Origin = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
@@ -37,6 +38,8 @@ export interface Machine {
   kerfMm: number;
   /** Which line properties it cuts; the others are skipped for its jobs (missing = it can). */
   lines?: Partial<Record<LineCapability, boolean>>;
+  /** Where the automatic cut puts which lead pair (Settings -> Machines -> Leads & cutting); missing = the defaults. */
+  leads?: Partial<LeadRules>;
   /** Technology tables: cutting values per material and thickness (Settings -> Machines -> Technology). */
   technologies?: TechSet[];
 }
