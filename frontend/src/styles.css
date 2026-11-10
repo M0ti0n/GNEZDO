@@ -1870,3 +1870,46 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .dyn-label { font-family: var(--font-cond); font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-2); }
 .dyn-in input { width: 100%; padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; font: inherit; font-size: 15px; }
 .dyn-in input:focus { outline: none; border-color: var(--blue); }
+
+/* Settings -> Machines: page tabs, Technology table */
+.mc-pages { display: flex; border-bottom: 2px solid var(--line); margin: 4px 0 16px; }
+.mc-pages button { padding: 8px 16px; border: 0; background: none; font: inherit; font-weight: 600; color: var(--ink-3); border-bottom: 3px solid transparent; margin-bottom: -2px; cursor: pointer; }
+.mc-pages button.is-on { color: var(--ink); border-bottom-color: var(--green); }
+.mc-pages button:disabled { opacity: .5; cursor: default; }
+.tech { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.tech-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tech-lbl { font-weight: 600; margin-right: 4px; }
+.tech-grow { flex: 1; }
+.tech-chip { height: 32px; padding: 0 12px; border: 1.5px solid var(--line); border-radius: 16px; background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.tech-chip.is-on { border-color: var(--green); background: var(--green-tint); color: var(--green-ink); }
+.tech-chip.is-add { border-style: dashed; color: var(--green-ink); }
+.tech-meta { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin: 12px 0 10px; font-size: 13.5px; color: var(--ink-2); }
+.tech-name { display: flex; align-items: center; gap: 6px; }
+.tech-name .field { width: 220px; height: 30px; }
+.tech-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tech-tag { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 9px; border-radius: 11px; background: var(--blue-tint); color: var(--blue-ink); font-weight: 600; font-size: 12.5px; }
+.tech-tag button { border: 0; background: none; color: inherit; font-size: 14px; line-height: 1; padding: 0 4px; cursor: pointer; }
+.tech-tag-in { width: 80px; height: 26px; font-size: 13px; }
+.tech-hint { color: var(--ink-3); font-size: 12.5px; }
+.tech-range { display: flex; align-items: center; gap: 6px; }
+.tech-range .field { width: 58px; height: 30px; text-align: right; }
+.tech-scroll { overflow-x: auto; }
+.tech-table { border-collapse: collapse; width: 100%; min-width: 1100px; }
+.tech-table th { font-family: var(--font-cond); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-2); font-weight: 600; padding: 4px 4px; text-align: right; vertical-align: bottom; }
+.tech-table th small { font-size: 11px; color: var(--ink-3); text-transform: none; }
+.tech-table th.tech-group { text-align: center; border-bottom: 2px solid var(--line); color: var(--ink); font-size: 12.5px; }
+.tech-table .tech-th { text-align: left; padding-left: 8px; white-space: nowrap; font-family: var(--font); font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--ink); cursor: pointer; }
+.tech-table td { padding: 2px 2px; border-bottom: 1px solid #edf2f2; }
+.tech-cell { width: 100%; min-width: 56px; height: 30px; padding: 0 7px; text-align: right; border: 1px solid transparent; border-radius: 5px; background: transparent; font: inherit; font-variant-numeric: tabular-nums; }
+.tech-cell:hover { border-color: var(--line); background: #fff; }
+.tech-cell:focus { outline: none; border-color: var(--blue); background: #fff; box-shadow: 0 0 0 2px var(--blue-tint); }
+.tech-table tr.is-sel td, .tech-table tr.is-sel th.tech-th { background: var(--yellow-tint); }
+.tech-table tr.is-unused td, .tech-table tr.is-unused th.tech-th { color: var(--ink-3); }
+.tech-table tr.is-unused .tech-cell { color: var(--ink-3); }
+.tech-table tr.is-unused th.tech-th small { font-family: var(--font-cond); text-transform: uppercase; font-size: 10.5px; margin-left: 4px; }
+.tech-foot { margin-top: 10px; }
+.tech-add { display: inline-flex; gap: 6px; align-items: center; }
+.tech-add .field { width: 64px; height: 32px; text-align: right; }
+.tech-msg { margin: 10px 0 0; font-size: 13.5px; color: var(--green-ink); }
+.tech-msg.is-bad { color: var(--red); }
+.tech-chip.is-idle:not(.is-on) { color: var(--ink-3); border-style: dotted; }
