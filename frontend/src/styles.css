@@ -480,7 +480,6 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 .pane-scroll::-webkit-scrollbar-corner { background: var(--plate); }
 .job-list thead th { position: sticky; top: 0; background: var(--plate); z-index: 1; }
 .job-list td { padding: 9px 10px; }
-.job-list td.cell-projects { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .job-list tbody tr.is-selected { background: var(--green-tint); box-shadow: inset 4px 0 0 var(--green); }
 .job-list tbody tr.is-selected:hover { background: var(--green-tint); }
 .job-list tbody tr:hover { background: var(--yellow-tint); }
@@ -546,6 +545,22 @@ td.num .bubbles { justify-content: flex-end; }
 .bubble { display: inline-block; padding: 1px 7px; border-radius: 999px; border: 1.5px solid; font-size: 12.5px; font-weight: 600; line-height: 1.5; }
 .bubble-mat { border-color: #e79ab9; background: #fdeef4; color: #8a2453; }
 .bubble-thk { border-color: #bda4e6; background: #f4eefc; color: #57297a; }
+/* Job search list: several materials / thicknesses / projects in small bubbles, two rows at most,
+   in a narrow column; one value is plain text cut with "…" */
+.bubble-sm { padding: 0 5px; border-width: 1px; font-size: 11px; line-height: 14px; font-weight: 600; white-space: nowrap; }
+.bubble-proj { border-color: #b9c4c4; background: #f1f5f5; color: #3d4a4a; }
+.bubbles-2 { display: flex; flex-wrap: wrap; gap: 2px 3px; max-height: 34px; overflow: hidden; align-content: flex-start; }
+td.num .bubbles-2 { justify-content: flex-end; margin-left: auto; }
+.cell-clip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clip-mat { max-width: 170px; }
+.clip-thk { max-width: 150px; }
+.clip-proj { max-width: 170px; }
+/* the bubbles get the column's width to wrap in (a table sizes columns by their content) */
+.bubbles-2.clip-mat { width: 170px; }
+.bubbles-2.clip-thk { width: 150px; }
+.bubbles-2.clip-proj { width: 170px; }
+td.num .cell-clip { margin-left: auto; }
+.job-list td.cell-material, .job-list td.cell-thickness, .job-list td.cell-projects { padding-top: 4px; padding-bottom: 4px; height: 42px; }
 
 /* Sorting */
 .sort-bar { display: flex; justify-content: flex-end; padding: 6px 16px; border-bottom: 1px solid var(--line); }

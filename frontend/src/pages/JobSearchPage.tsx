@@ -46,25 +46,37 @@ interface Col {
   cell: (j: JobSummary, machines: MachineList) => ReactNode;
 }
 
+/**
+ * Several values in one cell (materials, thicknesses, projects): small bubbles in at most two rows,
+ * the column kept narrow; what doesn't fit is cut off and the whole list is in the tooltip.
+ * One value: plain text, cut with "…" when too long.
+ */
+function Multi({ items, kind }: { items: string[]; kind: "mat" | "thk" | "proj" }) {
+  if (!items.length) return <>–</>;
+  const all = items.join(", ");
+  if (items.length === 1) return <span className={`cell-clip clip-${kind}`} title={all}>{items[0]}</span>;
+  return (
+    <span className={`bubbles bubbles-2 clip-${kind}`} title={all}>
+      {items.map((v) => <span key={v} className={`bubble bubble-sm bubble-${kind}`}>{v}</span>)}
+    </span>
+  );
+}
+
 const COLUMNS: Col[] = [
   { id: "status", label: "Status", cell: (j) => <span className={`status status-${j.status}`}>{STATUS[j.status]}</span> },
   // a job saved without a machine uses the default one
   { id: "machine", label: "Machine", cell: (j, m) => machineOf(m, j.machine || undefined).name },
   {
     id: "material", label: "Material", sort: "material",
-    cell: (j) => j.materials.length > 1
-      ? <span className="bubbles">{j.materials.map((m) => <span key={m} className="bubble bubble-mat">{m}</span>)}</span>
-      : j.materials[0] ?? "–",
+    cell: (j) => <Multi items={j.materials} kind="mat" />,
   },
   {
     id: "thickness", label: "Thickness", sort: "thickness", num: true,
-    cell: (j) => j.thicknesses.length > 1
-      ? <span className="bubbles">{j.thicknesses.map((t) => <span key={t} className="bubble bubble-thk">{mm(t)}</span>)}</span>
-      : j.thicknesses.length ? mm(j.thicknesses[0]) : "–",
+    cell: (j) => <Multi items={j.thicknesses.map((t) => mm(t))} kind="thk" />,
   },
   { id: "parts", label: "Parts", num: true, cell: (j) => j.partCount },
   { id: "sheets", label: "Sheets", num: true, cell: (j) => j.sheetCount || "–" },
-  { id: "projects", label: "Projects", sort: "project", cell: (j) => <span title={j.projects.join(", ")}>{j.projects.join(", ") || "–"}</span> },
+  { id: "projects", label: "Projects", sort: "project", cell: (j) => <Multi items={j.projects} kind="proj" /> },
   { id: "created", label: "Created", sort: "created", cell: (j) => <span title={fullDate(j.createdAt)}>{when(j.createdAt)}</span> },
   { id: "modified", label: "Modified", sort: "modified", cell: (j) => <span title={fullDate(j.modifiedAt)}>{when(j.modifiedAt)}</span> },
   { id: "modifiedBy", label: "Modified by", cell: (j) => j.modifiedBy },
