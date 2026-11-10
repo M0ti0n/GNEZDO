@@ -172,7 +172,7 @@ export function technologiesFromDbf(buf: ArrayBuffer): TechSet[] {
 export function technologiesCsv(techs: TechSet[]): string {
   const cols = TECH_COLUMNS.flatMap((g) => g.cols);
   const q = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-  const head = ["TechSet", "Materials", "Used from mm", "Used to mm", "Thickness mm", ...cols.map((c) => `${g(c.key)} ${c.label} ${c.unit}`)];
+  const head = ["Technology", "Materials", "Used from mm", "Used to mm", "Thickness mm", ...cols.map((c) => `${g(c.key)} ${c.label} ${c.unit}`)];
   function g(k: RowKey) { return TECH_COLUMNS.find((x) => x.cols.some((c) => c.key === k))!.group.replace(" · leads", ""); }
   const lines = [head.map(q).join(";")];
   for (const t of techs) for (const r of t.rows)

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { machineFileName, machineZip, readMachineFile } from "../job/machineFile";
 import { NavClose } from "./NavClose";
 import { flush, logDownloadUrl, logSettings, reportProblem, setLogEnabled, type LogSettings as LogSettingsData } from "../job/diag";
 import { Combobox } from "../components/Combobox";
@@ -50,6 +52,31 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
   };
   const [section, setSection] = useState<Section>("stock");
   const [mPage, setMPage] = useState<"machine" | "tech">("machine");
+  // a machine's configuration as a file: Export gives a .zip, Import adds it (or replaces one of the same name)
+  const mFile = useRef<HTMLInputElement>(null);
+  const [mMsg, setMMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [mReplace, setMReplace] = useState<Machine | null>(null);
+  const exportMachine = () => {
+    const url = URL.createObjectURL(new Blob([machineZip(machine).slice()], { type: "application/zip" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = machineFileName(machine); a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const addImported = (m: Machine, replace?: Machine) => {
+    const list = replace ? machines.list.map((x) => (x.id === replace.id ? { ...m, id: replace.id } : x)) : [...machines.list, m];
+    onMachines({ ...machines, list });
+    setMSel(replace ? replace.id : m.id);
+    setMMsg({ text: `${m.name} ${replace ? "replaced" : "added"}${m.technologies?.length ? ` with ${m.technologies.length} technologies` : ""}` });
+  };
+  const importMachine = async (f: File | undefined) => {
+    if (!f) return;
+    try {
+      const m = await readMachineFile(await f.arrayBuffer());
+      const same = machines.list.find((x) => x.name.trim().toLowerCase() === m.name.trim().toLowerCase());
+      if (same) setMReplace(m); else addImported(m);
+    } catch (e) { setMMsg({ text: `Could not import ${f.name}: ${(e as Error).message}`, bad: true }); }
+    finally { if (mFile.current) mFile.current.value = ""; }
+  };
   const lists = usePickLists("");
   const materials = useMemo(() => lists.materials, [lists.materials]);
   const set = (patch: Partial<StockSettings>) => onStock({ ...stock, ...patch });
@@ -114,7 +141,21 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
               {machine.id === machines.defaultId ? "★ Default for new jobs" : "Make default for new jobs"}</button>
             <button type="button" className="btn btn-danger-plain" disabled={machines.list.length < 2} onClick={removeMachine}
               title={machines.list.length < 2 ? "There must be one machine" : undefined}>Delete machine</button>
+            <span className="mc-grow" />
+            <button type="button" className="btn btn-plain" onClick={exportMachine} title="This machine and its technology tables as a .zip file">Export machine…</button>
+            <button type="button" className="btn btn-plain" onClick={() => mFile.current?.click()} title="A machine .zip exported from GNEZDO">Import machine…</button>
+            <input ref={mFile} type="file" accept=".zip,.json" hidden onChange={(e) => importMachine(e.target.files?.[0])} />
           </div>
+          {mMsg && <p className={`tech-msg${mMsg.bad ? " is-bad" : ""}`} role="status">{mMsg.text}</p>}
+          {mReplace && (() => {
+            const same = machines.list.find((x) => x.name.trim().toLowerCase() === mReplace.name.trim().toLowerCase());
+            return (
+              <ConfirmDialog title={`Replace ${mReplace.name}?`} confirmLabel="Replace" onCancel={() => setMReplace(null)}
+                onConfirm={() => { addImported(mReplace, same); setMReplace(null); }}>
+                There is already a machine called {mReplace.name}: its settings and technology tables are replaced by the imported ones. To keep both, rename that one first.
+              </ConfirmDialog>
+            );
+          })()}
         </section>
 
         <section className="rule">
