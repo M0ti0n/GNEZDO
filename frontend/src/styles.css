@@ -1861,3 +1861,9 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
   background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .14); }
 .send-sheet-menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; background: none; border-radius: 6px; cursor: pointer; font: inherit; }
 .send-sheet-menu button:hover { background: var(--green-tint); }
+
+/* Scale tool: picked items, and the size / factor box */
+.scale-sel { fill: none; stroke: #22b14c; stroke-width: 5; opacity: .55; pointer-events: none; }
+.scale-bar { pointer-events: auto; }
+.scale-in { width: 120px; padding: 5px 8px; border: 1.5px solid var(--line); border-radius: 6px; font: inherit; }
+.scale-in:focus { outline: none; border-color: var(--blue); }

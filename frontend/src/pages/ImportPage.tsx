@@ -7,6 +7,7 @@ import { ColourLinesDialog, applyColours } from "../import/ColourLinesDialog";
 import { angleOf, diameterOf, dimensionOf, pickEntity, radiusOf, type Measure, type Pick } from "../import/measure";
 import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
+import { factorFor, factorText, parseScale, scalePart, sizeOf } from "../import/scale";
 import {
   endsOf,
   boxOf, checkGeometry, commonCutOk, isCommon, keepMarkRules, markRulesText, pathOf, pointsAlong, roleOf, union,
@@ -33,6 +34,7 @@ const SNAP_PX = 12;
 const HOLE_HINT = "Click a closed cutting contour, or drag a window, to mark it as a hole: cut at slower speed by machines that can (e.g. plasma). Again to unmark.";
 const COMMON_HINT = "Common cut: a straight line of a closed cutting contour (the outside or a window) shared with a neighbouring part, cut once. Click a line, or drag a window, to mark it; again to unmark.";
 const SWEEP_HINT = "Highlighted: lines on top of other lines (within 0.1 mm), lines outside the part outline and loose points. Click a line to keep it; Delete removes the rest.";
+const SCALE_HINT = "Click a line, an arc or a circle (or drag a window, Ctrl+A for all), then type a size with a unit (200mm: one item gets that size) or a scale factor (2). Enter scales the whole part.";
 const LINE_HINT = "Click the start point, then the end point; the line goes on from there. Ends of lines snap (green square). Esc or right click finishes.";
 
 const EDITING: Record<string, { hint: string }> = {
@@ -110,6 +112,31 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const [firstPick, setFirstPick] = useState<Pick | null>(null);
   const [measures, setMeasures] = useState<Measure[]>([]);
   useEffect(() => { setMeasures([]); setFirstPick(null); }, [drawing]);
+  // Scale: the items picked (their size is read for "200mm") and what is typed
+  const [scaleSel, setScaleSel] = useState<Set<string>>(new Set());
+  const [scaleText, setScaleText] = useState("");
+  const scaleInput = useRef<HTMLInputElement>(null);
+  const scaleItems = useMemo(() => drawing.entities.filter((e) => scaleSel.has(e.id)), [drawing, scaleSel]);
+  const pickForScale = (ids: string[], toggle: boolean) => {
+    const next = new Set(scaleSel);
+    const all = ids.every((id) => next.has(id));
+    for (const id of ids) { if (toggle && all) next.delete(id); else next.add(id); }
+    setScaleSel(next);
+    setMessage(null);
+    setTimeout(() => scaleInput.current?.focus(), 0);
+  };
+  const applyScale = () => {
+    const r = factorFor(parseScale(scaleText), scaleItems);
+    if (!r.ok) { setMessage({ text: r.message, bad: true }); return; }
+    if (Math.abs(r.k - 1) < 1e-9) { setMessage({ text: "That is the size it already has: nothing to scale" }); return; }
+    const out = scalePart(drawing.entities, r.k, drawing.points);
+    commit({ ...drawing, entities: out.entities, points: out.points ?? drawing.points }, `Scale ${factorText(r.k)}×`);
+    setSelected(null);
+    setView(null);                                   // the part changed size: fit it again
+    setScaleText("");
+    const one = scaleItems.length === 1 ? sizeOf(scaleItems[0]) : null;
+    setMessage({ text: `Part scaled ${factorText(r.k)}×${one ? ` (${one.what} ${num(one.mm)} → ${num(one.mm * r.k)} mm)` : ""}` });
+  };
   /** What a click picks: with Dimension an end point snaps first; otherwise the line, arc or circle under the pointer. */
   const pickAt = (clientX: number, clientY: number, v: View, points: boolean): Pick | null => {
     if (points) { const s = snapAt(clientX, clientY, v); if (s.snapped) return { kind: "point", p: s.p }; }
@@ -143,6 +170,14 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Scale: Ctrl+A picks the whole part (not while typing in a field other than the scale box)
+      if (tool === "scale" && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && !document.querySelector(".dlg-backdrop")) {
+        const t = e.target as HTMLElement | null;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA") && t !== scaleInput.current) return;
+        e.preventDefault();
+        pickForScale(drawing.entities.map((x) => x.id), false);
+        return;
+      }
       if (e.key !== "Escape" || !tool) return;
       // a pop-up on top gets the Esc, not the tool under it
       if (document.querySelector(".dlg-backdrop")) return;
@@ -150,6 +185,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       // and otherwise the tool is put away (as clicking its button again)
       if (tool === "line" && lineStart) { finishLine(); return; }
       if (firstPick) { setFirstPick(null); setMessage({ text: "Started again: click the first one" }); return; }
+      if (tool === "scale" && scaleSel.size) { setScaleSel(new Set()); setMessage({ text: "Selection cleared" }); return; }
       onTool(tool);
     };
     window.addEventListener("keydown", onKey);
@@ -229,7 +265,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     if ((e.target as Element).closest(".gcheck, .canvas-ui")) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut")) {
+    if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut" || tool === "scale")) {
       const p = local(e);
       setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
       return;
@@ -306,6 +342,17 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) > 4) { holeBox(b, view); return; }
       const id = lineUnder(e.clientX, e.clientY);
       if (id) holeAt(id);
+      return;
+    }
+    if (tool === "scale" && b && view) {
+      if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) > 4) {
+        const ids = idsInBox(b, view, drawing.entities);
+        if (!ids.length) setMessage({ text: b.x1 < b.x0 ? "No line touches the box" : "No line is fully inside the box" });
+        else pickForScale(ids, true);
+        return;
+      }
+      const id = lineUnder(e.clientX, e.clientY);
+      if (id) pickForScale([id], true);
       return;
     }
     if (tool === "commonCut" && b && view) {
@@ -478,6 +525,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setFirstPick(null);
     setMeasures([]);
     setKeep(new Set());
+    setScaleSel(new Set());
+    setScaleText("");
     setTool((t) => (t === id ? null : id));
   };
 
@@ -545,7 +594,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : "not built yet") : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "scale" ? SCALE_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -557,7 +606,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         blocked={problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
-        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "line" || tool === "sweep" || tool === "hole" || tool === "commonCut") ? " is-marking" : ""}`}
+        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "line" || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale") ? " is-marking" : ""}`}
         onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -587,7 +636,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {tool === "sweep" && drawing.entities.filter((e) => sweptIds.has(e.id)).map((e) => (
                 <path key={`sw-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={keep.has(e.id) ? "sweep-keep" : "sweep-hl"} />
               ))}
-              {tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep" || tool === "hole" || tool === "commonCut") && drawing.entities.map((e) => (
+              {tool === "scale" && scaleItems.map((e) => (
+                <path key={`sc-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="scale-sel" />
+              ))}
+              {tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale") && drawing.entities.map((e) => (
                 <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
             </g>
@@ -780,6 +832,24 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               <button type="button" className="btn btn-replace" onClick={sweepNow} disabled={sweepCount === 0}>Delete {sweepCount}</button>
             </span>
           )}
+          {tool === "scale" && (() => {
+            const one = scaleItems.length === 1 ? sizeOf(scaleItems[0]) : null;
+            const all = scaleItems.length === drawing.entities.length;
+            return (
+              <form className="sweep-bar scale-bar" onSubmit={(e) => { e.preventDefault(); applyScale(); }}>
+                <span>
+                  {!scaleItems.length ? "Nothing selected"
+                    : all ? "Whole part"
+                    : one ? `1 ${scaleItems[0].kind === "line" ? "line" : scaleItems[0].kind}, ${one.what} ${num(one.mm)} mm`
+                    : `${scaleItems.length} items`}
+                </span>
+                <input ref={scaleInput} className="scale-in" value={scaleText} onChange={(e) => setScaleText(e.target.value)}
+                  placeholder={one ? `${num(one.mm)}mm or 2` : "2"} aria-label="Size with a unit, or scale factor"
+                  onKeyDown={(e) => { if (e.key === "Escape") (e.target as HTMLInputElement).blur(); }} />
+                <button type="submit" className="btn btn-replace" disabled={!scaleItems.length || !scaleText.trim()}>Scale</button>
+              </form>
+            );
+          })()}
           <button className="btn btn-fit" onClick={() => { setSelected(null); fitAll(); }} title="Show the whole part (double-click)">Fit</button>
         </div>
       </div>
@@ -802,6 +872,15 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
 }
 
 type Rect = { minX: number; minY: number; maxX: number; maxY: number };
+
+/** Lines in a selection box (screen pixels): left to right = fully inside, right to left = touching. */
+function idsInBox(b: { x0: number; y0: number; x1: number; y1: number }, v: View, entities: Entity[]): string[] {
+  const toMm = (x: number, y: number): Pt => ({ x: (x - v.tx) / v.s, y: -(y - v.ty) / v.s });
+  const a = toMm(Math.min(b.x0, b.x1), Math.max(b.y0, b.y1)), c = toMm(Math.max(b.x0, b.x1), Math.min(b.y0, b.y1));
+  const rect = { minX: a.x, minY: a.y, maxX: c.x, maxY: c.y };
+  const crossing = b.x1 < b.x0;
+  return entities.filter((e) => { const pts = pointsAlong(e); return crossing ? touchesRect(pts, rect) : pts.every((p) => inRect(p, rect)); }).map((e) => e.id);
+}
 const inRect = (p: Pt, r: Rect) => p.x >= r.minX && p.x <= r.maxX && p.y >= r.minY && p.y <= r.maxY;
 
 /** Does a polyline touch the rectangle: a point inside, or a segment crossing one of its edges? */
