@@ -1059,6 +1059,7 @@ export function App() {
           targetJob={job}
           onAddToJob={(parts) => job && addParts(job.id, job.title, parts)}
           onJobSearch={runJobSearch}
+          machines={machines}
           homeActive={!activeTab && state.view === "home"}
           onHome={() => showView("home")}
           importPanel={importPanel}
@@ -1195,6 +1196,7 @@ export function App() {
               <JobSearchPage filter={jobSearch.filter} run={jobSearch.run} onOpenJob={openJob}
                 openJobs={state.tabs.flatMap((t) => (t.kind === "job" && t.jobId ? [{ id: t.jobId, title: t.title }] : []))}
                 onSendSheet={addSheetParts}
+                machines={machines}
                 onShowFilters={() => setDrawer("jobs")} />
             )}
             {shownItem?.drawing && (

@@ -20,6 +20,8 @@ export interface JobSummary {
   projects: string[];      // project codes of the parts in the job
   materials: string[];     // every material in the job, A–Z
   thicknesses: number[];   // every thickness in the job, thin to thick
+  /** the machine the job is nested for (id in the machines setting); empty = the default machine */
+  machine?: string;
 }
 
 export interface ImportSummary {
@@ -124,6 +126,8 @@ export interface JobFilter {
   modified?: DateFilter;
   part?: string;           // job contains a part whose name contains this
   status?: JobStatus;
+  /** machine ids, comma separated; an empty entry = jobs saved without one (the default machine) */
+  machine?: string;
 }
 
 /** Sort order for part and job lists. Dates default to newest first, others to A–Z / thin–thick. */

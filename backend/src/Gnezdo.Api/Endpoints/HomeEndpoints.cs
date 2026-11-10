@@ -17,6 +17,11 @@ public sealed class JobQuery
     /// <summary>Jobs that use a part whose name contains this text.</summary>
     public string? Part { get; set; }
     public string? Status { get; set; }
+    /// <summary>
+    /// Machine ids (from the "machines" setting), comma separated; an empty entry matches jobs saved
+    /// without one (they use the default machine): "laser-1," = laser-1 or no machine set.
+    /// </summary>
+    public string? Machine { get; set; }
     /// <summary>name, created, modified (default), material, thickness, project.</summary>
     public string? Sort { get; set; }
     /// <summary>asc or desc; dates default to desc, others to asc.</summary>
@@ -142,6 +147,11 @@ public static class HomeEndpoints
             if (to is { } tt) jobs = jobs.Where(j => j.ModifiedAt < tt);
         }
         if (status is { } st) jobs = jobs.Where(j => j.Status == st);
+        if (q.Machine is not null)
+        {
+            var machines = q.Machine.Split(',').Select(m => m.Trim()).Distinct().ToList();
+            jobs = jobs.Where(j => machines.Contains(j.Machine));
+        }
 
         var take = Math.Clamp(q.Take ?? 500, 1, 500);
         return Results.Ok(await SummariesAsync(db, sort.Apply(jobs).Take(take), ct));
@@ -155,7 +165,7 @@ public static class HomeEndpoints
     private static async Task<List<JobSummaryDto>> SummariesAsync(GnezdoDb db, IQueryable<Job> jobs, CancellationToken ct)
     {
         var rows = await jobs
-            .Select(j => new { j.Id, j.Name, j.Status, j.SheetCount, j.CreatedAt, j.ModifiedAt, j.ModifiedBy })
+            .Select(j => new { j.Id, j.Name, j.Status, j.SheetCount, j.CreatedAt, j.ModifiedAt, j.ModifiedBy, j.Machine })
             .ToListAsync(ct);
         var ids = rows.Select(r => r.Id).ToList();
         var lines = await db.JobParts.AsNoTracking()
@@ -181,7 +191,8 @@ public static class HomeEndpoints
                 r.Status.ToString().ToLowerInvariant(), r.CreatedAt, r.ModifiedAt, r.ModifiedBy,
                 byJob[r.Id].Select(l => l.Project).OfType<string>().Distinct().Order(StringComparer.OrdinalIgnoreCase).ToList(),
                 byJob[r.Id].Select(l => l.Material).Distinct().Order(StringComparer.OrdinalIgnoreCase).ToList(),
-                byJob[r.Id].Select(l => l.ThicknessMm).Distinct().Order().ToList());
+                byJob[r.Id].Select(l => l.ThicknessMm).Distinct().Order().ToList(),
+                r.Machine);
         }).ToList();
     }
 

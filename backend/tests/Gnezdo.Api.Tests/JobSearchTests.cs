@@ -38,6 +38,17 @@ public sealed class JobSearchTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task Machine_matches_the_job_machine_and_an_empty_entry_the_jobs_without_one()
+    {
+        // the sample jobs are saved without a machine: they use the default one
+        var all = await Search("");
+        Assert.All(all, j => Assert.Equal("", j.Machine));
+        Assert.Empty(await Search("?machine=plasma-1"));
+        Assert.Equal(all.Count, (await Search("?machine=laser-1,")).Count);   // the default machine: also the jobs without one
+        Assert.Empty(await Search("?machine=laser-1"));
+    }
+
+    [Fact]
     public async Task Project_finds_jobs_containing_parts_of_that_project()
     {
         var jobs = await Search("?project=26-0398");

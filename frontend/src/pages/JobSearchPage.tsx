@@ -8,6 +8,7 @@ import {
 import { SortArrow, loadSort, saveSort } from "../components/SortControl";
 import { SheetSvg } from "../components/NestView";
 import { solutionsFromSaved, type NestedSheet } from "../job/nest";
+import { machineOf, type MachineList } from "../job/machine";
 import { fullDate, mm, when } from "../components/format";
 
 const STATUS: Record<JobStatus, string> = { draft: "Draft", nested: "Nested", released: "Released", cut: "Cut" };
@@ -17,9 +18,13 @@ const fmtDay = (ymd: string) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(`${ymd}T12:00:00`));
 
 /** Short description of each active filter, shown above the results. */
-function describe(f: JobFilter): string[] {
+function describe(f: JobFilter, machines?: MachineList): string[] {
   const out: string[] = [];
   if (f.name) out.push(`Name: ${f.name}`);
+  if (f.machine) {
+    const id = f.machine.split(",").find(Boolean);
+    out.push(`Machine: ${machines?.list.find((m) => m.id === id)?.name ?? id}`);
+  }
   if (f.material || f.thicknessMm !== undefined)
     out.push(`Material: ${[f.material, f.thicknessMm !== undefined ? mm(f.thicknessMm) : ""].filter(Boolean).join(" ")}`);
   if (f.project) out.push(`Project: ${f.project}`);
@@ -31,18 +36,20 @@ function describe(f: JobFilter): string[] {
 
 /* ---- columns of the result list -------------------------------------------------- */
 
-type ColId = "status" | "material" | "thickness" | "parts" | "sheets" | "projects" | "created" | "modified" | "modifiedBy";
+type ColId = "status" | "machine" | "material" | "thickness" | "parts" | "sheets" | "projects" | "created" | "modified" | "modifiedBy";
 
 interface Col {
   id: ColId;
   label: string;
   sort?: SortKey;
   num?: boolean;
-  cell: (j: JobSummary) => ReactNode;
+  cell: (j: JobSummary, machines: MachineList) => ReactNode;
 }
 
 const COLUMNS: Col[] = [
   { id: "status", label: "Status", cell: (j) => <span className={`status status-${j.status}`}>{STATUS[j.status]}</span> },
+  // a job saved without a machine uses the default one
+  { id: "machine", label: "Machine", cell: (j, m) => machineOf(m, j.machine || undefined).name },
   {
     id: "material", label: "Material", sort: "material",
     cell: (j) => j.materials.length > 1
@@ -63,7 +70,7 @@ const COLUMNS: Col[] = [
   { id: "modifiedBy", label: "Modified by", cell: (j) => j.modifiedBy },
 ];
 
-const DEFAULT_COLS: ColId[] = ["status", "material", "thickness", "parts", "projects", "modified"];
+const DEFAULT_COLS: ColId[] = ["status", "machine", "material", "thickness", "parts", "projects", "modified"];
 const COLS_KEY = "gnezdo.jobColumns";
 
 function loadCols(): ColId[] {
@@ -81,7 +88,9 @@ function loadCols(): ColId[] {
 /** A sheet's parts sent to a job: each part and how many pieces the sheet holds (times its cut number). */
 export interface SheetParts { from: string; items: { part: PartSummary; qty: number }[] }
 
-export function JobSearchPage({ filter, run, onOpenJob, onShowFilters, openJobs = [], onSendSheet }: {
+export function JobSearchPage({ filter, run, onOpenJob, onShowFilters, openJobs = [], onSendSheet, machines }: {
+  /** the machines (names for the Machine column) */
+  machines: MachineList;
   filter: JobFilter | null;          // null = no search yet
   run: number;                       // changes on every Search press
   onOpenJob: (job: JobSummary) => void;
@@ -153,7 +162,7 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters, openJobs 
     );
   }
 
-  const chips = describe(filter);
+  const chips = describe(filter, machines);
 
   return (
     <div className="search-page job-browser-page">
@@ -194,7 +203,7 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters, openJobs 
                       aria-selected={j.id === selectedId}
                       onClick={() => setSelectedId(j.id)} onDoubleClick={() => onOpenJob(j)}>
                       <td className="cell-name nowrap">{j.name}</td>
-                      {shownCols.map((c) => <td key={c.id} className={`${c.num ? "num " : ""}nowrap cell-${c.id}`}>{c.cell(j)}</td>)}
+                      {shownCols.map((c) => <td key={c.id} className={`${c.num ? "num " : ""}nowrap cell-${c.id}`}>{c.cell(j, machines)}</td>)}
                     </tr>
                   ))}
                 </tbody>

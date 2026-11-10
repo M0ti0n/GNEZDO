@@ -7,6 +7,7 @@ import { DateLine, PanelHead, SizeLine } from "../components/FilterFields";
 import { IconHome, IconImport, IconLibrary, IconSearch } from "../components/Icons";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { JobsPanel } from "./JobsPanel";
+import type { MachineList } from "../job/machine";
 import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PartPropertiesDialog } from "../components/PartPropertiesDialog";
 import { useListSelection } from "../components/useListSelection";
@@ -26,6 +27,8 @@ interface Props {
   targetJob: { id: string; title: string } | null; // job tab that is open now
   onAddToJob: (parts: PartSummary[]) => void;
   onJobSearch: (filter: JobFilter) => void;   // results open on the main screen
+  /** the machines, for the Machine filter of Job search */
+  machines?: MachineList;
   homeActive: boolean;
   onHome: () => void;
   importPanel: ImportPanelProps;
@@ -35,7 +38,7 @@ interface Props {
 
 // Left side: a rail that opens a docked panel for finding imported parts
 // (to drag into a job), searching jobs, or importing new drawings.
-export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeActive, onHome, importPanel, showQty }: Props) {
+export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeActive, onHome, importPanel, showQty, machines }: Props) {
   const toggle = (m: DrawerMode) => onMode(mode === m ? null : m);
   return (
     <aside className={`drawer${mode ? " is-open" : ""}`}>
@@ -62,7 +65,7 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, homeA
       {mode && (
         <div className="drawer-panel">
           {mode === "parts" && <PartsPanel targetJob={targetJob} onAddToJob={onAddToJob} showQty={showQty} onClose={() => onMode(null)} />}
-          {mode === "jobs" && <JobsPanel onSearch={onJobSearch} onClose={() => onMode(null)} />}
+          {mode === "jobs" && <JobsPanel onSearch={onJobSearch} onClose={() => onMode(null)} machines={machines} />}
           {mode === "import" && <ImportPanel {...importPanel} onClose={() => onMode(null)} />}
         </div>
       )}
