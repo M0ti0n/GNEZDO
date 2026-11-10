@@ -17,6 +17,8 @@ import type { SavePart } from "./api/api";
 import { applyRules, loadRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
 import { RulesPage } from "./pages/RulesPage";
 import { quantityFromName } from "./import/geometry";
+import { NestReportPage } from "./pages/NestReportPage";
+import { CostReportPage } from "./pages/CostReportPage";
 import { HomePage, type HomeAction } from "./pages/HomePage";
 import { JobPage } from "./pages/JobPage";
 import { JobSearchPage, type SheetParts } from "./pages/JobSearchPage";
@@ -59,7 +61,9 @@ export function App() {
   // the nest going on or the last one, per job tab
   // every nesting run of a job tab ("solutions"), the one shown, and which screen the tab shows
   const [jobSol, setJobSol] = useState<Record<string, { list: Solution[]; sel: NestSelection } | undefined>>({});
-  const [jobScreen, setJobScreen] = useState<Record<string, "parts" | "nest" | undefined>>({});
+  const [jobScreen, setJobScreen] = useState<Record<string, "parts" | "nest" | "nestReport" | "costReport" | undefined>>({});
+  // who saved a job last and when (from the server list, then from our saves): the Nest report's header
+  const [jobEdited, setJobEdited] = useState<Record<string, { by: string; at: string }>>({});
   const [customFor, setCustomFor] = useState<{ jobId: string; fresh: boolean } | null>(null);
   const [stockSettings, setStockSettingsState] = useState<StockSettings>(loadStockSettings);
   // machines: shared on the server (the browser keeps a copy, and is all there is in the demo)
@@ -419,7 +423,7 @@ export function App() {
   const askRemove = (ids: string[]) => (ids.some((id) => history.changed(id)) ? setRemoving(ids) : removeNow(ids));
   const removingChanged = removing ? imports.filter((i) => removing.includes(i.id) && history.changed(i.id)) : [];
 
-  const openJob = (j: JobSummary) => open(jobTab(j.id, j.name));
+  const openJob = (j: JobSummary) => { setJobEdited((m) => ({ ...m, [j.id]: { by: j.modifiedBy, at: j.modifiedAt } })); open(jobTab(j.id, j.name)); };
 
   // Job search: a sheet's parts and pieces added to an open job (to fill leftover plates of other jobs):
   // parts already in the job get the pieces on top of what they need, new ones come in with that many
@@ -627,6 +631,7 @@ export function App() {
     try {
       const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: userName, machine: machineFor(jobId).id });
       if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
+      setJobEdited((m) => ({ ...m, [jobId]: { by: userName, at: new Date().toISOString() } }));
       if (asNew) dispatch({ type: "rename", id: `job:${jobId}`, title });
       setSavedSnap((m) => ({ ...m, [jobId]: snapOf(parts, jobStock[jobId] ?? [], st.list, machineFor(jobId).id) }));
       diag("save", `Job ${title} saved${asNew ? " as new" : ""}`, { job: jobId, serverId: r.id, parts: parts.length, sheets: r.sheetCount, solutions: st.list.length });
@@ -1013,6 +1018,7 @@ export function App() {
       return;
     }
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
+    if (section === "report" && (tool === "nestReport" || tool === "costReport")) { setJobScreen((m) => ({ ...m, [job.id]: tool })); return; }
     if (tool === "fastNest") void startNest(job.id, "fast");
     else if (tool === "thoroughNest") void startNest(job.id, "thorough");
     else if (tool === "customNest") { if (custom) void startNest(job.id, "custom", custom); else setCustomFor({ jobId: job.id, fresh: false }); }
@@ -1071,7 +1077,7 @@ export function App() {
           {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq} lit={{ commonCut: !!(job && commonSnap[job.id]) }}
             onSection={(sec) => {
               if (sec === "auto" || sec === "work") { setLeaveManual((n) => n + 1); manualOn.current = false; }
-              if (job && sec) setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" ? "nest" : m[job.id] }));
+              if (job && sec) setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" ? "nest" : m[job.id] === "nestReport" || m[job.id] === "costReport" ? (sec === "report" ? m[job.id] : "nest") : m[job.id] }));
             }} />
             : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
           <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" ? " page-flush" : ""}`} aria-label={active.title}>
@@ -1100,7 +1106,16 @@ export function App() {
                 onToggleLock={(id, i) => patchSol(job.id, id, (x) => ({ ...x, locked: x.locked.includes(i) ? x.locked.filter((n) => n !== i) : [...x.locked, i] }))}
               />
             )}
-            {active.kind === "job" && job && jobScreen[job.id] !== "nest" && (
+            {active.kind === "job" && job && (jobScreen[job.id] === "nestReport" || jobScreen[job.id] === "costReport") && (() => {
+              const st = solsOf(job.id);
+              const sol = st.list.find((x) => x.id === st.sel.sol) ?? st.list.find((x) => x.run?.result?.sheets.length);
+              const rj = { id: job.id, title: job.title, machine: machineFor(job.id), origin: sol?.origin ?? machineFor(job.id).origin, solutionNo: sol?.no,
+                editedBy: jobEdited[job.id]?.by, editedAt: jobEdited[job.id]?.at };
+              return jobScreen[job.id] === "nestReport"
+                ? <NestReportPage key={`${job.id}:${sol?.id ?? ""}`} job={rj} sheets={sol?.run?.result?.sheets ?? []} jobParts={jobParts[job.id] ?? []} />
+                : <CostReportPage key={job.id} job={rj} jobParts={jobParts[job.id] ?? []} userName={userName} />;
+            })()}
+            {active.kind === "job" && job && jobScreen[job.id] !== "nest" && jobScreen[job.id] !== "nestReport" && jobScreen[job.id] !== "costReport" && (
               <JobPage
                 title={job.title}
                 parts={(() => {
