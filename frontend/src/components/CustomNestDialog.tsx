@@ -49,13 +49,16 @@ const clock = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minu
 
 // Before a custom nest: how long it may run, and whether it stops early once nothing better turns up.
 // The best layout so far is kept the whole time; "Stop and keep best" ends it at any moment.
-export function CustomNestDialog({ onStart, onCancel, partIds = [] }: {
+export function CustomNestDialog({ onStart, onCancel, partIds = [], noCommonCut }: {
   onStart: (s: CustomNestSettings) => void; onCancel: () => void;
+  /** The job's machine does not do common cut: its name (the checkbox is off) */
+  noCommonCut?: string;
   /** the job's parts (with a quantity): how many have the Common cut nesting rule is looked up */
   partIds?: string[];
 }) {
   // parts of the job with the Common cut nesting rule ticked (null: still looking)
-  const [commonParts, setCommonParts] = useState<number | null>(null);
+  const [foundParts, setCommonParts] = useState<number | null>(null);
+  const commonParts = noCommonCut ? 0 : foundParts;
   const idsKey = partIds.join(",");
   useEffect(() => {
     let alive = true;
@@ -141,10 +144,10 @@ export function CustomNestDialog({ onStart, onCancel, partIds = [] }: {
 
           <section className="cn-sec">
             <label className={`cn-check${commonParts ? "" : " is-off"}`}
-              title={commonParts === 0 ? "No part of this job has the Common cut nesting rule ticked" : undefined}>
+              title={noCommonCut ? `${noCommonCut} does not do common cut (Settings > Machines)` : commonParts === 0 ? "No part of this job has the Common cut nesting rule ticked" : undefined}>
               <input type="checkbox" checked={!!s.commonCut && !!commonParts} disabled={!commonParts}
                 onChange={(e) => setS({ ...s, commonCut: e.target.checked })} />
-              <span>Common cut{commonParts === null ? " (looking at the parts…)" : commonParts
+              <span>Common cut{noCommonCut ? `: ${noCommonCut} does not do common cut` : commonParts === null ? " (looking at the parts…)" : commonParts
                 ? ` (${commonParts} ${commonParts === 1 ? "part has" : "parts have"} the rule)` : ": no part of this job has the rule"}</span>
             </label>
             {s.commonCut && !!commonParts && (

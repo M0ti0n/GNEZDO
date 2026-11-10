@@ -29,7 +29,7 @@ import { buildRequest, commonCutNote, continuedSheets, countsOf, isFinished, mis
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
-import { loadLocalMachines, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
+import { loadLocalMachines, machineCan, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
 import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
 import { setMachineLimit } from "./job/stock";
 import { exportSolutionDxf } from "./job/exportNest";
@@ -534,6 +534,7 @@ export function App() {
   // its sheets stays, the parts still missing are added); without one, or with fresh (Add new
   // solution), a new solution from blank
   const startNest = async (jobId: string, mode: NestMode, custom?: CustomNestSettings, fresh = false) => {
+    if (custom?.commonCut && !machineCan(machineFor(jobId), "commonCut")) custom = { ...custom, commonCut: false };
     const st = solsOf(jobId);
     if (st.list.some((x) => !x.error && !isFinished(x.run))) { setToast("A solution is running; start the next one when it is done"); return; }
     const base = fresh ? undefined : st.list.find((x) => x.id === st.sel.sol && !x.error && !x.outdated && isFinished(x.run) && x.run?.result?.sheets.length);
@@ -1004,6 +1005,8 @@ export function App() {
     if (section === "manual" && tool === "addSheet") { askAddSheet(job.id); return; }
     if (section === "manual" && tool === "commonCut") {
       // a switch for this job (off when the job is opened again): snapping and Arrange blocks
+      const jm = machineFor(job.id);
+      if (!commonSnap[job.id] && !machineCan(jm, "commonCut")) { setToast(`${jm.name} does not do common cut (Settings > Machines)`); return; }
       const on = !commonSnap[job.id];
       setCommonSnap((m) => ({ ...m, [job.id]: on }));
       setToast(on ? "Common cut on: marked lines snap together (Alt: place without snapping); Arrange makes blocks" : "Common cut off");
@@ -1190,6 +1193,7 @@ export function App() {
             {customFor && (
               <CustomNestDialog onCancel={() => setCustomFor(null)}
                 partIds={(jobParts[customFor.jobId] ?? []).filter((jp) => jp.qty > 0).map((jp) => jp.part.id)}
+                noCommonCut={machineCan(machineFor(customFor.jobId), "commonCut") ? undefined : machineFor(customFor.jobId).name}
                 onStart={(c) => { const cf = customFor; setCustomFor(null); void startNest(cf.jobId, "custom", c, cf.fresh); }} />
             )}
             {active.kind === "jobSearch" && (
