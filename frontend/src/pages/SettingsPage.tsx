@@ -5,6 +5,7 @@ import { Combobox } from "../components/Combobox";
 import { DatabaseForm } from "../components/DatabaseSetup";
 import { data, type DataInfo } from "../api/data";
 import { NumInput } from "../components/NumInput";
+import { TechnologySettings } from "../components/TechnologySettings";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
 import { ORIGINS, TECHNOLOGIES, newMachine, type Machine, type MachineList } from "../job/machine";
@@ -48,6 +49,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
     setMSel(list[0].id);
   };
   const [section, setSection] = useState<Section>("stock");
+  const [mPage, setMPage] = useState<"machine" | "tech">("machine");
   const lists = usePickLists("");
   const materials = useMemo(() => lists.materials, [lists.materials]);
   const set = (patch: Partial<StockSettings>) => onStock({ ...stock, ...patch });
@@ -88,6 +90,14 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
           ))}
           <button type="button" className="mc-add" onClick={addMachine} title="A new machine, starting as a copy of this one">+ Add machine</button>
         </div>
+        <div className="mc-pages" role="tablist" aria-label="Machine settings">
+          <button type="button" role="tab" aria-selected={mPage === "machine"} className={mPage === "machine" ? "is-on" : ""} onClick={() => setMPage("machine")}>Machine</button>
+          <button type="button" role="tab" aria-selected={mPage === "tech"} className={mPage === "tech" ? "is-on" : ""} onClick={() => setMPage("tech")}>Technology</button>
+          <button type="button" role="tab" disabled title="Comes next">Leads &amp; cutting</button>
+          <button type="button" role="tab" disabled title="Comes later">NC output</button>
+        </div>
+        {mPage === "tech" && <TechnologySettings key={machine.id} techs={machine.technologies ?? []} machineName={machine.name} onChange={(t) => setM({ technologies: t })} />}
+        {mPage === "machine" && (<>
 
         <section className="rule">
           <h3>Machine</h3>
@@ -149,6 +159,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
           </div>
           <p className="rule-help">Materials and thicknesses it can cut come with the technology tables.</p>
         </section>
+        </>)}
         </fieldset>
         <footer className="settings-foot">{shared ? "Saved on the server, for everyone." : "Saved in this browser."}</footer>
       </div>
