@@ -89,8 +89,8 @@ export const inRange = (t: TechSet, mm: number) => (!t.minMm && !t.maxMm) || (mm
 export function techRowFor(techs: TechSet[] | undefined, material: string, thicknessMm: number): { tech: TechSet; row: TechRow } | null {
   const m = material.trim().toLowerCase();
   for (const tech of techs ?? []) {
-    // a technology without material tags is not used (an imported table has many)
-    if (!tech.materials.some((x) => x.toLowerCase() === m)) continue;
+    // no material tags: any material (on plasma only the thickness matters)
+    if (tech.materials.length && !tech.materials.some((x) => x.toLowerCase() === m)) continue;
     if (!inRange(tech, thicknessMm)) continue;
     const row = tech.rows.find((r) => Math.abs(r.thicknessMm - thicknessMm) < 1e-6);
     if (row) return { tech, row };

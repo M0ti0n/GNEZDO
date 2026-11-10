@@ -19,7 +19,7 @@ export function TechnologySettings({ techs, onChange, machineName }: {
   const [newThick, setNewThick] = useState("");
   const thick = parseFloat(newThick.replace(",", "."));
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [ask, setAsk] = useState<null | { kind: "delete" } | { kind: "import"; found: TechSet[] }>(null);
+  const [ask, setAsk] = useState<null | { kind: "delete" } | { kind: "import"; found: TechSet[]; pick: Set<string> }>(null);
   const file = useRef<HTMLInputElement>(null);
 
   const setTech = (patch: Partial<TechSet>) => tech && onChange(techs.map((t) => (t.id === tech.id ? { ...t, ...patch } : t)));
@@ -53,7 +53,7 @@ export function TechnologySettings({ techs, onChange, machineName }: {
     try {
       const found = technologiesFromDbf(await f.arrayBuffer());
       if (!found.length) { setMsg({ text: "No technologies found in that table", bad: true }); return; }
-      setAsk({ kind: "import", found });
+      setAsk({ kind: "import", found, pick: new Set() });
     } catch (e) { setMsg({ text: `Could not read ${f.name}: ${(e as Error).message}`, bad: true }); }
     finally { if (file.current) file.current.value = ""; }
   };
@@ -84,7 +84,7 @@ export function TechnologySettings({ techs, onChange, machineName }: {
       <div className="tech-bar">
         <span className="tech-lbl">Technology</span>
         {techs.map((t) => (
-          <button key={t.id} type="button" className={`tech-chip${tech?.id === t.id ? " is-on" : ""}${t.materials.length ? "" : " is-idle"}`} title={t.materials.length ? `Used for ${t.materials.join(", ")}` : "No material tags: not used"} onClick={() => { setSelId(t.id); setRowSel(null); setMsg(null); }}>{t.name}</button>
+          <button key={t.id} type="button" className={`tech-chip${tech?.id === t.id ? " is-on" : ""}`} title={t.materials.length ? `Used for ${t.materials.join(", ")}` : "Used for any material"} onClick={() => { setSelId(t.id); setRowSel(null); setMsg(null); }}>{t.name}</button>
         ))}
         <button type="button" className="tech-chip is-add" onClick={addNew}>+ New</button>
         <span className="tech-grow" />
@@ -105,7 +105,7 @@ export function TechnologySettings({ techs, onChange, machineName }: {
             ))}
             <input className="field tech-tag-in" value={tag} placeholder="+ tag" aria-label="Add a material tag"
               onChange={(e) => setTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} onBlur={addTag} />
-            {!tech.materials.length && <span className="tech-hint">none yet: not used</span>}
+            {!tech.materials.length && <span className="tech-hint">none: any material</span>}
           </div>
           <div className="tech-range">
             <span>Thickness</span>
@@ -172,9 +172,19 @@ export function TechnologySettings({ techs, onChange, machineName }: {
         </ConfirmDialog>
       )}
       {ask?.kind === "import" && (
-        <ConfirmDialog title={`Import ${ask.found.length} technologies?`} confirmLabel="Import" onCancel={() => setAsk(null)}
-          onConfirm={() => { doImport(ask.found); setAsk(null); }}>
-          {ask.found.map((t) => t.name).join(", ")}. A technology with the same name as one here is replaced (its material tags and range are kept).
+        <ConfirmDialog title="Import which technologies?" confirmLabel={`Import ${ask.pick.size || ""}`.trim()} onCancel={() => setAsk(null)}
+          onConfirm={() => { if (!ask.pick.size) return; doImport(ask.found.filter((t) => ask.pick.has(t.id))); setAsk(null); }}>
+          <span className="tech-pick">
+            {ask.found.map((t) => (
+              <label key={t.id} className="chk">
+                <input type="checkbox" checked={ask.pick.has(t.id)} onChange={(e) => {
+                  const pick = new Set(ask.pick); if (e.target.checked) pick.add(t.id); else pick.delete(t.id); setAsk({ ...ask, pick });
+                }} />
+                <b>{t.name}</b><span className="tech-hint">{t.minMm}–{t.maxMm} mm · {t.rows.length} rows</span>
+              </label>
+            ))}
+          </span>
+          Tick the ones this machine uses. One with the same name as one here is replaced (its tags and range are kept).
         </ConfirmDialog>
       )}
     </div>
