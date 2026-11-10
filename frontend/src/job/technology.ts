@@ -1,4 +1,4 @@
-// Technology tables (Settings -> Machines -> Technology): per machine, the cutting values for each
+// TechSet tables (Settings -> Machines -> TechSet): per machine, the cutting values for each
 // thickness. A technology (e.g. "ST37 80 A O2/Air") is used for the materials tagged on it and the
 // thicknesses in its range; its rows hold kerf, speeds, pierce time, lead lengths and gaps.
 
@@ -25,7 +25,7 @@ export interface TechRow {
   extra?: Record<string, number>;
 }
 
-export interface Technology {
+export interface TechSet {
   id: string;
   name: string;
   /** Material tags it is used for (S235, Mn12, ...) */
@@ -67,14 +67,14 @@ export const emptyRow = (thicknessMm: number): TechRow => ({
   holeLeadInMm: 0, holeLeadOutMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outLeadRadiusMm: 0, partGapMm: 0, borderMm: 0,
 });
 
-export const newTechnology = (name = "New technology"): Technology => ({
+export const newTechnology = (name = "New technology"): TechSet => ({
   id: `t${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, name, materials: [], minMm: 0, maxMm: 0, rows: [],
 });
 
 const byThickness = (a: TechRow, b: TechRow) => a.thicknessMm - b.thicknessMm;
 
 /** A new thickness: a copy of the next thicker row (else the next thinner one), with the new thickness. */
-export function addThickness(t: Technology, thicknessMm: number): Technology {
+export function addThickness(t: TechSet, thicknessMm: number): TechSet {
   if (!(thicknessMm > 0) || t.rows.some((r) => Math.abs(r.thicknessMm - thicknessMm) < 1e-6)) return t;
   const rows = [...t.rows].sort(byThickness);
   const from = rows.find((r) => r.thicknessMm > thicknessMm) ?? rows[rows.length - 1];
@@ -83,10 +83,10 @@ export function addThickness(t: Technology, thicknessMm: number): Technology {
 }
 
 /** Is this row used (its thickness in the technology's range)? A range of 0-0 means all. */
-export const inRange = (t: Technology, mm: number) => (!t.minMm && !t.maxMm) || (mm >= t.minMm - 1e-6 && mm <= (t.maxMm || Infinity) + 1e-6);
+export const inRange = (t: TechSet, mm: number) => (!t.minMm && !t.maxMm) || (mm >= t.minMm - 1e-6 && mm <= (t.maxMm || Infinity) + 1e-6);
 
 /** The row for a material and thickness: from the first technology tagged with that material whose range has it. */
-export function techRowFor(techs: Technology[] | undefined, material: string, thicknessMm: number): { tech: Technology; row: TechRow } | null {
+export function techRowFor(techs: TechSet[] | undefined, material: string, thicknessMm: number): { tech: TechSet; row: TechRow } | null {
   const m = material.trim().toLowerCase();
   for (const tech of techs ?? []) {
     // a technology without material tags is not used (an imported table has many)
@@ -141,13 +141,13 @@ function techName(code: string) {
 }
 
 /** Technologies from a material table (.DBF): one per technology name, a row per thickness. */
-export function technologiesFromDbf(buf: ArrayBuffer): Technology[] {
+export function technologiesFromDbf(buf: ArrayBuffer): TechSet[] {
   const { fields, rows } = readDbf(buf);
   const has = (f: string) => fields.includes(f);
   if (!has("TECH") || !has("DIKTE")) throw new Error("This table has no TECH and DIKTE (thickness) columns");
   const num = (v: string | undefined) => { const x = parseFloat((v ?? "").replace(",", ".")); return Number.isFinite(x) ? x : 0; };
   const mapped = new Set(Object.values(DBF_FIELDS));
-  const groups = new Map<string, Technology>();
+  const groups = new Map<string, TechSet>();
   for (const r of rows) {
     const code = r.TECH?.trim();
     const t = num(r.DIKTE);
@@ -169,10 +169,10 @@ export function technologiesFromDbf(buf: ArrayBuffer): Technology[] {
 
 // ---------------------------------------------------------------- export: CSV
 
-export function technologiesCsv(techs: Technology[]): string {
+export function technologiesCsv(techs: TechSet[]): string {
   const cols = TECH_COLUMNS.flatMap((g) => g.cols);
   const q = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-  const head = ["Technology", "Materials", "Used from mm", "Used to mm", "Thickness mm", ...cols.map((c) => `${g(c.key)} ${c.label} ${c.unit}`)];
+  const head = ["TechSet", "Materials", "Used from mm", "Used to mm", "Thickness mm", ...cols.map((c) => `${g(c.key)} ${c.label} ${c.unit}`)];
   function g(k: RowKey) { return TECH_COLUMNS.find((x) => x.cols.some((c) => c.key === k))!.group.replace(" · leads", ""); }
   const lines = [head.map(q).join(";")];
   for (const t of techs) for (const r of t.rows)

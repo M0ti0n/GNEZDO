@@ -2,7 +2,7 @@
 // in the browser). A job is nested for one machine: its 0,0 corner, cutting area and gaps.
 
 /** The sheet corner where the machine's 0,0 is; nesting packs the parts towards it. */
-import type { Technology } from "./technology";
+import type { TechSet } from "./technology";
 
 export type Origin = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
@@ -36,7 +36,7 @@ export interface Machine {
   /** Cutting beam diameter [mm]; 0 = not set. */
   kerfMm: number;
   /** Technology tables: cutting values per material and thickness (Settings -> Machines -> Technology). */
-  technologies?: Technology[];
+  technologies?: TechSet[];
 }
 
 export interface MachineList { defaultId: string; list: Machine[] }

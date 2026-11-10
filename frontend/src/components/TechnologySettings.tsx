@@ -3,13 +3,13 @@ import { NumInput } from "./NumInput";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
   TECH_COLUMNS, addThickness, inRange, newTechnology, technologiesCsv, technologiesFromDbf,
-  type RowKey, type Technology,
+  type RowKey, type TechSet,
 } from "../job/technology";
 
 /** Settings -> Machines -> Technology: the machine's technologies and their values per thickness. */
 export function TechnologySettings({ techs, onChange, machineName }: {
-  techs: Technology[];
-  onChange: (t: Technology[]) => void;
+  techs: TechSet[];
+  onChange: (t: TechSet[]) => void;
   machineName: string;
 }) {
   const [selId, setSelId] = useState<string | null>(techs[0]?.id ?? null);
@@ -19,10 +19,10 @@ export function TechnologySettings({ techs, onChange, machineName }: {
   const [newThick, setNewThick] = useState("");
   const thick = parseFloat(newThick.replace(",", "."));
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [ask, setAsk] = useState<null | { kind: "delete" } | { kind: "import"; found: Technology[] }>(null);
+  const [ask, setAsk] = useState<null | { kind: "delete" } | { kind: "import"; found: TechSet[] }>(null);
   const file = useRef<HTMLInputElement>(null);
 
-  const setTech = (patch: Partial<Technology>) => tech && onChange(techs.map((t) => (t.id === tech.id ? { ...t, ...patch } : t)));
+  const setTech = (patch: Partial<TechSet>) => tech && onChange(techs.map((t) => (t.id === tech.id ? { ...t, ...patch } : t)));
   const setCell = (i: number, k: RowKey, v: number) => tech && setTech({ rows: tech.rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)) });
   const addTag = () => {
     const t = tag.trim();
@@ -57,7 +57,7 @@ export function TechnologySettings({ techs, onChange, machineName }: {
     } catch (e) { setMsg({ text: `Could not read ${f.name}: ${(e as Error).message}`, bad: true }); }
     finally { if (file.current) file.current.value = ""; }
   };
-  const doImport = (found: Technology[]) => {
+  const doImport = (found: TechSet[]) => {
     // same name: replaced (keeping its material tags and range), else added
     const byName = new Map(techs.map((t) => [t.name.toLowerCase(), t]));
     const out = [...techs];
