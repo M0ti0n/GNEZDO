@@ -617,8 +617,8 @@ th.num .th-sort { flex-direction: row-reverse; }
   padding: 8px 14px 6px; background: var(--plate); border-bottom: 1px solid var(--line);
   overflow-x: auto; flex-shrink: 0; scrollbar-width: thin;
 }
-/* every tool the same width, so the boxes are evenly spaced; long names go on two lines */
-.itool { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; padding: 0; width: 72px; }
+/* every tool the same width (64px box, 8px between boxes); long names go on two lines */
+.itool { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; padding: 0; width: 70px; }
 .itool.is-wide { width: 97px; }
 .itool-box {
   display: grid; place-items: center; width: 64px; height: 58px;

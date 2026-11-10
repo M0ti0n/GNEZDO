@@ -41,18 +41,16 @@ const Nozzle = ({ beam }: { beam: string }) => (
 
 export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: ReactNode }[] = [
   {
-    id: "properties", label: "Properties", wide: true,
+    id: "properties", label: "Properties",
     icon: (
-      <Ico w={80}>
-        <rect x="14" y="5" width="30" height="38" stroke={K} strokeWidth="2.4" />
-        <circle cx="21" cy="14" r="2.6" fill="#22b14c" /><rect x="26" y="11.5" width="13" height="5" fill={K} />
-        <circle cx="21" cy="24" r="2.6" fill="#22b14c" /><rect x="26" y="21.5" width="13" height="5" fill={K} />
-        <circle cx="21" cy="34" r="2.6" fill={R} /><rect x="26" y="31.5" width="13" height="5" fill={K} />
-        <g transform="rotate(35 58 24)">
-          <rect x="54" y="4" width="8" height="6" fill={R} stroke={K} strokeWidth="1.8" />
-          <rect x="54" y="10" width="8" height="26" fill="#fff" stroke={K} strokeWidth="1.8" />
-          <path d="M54 36L58 44L62 36" fill="#fff" stroke={K} strokeWidth="1.8" />
-        </g>
+      <Ico>
+        <rect x="2" y="5" width="30" height="38" stroke={K} strokeWidth="2.4" />
+        <circle cx="9" cy="14" r="2.6" fill="#22b14c" /><rect x="14" y="11.5" width="13" height="5" fill={K} />
+        <circle cx="9" cy="24" r="2.6" fill="#22b14c" /><rect x="14" y="21.5" width="13" height="5" fill={K} />
+        <circle cx="9" cy="34" r="2.6" fill={R} /><rect x="14" y="31.5" width="13" height="5" fill={K} />
+        <rect x="37" y="4" width="8" height="6" fill={R} stroke={K} strokeWidth="1.8" />
+        <rect x="37" y="10" width="8" height="26" fill="#fff" stroke={K} strokeWidth="1.8" />
+        <path d="M37 36L41 44L45 36" fill="#fff" stroke={K} strokeWidth="1.8" />
       </Ico>
     ),
   },
