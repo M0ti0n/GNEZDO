@@ -1864,6 +1864,9 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 
 /* Scale tool: picked items, and the size / factor box */
 .scale-sel { fill: none; stroke: #22b14c; stroke-width: 5; opacity: .55; pointer-events: none; }
-.scale-bar { pointer-events: auto; }
-.scale-in { width: 120px; padding: 5px 8px; border: 1.5px solid var(--line); border-radius: 6px; font: inherit; }
-.scale-in:focus { outline: none; border-color: var(--blue); }
+/* Dynamic input: a box by the pointer, typed into straight away */
+.dyn-in { position: absolute; z-index: 5; display: flex; flex-direction: column; gap: 3px; width: 190px; padding: 6px 8px 7px;
+  background: #fff; border: 1.5px solid var(--blue); border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.dyn-label { font-family: var(--font-cond); font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-2); }
+.dyn-in input { width: 100%; padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; font: inherit; font-size: 15px; }
+.dyn-in input:focus { outline: none; border-color: var(--blue); }
