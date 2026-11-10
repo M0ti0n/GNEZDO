@@ -29,6 +29,11 @@ import toolAddSheet from "./jobtools/tool-addSheet.png";
 import toolNestReport from "./jobtools/tool-nestReport.png";
 import toolAutoCut from "./jobtools/tool-autoCut.png";
 import toolManualCut from "./jobtools/tool-manualCut.png";
+import toolBreakCut from "./jobtools/tool-breakCut.png";
+import toolMicroJoint from "./jobtools/tool-microJoint.png";
+import toolLeadInOut from "./jobtools/tool-leadInOut.png";
+import toolMovement from "./jobtools/tool-movement.png";
+import toolRemnant from "./jobtools/tool-remnant.png";
 import toolCostReport from "./jobtools/tool-costReport.png";
 
 // The icons are cut from Fab's design sheet as they are (tile icons on their tile colour).
@@ -69,6 +74,11 @@ const SECTIONS: Section[] = [
     id: "process", label: "Process", icon: tileProcess, tools: [
       { id: "autoCut", label: "Auto cut", icon: toolAutoCut, hint: "Auto cut: the cut order and lead-ins worked out for the sheet" },
       { id: "manualCut", label: "Manual cut", icon: toolManualCut, hint: "Manual cut: set the cut order by hand" },
+      { id: "breakCut", label: "Break cut", icon: toolBreakCut, hint: "Break cut: the contour stops a gap short of its start, so the part stays held in the sheet" },
+      { id: "microJoint", label: "Micro joint", icon: toolMicroJoint, hint: "Micro joint: small uncut places that keep the part in the sheet" },
+      { id: "leadInOut", label: "Lead in / out", icon: toolLeadInOut, hint: "Lead in / out: where and how the cut starts and ends on a contour" },
+      { id: "movement", label: "Movement", icon: toolMovement, hint: "Movement: the head's travel between contours" },
+      { id: "remnant", label: "Remnant", icon: toolRemnant, hint: "Remnant: the leftover part of the sheet kept for later" },
     ],
   },
   {
