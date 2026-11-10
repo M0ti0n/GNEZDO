@@ -7,6 +7,7 @@ import { ColourLinesDialog, applyColours } from "../import/ColourLinesDialog";
 import { angleOf, diameterOf, dimensionOf, pickEntity, radiusOf, type Measure, type Pick } from "../import/measure";
 import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
+import { DynamicInput } from "../components/DynamicInput";
 import { factorFor, factorText, parseScale, scalePart, sizeOf } from "../import/scale";
 import {
   endsOf,
@@ -115,15 +116,15 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   // Scale: the items picked (their size is read for "200mm") and what is typed
   const [scaleSel, setScaleSel] = useState<Set<string>>(new Set());
   const [scaleText, setScaleText] = useState("");
-  const scaleInput = useRef<HTMLInputElement>(null);
+  const [scaleAt, setScaleAt] = useState<Pt | null>(null);   // where the typing box shows (drawing mm)
   const scaleItems = useMemo(() => drawing.entities.filter((e) => scaleSel.has(e.id)), [drawing, scaleSel]);
-  const pickForScale = (ids: string[], toggle: boolean) => {
+  const pickForScale = (ids: string[], toggle: boolean, at: Pt) => {
     const next = new Set(scaleSel);
     const all = ids.every((id) => next.has(id));
     for (const id of ids) { if (toggle && all) next.delete(id); else next.add(id); }
     setScaleSel(next);
+    setScaleAt(at);
     setMessage(null);
-    setTimeout(() => scaleInput.current?.focus(), 0);
   };
   const applyScale = () => {
     const r = factorFor(parseScale(scaleText), scaleItems);
@@ -134,6 +135,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setSelected(null);
     setView(null);                                   // the part changed size: fit it again
     setScaleText("");
+    setScaleSel(new Set());                          // done: pick again to scale again
+    setScaleAt(null);
     const one = scaleItems.length === 1 ? sizeOf(scaleItems[0]) : null;
     setMessage({ text: `Part scaled ${factorText(r.k)}×${one ? ` (${one.what} ${num(one.mm)} → ${num(one.mm * r.k)} mm)` : ""}` });
   };
@@ -173,9 +176,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       // Scale: Ctrl+A picks the whole part (not while typing in a field other than the scale box)
       if (tool === "scale" && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && !document.querySelector(".dlg-backdrop")) {
         const t = e.target as HTMLElement | null;
-        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA") && t !== scaleInput.current) return;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA") && !t.closest(".dyn-in")) return;
         e.preventDefault();
-        pickForScale(drawing.entities.map((x) => x.id), false);
+        // the box at the part's top-right corner
+        pickForScale(drawing.entities.map((x) => x.id), false, { x: report.box.maxX, y: report.box.maxY });
         return;
       }
       if (e.key !== "Escape" || !tool) return;
@@ -263,7 +267,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
-    if ((e.target as Element).closest(".gcheck, .canvas-ui")) return;
+    if ((e.target as Element).closest(".gcheck, .canvas-ui, .dyn-in")) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut" || tool === "scale")) {
       const p = local(e);
@@ -348,11 +352,11 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) > 4) {
         const ids = idsInBox(b, view, drawing.entities);
         if (!ids.length) setMessage({ text: b.x1 < b.x0 ? "No line touches the box" : "No line is fully inside the box" });
-        else pickForScale(ids, true);
+        else pickForScale(ids, true, toModel(e.clientX, e.clientY, view));
         return;
       }
       const id = lineUnder(e.clientX, e.clientY);
-      if (id) pickForScale([id], true);
+      if (id) pickForScale([id], true, toModel(e.clientX, e.clientY, view));
       return;
     }
     if (tool === "commonCut" && b && view) {
@@ -526,6 +530,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMeasures([]);
     setKeep(new Set());
     setScaleSel(new Set());
+    setScaleAt(null);
     setScaleText("");
     setTool((t) => (t === id ? null : id));
   };
@@ -611,7 +616,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         onContextMenu={(e) => e.preventDefault()}
-        onDoubleClick={(e) => { if (!(e.target as Element).closest(".gcheck, .canvas-ui")) { setSelected(null); fitAll(); } }}
+        onDoubleClick={(e) => { if (!(e.target as Element).closest(".gcheck, .canvas-ui, .dyn-in")) { setSelected(null); fitAll(); } }}
       >
         {view && (
           <svg className={`drawing${processed ? " is-processed" : ""}`} width={size.w} height={size.h} aria-label={`Drawing ${drawing.fileName}`}>
@@ -700,6 +705,18 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
           </svg>
         )}
 
+        {tool === "scale" && view && scaleAt && scaleItems.length > 0 && (() => {
+          const one = scaleItems.length === 1 ? sizeOf(scaleItems[0]) : null;
+          const q = toScreen(scaleAt, view);
+          const label = scaleItems.length === drawing.entities.length ? "Whole part: scale factor"
+            : one ? `${one.what[0].toUpperCase()}${one.what.slice(1)} ${num(one.mm)} mm` : `${scaleItems.length} items: scale factor`;
+          return (
+            <DynamicInput x={q.x} y={q.y} w={size.w} h={size.h} label={label} value={scaleText}
+              placeholder={one ? `${num(one.mm)}mm or 2` : "2"}
+              onChange={setScaleText} onEnter={applyScale}
+              onEscape={() => { setScaleSel(new Set()); setScaleAt(null); setScaleText(""); setMessage({ text: "Selection cleared" }); }} />
+          );
+        })()}
         <aside className={`gcheck${checkOpen ? "" : " is-closed"}`} aria-label="Geometry check">
           <header className="gc-head">
             <span className="gc-head-icon" aria-hidden="true">{IMPORT_TOOLS.find((t) => t.id === "checkLines")?.icon}</span>
@@ -832,24 +849,6 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               <button type="button" className="btn btn-replace" onClick={sweepNow} disabled={sweepCount === 0}>Delete {sweepCount}</button>
             </span>
           )}
-          {tool === "scale" && (() => {
-            const one = scaleItems.length === 1 ? sizeOf(scaleItems[0]) : null;
-            const all = scaleItems.length === drawing.entities.length;
-            return (
-              <form className="sweep-bar scale-bar" onSubmit={(e) => { e.preventDefault(); applyScale(); }}>
-                <span>
-                  {!scaleItems.length ? "Nothing selected"
-                    : all ? "Whole part"
-                    : one ? `1 ${scaleItems[0].kind === "line" ? "line" : scaleItems[0].kind}, ${one.what} ${num(one.mm)} mm`
-                    : `${scaleItems.length} items`}
-                </span>
-                <input ref={scaleInput} className="scale-in" value={scaleText} onChange={(e) => setScaleText(e.target.value)}
-                  placeholder={one ? `${num(one.mm)}mm or 2` : "2"} aria-label="Size with a unit, or scale factor"
-                  onKeyDown={(e) => { if (e.key === "Escape") (e.target as HTMLInputElement).blur(); }} />
-                <button type="submit" className="btn btn-replace" disabled={!scaleItems.length || !scaleText.trim()}>Scale</button>
-              </form>
-            );
-          })()}
           <button className="btn btn-fit" onClick={() => { setSelected(null); fitAll(); }} title="Show the whole part (double-click)">Fit</button>
         </div>
       </div>
