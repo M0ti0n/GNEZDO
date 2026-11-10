@@ -48,13 +48,12 @@ interface Col {
 
 /**
  * Several values in one cell (materials, thicknesses, projects): small bubbles in at most two rows,
- * the column kept narrow; what doesn't fit is cut off and the whole list is in the tooltip.
- * One value: plain text, cut with "…" when too long.
+ * the column kept narrow; what doesn't fit is cut off and the whole list is in the tooltip. One
+ * value is a bubble too, so every row looks the same.
  */
 function Multi({ items, kind }: { items: string[]; kind: "mat" | "thk" | "proj" }) {
   if (!items.length) return <>–</>;
   const all = items.join(", ");
-  if (items.length === 1) return <span className={`cell-clip clip-${kind}`} title={all}>{items[0]}</span>;
   return (
     <span className={`bubbles bubbles-2 clip-${kind}`} title={all}>
       {items.map((v) => <span key={v} className={`bubble bubble-sm bubble-${kind}`}>{v}</span>)}
