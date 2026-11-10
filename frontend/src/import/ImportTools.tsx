@@ -161,6 +161,18 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     ),
   },
   {
+    // Fab's icon: the part (black) grows into the bigger red outline, a green arrow corner to corner
+    id: "scale", label: "Scale",
+    icon: (
+      <Ico>
+        <path d="M3.4 21V6.6H44.4V40.6H28.6" stroke={R} strokeWidth="3.2" strokeLinecap="butt" strokeLinejoin="miter" />
+        <rect x="3.4" y="25.6" width="20.8" height="15" stroke={K} strokeWidth="3.2" strokeLinejoin="miter" />
+        <path d="M26.6 22.5L37.6 13.2" stroke="#22b14c" strokeWidth="2.6" strokeLinecap="butt" />
+        <path d="M43 8.6L39.4 16.3L34.9 11Z" fill="#22b14c" stroke="#22b14c" strokeWidth="1" />
+      </Ico>
+    ),
+  },
+  {
     id: "trace", label: "Trace",
     icon: <Ico><Nozzle beam={G} /><path d="M7 33L42 41" stroke={G} strokeWidth="4" /></Ico>,
   },
