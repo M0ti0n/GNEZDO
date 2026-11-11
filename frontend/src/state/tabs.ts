@@ -1,7 +1,7 @@
 // The main area shows either a *view* (Home, Job search, Import, Settings ...), chosen from the
 // side rail or the GNEZDO menu, or an open *document tab* (a job, later a part) from the green bar.
 
-export type ViewKind = "home" | "jobSearch" | "import" | "projects" | "settings" | "rules" | "stock" | "technology";
+export type ViewKind = "home" | "jobSearch" | "remnants" | "import" | "projects" | "settings" | "rules" | "stock" | "technology";
 export type TabKind = "job" | "part" | "drawing";   // drawing = an imported file being checked
 export type PageKind = ViewKind | TabKind;
 
@@ -31,6 +31,7 @@ export const initialShell: ShellState = { view: "home", tabs: [], activeId: null
 export const VIEW_TITLE: Record<ViewKind, string> = {
   home: "Home",
   jobSearch: "Job search",
+  remnants: "Remnants",
   import: "Import",
   projects: "Projects",
   settings: "Settings",

@@ -2153,3 +2153,28 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .rem-name { fill: #d62828; stroke: #fff; paint-order: stroke; font-weight: 600; text-anchor: middle; dominant-baseline: central; font-family: var(--font); }
 .rem-name.is-saved { fill: #1f8a3b; }
 .rem-name.is-discarded { fill: var(--ink-3); }
+
+/* Remnants (left rail -> Remnants) */
+.rb-page { max-width: none; display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.rb-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; padding: 14px 16px 20px;
+  background: var(--sheet, #eef2f1); align-content: start; }
+.rb-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 12px; background: #fff; border: 1.5px solid var(--line); border-radius: 10px; }
+.rb-card:hover { border-color: var(--green); box-shadow: 0 2px 10px rgba(0, 0, 0, .06); }
+.rb-head { display: flex; align-items: center; gap: 6px; }
+.rb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.rb-head .btn { height: 28px; padding: 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; background: transparent; }
+.rb-edit { border-color: var(--green); color: var(--green-ink); }
+.rb-edit:hover { background: var(--green-tint) !important; }
+.rb-del { border-color: #f2c4c2; color: #c8171d; }
+.rb-del:hover { background: #fde8e8 !important; border-color: #e88f8c; }
+.rb-frame { position: relative; aspect-ratio: 4 / 3; border: 2px solid var(--green); border-radius: 6px; padding: 8px; display: grid; place-items: center; }
+.rb-pic { width: 100%; height: 100%; }
+.rb-pic path { fill: #c9cdd1; stroke: #1b1b1b; stroke-width: 2; }
+.rb-qty { position: absolute; top: 6px; right: 8px; font-weight: 700; font-size: 13px; color: var(--green-ink); }
+.rb-size { text-align: center; font-size: 15px; font-weight: 600; }
+.rb-foot { display: flex; justify-content: space-between; font-size: 15px; }
+.rb-dlg { width: min(560px, calc(100vw - 32px)); }
+.rb-form { display: flex; flex-direction: column; gap: 10px; padding: 4px 20px 0; }
+.rb-form .mc-field .field { width: 100%; }
+.rb-form .mc-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-top: 0; }
+.rb-form .mc-field input { width: 100%; }

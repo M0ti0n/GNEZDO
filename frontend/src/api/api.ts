@@ -365,7 +365,9 @@ export interface SavedRemnant {
   qty?: number;
   widthMm: number; heightMm: number; areaMm2: number;
   outline: number[][]; holes?: number[][][]; window?: boolean;
-  savedAt?: string; savedBy?: string;
+  /** projects of the parts on the sheet it came from */
+  projects?: string[];
+  savedAt?: string; savedBy?: string; modifiedAt?: string; modifiedBy?: string;
 }
 const REMNANTS_KEY = "gnezdo.remnants";
 const localRemnants = (): SavedRemnant[] => { try { return JSON.parse(localStorage.getItem(REMNANTS_KEY) ?? "[]"); } catch { return []; } };
@@ -386,7 +388,12 @@ export const api = {
   saveRemnants: async (items: SavedRemnant[]): Promise<void> => {
     if (useApi) { await post("/api/remnants", { items }); return; }
     const names = new Set(items.map((i) => i.name));
-    setLocalRemnants([...localRemnants().filter((r) => !names.has(r.name)), ...items.map((i) => ({ ...i, savedAt: new Date().toISOString() }))]);
+    const now = new Date().toISOString();
+    const before = new Map(localRemnants().map((r) => [r.name, r]));
+    setLocalRemnants([...localRemnants().filter((r) => !names.has(r.name)), ...items.map((i) => {
+      const was = before.get(i.name)?.savedAt ?? i.savedAt;
+      return was ? { ...i, savedAt: was, modifiedAt: now } : { ...i, savedAt: now, modifiedAt: undefined };
+    })]);
   },
   /** Takes remnants out of the saved ones (DISCARD of a saved one). */
   deleteRemnants: async (names: string[]): Promise<void> => {

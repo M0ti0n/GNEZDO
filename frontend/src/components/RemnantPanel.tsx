@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../api/api";
+import type { JobPart } from "../api/types";
 import { diag } from "../job/diag";
 import type { NestedSheet } from "../job/nest";
 import { computeRemnant, cutAt, cutNear, remnantRecord, remnantValid, type RemnantMode, type RemnantSettings, type SheetRemnant } from "../job/remnant";
@@ -39,7 +40,9 @@ const DiscardIcon = () => (
   <svg viewBox="0 0 20 20" width="18" height="18" aria-label="Discarded"><path d="M4 4l12 12M16 4L4 16" stroke="#d62828" strokeWidth="3" strokeLinecap="round" /></svg>
 );
 
-export function useRemnant({ index, single, sheets, parts, jobName, settings, onRemnant }: {
+export function useRemnant({ index, single, sheets, parts, jobParts = [], jobName, settings, onRemnant }: {
+  /** the job's parts (the projects a saved remnant came from) */
+  jobParts?: JobPart[];
   /** the sheet shown or selected */
   index: number;
   /** one sheet shown (the cut tools work there) */
@@ -93,7 +96,11 @@ export function useRemnant({ index, single, sheets, parts, jobName, settings, on
     if (!sheet || !rem || !picked.length || busy) return;
     setBusy(true);
     try {
-      if (status === "saved") await api.saveRemnants(picked.map((p) => remnantRecord(p, sheet, jobName, index + 1)));
+      if (status === "saved") {
+        const byId = new Map(jobParts.map((jp) => [jp.part.id, jp.part.project]));
+        const projects = [...new Set(sheet.parts.map((sp) => byId.get(sp.partId)).filter((x): x is string => !!x))].sort();
+        await api.saveRemnants(picked.map((p) => remnantRecord(p, sheet, jobName, index + 1, projects)));
+      }
       else {
         const wasSaved = picked.filter((p) => p.status === "saved").map((p) => p.name);
         if (wasSaved.length) await api.deleteRemnants(wasSaved);

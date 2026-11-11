@@ -692,11 +692,12 @@ export function cutNear(rem: SheetRemnant, x: number, y: number, tol: number): n
 }
 
 /** A remnant as it is saved: its outline from its box's corner, with what it is. */
-export function remnantRecord(p: RemnantPiece, sheet: NestedSheet, jobName: string, sheetNo: number) {
+export function remnantRecord(p: RemnantPiece, sheet: NestedSheet, jobName: string, sheetNo: number, projects: string[] = []) {
   const rel = (l: Pt[]) => l.map(([x, y]) => [Math.round((x - p.x0) * 10) / 10, Math.round((y - p.y0) * 10) / 10]);
   return {
     name: p.name, material: sheet.material, thicknessMm: sheet.thicknessMm, job: jobName, sheet: sheetNo, qty: sheet.cutNumber ?? 1,
     widthMm: Math.round(p.x1 - p.x0), heightMm: Math.round(p.y1 - p.y0), areaMm2: p.areaMm2,
     outline: rel(p.outline), ...(p.holes ? { holes: p.holes.map(rel) } : {}), ...(p.window ? { window: true } : {}),
+    ...(projects.length ? { projects } : {}),
   };
 }

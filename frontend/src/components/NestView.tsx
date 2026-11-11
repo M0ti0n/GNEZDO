@@ -145,7 +145,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
     onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
   });
   const rm = useRemnant({
-    index: Math.min(full ?? sheetNo, Math.max(0, sheets.length - 1)), single: full !== null, sheets, parts: byId, jobName,
+    index: Math.min(full ?? sheetNo, Math.max(0, sheets.length - 1)), single: full !== null, sheets, parts: byId, jobParts: parts, jobName,
     settings: remnantSettings, onRemnant: (k, remnant) => sol && onEditSheet(sol.id, k, { remnant }),
   });
   const cutOn = !!process && !!sol && !!finished && sheets.length > 0;
