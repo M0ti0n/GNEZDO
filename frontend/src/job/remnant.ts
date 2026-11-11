@@ -26,9 +26,11 @@ export interface RemnantSettings {
   minAreaPct: number;
   /** RECTANGULAR: the first cut runs along X (across the sheet's length) or along Y */
   rectDir: "x" | "y";
+  /** SKELET follows a part's arcs from this radius up; smaller rounded corners count as sharp [mm] */
+  minRadiusMm: number;
 }
 
-export const DEFAULT_REMNANT_SETTINGS: RemnantSettings = { minDistMm: 10, minEdgeMm: 100, minAreaPct: 3, rectDir: "x" };
+export const DEFAULT_REMNANT_SETTINGS: RemnantSettings = { minDistMm: 10, minEdgeMm: 100, minAreaPct: 3, rectDir: "x", minRadiusMm: 20 };
 
 /** An open cut added by hand (CUT V / CUT H): at x (vertical) or y (horizontal), from..to along the other axis. */
 export interface RemnantCut { axis: "v" | "h"; at: number; from: number; to: number }
@@ -97,32 +99,6 @@ function fillLoops(g: Grid, m: Uint8Array | Int32Array, loops: Pt[][], v: number
   }
 }
 
-/** Squared distance (in cells) from every cell to the nearest marked one (Felzenszwalb). */
-function distance2(g: Grid, on: Uint8Array): Float64Array {
-  const INF = 1e20, { nx, ny } = g;
-  const d = new Float64Array(nx * ny);
-  for (let k = 0; k < d.length; k++) d[k] = on[k] ? 0 : INF;
-  const n = Math.max(nx, ny);
-  const f = new Float64Array(n), z = new Float64Array(n + 1), out = new Float64Array(n);
-  const v = new Int32Array(n);
-  const pass = (len: number, get: (i: number) => number, set: (i: number, x: number) => void) => {
-    for (let i = 0; i < len; i++) f[i] = get(i);
-    let k = 0;
-    v[0] = 0; z[0] = -INF; z[1] = INF;
-    for (let q = 1; q < len; q++) {
-      let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
-      while (s <= z[k]) { k--; s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
-      k++; v[k] = q; z[k] = s; z[k + 1] = INF;
-    }
-    k = 0;
-    for (let q = 0; q < len; q++) { while (z[k + 1] < q) k++; out[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; }
-    for (let i = 0; i < len; i++) set(i, out[i]);
-  };
-  for (let i = 0; i < nx; i++) pass(ny, (j) => d[j * nx + i], (j, x) => { d[j * nx + i] = x; });
-  for (let j = 0; j < ny; j++) pass(nx, (i) => d[j * nx + i], (i, x) => { d[j * nx + i] = x; });
-  return d;
-}
-
 interface Placed { loops: Pt[][]; holes: Pt[][] }
 
 function placedParts(sheet: NestedSheet, paths: Map<string, string>): Placed[] {
@@ -134,14 +110,152 @@ function placedParts(sheet: NestedSheet, paths: Map<string, string>): Placed[] {
 }
 
 /** The parts' cells (1) and the cells within the minimum distance of them (dilated). */
-function occupied(g: Grid, parts: Placed[], dist: number) {
-  const occ = new Uint8Array(g.nx * g.ny);
-  for (const p of parts) if (p.loops.length) fillLoops(g, occ, p.loops, 1);
-  const d2 = distance2(g, occ);
-  const lim = (dist / g.r + 0.5) ** 2;
-  const dil = new Uint8Array(occ.length);
-  for (let k = 0; k < dil.length; k++) dil[k] = d2[k] <= lim ? 1 : 0;
-  return { occ, dil };
+/** Cells inside the loops by the non-zero rule (an offset outline may cross itself): `cb(k)` for each. */
+function scanNonzero(g: Grid, loops: Pt[][], cb: (k: number) => void) {
+  let y0 = Infinity, y1 = -Infinity;
+  for (const lp of loops) for (const p of lp) { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+  const j0 = Math.max(0, Math.floor(y0 / g.r)), j1 = Math.min(g.ny - 1, Math.ceil(y1 / g.r));
+  for (let j = j0; j <= j1; j++) {
+    const y = (j + 0.5) * g.r;
+    const xs: [number, number][] = [];
+    for (const lp of loops) for (let k = 0, n = lp.length; k < n; k++) {
+      const a = lp[k], b = lp[(k + 1) % n];
+      if ((a[1] > y) !== (b[1] > y)) xs.push([a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1]), b[1] > a[1] ? 1 : -1]);
+    }
+    xs.sort((p, q) => p[0] - q[0]);
+    let w = 0;
+    for (let k = 0; k + 1 < xs.length; k++) {
+      w += xs[k][1];
+      if (!w) continue;
+      const i0 = Math.max(0, Math.ceil(xs[k][0] / g.r - 0.5)), i1 = Math.min(g.nx - 1, Math.floor(xs[k + 1][0] / g.r - 0.5));
+      for (let i = i0; i <= i1; i++) cb(j * g.nx + i);
+    }
+  }
+}
+
+const signedArea = (lp: Pt[]) => lp.reduce((s, p, i) => { const q = lp[(i + 1) % lp.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2;
+
+/**
+ * Rounded corners of a part with a radius under `minR` made sharp (the corner of the two straight edges
+ * round them): the remnant then gets a sharp corner there; bigger arcs stay and the remnant follows them.
+ * Only corners pointing out of the part (the part grows, never shrinks).
+ */
+function sharpen(lp: Pt[], minR: number): Pt[] {
+  const n = lp.length;
+  if (n < 5 || minR <= 0) return lp;
+  const orient = Math.sign(signedArea(lp));
+  const turn: number[] = [], small: boolean[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = lp[(i - 1 + n) % n], b = lp[i], c = lp[(i + 1) % n];
+    const ux = b[0] - a[0], uy = b[1] - a[1], vx = c[0] - b[0], vy = c[1] - b[1];
+    const l1 = Math.hypot(ux, uy), l2 = Math.hypot(vx, vy);
+    const t = Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+    turn.push(t);
+    const R = ((l1 + l2) / 2) / (2 * Math.sin(Math.abs(t) / 2) || 1e-9);
+    // a vertex of a small arc: a slight turn between short pieces, outwards
+    small.push(Math.abs(t) > 0.005 && Math.abs(t) < 1.05 && R < minR && Math.sign(t) === orient && Math.min(l1, l2) < minR);
+  }
+  // the arc's end points (between a short chord and the straight edge) belong to it: the corner then
+  // comes from the straight edges themselves
+  const seg = (i: number) => Math.hypot(lp[(i + 1) % n][0] - lp[i][0], lp[(i + 1) % n][1] - lp[i][1]);
+  const ext = small.slice();
+  for (let i = 0; i < n; i++) {
+    if (!small[i]) continue;
+    const pv = (i - 1 + n) % n, nv = (i + 1) % n;
+    if (!small[pv] && seg(pv) < minR / 2) ext[pv] = true;
+    if (!small[nv] && seg(i) < minR / 2) ext[nv] = true;
+  }
+  for (let i = 0; i < n; i++) small[i] = ext[i];
+  // vertex i and i + 1 are of one arc: both on arcs and a short chord between them
+  const link = (i: number) => small[i] && small[(i + 1) % n] && seg(i) < minR / 2;
+  const start = Array.from({ length: n }, (_, i) => i).find((i) => !link((i - 1 + n) % n));
+  if (start === undefined) return lp;   // round all the way (a disc): keep
+  const out: Pt[] = [];
+  for (let t = 0; t < n; t++) {
+    const i = (start + t) % n;
+    if (!small[i]) { out.push(lp[i]); continue; }
+    // one arc: i .. j
+    let j = i, m = 1;
+    while (m < n - t && link(j)) { j = (j + 1) % n; m++; }
+    const total = Array.from({ length: m }, (_, k) => turn[(i + k) % n]).reduce((x, y) => x + y, 0);
+    const a = lp[(i - 1 + n) % n], b = lp[i], c = lp[j], d = lp[(j + 1) % n];
+    const ux = b[0] - a[0], uy = b[1] - a[1], vx = d[0] - c[0], vy = d[1] - c[1];
+    const den = ux * vy - uy * vx;
+    let used = false;
+    if (m > 1 && Math.abs(total) < 3.0 && Math.abs(den) > 1e-9) {
+      const tt = ((c[0] - a[0]) * vy - (c[1] - a[1]) * vx) / den;
+      const X: Pt = [a[0] + tt * ux, a[1] + tt * uy];
+      if (Math.hypot(X[0] - b[0], X[1] - b[1]) < 3 * minR) { out.push(X); used = true; }
+    }
+    if (!used) for (let k = 0; k < m; k++) out.push(lp[(i + k) % n]);
+    t += m - 1;
+  }
+  return out;
+}
+
+/** The loop moved out (grow) or in by `d`, sharp corners (a very sharp corner is cut off at 3 d). */
+function offsetLoop(lp: Pt[], d: number, grow: boolean): Pt[] {
+  const n = lp.length;
+  if (n < 3 || d <= 0) return lp;
+  const one = (sign: number) => {
+    const nrm = lp.map((a, i) => { const b = lp[(i + 1) % n]; const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-9; return [(sign * (b[1] - a[1])) / l, (sign * -(b[0] - a[0])) / l] as Pt; });
+    const out: Pt[] = [];
+    for (let i = 0; i < n; i++) {
+      const n0 = nrm[(i - 1 + n) % n], n1 = nrm[i], v = lp[i];
+      const bx = n0[0] + n1[0], by = n0[1] + n1[1];
+      const c = (1 + n0[0] * n1[0] + n0[1] * n1[1]) / 2;   // cos² of half the angle between the normals
+      if (c < 1e-6) { out.push([v[0] + n0[0] * d, v[1] + n0[1] * d], [v[0] + n1[0] * d, v[1] + n1[1] * d]); continue; }
+      const k = d / (2 * c);                                // miter: along the sum of the normals
+      if (k * Math.hypot(bx, by) > 3 * d) out.push([v[0] + n0[0] * d, v[1] + n0[1] * d], [v[0] + n1[0] * d, v[1] + n1[1] * d]);
+      else out.push([v[0] + bx * k, v[1] + by * k]);
+    }
+    return out;
+  };
+  const a = one(1), A = Math.abs(signedArea(lp));
+  return (Math.abs(signedArea(a)) > A) === grow ? a : one(-1);
+}
+
+/** The cells within the minimum distance of a part (the parts' outlines offset, sharp corners). */
+function occupied(g: Grid, parts: Placed[], dist: number, minR: number) {
+  const cover = new Uint16Array(g.nx * g.ny);
+  for (const p of parts) {
+    if (!p.loops.length) continue;
+    scanNonzero(g, [offsetLoop(sharpen(p.loops[0], minR), dist, true)], (k) => { cover[k]++; });
+  }
+  // a part's windows are free, shrunk by the distance (parts lying in them keep their cells)
+  for (const p of parts) for (const h of p.holes) {
+    const sh = offsetLoop(h, dist, false);
+    if (Math.abs(signedArea(sh)) < 1 || Math.sign(signedArea(sh)) !== Math.sign(signedArea(h))) continue;
+    scanNonzero(g, [sh], (k) => { if (cover[k]) cover[k]--; });
+  }
+  const dil = new Uint8Array(cover.length);
+  for (let k = 0; k < dil.length; k++) dil[k] = cover[k] ? 1 : 0;
+  return { dil };
+}
+
+/** Square dilation by k cells (rows, then columns; sharp corners stay sharp). */
+function boxDilate(g: Grid, m: Uint8Array, k: number): Uint8Array {
+  const { nx, ny } = g;
+  const a = new Uint8Array(m.length), b = new Uint8Array(m.length);
+  for (let j = 0; j < ny; j++) {
+    let cnt = 0;
+    for (let i = 0; i < Math.min(k, nx); i++) cnt += m[j * nx + i];
+    for (let i = 0; i < nx; i++) {
+      if (i + k < nx) cnt += m[j * nx + i + k];
+      if (i - k - 1 >= 0) cnt -= m[j * nx + i - k - 1];
+      a[j * nx + i] = cnt > 0 ? 1 : 0;
+    }
+  }
+  for (let i = 0; i < nx; i++) {
+    let cnt = 0;
+    for (let j = 0; j < Math.min(k, ny); j++) cnt += a[j * nx + i];
+    for (let j = 0; j < ny; j++) {
+      if (j + k < ny) cnt += a[(j + k) * nx + i];
+      if (j - k - 1 >= 0) cnt -= a[(j - k - 1) * nx + i];
+      b[j * nx + i] = cnt > 0 ? 1 : 0;
+    }
+  }
+  return b;
 }
 
 // ------------------------------------------------------------------ outlines of cell groups
@@ -386,14 +500,17 @@ function rectRegion(g: Grid, dil: Uint8Array, s: RemnantSettings): Region | null
 
 /** SKELET: every free stretch at the minimum distance from the parts; windows in parts are remnants too. */
 function skeletRegion(g: Grid, dil: Uint8Array, parts: Placed[], s: RemnantSettings): Region {
-  // free cells, without channels narrower than the smallest edge (an opening: what a disc of that size reaches)
-  const rad2 = (s.minEdgeMm / 2 / g.r) ** 2;
-  const fromParts = distance2(g, dil);
+  // free cells, without channels narrower than the smallest edge (an opening with a square: corners stay sharp)
+  const k = Math.max(1, Math.round(s.minEdgeMm / 2 / g.r));
+  const free = new Uint8Array(dil.length);
+  for (let i = 0; i < free.length; i++) free[i] = dil[i] ? 0 : 1;
+  // erode (= the parts grown by k, inverted), then grow back
+  const grownParts = boxDilate(g, dil, k);
   const core = new Uint8Array(dil.length);
-  for (let k = 0; k < core.length; k++) core[k] = !dil[k] && fromParts[k] > rad2 ? 1 : 0;
-  const fromCore = distance2(g, core);
+  for (let i = 0; i < core.length; i++) core[i] = grownParts[i] ? 0 : 1;
+  const opened = boxDilate(g, core, k);
   const mask = new Int32Array(g.nx * g.ny);
-  for (let k = 0; k < mask.length; k++) mask[k] = !dil[k] && fromCore[k] <= rad2 ? 1 : 0;
+  for (let i = 0; i < mask.length; i++) mask[i] = free[i] && opened[i] ? 1 : 0;
   // windows: free cells in a part's hole
   const windows = new Set<number>();
   const win = new Int32Array(g.nx * g.ny);
@@ -487,13 +604,13 @@ export interface RemnantInput {
 
 const cache = new Map<string, { g: Grid; dil: Uint8Array; parts: Placed[] }>();
 
-function base(sheet: NestedSheet, paths: Map<string, string>, dist: number) {
-  const k = `${sheet.lengthMm}x${sheet.widthMm}|${dist}|${sheetPartsKey(sheet)}`;
+function base(sheet: NestedSheet, paths: Map<string, string>, dist: number, minR: number) {
+  const k = `${sheet.lengthMm}x${sheet.widthMm}|${dist}|${minR}|${sheetPartsKey(sheet)}`;
   let c = cache.get(k);
   if (!c) {
     const g = gridOf(sheet.lengthMm, sheet.widthMm);
     const parts = placedParts(sheet, paths);
-    const dil = occupied(g, parts, dist).dil;
+    const dil = occupied(g, parts, dist, minR).dil;
     // a shaped sheet (a remnant itself): nothing outside its outline
     if (sheet.outline?.length) {
       const inside = new Uint8Array(dil.length);
@@ -510,7 +627,7 @@ function base(sheet: NestedSheet, paths: Map<string, string>, dist: number) {
 /** The sheet's remnant for this mode (and the hand cuts given). */
 export function computeRemnant(q: RemnantInput): SheetRemnant {
   const { sheet, settings: s } = q;
-  const { g, dil, parts } = base(sheet, q.paths, s.minDistMm);
+  const { g, dil, parts } = base(sheet, q.paths, s.minDistMm, s.minRadiusMm ?? DEFAULT_REMNANT_SETTINGS.minRadiusMm);
   const region = q.mode === "trim" ? trimRegion(g, dil, s) : q.mode === "rect" ? rectRegion(g, dil, s) : skeletRegion(g, dil, parts, s);
   const empty: SheetRemnant = { mode: q.mode, settings: s, at: new Date().toISOString(), key: sheetPartsKey(sheet), lines: [], cuts: q.cuts ?? [], pieces: [] };
   if (!region) return empty;
@@ -541,7 +658,7 @@ export function computeRemnant(q: RemnantInput): SheetRemnant {
  * (a remnant edge or the sheet's). null: the point is not on a remnant.
  */
 export function cutAt(sheet: NestedSheet, paths: Map<string, string>, rem: SheetRemnant, axis: "v" | "h", x: number, y: number): RemnantCut | null {
-  const { g, dil, parts } = base(sheet, paths, rem.settings.minDistMm);
+  const { g, dil, parts } = base(sheet, paths, rem.settings.minDistMm, rem.settings.minRadiusMm ?? DEFAULT_REMNANT_SETTINGS.minRadiusMm);
   const region = rem.mode === "trim" ? trimRegion(g, dil, rem.settings) : rem.mode === "rect" ? rectRegion(g, dil, rem.settings) : skeletRegion(g, dil, parts, rem.settings);
   if (!region) return null;
   const { lab } = piecesOf(g, region, rem.cuts, rem.settings, sheet.lengthMm * sheet.widthMm, rem.mode === "skelet");

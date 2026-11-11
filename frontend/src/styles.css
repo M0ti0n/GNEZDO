@@ -2095,7 +2095,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .ac-help { margin: 0; }
 .ac-pickbar { flex: none; display: flex; gap: 8px; }
 .ac-pickbar .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-align: center; text-transform: uppercase; letter-spacing: .03em; }
-.ac-pickbar .btn { background: #fff; }
+.ac-pickbar .btn { background: transparent; }
 .ac-pickbar .btn:hover:not(:disabled) { background: var(--green-tint); border-color: var(--green); }
 .ac-pickbar .btn.ac-clear:hover:not(:disabled) { background: #fde8e8; border-color: #f2c4c2; color: #c8171d; }
 .ac-pickbar .btn.is-on { background: var(--green-tint); border-color: var(--green); color: var(--green-ink); }
@@ -2134,6 +2134,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .rm-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .rm-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px 5px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff;
   font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-2); cursor: pointer; }
+.rm-btn { background: transparent; }
 .rm-btn img { width: 44px; height: 44px; }
 .rm-btn:hover:not(:disabled) { background: var(--green-tint); border-color: var(--green); }
 .rm-btn.is-on { background: var(--green-tint); border-color: var(--green); color: var(--green-ink); box-shadow: 0 0 0 2px var(--green-tint); }
@@ -2143,10 +2144,10 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .rm-name.is-discarded { color: var(--ink-3); text-decoration: line-through; }
 .rm-name.is-saved { border-color: #1f8a3b; }
 .rem-layer { pointer-events: none; }
-.rem-piece { stroke: #e23b3b; stroke-opacity: .35; }
+.rem-piece { stroke: #d62828; stroke-opacity: .8; }
 .rem-piece.is-window { stroke: #1e88e5; stroke-opacity: 1; }
 .rem-piece.is-discarded { opacity: .35; }
-.rem-hatch-line { stroke: #e23b3b; stroke-opacity: .45; }
+.rem-hatch-line { stroke: #d62828; stroke-opacity: .75; }
 .rem-line { fill: none; stroke: #e3262b; stroke-linecap: round; stroke-linejoin: round; }
 .rem-cut { stroke: #e000d0; stroke-linecap: round; }
 .rem-name { fill: #d62828; stroke: #fff; paint-order: stroke; font-weight: 600; text-anchor: middle; dominant-baseline: central; font-family: var(--font); }

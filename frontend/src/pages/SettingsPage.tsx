@@ -297,8 +297,10 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
               <NumInput value={stock.remnant.minEdgeMm} min={1} aria-label="Smallest remnant edge (mm)" onCommit={(n) => setRem({ minEdgeMm: n })} /></label>
             <label className="mc-field"><span>Smallest remnant (% of the sheet)</span>
               <NumInput value={stock.remnant.minAreaPct} min={0} aria-label="Smallest remnant (% of the sheet)" onCommit={(n) => setRem({ minAreaPct: Math.min(100, n) })} /></label>
+            <label className="mc-field"><span>SKELET: smallest arc followed (mm)</span>
+              <NumInput value={stock.remnant.minRadiusMm} min={0} aria-label="Smallest arc radius SKELET follows (mm)" onCommit={(n) => setRem({ minRadiusMm: n })} /></label>
           </div>
-          <p className="rule-help">No remnant edge, and no step of a TRIM outline, shorter than the smallest edge; a smaller piece is scrap and is not listed.</p>
+          <p className="rule-help">No remnant edge, and no step of a TRIM outline, shorter than the smallest edge; a smaller piece is scrap and is not listed. SKELET keeps sharp corners: it follows a part's arc only from this radius up (a smaller rounded corner counts as sharp). TRIM and RECTANGULAR use straight lines only.</p>
           <div className="mc-row">
             <span className="mc-sub">RECTANGULAR: first cut</span>
             <label className="chk"><input type="radio" name="rem-dir" checked={stock.remnant.rectDir === "x"} onChange={() => setRem({ rectDir: "x" })} /> Along X (the whole length, then up to it)</label>

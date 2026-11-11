@@ -18,8 +18,8 @@ export function RemnantOverlay({ sheet, s, names = true }: { sheet: NestedSheet;
   return (
     <g className="rem-layer">
       <defs>
-        <pattern id={id} patternUnits="userSpaceOnUse" width={px(12)} height={px(12)} patternTransform="rotate(45)">
-          <line x1={0} y1={0} x2={0} y2={px(12)} className="rem-hatch-line" style={{ strokeWidth: px(1.6) }} />
+        <pattern id={id} patternUnits="userSpaceOnUse" width={px(9)} height={px(9)} patternTransform="rotate(45)">
+          <line x1={0} y1={0} x2={0} y2={px(9)} className="rem-hatch-line" style={{ strokeWidth: px(2) }} />
         </pattern>
       </defs>
       {rem.pieces.map((p, k) => (
