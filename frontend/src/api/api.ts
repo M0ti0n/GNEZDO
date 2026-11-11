@@ -367,6 +367,10 @@ export interface SavedRemnant {
   outline: number[][]; holes?: number[][][]; window?: boolean;
   /** projects of the parts on the sheet it came from */
   projects?: string[];
+  /** a note about it (protective foil on top, badly scratched ...) */
+  note?: string;
+  /** imported from a drawing (Import remnant): its file name */
+  file?: string;
   savedAt?: string; savedBy?: string; modifiedAt?: string; modifiedBy?: string;
 }
 const REMNANTS_KEY = "gnezdo.remnants";
