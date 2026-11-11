@@ -129,10 +129,9 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
   const partNo = (i: number) => { const p = sheet.parts[i]; return p ? byPart.get(p.partId)?.no : undefined; };
   const panel = (
     <aside className="mn-parts ac" aria-label="Auto cut">
-      <header className="sol-head"><h2>Auto cut</h2></header>
+      <header className="sol-head ac-head"><span className="itool-box ac-icon-sm" aria-hidden="true"><img src={toolAutoCut} alt="" draggable={false} /></span><h2>Auto cut</h2></header>
       <div className="ac-body">
         <div className="ac-top">
-          <span className="itool-box ac-icon" aria-hidden="true"><img src={toolAutoCut} alt="" draggable={false} /></span>
           <div className="ac-main">
             <label className="ac-field"><span>Select mode</span>
               <select className="field" value={mode} title={MODES.find((m) => m.id === mode)?.hint}

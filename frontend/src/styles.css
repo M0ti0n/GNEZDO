@@ -2125,3 +2125,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .sheet-mark.is-open { stroke: var(--ln-open-done); }
 .ac-msg { margin: 0; }
 .nest-side .ac { flex: 1; min-height: 0; }
+
+.ac-head { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
+.ac-icon-sm { flex: none; width: 32px; height: 29px; border-radius: 6px; border-width: 1px; cursor: default; }
+.ac-icon-sm img { width: 25px; height: 25px; }
