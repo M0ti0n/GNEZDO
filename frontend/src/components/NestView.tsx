@@ -9,6 +9,11 @@ import type { Machine, Origin } from "../job/machine";
 import type { StockSheet } from "../job/stock";
 import { ManualNest } from "./ManualNest";
 import { useAutoCut } from "./CutView";
+import { useRemnant } from "./RemnantPanel";
+import { RemnantOverlay } from "./RemnantOverlay";
+import { DEFAULT_REMNANT_SETTINGS, type RemnantSettings } from "../job/remnant";
+
+export type ProcessTool = "autoCut" | "remnant";
 import { liveContours, processedParts } from "../job/cutPath";
 import { SheetPropertiesDialog } from "./SheetPropertiesDialog";
 import { strategyLabel } from "./CustomNestDialog";
@@ -51,8 +56,12 @@ interface Props {
   onManualOpened?: () => void;
   /** "solId:index" of the sheet being nested again */
   renesting: string | null;
-  /** Process (Auto cut) open: the sheet with the AUTO CUT panel */
-  process?: boolean;
+  /** Process open, with this tool's panel (AUTO CUT / REMNANT) */
+  process?: false | ProcessTool;
+  /** the job's name (remnant names) */
+  jobName?: string;
+  /** Settings -> Stock -> Remnants */
+  remnantSettings?: RemnantSettings;
   /** the job was never saved (Multi sheet saves it first) */
   needsSave?: boolean;
   onSaveJob?: () => Promise<boolean>;
@@ -86,6 +95,7 @@ export function SheetSvg({ sheet, parts, titles, cut = false }: { sheet: NestedS
         );
       })}
       {marks.map((m, k) => <path key={`m${k}`} className={`sheet-mark is-${m.kind}`} d={m.pts.map(([x, y], j) => `${j ? "L" : "M"}${x} ${y}`).join("")} />)}
+      {cut && <RemnantOverlay sheet={sheet} names={false} />}
     </svg>
   );
 }
@@ -98,7 +108,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false, process = false, needsSave = false, onSaveJob }: Props) {
+export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false, process = false, needsSave = false, onSaveJob, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -134,7 +144,12 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
     machine, origin: sol?.origin ?? machine.origin, needsSave, onSave: onSaveJob ?? (async () => true),
     onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
   });
-  const cutOn = process && !!sol && !!finished && sheets.length > 0;
+  const rm = useRemnant({
+    index: Math.min(full ?? sheetNo, Math.max(0, sheets.length - 1)), single: full !== null, sheets, parts: byId, jobName,
+    settings: remnantSettings, onRemnant: (k, remnant) => sol && onEditSheet(sol.id, k, { remnant }),
+  });
+  const cutOn = !!process && !!sol && !!finished && sheets.length > 0;
+  const tool = process === "remnant" ? rm : ac;
   /** EDIT / VIEW on a sheet card: the one-sheet view (Manual nest's, or Process's) */
   const openSheet = (i: number) => (cutOn ? setFullState(i) : setFull(i));
 
@@ -159,7 +174,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
           onClose={() => setFullState(null)}
           locked={sol!.locked.includes(full)} onToggleLock={() => onToggleLock(sol!.id, full)}
           onChange={() => { /* nothing moves in Process */ }}
-          onInfo={(k) => setProps(k)} cut={ac.cut} />
+          onInfo={(k) => setProps(k)} cut={tool.cut} />
         {propsDialog}
       </div>
     );
@@ -236,7 +251,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
       </div>
 
       <aside className="nest-side">
-        {cutOn ? ac.panel : <SolutionsPanel solutions={solutions} current={sol?.id ?? null} sheetNo={sheetNo}
+        {cutOn ? tool.panel : <SolutionsPanel solutions={solutions} current={sol?.id ?? null} sheetNo={sheetNo}
           onSelect={onSelect} onAdd={onAdd} onStop={onStop} onRemove={onRemove}>
           {sol && sheets.length > 0 && <InfoTabs sol={sol} sheets={sheets} sheetNo={sheetNo} parts={byId} jobParts={parts} />}
         </SolutionsPanel>}

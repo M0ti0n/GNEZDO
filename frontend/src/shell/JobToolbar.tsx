@@ -78,7 +78,7 @@ const SECTIONS: Section[] = [
       { id: "microJoint", label: "Micro joint", icon: toolMicroJoint, hint: "Micro joint: small uncut places that keep the part in the sheet" },
       { id: "leadInOut", label: "Lead in / out", icon: toolLeadInOut, hint: "Lead in / out: where and how the cut starts and ends on a contour" },
       { id: "movement", label: "Movement", icon: toolMovement, hint: "Movement: the head's travel between contours" },
-      { id: "remnant", label: "Remnant", icon: toolRemnant, hint: "Remnant: the leftover part of the sheet kept for later" },
+      { id: "remnant", label: "Remnant", icon: toolRemnant, ready: true, hint: "Remnant: what is left of the sheet, worked out, named and saved for later" },
     ],
   },
   {

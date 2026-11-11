@@ -137,6 +137,7 @@ if (!demo)
     app.MapJobEndpoints();
     app.MapSettingsEndpoints();
     app.MapMachineFolderEndpoints();
+    app.MapRemnantEndpoints();
     app.MapDraftEndpoints();
 }
 

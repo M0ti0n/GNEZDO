@@ -358,6 +358,19 @@ function mockSaveJob(id: string | null, d: JobSaveData): JobSaved {
   return { id: jobId, name: d.name, status, sheetCount: sheets, modifiedAt: now };
 }
 
+/** A saved remnant: its outline from its box's corner, what it is and where it came from. */
+export interface SavedRemnant {
+  name: string; material: string; thicknessMm: number; job: string; sheet: number;
+  /** pieces of it: the sheet is cut this many times */
+  qty?: number;
+  widthMm: number; heightMm: number; areaMm2: number;
+  outline: number[][]; holes?: number[][][]; window?: boolean;
+  savedAt?: string; savedBy?: string;
+}
+const REMNANTS_KEY = "gnezdo.remnants";
+const localRemnants = (): SavedRemnant[] => { try { return JSON.parse(localStorage.getItem(REMNANTS_KEY) ?? "[]"); } catch { return []; } };
+const setLocalRemnants = (l: SavedRemnant[]) => { try { localStorage.setItem(REMNANTS_KEY, JSON.stringify(l)); } catch { /* not kept */ } };
+
 export const api = {
   /** A GNEZDO server writes files (machine folders); not in the demo. */
   hasServer: useApi,
@@ -367,6 +380,20 @@ export const api = {
   /** An NC program into the machine's NC folder; the full path written. */
   writeNc: (machineId: string, name: string, content: string): Promise<{ path: string }> =>
     useApi ? post(`/api/machines/${encodeURIComponent(machineId)}/nc`, { name, content }) : Promise.reject(new Error("The demo has no server to write files.")),
+  /** Saved remnants (Process -> Remnant -> SAVE); in the demo: this browser. */
+  remnants: (): Promise<SavedRemnant[]> => (useApi ? get<SavedRemnant[]>("/api/remnants") : delay(localRemnants())),
+  /** Saves remnants (one of the same name is replaced). */
+  saveRemnants: async (items: SavedRemnant[]): Promise<void> => {
+    if (useApi) { await post("/api/remnants", { items }); return; }
+    const names = new Set(items.map((i) => i.name));
+    setLocalRemnants([...localRemnants().filter((r) => !names.has(r.name)), ...items.map((i) => ({ ...i, savedAt: new Date().toISOString() }))]);
+  },
+  /** Takes remnants out of the saved ones (DISCARD of a saved one). */
+  deleteRemnants: async (names: string[]): Promise<void> => {
+    if (useApi) { await post("/api/remnants/delete", { names }); return; }
+    const out = new Set(names);
+    setLocalRemnants(localRemnants().filter((r) => !out.has(r.name)));
+  },
   /** A setting shared by everyone (on the server); null when it was never saved, or in the demo. */
   setting: async <T,>(key: string): Promise<T | null> => (useApi ? get<T | null>(`/api/settings/${key}`) : null),
   saveSetting: async <T,>(key: string, value: T): Promise<void> => {
