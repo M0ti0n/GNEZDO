@@ -178,26 +178,13 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
 
         {(() => {
           const co = cutOrderOf(machine);
-          const setCo = (patch: Partial<typeof co>) => {
-            const next = { ...co, ...patch };
-            if (!next.bottomUp && !next.leftRight && !next.shortest) return;   // keep one direction
-            setM({ cutOrder: next });
-          };
+          const setCo = (patch: Partial<typeof co>) => setM({ cutOrder: { ...co, ...patch } });
           const isDef = JSON.stringify(co) === JSON.stringify(DEFAULT_CUT_ORDER);
           return (
             <section className="rule">
               <h3>Cut order</h3>
-              <p className="rule-help">How Generate path orders the parts on a sheet. With more than one direction ticked, it keeps the one with the least travel.</p>
-              <div className="mc-sub">Direction</div>
-              <div className="mc-lines">
-                <label className="chk" title="Rows from the bottom of the sheet up"><input type="checkbox" checked={co.bottomUp} onChange={(e) => setCo({ bottomUp: e.target.checked })} /> Bottom to top</label>
-                <label className="chk" title="Columns from the left of the sheet to the right"><input type="checkbox" checked={co.leftRight} onChange={(e) => setCo({ leftRight: e.target.checked })} /> Left to right</label>
-                <label className="chk" title="Always the nearest part next"><input type="checkbox" checked={co.shortest} onChange={(e) => setCo({ shortest: e.target.checked })} /> Shortest travel</label>
-              </div>
-              <div className="mc-sub">Always</div>
+              <p className="rule-help">Rules Generate path keeps on this machine, above the order picked under AUTO CUT (direction, shortest travel, small to big). Always: holes first, then the outline; a part inside another part's outline or window before that part (no islands).</p>
               <div className="mc-rules">
-                <label className="chk"><input type="checkbox" checked={co.holesFirst} onChange={(e) => setCo({ holesFirst: e.target.checked })} /> Holes first, then the outline</label>
-                <label className="chk"><input type="checkbox" checked={co.insideFirst} onChange={(e) => setCo({ insideFirst: e.target.checked })} /> Parts inside another part's outline or window before that part (no islands)</label>
                 <label className="chk mc-big"><input type="checkbox" checked={co.bigLast} onChange={(e) => setCo({ bigLast: e.target.checked })} /> Significantly bigger parts last (heat expansion): area over
                   <NumInput value={co.bigTimesMedian} min={1} disabled={!co.bigLast} aria-label="Times the median part" onCommit={(n) => setCo({ bigTimesMedian: n })} />× the median part, or over
                   <NumInput value={co.bigSheetPct} min={1} disabled={!co.bigLast} aria-label="Percent of the sheet" onCommit={(n) => setCo({ bigSheetPct: Math.min(100, n) })} />% of the sheet</label>

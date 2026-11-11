@@ -59,16 +59,11 @@ export const LINE_CAPABILITIES: { id: LineCapability; label: string; help: strin
   { id: "hole", label: "Holes", help: "Holes cut at the small-hole speed" },
 ];
 
-/** How Generate path orders a sheet: the directions it may use (more ticked: the one with the least travel
- * is kept) and the rules always applied. */
+/** The machine's cut order rules for Generate path, in this rank: always (not switchable) holes and
+ * tracing first, the outline last, and a part lying inside another part's outline / window before that
+ * part (no islands); then, when ticked, significantly bigger parts last (heat expansion). These outrank
+ * the order the operator picks under AUTO CUT (direction, shortest travel, small to big, ...). */
 export interface CutOrderRules {
-  bottomUp: boolean;
-  leftRight: boolean;
-  shortest: boolean;
-  /** Within a part: holes (and tracing) first, the outline last */
-  holesFirst: boolean;
-  /** A part lying inside another part's outline / window is cut before that part (no islands) */
-  insideFirst: boolean;
   /** Significantly bigger parts last, so heat expansion does not shift the plate */
   bigLast: boolean;
   /** "Significantly bigger": area over this many times the sheet's median part ... */
@@ -77,13 +72,12 @@ export interface CutOrderRules {
   bigSheetPct: number;
 }
 
-export const DEFAULT_CUT_ORDER: CutOrderRules = {
-  bottomUp: true, leftRight: true, shortest: false, holesFirst: true, insideFirst: true, bigLast: true, bigTimesMedian: 5, bigSheetPct: 20,
-};
+export const DEFAULT_CUT_ORDER: CutOrderRules = { bigLast: true, bigTimesMedian: 5, bigSheetPct: 20 };
 
 export const cutOrderOf = (m: Machine | undefined): CutOrderRules => {
   const r = { ...DEFAULT_CUT_ORDER, ...(m?.cutOrder ?? {}) };
-  return r.bottomUp || r.leftRight || r.shortest ? r : { ...r, bottomUp: true };   // at least one direction
+  // machines saved earlier also carry directions and holes / inside first: directions go to AUTO CUT, the rest is always on
+  return { bigLast: r.bigLast, bigTimesMedian: r.bigTimesMedian, bigSheetPct: r.bigSheetPct };
 };
 
 /** Does the machine do this line property? */
