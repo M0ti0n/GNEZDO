@@ -25,6 +25,7 @@ import { JobSearchPage, type SheetParts } from "./pages/JobSearchPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { RemnantsPage } from "./pages/RemnantsPage";
 import type { RemnantFilter } from "./shell/RemnantsPanel";
+import type { SavedRemnant } from "./api/api";
 import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
@@ -143,6 +144,8 @@ export function App() {
 
   // last remnant search: the Remnants view shows it
   const [remnantSearch, setRemnantSearch] = useState<{ filter: RemnantFilter | null; run: number }>({ filter: null, run: 0 });
+  const [remnantSel, setRemnantSel] = useState<SavedRemnant | null>(null);
+  const [remnantPick, setRemnantPick] = useState<string | null>(null);
   const runRemnantSearch = (filter: RemnantFilter) => {
     setRemnantSearch((s) => ({ filter, run: s.run + 1 }));
     dispatch({ type: "view", view: "remnants" });
@@ -1090,6 +1093,7 @@ export function App() {
           onAddToJob={(parts) => job && addParts(job.id, job.title, parts)}
           onJobSearch={runJobSearch}
           onRemnantSearch={runRemnantSearch}
+          remnant={{ selected: remnantSel, onChanged: (name) => { setRemnantPick(name); setRemnantSearch((s) => ({ ...s, run: s.run + 1 })); showView("remnants"); } }}
           machines={machines}
           homeActive={!activeTab && state.view === "home"}
           onHome={() => showView("home")}
@@ -1104,7 +1108,8 @@ export function App() {
               if (sec === "process") manualOn.current = false;
               if (job && sec) setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" || sec === "process" ? "nest" : m[job.id] === "nestReport" || m[job.id] === "costReport" ? (sec === "report" ? m[job.id] : "nest") : m[job.id] }));
             }} />
-            : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
+            : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && toolsFor(active.kind).length > 0 &&
+              <ToolStrip tools={toolsFor(active.kind).map((t) => (t.id === "import" ? { ...t, count: importPanel.items.length } : t))} onTool={onTool} />}
           <main className={`page${active.kind === "jobSearch" || active.kind === "remnants" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && jobScreen[job.id] === "nest" && (
@@ -1242,7 +1247,9 @@ export function App() {
                 onStart={(c) => { const cf = customFor; setCustomFor(null); void startNest(cf.jobId, "custom", c, cf.fresh); }} />
             )}
             {active.kind === "remnants" && (
-              <RemnantsPage filter={remnantSearch.filter} run={remnantSearch.run} onShowFilters={() => setDrawer("remnants")} />
+              <RemnantsPage filter={remnantSearch.filter} run={remnantSearch.run} onShowFilters={() => setDrawer("remnants")}
+                selected={remnantPick} onSelect={(r) => { setRemnantSel(r); setRemnantPick(r?.name ?? null); if (r) setDrawer("remnants"); }}
+                onFresh={(r) => { setRemnantSel(r); if (!r) setRemnantPick(null); }} />
             )}
             {active.kind === "jobSearch" && (
               <JobSearchPage filter={jobSearch.filter} run={jobSearch.run} onOpenJob={openJob}

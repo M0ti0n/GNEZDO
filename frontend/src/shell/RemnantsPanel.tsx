@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type SavedRemnant } from "../api/api";
 import type { DateMode } from "../api/types";
 import { DateLine, EMPTY_DATE, PanelHead, SizeLine, dateFilterOf, type DateDraft } from "../components/FilterFields";
-import { IconSearch } from "../components/Icons";
+import { IconImport, IconSearch } from "../components/Icons";
+import { RemnantDialog } from "../pages/RemnantsPage";
+import { remnantFromFile } from "../job/remnantImport";
+import { densityOf } from "../job/nest";
 
 /** What Remnant search looks for (empty: everything). Sizes: the remnant's box [mm]. */
 export interface RemnantFilter {
@@ -52,11 +55,53 @@ export function matchRemnant(r: SavedRemnant, f: RemnantFilter): boolean {
 }
 
 // Remnant search (left rail): filters for the saved remnants; Search (or Enter) shows them on the main screen.
-export function RemnantsPanel({ onSearch, onClose }: { onSearch: (f: RemnantFilter) => void; onClose: () => void }) {
+/** "3 days ago" */
+export function ago(iso?: string): string {
+  if (!iso) return "";
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  const u: [number, string][] = [[365 * 86400, "year"], [30 * 86400, "month"], [7 * 86400, "week"], [86400, "day"], [3600, "hour"], [60, "minute"]];
+  for (const [n, w] of u) if (s >= n) { const k = Math.floor(s / n); return `${k} ${w}${k === 1 ? "" : "s"} ago`; }
+  return "just now";
+}
+const when = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "numeric", year: "numeric" }) : "—");
+
+export function RemnantsPanel({ onSearch, onClose, selected, onChanged }: {
+  onSearch: (f: RemnantFilter) => void; onClose: () => void;
+  /** the remnant picked on the main screen */
+  selected: SavedRemnant | null;
+  /** a remnant was imported or changed here (its name: pick it) */
+  onChanged: (name: string) => void;
+}) {
   const [d, setD] = useState<Draft>(EMPTY);
   const [lastSearched, setLastSearched] = useState<string | null>(null);
   const [all, setAll] = useState<SavedRemnant[]>([]);
-  useEffect(() => { api.remnants().then(setAll, () => setAll([])); }, []);
+  useEffect(() => { api.remnants().then(setAll, () => setAll([])); }, [selected]);
+  const file = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState<SavedRemnant | null>(null);
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [note, setNote] = useState("");
+  useEffect(() => { setNote(selected?.note ?? ""); }, [selected?.name, selected?.note]);
+  const names = useMemo(() => new Set(all.map((r) => r.name)), [all]);
+
+  const readFile = async (f: File) => {
+    setMsg(null);
+    try {
+      const g = await remnantFromFile(f);
+      const base = f.name.replace(/\.(dxf|dwg|svg)$/i, "").replace(/[^\w.-]+/g, "_");
+      let name = `REM_${base}`;
+      for (let k = 2; names.has(name); k++) name = `REM_${base}_${k}`;
+      setImporting({ name, material: all[0]?.material ?? "", thicknessMm: all[0]?.thicknessMm ?? 1, job: "", sheet: 0, qty: 1, file: f.name, ...g });
+    } catch (e) { setMsg({ text: (e as Error).message, bad: true }); }
+  };
+  const saveImported = async (r: SavedRemnant) => {
+    try { await api.saveRemnants([r]); setImporting(null); setMsg({ text: `${r.name} imported` }); onChanged(r.name); }
+    catch (e) { setMsg({ text: `Not saved: ${(e as Error).message}`, bad: true }); }
+  };
+  const saveNote = async () => {
+    if (!selected) return;
+    try { await api.saveRemnants([{ ...selected, note: note.trim() || undefined }]); onChanged(selected.name); setMsg({ text: "Note saved" }); }
+    catch (e) { setMsg({ text: `Not saved: ${(e as Error).message}`, bad: true }); }
+  };
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
   const materials = useMemo(() => [...new Set(all.map((r) => r.material).filter(Boolean))].sort(), [all]);
   const thicknesses = useMemo(() => [...new Set(all.filter((r) => !d.material || r.material === d.material).map((r) => r.thicknessMm))].sort((a, b) => a - b), [all, d.material]);
@@ -108,7 +153,34 @@ export function RemnantsPanel({ onSearch, onClose }: { onSearch: (f: RemnantFilt
         </span>
         <span className="result-actions">{(active > 0 || dirty) && <button className="link" onClick={reset}>Reset filters</button>}</span>
       </div>
-      <p className="panel-hint"><b>Size X / Y</b> is the remnant's box; a remnant turned round matches too.</p>
+      <div className="rs-import">
+        <button type="button" className="btn btn-plain" onClick={() => file.current?.click()} title="A remnant drawn in a DXF or SVG file (DWG: save it as DXF first)">
+          <IconImport size={18} />Import remnant
+        </button>
+        <span className="rs-types">DXF · SVG · DWG</span>
+        <input ref={file} type="file" accept=".dxf,.dwg,.svg" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void readFile(f); }} />
+      </div>
+      {msg && <p className={`tech-msg rs-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
+      {selected ? (
+        <section className="rs-info" aria-label="Remnant details">
+          <h3>{selected.name}</h3>
+          <dl>
+            <dt>Size</dt><dd>{selected.widthMm} × {selected.heightMm} mm · {(selected.areaMm2 / 1e6).toFixed(2)} m²</dd>
+            <dt>Material</dt><dd>{selected.material} {selected.thicknessMm} mm · {((selected.areaMm2 * selected.thicknessMm * densityOf(selected.material)) / 1e6).toFixed(1)} kg{(selected.qty ?? 1) > 1 ? ` · ${selected.qty} pieces` : ""}</dd>
+            <dt>Created</dt><dd>{when(selected.savedAt)} <span className="rs-ago">{ago(selected.savedAt)}</span>{selected.savedBy ? ` · ${selected.savedBy}` : ""}</dd>
+            {selected.modifiedAt && <><dt>Modified</dt><dd>{when(selected.modifiedAt)} <span className="rs-ago">{ago(selected.modifiedAt)}</span>{selected.modifiedBy ? ` · ${selected.modifiedBy}` : ""}</dd></>}
+            <dt>From</dt><dd>{selected.file ? `Imported: ${selected.file}` : `${selected.job}, sheet ${selected.sheet}`}</dd>
+            {!!selected.projects?.length && <><dt>Projects</dt><dd>{selected.projects.join(", ")}</dd></>}
+          </dl>
+          <label className="rs-note"><span>Note</span>
+            <textarea className="field" rows={4} value={note} placeholder="Protective foil on top, badly scratched …" onChange={(e) => setNote(e.target.value)} />
+          </label>
+          <button type="button" className="btn btn-plain rs-save" disabled={note.trim() === (selected.note ?? "")} onClick={() => void saveNote()}>Save note</button>
+        </section>
+      ) : (
+        <p className="panel-hint"><b>Size X / Y</b> is the remnant's box; a remnant turned round matches too.<br />Click a remnant to see its details here.</p>
+      )}
+      {importing && <RemnantDialog title="Import remnant" r={importing} names={names} onCancel={() => setImporting(null)} onSave={(r) => void saveImported(r)} />}
     </>
   );
 }

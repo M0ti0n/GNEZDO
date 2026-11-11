@@ -40,7 +40,7 @@ export async function sheetFromDxf(f: File, base: StockSheet): Promise<DxfSheet>
  * A DXF sheet's own shape: its closed contours, mm, y down from the top-left of its extents; the
  * largest is the outline, the others holes. Null for a plain rectangle (the size says it all).
  */
-function dxfOutline(entities: Entity[], b: { minX: number; minY: number; maxX: number; maxY: number }): [number, number][][] | undefined {
+export function dxfOutline(entities: Entity[], b: { minX: number; minY: number; maxX: number; maxY: number }, keepRect = false): [number, number][][] | undefined {
   const byId = new Map(entities.map((e) => [e.id, e]));
   const area = (p: { x: number; y: number }[]) => Math.abs(p.reduce((a, q, i) => { const r = p[(i + 1) % p.length]; return a + q.x * r.y - r.x * q.y; }, 0)) / 2;
   const loops = checkGeometry(entities.map((e) => ({ ...e, role: "cut" as const }))).contours
@@ -58,6 +58,7 @@ function dxfOutline(entities: Entity[], b: { minX: number; minY: number; maxX: n
   };
   const out = loops.map((p) => clean(p.map((q) => [r(q.x - b.minX), r(b.maxY - q.y)] as [number, number]))).filter((lp) => lp.length > 2);
   if (!out.length) return undefined;
+  if (keepRect) return out;
   const rect = out.length === 1 && out[0].length === 4 && area(loops[0]) >= 0.999 * (b.maxX - b.minX) * (b.maxY - b.minY);
   return rect ? undefined : out;
 }

@@ -2178,3 +2178,24 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .rb-form .mc-field .field { width: 100%; }
 .rb-form .mc-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-top: 0; }
 .rb-form .mc-field input { width: 100%; }
+.tool { position: relative; }
+.tool-count { position: absolute; top: 2px; right: 14px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--c, var(--green)); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+/* Remnant search: import and the picked remnant */
+.rs-import { display: flex; align-items: center; gap: 10px; padding: 12px 16px 4px; }
+.rs-import .btn { display: inline-flex; align-items: center; gap: 8px; background: transparent; }
+.rs-import .btn:hover { background: var(--green-tint); border-color: var(--green); }
+.rs-types { font-size: 12px; color: var(--ink-3); }
+.rs-msg { margin: 6px 16px 0; }
+.rs-info { margin: 10px 16px 16px; padding: 12px 14px; border: 1.5px solid var(--green); border-radius: 8px; display: flex; flex-direction: column; gap: 8px; }
+.rs-info h3 { margin: 0; font-size: 15px; word-break: break-all; }
+.rs-info dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; font-size: 13px; }
+.rs-info dt { color: var(--ink-3); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; padding-top: 1px; }
+.rs-info dd { margin: 0; }
+.rs-ago { color: var(--green-ink); font-size: 12px; }
+.rs-note { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-3); }
+.rs-note textarea, .rb-note { resize: vertical; min-height: 64px; height: auto; padding: 8px 10px; font: inherit; font-size: 13.5px; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink); line-height: 1.4; }
+.rs-save { align-self: flex-end; background: transparent; }
+.rs-save:hover:not(:disabled) { background: var(--green-tint); border-color: var(--green); }
+.rb-card { cursor: pointer; }
+.rb-card.is-sel { border-color: var(--green); box-shadow: 0 0 0 2px var(--green-tint), 0 2px 10px rgba(0, 0, 0, .06); }
+.rb-has-note { color: var(--green-ink); font-size: 14px; }

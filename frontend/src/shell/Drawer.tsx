@@ -1,10 +1,10 @@
 import { ServerLoad } from "./ServerLoad";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, materialKey, type PartFacets } from "../api/api";
+import { api, materialKey, type PartFacets, type SavedRemnant } from "../api/api";
 import { DEFAULT_SORT, type DateMode, type JobFilter, type PartFilter, type PartSummary, type SortOrder } from "../api/types";
 import { SortControl, loadSort, saveSort } from "../components/SortControl";
 import { DateLine, PanelHead, SizeLine } from "../components/FilterFields";
-import { IconHome, IconImport, IconLibrary, IconRemnant, IconSearch } from "../components/Icons";
+import { IconHome, IconLibrary, IconRemnant, IconSearch } from "../components/Icons";
 import { RemnantsPanel, type RemnantFilter } from "./RemnantsPanel";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { JobsPanel } from "./JobsPanel";
@@ -29,6 +29,8 @@ interface Props {
   onAddToJob: (parts: PartSummary[]) => void;
   onJobSearch: (filter: JobFilter) => void;   // results open on the main screen
   onRemnantSearch: (filter: RemnantFilter) => void;   // results open on the main screen
+  /** the remnant picked on the Remnants screen; a remnant imported / changed in the panel */
+  remnant?: { selected: SavedRemnant | null; onChanged: (name: string) => void };
   /** the machines, for the Machine filter of Job search */
   machines?: MachineList;
   homeActive: boolean;
@@ -40,7 +42,7 @@ interface Props {
 
 // Left side: a rail that opens a docked panel for finding imported parts
 // (to drag into a job), searching jobs, or importing new drawings.
-export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRemnantSearch, homeActive, onHome, importPanel, showQty, machines }: Props) {
+export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRemnantSearch, remnant, homeActive, onHome, importPanel, showQty, machines }: Props) {
   const toggle = (m: DrawerMode) => onMode(mode === m ? null : m);
   return (
     <aside className={`drawer${mode ? " is-open" : ""}`}>
@@ -61,18 +63,13 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRem
           onClick={() => toggle("remnants")} title="Remnant search">
           <IconRemnant /><span>Remnants</span>
         </button>
-        <button role="tab" aria-selected={mode === "import"} className={`rail-btn${mode === "import" ? " is-on" : ""}`}
-          onClick={() => toggle("import")} title="Import DXF and DWG files">
-          <IconImport /><span>Import</span>
-          {importPanel.items.length > 0 && <span className="rail-count">{importPanel.items.length}</span>}
-        </button>
         <ServerLoad />
       </div>
       {mode && (
         <div className="drawer-panel">
           {mode === "parts" && <PartsPanel targetJob={targetJob} onAddToJob={onAddToJob} showQty={showQty} onClose={() => onMode(null)} />}
           {mode === "jobs" && <JobsPanel onSearch={onJobSearch} onClose={() => onMode(null)} machines={machines} />}
-          {mode === "remnants" && <RemnantsPanel onSearch={onRemnantSearch} onClose={() => onMode(null)} />}
+          {mode === "remnants" && <RemnantsPanel onSearch={onRemnantSearch} onClose={() => onMode(null)} selected={remnant?.selected ?? null} onChanged={remnant?.onChanged ?? (() => {})} />}
           {mode === "import" && <ImportPanel {...importPanel} onClose={() => onMode(null)} />}
         </div>
       )}

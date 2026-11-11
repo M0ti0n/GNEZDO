@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { PageKind } from "../state/tabs";
 import {
   IconFolder, IconImport, IconLayers, IconLibrary, IconLock, IconNest, IconNewJob,
-  IconReport, IconSearch, IconStock,
+  IconReport, IconStock,
 } from "../components/Icons";
 
 export interface Tool {
@@ -11,6 +11,7 @@ export interface Tool {
   icon: ReactNode;
   tone?: Tone;          // color shared with the matching home tile
   disabled?: boolean;   // not built yet
+  count?: number;       // a small number on the button (files waiting in Import)
 }
 
 export type Tone = "blue" | "green" | "yellow" | "plum" | "brown";
@@ -23,10 +24,8 @@ export const toolsFor = (kind: PageKind): Tool[] => {
   switch (kind) {
     case "home":
       return [
-        { id: "import", label: "Import parts", icon: <IconImport />, tone: "blue" },
+        { id: "import", label: "Import", icon: <IconImport />, tone: "blue" },
         { id: "newJob", label: "New job", icon: <IconNewJob />, tone: "green" },
-        { id: "jobSearch", label: "Job search", icon: <IconSearch />, tone: "yellow" },
-        { id: "parts", label: "Imported parts", icon: <IconLibrary />, tone: "brown" },
       ];
     case "import":
       return [
@@ -60,6 +59,7 @@ export function ToolStrip({ tools, onTool }: { tools: Tool[]; onTool: ToolAction
         >
           {t.icon}
           <span>{t.label}</span>
+          {!!t.count && <span className="tool-count">{t.count}</span>}
         </button>
       ))}
     </div>
