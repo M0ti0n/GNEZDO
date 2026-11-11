@@ -78,3 +78,8 @@ export const IconClock = (p: P) => (
 export const IconRules = (p: P) => (
   <Svg {...p}><path d="M4 5h16M4 10h10M4 15h7" /><path d="m14 17 2 2 4-5" /></Svg>
 );
+
+// A remnant: an L-shaped plate, hatched
+export const IconRemnant = (p: P) => (
+  <Svg {...p}><path d="M4 4h16v16h-7v-7H4z" /><path d="M13 8l3-3M13 12l6-6M16 13l4-4M14 19l6-6" strokeWidth={1.2} /></Svg>
+);

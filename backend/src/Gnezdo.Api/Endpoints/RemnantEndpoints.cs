@@ -42,13 +42,19 @@ public static class RemnantEndpoints
             if (items.Count == 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["items"] = ["No remnants to save."] });
             var (row, list) = await LoadAsync(db, ct);
             var names = items.Select(NameOf).ToHashSet();
+            var before = list.OfType<JsonObject>().GroupBy(NameOf).ToDictionary(g => g.Key, g => g.Last());
             var kept = list.Where(n => !names.Contains(NameOf(n))).Select(n => n!.DeepClone()).ToList();
             var by = ctx.User.Identity?.Name ?? "";
+            var now = clock.GetUtcNow();
             foreach (var o in items)
             {
                 var c = (JsonObject)o.DeepClone();
-                c["savedAt"] = clock.GetUtcNow();
-                if (by.Length > 0) c["savedBy"] = by;
+                // saved before (or renamed: it brings its date): keeps when it was saved, gets when it was changed
+                var was = before.GetValueOrDefault(NameOf(c))?["savedAt"]?.DeepClone() ?? c["savedAt"]?.DeepClone();
+                if (was is null) { c["savedAt"] = now; c.Remove("modifiedAt"); }
+                else { c["savedAt"] = was; c["modifiedAt"] = now; }
+                if (by.Length > 0 && (was is null || c["savedBy"] is null)) c["savedBy"] = by;
+                if (by.Length > 0 && was is not null) c["modifiedBy"] = by;
                 kept.Add(c);
             }
             row.Value = new JsonArray(kept.ToArray()).ToJsonString();

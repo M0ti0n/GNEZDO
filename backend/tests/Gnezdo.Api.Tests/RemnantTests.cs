@@ -23,6 +23,9 @@ public sealed class RemnantTests(ApiFixture api) : IClassFixture<ApiFixture>
         Assert.Equal(2, list.Count);
         Assert.Equal(900, list.Single(n => n!["name"]!.GetValue<string>() == "REM_job_S1_1")!["areaMm2"]!.GetValue<int>());
         Assert.NotNull(list[0]!["savedAt"]);
+        // saved again: keeps when it was first saved, and says when it was changed
+        Assert.NotNull(list.Single(n => n!["name"]!.GetValue<string>() == "REM_job_S1_1")!["modifiedAt"]);
+        Assert.Null(list.Single(n => n!["name"]!.GetValue<string>() == "REM_job_S1_2")!["modifiedAt"]);
 
         await api.Client.PostAsJsonAsync("/api/remnants/delete", new { names = new[] { "REM_job_S1_2" } });
         list = (await api.Client.GetFromJsonAsync<JsonArray>("/api/remnants"))!;

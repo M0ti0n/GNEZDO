@@ -23,6 +23,8 @@ import { HomePage, type HomeAction } from "./pages/HomePage";
 import { JobPage } from "./pages/JobPage";
 import { JobSearchPage, type SheetParts } from "./pages/JobSearchPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { RemnantsPage } from "./pages/RemnantsPage";
+import type { RemnantFilter } from "./shell/RemnantsPanel";
 import { Drawer, type DrawerMode } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
@@ -137,6 +139,13 @@ export function App() {
   const runJobSearch = (filter: JobFilter) => {
     setJobSearch((s) => ({ filter, run: s.run + 1 }));
     dispatch({ type: "view", view: "jobSearch" });
+  };
+
+  // last remnant search: the Remnants view shows it
+  const [remnantSearch, setRemnantSearch] = useState<{ filter: RemnantFilter | null; run: number }>({ filter: null, run: 0 });
+  const runRemnantSearch = (filter: RemnantFilter) => {
+    setRemnantSearch((s) => ({ filter, run: s.run + 1 }));
+    dispatch({ type: "view", view: "remnants" });
   };
 
   const showView = (view: ViewKind) => dispatch({ type: "view", view });
@@ -1076,10 +1085,11 @@ export function App() {
         <Drawer
           showQty={rules.qtyFromName}
           mode={drawer}
-          onMode={setDrawer}
+          onMode={(m) => { setDrawer(m); if (m === "remnants") showView("remnants"); }}
           targetJob={job}
           onAddToJob={(parts) => job && addParts(job.id, job.title, parts)}
           onJobSearch={runJobSearch}
+          onRemnantSearch={runRemnantSearch}
           machines={machines}
           homeActive={!activeTab && state.view === "home"}
           onHome={() => showView("home")}
@@ -1095,7 +1105,7 @@ export function App() {
               if (job && sec) setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" || sec === "process" ? "nest" : m[job.id] === "nestReport" || m[job.id] === "costReport" ? (sec === "report" ? m[job.id] : "nest") : m[job.id] }));
             }} />
             : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
-          <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" ? " page-flush" : ""}`} aria-label={active.title}>
+          <main className={`page${active.kind === "jobSearch" || active.kind === "remnants" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && jobScreen[job.id] === "nest" && (
               <NestPage
@@ -1231,6 +1241,9 @@ export function App() {
                 noCommonCut={machineCan(machineFor(customFor.jobId), "commonCut") ? undefined : machineFor(customFor.jobId).name}
                 onStart={(c) => { const cf = customFor; setCustomFor(null); void startNest(cf.jobId, "custom", c, cf.fresh); }} />
             )}
+            {active.kind === "remnants" && (
+              <RemnantsPage filter={remnantSearch.filter} run={remnantSearch.run} onShowFilters={() => setDrawer("remnants")} />
+            )}
             {active.kind === "jobSearch" && (
               <JobSearchPage filter={jobSearch.filter} run={jobSearch.run} onOpenJob={openJob}
                 openJobs={state.tabs.flatMap((t) => (t.kind === "job" && t.jobId ? [{ id: t.jobId, title: t.title }] : []))}
@@ -1265,7 +1278,7 @@ export function App() {
               if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller }));
             }} />}
             {active.kind === "settings" && <SettingsPage onClose={() => showView("home")} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
-            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
+            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "remnants" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
           </main>
         </div>
       </div>
