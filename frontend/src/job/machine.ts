@@ -47,7 +47,23 @@ export interface Machine {
   leads?: Partial<LeadRules>;
   /** Technology tables: cutting values per material and thickness (Settings -> Machines -> Technology). */
   technologies?: TechSet[];
+  /** Where the server writes this machine's files (Settings -> Machines -> Machine -> Folders). Not in an exported machine file. */
+  folders?: Partial<MachineFolders>;
 }
+
+/** A machine's folders, paths on the GNEZDO server (or a network share it reaches). */
+export interface MachineFolders {
+  /** NC programs go here. */
+  nc: string;
+  /** No NC folder: the NC program is downloaded in the browser instead (else it cannot be written). */
+  ncDownload: boolean;
+  /** Job files go here, when jobFile is ticked. */
+  jobs: string;
+  /** Every job saved for the machine is also written as a file (the database stays the main copy). */
+  jobFile: boolean;
+}
+
+export const foldersOf = (m: Machine | undefined): MachineFolders => ({ nc: "", ncDownload: false, jobs: "", jobFile: false, ...(m?.folders ?? {}) });
 
 /** Line properties of a part a machine may or may not do (contours it always cuts). */
 export type LineCapability = "commonCut" | "openCut" | "trace" | "hole";

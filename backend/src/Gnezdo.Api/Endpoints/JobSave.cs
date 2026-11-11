@@ -16,7 +16,8 @@ public record JobPartSave(string PartId, int Qty, int? QtyMax, int? No, string? 
 /// </summary>
 public record JobSaveRequest(string Name, IReadOnlyList<JobPartSave> Parts, JsonArray? Stock, JsonObject? Nest, string? ModifiedBy, string? Machine = null);
 
-public record JobSavedDto(string Id, string Name, string Status, int SheetCount, DateTimeOffset ModifiedAt);
+/// <summary>JobFile: the job's file in the machine's job folder (when the machine writes one); JobFileError: why it was not written (the job is saved anyway).</summary>
+public record JobSavedDto(string Id, string Name, string Status, int SheetCount, DateTimeOffset ModifiedAt, string? JobFile = null, string? JobFileError = null);
 
 /// <summary>A saved job with its stock sheets and saved nest (the parts come from GET /api/jobs/{id}/parts).</summary>
 public record JobDetailDto(string Id, string Name, string Status, int SheetCount, DateTimeOffset CreatedAt, DateTimeOffset ModifiedAt,
@@ -132,7 +133,8 @@ public static class JobSave
         job.ModifiedAt = now;
         job.ModifiedBy = (r.ModifiedBy ?? "").Trim() is { Length: > 0 } by ? by[..Math.Min(by.Length, 100)] : job.ModifiedBy;
         await db.SaveChangesAsync(ct);
-        var dto = new JobSavedDto(job.Id.ToString(), job.Name, job.Status.ToString().ToLowerInvariant(), job.SheetCount, job.ModifiedAt);
+        var (file, fileError) = await MachineFolders.WriteJobFileAsync(db, job, ct);
+        var dto = new JobSavedDto(job.Id.ToString(), job.Name, job.Status.ToString().ToLowerInvariant(), job.SheetCount, job.ModifiedAt, file, fileError);
         return id is null ? Results.Created($"/api/jobs/{job.Id}", dto) : Results.Ok(dto);
     }
 }

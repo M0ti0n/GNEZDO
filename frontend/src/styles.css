@@ -1569,6 +1569,8 @@ th.num .th-sort { flex-direction: row-reverse; }
 .mc-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 8px; }
 .mc-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
 .mc-field .field { width: 240px; height: 36px; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink); font-size: 14px; }
+.mc-folder { align-items: flex-end; }
+.mc-folder .mc-field .field { width: 420px; max-width: 100%; font-family: var(--mono, ui-monospace, monospace); font-size: 13px; }
 .mc-gaps { display: grid; grid-template-columns: repeat(4, minmax(90px, 140px)); gap: 8px 14px; margin-top: 8px; }
 .mc-gaps .mc-wide { grid-column: span 2; }
 .mc-lbl { width: auto !important; min-width: 90px; font-size: 13px; }

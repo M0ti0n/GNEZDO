@@ -635,7 +635,7 @@ export function App() {
       if (asNew) dispatch({ type: "rename", id: `job:${jobId}`, title });
       setSavedSnap((m) => ({ ...m, [jobId]: snapOf(parts, jobStock[jobId] ?? [], st.list, machineFor(jobId).id) }));
       diag("save", `Job ${title} saved${asNew ? " as new" : ""}`, { job: jobId, serverId: r.id, parts: parts.length, sheets: r.sheetCount, solutions: st.list.length });
-      setToast(`${asNew ? `Saved as ${title}` : "Job saved"}${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}`);
+      setToast(`${asNew ? `Saved as ${title}` : "Job saved"}${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}${r.jobFileError ? `; job file not written: ${r.jobFileError}` : r.jobFile ? "; job file written" : ""}`);
     } catch (e) {
       setToast(`Not saved: ${(e as Error).message}`);
       return false;
