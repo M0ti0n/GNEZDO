@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { JobPart } from "../api/types";
 import type { Origin } from "../job/machine";
 import { partColor, unlocked, type NestedSheet, type PlacedPart, type Solution } from "../job/nest";
@@ -12,6 +12,7 @@ import {
 import { arrange, arrangeAgain, mirrorGroup, partRules, stack, type PartRules } from "../job/manualTools";
 import { loadNestingRules } from "../job/nestRules";
 import { loadManualView } from "../job/manualView";
+import { liveContours, originPoint, processedParts, rapidsOf } from "../job/cutPath";
 import { commonEdges, commonLayout, partCommonLines, placedEdges, sharedLines, snapMove, type CommonEdge, type CommonLayout } from "../job/commonCut";
 
 /** Ctrl+C: the copied parts, around the middle of their box (kept across sheets of the job). */
@@ -19,11 +20,22 @@ let clipboard: PlacedPart[] | null = null;
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 
+/** The sheet in Process (Auto cut): nothing moves; clicks pick parts (while picking), the panel on the right is the tool's. */
+export interface CutMode {
+  picking: boolean;
+  /** picked parts in cutting order */
+  picked: number[];
+  onPick: (i: number) => void;
+  panel: ReactNode;
+  hint: string;
+}
+
 // Manual nesting of one sheet (EDIT / VIEW on a sheet card). The parts on the sheet are moved with
 // the mouse or the keys (Settings -> Manual nest), parts come from the JOB PARTS panel by drag and
 // drop, overlapping parts glow red. Every finished change goes to the solution at once; FINISH
 // goes back to the sheets.
-export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool, commonCut = false }: {
+export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool, commonCut = false, cut }: {
+  cut?: CutMode;
   locked: boolean; onToggleLock: () => void;
   /** Common cut (Manual nest toolbar): dragged parts snap to share their common cut lines; Arrange makes blocks */
   commonCut?: boolean;
@@ -385,6 +397,10 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const p = local(e);
     if (e.button === 1 || e.button === 2) { pan.current = { x: e.clientX, y: e.clientY, from: { x: e.clientX, y: e.clientY }, button: e.button }; return; }
     if (e.button !== 0) return;
+    if (cut) {
+      if (cut.picking) { const [cx, cy] = toMm(p.x, p.y); const i = hit(cx, cy); if (i >= 0) cut.onPick(i); }
+      return;
+    }
     const [x, y] = toMm(p.x, p.y);
     const i = hit(x, y);
     if (i >= 0) {
@@ -802,6 +818,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     };
   })();
 
+  const cutDone = useMemo(() => (cut ? processedParts(sheet) : new Set<number>()), [cut, sheet]);
+  const cutLive = useMemo(() => (cut ? liveContours(sheet) : []), [cut, sheet]);
+  const cutRapids = useMemo(() => (cut ? rapidsOf(cutLive, originPoint(sheet, origin)) : []), [cut, cutLive, sheet, origin]);
   const pathOf = (lp: Pt[][]) => lp.map((l) => l.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(2)} ${y.toFixed(2)}`).join("") + "Z").join("");
   const v = view ?? { s: 1, tx: 0, ty: 0 };
   const right = origin.endsWith("right"), bottom = origin.startsWith("bottom");
@@ -817,7 +836,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           <button type="button" className="sheet-info" onClick={() => onInfo(index)} aria-label={`Properties of sheet ${index + 1}`} title="Sheet properties">i</button>
           <span className="mn-sheet">{sheet.material} {sheet.thicknessMm}x{sheet.lengthMm}x{sheet.widthMm}</span>
           <span className="mn-gap" />
-          {!edit && <span className="mn-locked" title={locked ? "The sheet is locked: unlock it to change it" : "Look only"}>VIEW</span>}
+          {!edit && !cut && <span className="mn-locked" title={locked ? "The sheet is locked: unlock it to change it" : "Look only"}>VIEW</span>}
           <button type="button" className="btn btn-save mn-finish" onClick={onClose} title="Back to the sheets (Automatic nest)">BACK</button>
           <button type="button" className={`nest-lock mn-lock${locked ? " is-locked" : ""}`} aria-pressed={locked}
             title={locked ? "Locked: kept as it is. Click to unlock (then it can be changed)" : "Unlocked: can be changed. Click to lock"}
@@ -830,7 +849,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           {selInfo ? (<>
             <div><b>{selInfo.title}</b><span>{selInfo.size}</span></div>
             <div><span className="mn-info-name">{selInfo.sub}</span><span>{selInfo.qty}</span></div>
-          </>) : <div className="mn-info-none">{edit ? "Click a part, or drag a window, to select (Ctrl: add or remove). Drag parts in from JOB PARTS." : "Locked sheet: look only."}</div>}
+          </>) : <div className="mn-info-none">{cut ? cut.hint : edit ? "Click a part, or drag a window, to select (Ctrl: add or remove). Drag parts in from JOB PARTS." : "Locked sheet: look only."}</div>}
         </div>
       </div>
 
@@ -858,6 +877,15 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 const r = byId.get(p.partId);
                 if (!g || !r) return null;
                 const c = partColor(r.no);
+                if (cut) {
+                  const done = cutDone.has(i), pick = cut.picked.includes(i);
+                  return (
+                    <path key={i} d={pathOf(g.loops)} fillRule="evenodd" className={`mn-part is-process${done ? " is-cut" : ""}${pick ? " is-picked" : ""}`}
+                      style={done ? { strokeWidth: 1.2 / v.s } : { fill: c.fill, stroke: c.stroke, strokeWidth: 1 / v.s }}>
+                      <title>{r.name}</title>
+                    </path>
+                  );
+                }
                 return (
                   <path key={i} d={pathOf(g.loops)} fillRule="evenodd"
                     className={`mn-part${sel.has(i) ? " is-sel" : ""}${bad.has(i) ? " is-bad" : ""}${sel.has(i) && moving ? " is-moving" : ""}${p.lock ? " is-locked" : ""}`}
@@ -878,6 +906,27 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 const c = partColor(r.no);
                 return <path key={`g${k}`} className="mn-ghost" d={pathOf(g.loops)} fillRule="evenodd" style={{ fill: c.fill, stroke: c.stroke, strokeWidth: 1 / v.s }} />;
               })}
+              {cut && (() => {
+                const line = (pts: [number, number][]) => pts.map(([x, y], k) => `${k ? "L" : "M"}${x} ${y}`).join("");
+                return (
+                  <g className="cut-path">
+                    {cutRapids.map(([a, b], k) => <line key={`r${k}`} className="cut-rapid" x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} style={{ strokeWidth: 0.8 / v.s, strokeDasharray: `${4 / v.s} ${3 / v.s}` }} />)}
+                    {cutLive.map((c, k) => (
+                      <g key={k}>
+                        <path className={`cut-${c.kind}`} d={line(c.pts)} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
+                        {c.leadIn.length > 1 && <path className="cut-in" d={line(c.leadIn)} style={{ strokeWidth: 1.6 / v.s }} />}
+                        {c.leadOut.length > 1 && <path className="cut-out" d={line(c.leadOut)} style={{ strokeWidth: 1.6 / v.s }} />}
+                        {(c.leadIn[0] ?? c.pts[0]) && <circle className="cut-pierce" cx={(c.leadIn[0] ?? c.pts[0])[0]} cy={(c.leadIn[0] ?? c.pts[0])[1]} r={1.8 / v.s} />}
+                      </g>
+                    ))}
+                    {cut.picked.map((i, k) => {
+                      const g = geo[i];
+                      if (!g) return null;
+                      return <text key={`n${i}`} className="cut-no" x={(g.box.x0 + g.box.x1) / 2} y={(g.box.y0 + g.box.y1) / 2} style={{ fontSize: 16 / v.s, strokeWidth: 3 / v.s }}>{k + 1}</text>;
+                    })}
+                  </g>
+                );
+              })()}
               <circle cx={right ? sheet.lengthMm : 0} cy={bottom ? sheet.widthMm : 0} r={6 / v.s} className="mn-origin" />
             </g>
             {box && (
@@ -920,7 +969,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
         <Ruler axis="x" view={v} size={size} />
       </div>
 
-      <PartsPanel jobParts={jobParts} sheet={sheet} counts={counts} edit={edit} />
+      {cut ? cut.panel : <PartsPanel jobParts={jobParts} sheet={sheet} counts={counts} edit={edit} />}
     </div>
   );
 }

@@ -72,7 +72,7 @@ const SECTIONS: Section[] = [
   {
     // Fab's icons; what they do comes later
     id: "process", label: "Process", icon: tileProcess, tools: [
-      { id: "autoCut", label: "Auto cut", icon: toolAutoCut, hint: "Auto cut: the cut order and lead-ins worked out for the sheet" },
+      { id: "autoCut", label: "Auto cut", icon: toolAutoCut, ready: true, hint: "Auto cut: the cut order and lead-ins worked out for every sheet, the shown sheet or picked parts" },
       { id: "manualCut", label: "Manual cut", icon: toolManualCut, hint: "Manual cut: set the cut order by hand" },
       { id: "breakCut", label: "Break cut", icon: toolBreakCut, hint: "Break cut: the contour stops a gap short of its start, so the part stays held in the sheet" },
       { id: "microJoint", label: "Micro joint", icon: toolMicroJoint, hint: "Micro joint: small uncut places that keep the part in the sheet" },
