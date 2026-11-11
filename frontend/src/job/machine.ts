@@ -59,13 +59,11 @@ export const LINE_CAPABILITIES: { id: LineCapability; label: string; help: strin
   { id: "hole", label: "Holes", help: "Holes cut at the small-hole speed" },
 ];
 
-/** How Generate path orders a sheet: the directions it may use (more ticked: the one with the least travel
- * is kept) and the rules that can be switched. Not switchable, always applied: holes (and tracing) first,
- * the outline last; a part lying inside another part's outline / window before that part (no islands). */
+/** The machine's cut order rules for Generate path, in this rank: always (not switchable) holes and
+ * tracing first, the outline last, and a part lying inside another part's outline / window before that
+ * part (no islands); then, when ticked, significantly bigger parts last (heat expansion). These outrank
+ * the order the operator picks under AUTO CUT (direction, shortest travel, small to big, ...). */
 export interface CutOrderRules {
-  bottomUp: boolean;
-  leftRight: boolean;
-  shortest: boolean;
   /** Significantly bigger parts last, so heat expansion does not shift the plate */
   bigLast: boolean;
   /** "Significantly bigger": area over this many times the sheet's median part ... */
@@ -74,14 +72,12 @@ export interface CutOrderRules {
   bigSheetPct: number;
 }
 
-export const DEFAULT_CUT_ORDER: CutOrderRules = {
-  bottomUp: true, leftRight: true, shortest: false, bigLast: true, bigTimesMedian: 5, bigSheetPct: 20,
-};
+export const DEFAULT_CUT_ORDER: CutOrderRules = { bigLast: true, bigTimesMedian: 5, bigSheetPct: 20 };
 
 export const cutOrderOf = (m: Machine | undefined): CutOrderRules => {
-  const r = { ...DEFAULT_CUT_ORDER, ...(m?.cutOrder ?? {}) } as CutOrderRules & Record<string, unknown>;
-  delete r.holesFirst; delete r.insideFirst;   // kept in machines saved earlier: now always on
-  return r.bottomUp || r.leftRight || r.shortest ? r : { ...r, bottomUp: true };   // at least one direction
+  const r = { ...DEFAULT_CUT_ORDER, ...(m?.cutOrder ?? {}) };
+  // machines saved earlier also carry directions and holes / inside first: directions go to AUTO CUT, the rest is always on
+  return { bigLast: r.bigLast, bigTimesMedian: r.bigTimesMedian, bigSheetPct: r.bigSheetPct };
 };
 
 /** Does the machine do this line property? */
