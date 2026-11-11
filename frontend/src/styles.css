@@ -2095,6 +2095,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .ac-help { margin: 0; }
 .ac-pickbar { flex: none; display: flex; gap: 8px; }
 .ac-pickbar .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-align: center; text-transform: uppercase; letter-spacing: .03em; }
+.ac-pickbar .btn { background: #fff; }
 .ac-pickbar .btn:hover:not(:disabled) { background: var(--green-tint); border-color: var(--green); }
 .ac-pickbar .btn.ac-clear:hover:not(:disabled) { background: #fde8e8; border-color: #f2c4c2; color: #c8171d; }
 .ac-pickbar .btn.is-on { background: var(--green-tint); border-color: var(--green); color: var(--green-ink); }
