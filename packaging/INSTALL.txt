@@ -7,7 +7,7 @@ Start it with start.bat; settings are in config.json next to it.
 
 1. COPY GNEZDO TO THE PC
 ------------------------
-1. Download gnezdo-windows.zip (link in the README on GitHub, "Download").
+1. Download gnezdo-server-windows.zip (link in the README on GitHub, "Download").
 2. Right-click -> Extract All... -> Extract.
    You get a folder "gnezdo", e.g. C:\Users\<name>\Desktop\gnezdo
 

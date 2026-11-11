@@ -120,7 +120,7 @@ Nothing to install: unzip and start. Test builds are made by hand when a set of 
 |---|---|---|
 | **[⬇ gnezdo-desktop-windows.zip](https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-desktop-windows.zip)** | Desktop, Windows: one person, one PC, no database to set up | `GNEZDO.exe` (opens in its own Edge window) |
 | **[⬇ gnezdo-desktop-linux.tar.gz](https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-desktop-linux.tar.gz)** | Desktop, Linux | `gnezdo` (Chromium, Chrome, Edge or Brave; else the default browser) |
-| **[⬇ gnezdo-windows.zip](https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-windows.zip)** | Server on a Windows PC, used from the browser on <http://localhost:8090> and other PCs | `start.bat`; the first start asks for the SQL Server database |
+| **[⬇ gnezdo-server-windows.zip](https://github.com/M0ti0n/GNEZDO/releases/download/test-build/gnezdo-server-windows.zip)** | Server on a Windows PC, used from the browser on <http://localhost:8090> and other PCs | `start.bat`; the first start asks for the SQL Server database |
 
 The desktop version keeps its data in your own app-data folder (`%LOCALAPPDATA%\GNEZDO`, `~/.local/share/gnezdo`), not in the GNEZDO folder. See [INSTALL-desktop.txt](packaging/desktop/INSTALL-desktop.txt) and [INSTALL.txt](packaging/INSTALL.txt).
 

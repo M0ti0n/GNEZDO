@@ -2,6 +2,11 @@
 
 Newest first. Each build is the `test-build` release; earlier builds (up to 7 Nov 2026) were made on every change to main.
 
+## Next build
+
+**Changed**
+- The Windows server package is now called `gnezdo-server-windows.zip` (was `gnezdo-windows.zip`)
+
 ## Build 11 Nov 2026 (`ba40568`)
 
 **New**
