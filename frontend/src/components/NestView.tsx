@@ -9,6 +9,7 @@ import type { Machine, Origin } from "../job/machine";
 import type { StockSheet } from "../job/stock";
 import { ManualNest } from "./ManualNest";
 import { CutView } from "./CutView";
+import { liveContours, processedParts } from "../job/cutPath";
 import { SheetPropertiesDialog } from "./SheetPropertiesDialog";
 import { strategyLabel } from "./CustomNestDialog";
 
@@ -66,8 +67,10 @@ const MODE_SHORT: Record<NestMode, string> = { fast: "FAST", thorough: "THOROUGH
 const transformOf = (p: { x: number; y: number; angle: number; mirror: boolean }) =>
   `translate(${p.x} ${p.y}) rotate(${p.angle})${p.mirror ? " scale(-1 1)" : ""}`;
 
-/** A nested sheet drawn to scale, every part in its own colour. */
-export function SheetSvg({ sheet, parts, titles }: { sheet: NestedSheet; parts: Map<string, PartRef>; titles?: boolean }) {
+/** A nested sheet drawn to scale, every part in its own colour; with `cut`, processed parts as their cut and trace lines (Process). */
+export function SheetSvg({ sheet, parts, titles, cut = false }: { sheet: NestedSheet; parts: Map<string, PartRef>; titles?: boolean; cut?: boolean }) {
+  const done = cut ? processedParts(sheet) : null;
+  const marks = cut ? liveContours(sheet).filter((c) => c.kind === "trace" || c.kind === "open") : [];
   return (
     <svg className="sheet-svg" viewBox={`-4 -4 ${sheet.lengthMm + 8} ${sheet.widthMm + 8}`} preserveAspectRatio="xMidYMid meet">
       {sheet.outline?.length
@@ -78,12 +81,13 @@ export function SheetSvg({ sheet, parts, titles }: { sheet: NestedSheet; parts: 
         if (!part) return null;
         const c = partColor(part.no);
         return (
-          <path key={i} className="sheet-part" d={part.path} transform={transformOf(p)} fillRule="evenodd"
-            style={{ fill: c.fill, stroke: c.stroke }}>
+          <path key={i} className={`sheet-part${done?.has(i) ? " is-cut" : ""}`} d={part.path} transform={transformOf(p)} fillRule="evenodd"
+            style={done?.has(i) ? undefined : { fill: c.fill, stroke: c.stroke }}>
             {titles && <title>{part.name}</title>}
           </path>
         );
       })}
+      {marks.map((m, k) => <path key={`m${k}`} className={`sheet-mark is-${m.kind}`} d={m.pts.map(([x, y], j) => `${j ? "L" : "M"}${x} ${y}`).join("")} />)}
     </svg>
   );
 }
@@ -218,7 +222,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
                 </div>
               ) : null;
             })()}
-            <div className="nest-card-body"><SheetSvg sheet={sh} parts={byId} titles /></div>
+            <div className="nest-card-body"><SheetSvg sheet={sh} parts={byId} titles cut /></div>
           </article>
         ))}
       </div>
