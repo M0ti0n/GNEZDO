@@ -2082,41 +2082,39 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .cut-pierce { fill: #1fa83a; }
 .cut-rapid { stroke: #7a8896; opacity: .8; }
 .cut-no { fill: #1b1b1b; stroke: #fff; paint-order: stroke; font-weight: 700; text-anchor: middle; dominant-baseline: central; font-family: var(--font); }
-.ac { padding: 10px; gap: 10px; overflow: hidden; }
-.ac-top { display: flex; gap: 8px; align-items: stretch; }
-.ac-tool { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; color: var(--ink-2); }
-.ac-tool img { width: 58px; height: 58px; border: 1.5px solid var(--ink-2); border-radius: 8px; padding: 3px; background: #fff; }
-.ac-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.ac-mode { height: 34px; font-size: 15px; font-weight: 600; }
-.ac-process { display: flex; align-items: center; justify-content: center; gap: 10px; height: 40px; border: 1.5px solid #4c8c1a; border-radius: 6px; background: #8fd14f; color: #111; font-size: 18px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-.ac-process:hover:not(:disabled) { background: #7cc23d; }
-.ac-process:disabled { opacity: .6; }
-.ac-opts { display: flex; flex-direction: column; gap: 8px; }
-.ac-opts .field { height: 34px; font-size: 15px; }
-.ac-skip { font-size: 15px; }
-.ac-help { margin: 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
-.ac-pickbar { display: flex; gap: 8px; }
-.ac-pickbar .btn { flex: 1; text-transform: uppercase; }
+.ac { overflow: hidden; }
+.ac .sol-head { padding: 12px 16px; }
+.ac-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 12px 16px 14px; }
+.ac-top { display: flex; gap: 12px; align-items: flex-start; }
+.ac-icon { flex: none; cursor: default; }
+.ac-icon img { width: 52px; height: 52px; }
+.ac-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.ac-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+.ac-field .field { height: 36px; font-size: 14px; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink); }
+.ac-process { display: flex; align-items: center; justify-content: center; gap: 10px; height: 42px; font-size: 16px; letter-spacing: .05em; text-transform: uppercase; }
+.ac-help { margin: 0; }
+.ac-pickbar { flex: none; display: flex; gap: 8px; }
+.ac-pickbar .btn { flex: 1; text-transform: uppercase; letter-spacing: .03em; }
 .ac-pickbar .btn.is-on { background: var(--green-tint); border-color: var(--green); color: var(--green-ink); }
-.ac-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; border: 1.5px solid var(--line); border-radius: 6px; }
-/* ten rows by default, growing with the list; past the panel's room it scrolls (the buttons below stay) */
-.ac-table { position: relative; min-height: calc(10 * 30px + 12px); padding: 6px 6px; }
-.ac-col { position: absolute; top: 4px; bottom: 4px; width: 34px; border: 1.5px solid #2a5bd7; border-radius: 4px; pointer-events: none; }
-.ac-col.is-no { left: 4px; }
-.ac-col.is-trace { right: 4px; border-color: var(--green); }
-.ac-rows { margin: 0; padding: 0; list-style: none; }
-.ac-row { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; height: 30px; padding: 0 2px 0 0; cursor: grab; font-size: 13.5px; border-radius: 4px; }
-.has-trace .ac-row { grid-template-columns: 34px 1fr 34px; }
-.ac-row:hover { background: var(--green-tint); }
-.ac-row.is-sel { background: var(--yellow-tint); }
-.ac-row.is-drag { opacity: .6; }
-.ac-no { text-align: center; font-weight: 700; color: #2a5bd7; }
-.ac-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c62828; }
-.ac-tr { display: grid; place-items: center; }
-.ac-trace { width: 17px; height: 17px; margin: 0; accent-color: var(--green); }
-.ac-empty { position: absolute; top: 10px; left: 48px; right: 48px; margin: 0; color: var(--ink-3); font-size: 13px; }
-.ac-movebar { flex: none; display: flex; gap: 8px; }
-.ac-movebar .btn { flex: 1; }
+/* ten rows to start, growing with the list; past the panel's room it scrolls (the buttons below stay) */
+.ac-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+.ac-table { position: relative; min-height: calc(26px + 10 * 34px); }
+.ac-headrow, .ac-row { display: grid; grid-template-columns: 26px 1fr 40px; align-items: center; gap: 8px; }
+.ac-headrow { height: 26px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+.ac-headrow span:nth-child(3) { justify-self: center; }
+.ac-row { height: 34px; }
+.ac-no { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px solid var(--ink-2); border-radius: 4px; font-weight: 700; font-size: 14px; color: var(--ink-2); background: #fff; }
+.ac-name { min-width: 0; height: 28px; line-height: 26px; padding: 0 8px; border: 1px solid #8f9a9c; border-radius: 4px; background: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; color: var(--ink); cursor: grab; }
+.ac-name:hover { border-color: var(--green); }
+.ac-name.is-sel { border-color: var(--green); box-shadow: 0 0 0 2px var(--green-tint); background: var(--green-tint); }
+.ac-name.is-drag { opacity: .55; }
+.ac-trace { appearance: none; -webkit-appearance: none; justify-self: center; width: 22px; height: 22px; margin: 0; border: 1.5px solid var(--ink-2); border-radius: 5px; background: #fff; cursor: pointer; display: grid; place-items: center; }
+.ac-trace:checked { background: var(--green); border-color: var(--green); }
+.ac-trace:checked::after { content: ""; width: 6px; height: 11px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: translateY(-1px) rotate(45deg); }
+.ac-trace:disabled { opacity: .4; cursor: default; }
+.ac-empty { position: absolute; top: 34px; left: 34px; right: 34px; margin: 0; color: var(--ink-3); font-size: 13px; }
+.ac-msg { margin: 0; }
 .sheet-part.is-cut { fill: none; stroke: #1b1b1b; }
 .sheet-mark { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .sheet-mark.is-trace { stroke: var(--ln-trace); }
