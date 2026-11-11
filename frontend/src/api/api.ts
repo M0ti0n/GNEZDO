@@ -326,7 +326,8 @@ const detailOf = (p: PartSummary): PartDetail =>
 
 /** What a job tab saves (Work parts SAVE). The stock and nest are kept as the tab has them. */
 export interface JobSaveData { name: string; parts: JobPart[]; stock: unknown[]; nest: unknown | null; modifiedBy?: string; machine?: string }
-export interface JobSaved { id: string; name: string; status: JobStatus; sheetCount: number; modifiedAt: string }
+/** jobFile: the job's file in the machine's job folder; jobFileError: why it was not written (the job is saved anyway). */
+export interface JobSaved { id: string; name: string; status: JobStatus; sheetCount: number; modifiedAt: string; jobFile?: string | null; jobFileError?: string | null }
 /** A saved job's stock sheets and saved nest (its parts: jobParts). */
 export interface JobDetail { id: string; name: string; status: JobStatus; sheetCount: number; stock: unknown[] | null; nest: unknown | null; machine?: string }
 
@@ -358,6 +359,14 @@ function mockSaveJob(id: string | null, d: JobSaveData): JobSaved {
 }
 
 export const api = {
+  /** A GNEZDO server writes files (machine folders); not in the demo. */
+  hasServer: useApi,
+  /** Can the server write to this folder? */
+  checkFolder: (path: string): Promise<{ ok: boolean; message: string }> =>
+    useApi ? post("/api/folders/check", { path }) : delay({ ok: false, message: "The demo has no server to write files." }),
+  /** An NC program into the machine's NC folder; the full path written. */
+  writeNc: (machineId: string, name: string, content: string): Promise<{ path: string }> =>
+    useApi ? post(`/api/machines/${encodeURIComponent(machineId)}/nc`, { name, content }) : Promise.reject(new Error("The demo has no server to write files.")),
   /** A setting shared by everyone (on the server); null when it was never saved, or in the demo. */
   setting: async <T,>(key: string): Promise<T | null> => (useApi ? get<T | null>(`/api/settings/${key}`) : null),
   saveSetting: async <T,>(key: string, value: T): Promise<void> => {

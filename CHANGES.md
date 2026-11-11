@@ -4,6 +4,9 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+**New**
+- Settings → Machines → Machine → **Folders**: per machine, the NC folder (required; or tick to download NC programs in the browser instead) and the job folder with "Also write every saved job as a file" (off: jobs only in the database). The server writes there; Check tests a folder. NC output → Try it: Save to the NC folder
+
 **Changed**
 - The Windows server package is now called `gnezdo-server-windows.zip` (was `gnezdo-windows.zip`)
 - Machine → Cut order: holes first and parts inside other parts first are always applied (no longer checkboxes); only Big parts last stays, and it outranks the order picked under Auto cut. The directions (bottom to top, left to right, shortest travel) move to Auto cut

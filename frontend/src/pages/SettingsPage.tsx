@@ -10,6 +10,7 @@ import { NumInput } from "../components/NumInput";
 import { TechnologySettings } from "../components/TechnologySettings";
 import { LeadsSettings } from "../components/LeadsSettings";
 import { NcOutputSettings } from "../components/NcOutputSettings";
+import { MachineFoldersSettings } from "../components/MachineFoldersSettings";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
 import { DEFAULT_CUT_ORDER, LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, cutOrderOf, machineCan, newMachine, type Machine, type MachineList } from "../job/machine";
@@ -65,7 +66,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const addImported = (m: Machine, replace?: Machine) => {
-    const list = replace ? machines.list.map((x) => (x.id === replace.id ? { ...m, id: replace.id } : x)) : [...machines.list, m];
+    const list = replace ? machines.list.map((x) => (x.id === replace.id ? { ...m, id: replace.id, folders: x.folders } : x)) : [...machines.list, m];
     onMachines({ ...machines, list });
     setMSel(replace ? replace.id : m.id);
     setMMsg({ text: `${m.name} ${replace ? "replaced" : "added"}${m.technologies?.length ? ` with ${m.technologies.length} technologies` : ""}` });
@@ -162,6 +163,8 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
             );
           })()}
         </section>
+
+        <MachineFoldersSettings machine={machine} onChange={(f) => setM({ folders: f })} />
 
         <section className="rule">
           <h3>What it cuts</h3>

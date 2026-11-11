@@ -85,6 +85,7 @@ export const machineFileName = (m: Machine) => `${(m.name || "machine").replace(
 export function machineZip(m: Machine): Uint8Array {
   const machine: Omit<Machine, "id"> & { id?: string } = { ...m };
   delete machine.id;
+  delete machine.folders;   // paths on this server: not for another site
   const pp = machine.postprocessor;
   // the postprocessor's source goes in its own file (to read and change); machine.json names it
   if (pp) machine.postprocessor = { ...pp, source: "postprocessor.js" };

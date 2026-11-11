@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { GENERIC_POSTPROCESSOR, runPostprocessor, sampleProgram, type Postprocessor } from "../job/postprocessor";
 import type { Machine } from "../job/machine";
+import { saveNcFile } from "../job/ncFile";
 
 /** Settings -> Machines -> NC output: the machine's postprocessor (a .js file) and a try-out on a sample sheet. */
 export function NcOutputSettings({ machine, onChange }: { machine: Machine; onChange: (p: Postprocessor | undefined) => void }) {
@@ -8,6 +9,7 @@ export function NcOutputSettings({ machine, onChange }: { machine: Machine; onCh
   const file = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [showSource, setShowSource] = useState(false);
+  const [tryMsg, setTryMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   // the sample is cut with the machine's first technology row, if it has one
   const tech = useMemo(() => {
     const t = machine.technologies?.find((x) => x.rows.length);
@@ -69,8 +71,11 @@ export function NcOutputSettings({ machine, onChange }: { machine: Machine; onCh
             : <p className="tech-msg is-bad">{result.error}</p>}
           <div className="mc-row">
             {result.ok && <button type="button" className="btn btn-plain" onClick={() => download(`SAMPLE${pp.extension}`, result.text, "text/plain")}>Download the sample</button>}
+            {result.ok && <button type="button" className="btn btn-plain" title="As a real NC program goes: to the machine's NC folder (Machine → Folders)"
+              onClick={() => saveNcFile(machine, `SAMPLE${pp.extension}`, result.text).then((t) => setTryMsg({ text: t }), (e: Error) => setTryMsg({ text: e.message, bad: true }))}>Save to the NC folder</button>}
             <button type="button" className="btn btn-plain" onClick={() => setShowSource((v) => !v)}>{showSource ? "Hide the source" : "Show the source"}</button>
           </div>
+          {tryMsg && <p className={`tech-msg${tryMsg.bad ? " is-bad" : ""}`} role="status">{tryMsg.text}</p>}
           {showSource && <pre className="ncout-pre is-src">{pp.source}</pre>}
         </section>
       )}
