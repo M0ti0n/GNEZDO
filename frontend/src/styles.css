@@ -2094,15 +2094,18 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .ac-process { display: flex; align-items: center; justify-content: center; gap: 10px; height: 42px; font-size: 16px; letter-spacing: .05em; text-transform: uppercase; }
 .ac-help { margin: 0; }
 .ac-pickbar { flex: none; display: flex; gap: 8px; }
-.ac-pickbar .btn { flex: 1; text-transform: uppercase; letter-spacing: .03em; }
+.ac-pickbar .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-align: center; text-transform: uppercase; letter-spacing: .03em; }
+.ac-pickbar .btn:hover:not(:disabled) { background: var(--green-tint); border-color: var(--green); }
+.ac-pickbar .btn.ac-clear:hover:not(:disabled) { background: #fde8e8; border-color: #f2c4c2; color: #c8171d; }
 .ac-pickbar .btn.is-on { background: var(--green-tint); border-color: var(--green); color: var(--green-ink); }
 /* ten rows to start, growing with the list; past the panel's room it scrolls (the buttons below stay) */
-.ac-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+.ac-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 4px 10px 8px; border: 1.5px solid var(--green); border-radius: 8px; }
 .ac-table { position: relative; min-height: calc(26px + 10 * 34px); }
-.ac-headrow, .ac-row { display: grid; grid-template-columns: 26px 1fr 40px; align-items: center; gap: 8px; }
+.ac-headrow, .ac-row { display: grid; grid-template-columns: 26px 1fr; align-items: center; gap: 8px; }
 .ac-headrow { height: 26px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
 .ac-headrow span:nth-child(3) { justify-self: center; }
 .ac-row { height: 34px; }
+.ac-row.has-trace, .ac-headrow.has-trace { grid-template-columns: 26px 1fr 40px; }
 .ac-no { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px solid var(--ink-2); border-radius: 4px; font-weight: 700; font-size: 14px; color: var(--ink-2); background: #fff; }
 .ac-name { min-width: 0; height: 28px; line-height: 26px; padding: 0 8px; border: 1px solid #8f9a9c; border-radius: 4px; background: #fff;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; color: var(--ink); cursor: grab; }
