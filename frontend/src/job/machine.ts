@@ -60,15 +60,12 @@ export const LINE_CAPABILITIES: { id: LineCapability; label: string; help: strin
 ];
 
 /** How Generate path orders a sheet: the directions it may use (more ticked: the one with the least travel
- * is kept) and the rules always applied. */
+ * is kept) and the rules that can be switched. Not switchable, always applied: holes (and tracing) first,
+ * the outline last; a part lying inside another part's outline / window before that part (no islands). */
 export interface CutOrderRules {
   bottomUp: boolean;
   leftRight: boolean;
   shortest: boolean;
-  /** Within a part: holes (and tracing) first, the outline last */
-  holesFirst: boolean;
-  /** A part lying inside another part's outline / window is cut before that part (no islands) */
-  insideFirst: boolean;
   /** Significantly bigger parts last, so heat expansion does not shift the plate */
   bigLast: boolean;
   /** "Significantly bigger": area over this many times the sheet's median part ... */
@@ -78,11 +75,12 @@ export interface CutOrderRules {
 }
 
 export const DEFAULT_CUT_ORDER: CutOrderRules = {
-  bottomUp: true, leftRight: true, shortest: false, holesFirst: true, insideFirst: true, bigLast: true, bigTimesMedian: 5, bigSheetPct: 20,
+  bottomUp: true, leftRight: true, shortest: false, bigLast: true, bigTimesMedian: 5, bigSheetPct: 20,
 };
 
 export const cutOrderOf = (m: Machine | undefined): CutOrderRules => {
-  const r = { ...DEFAULT_CUT_ORDER, ...(m?.cutOrder ?? {}) };
+  const r = { ...DEFAULT_CUT_ORDER, ...(m?.cutOrder ?? {}) } as CutOrderRules & Record<string, unknown>;
+  delete r.holesFirst; delete r.insideFirst;   // kept in machines saved earlier: now always on
   return r.bottomUp || r.leftRight || r.shortest ? r : { ...r, bottomUp: true };   // at least one direction
 };
 
