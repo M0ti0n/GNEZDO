@@ -7,6 +7,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 **Changed**
 - The Windows server package is now called `gnezdo-server-windows.zip` (was `gnezdo-windows.zip`)
 - Machine → Cut order: holes first and parts inside other parts first are always applied (no longer checkboxes); only Big parts last stays, and it outranks the order picked under Auto cut. The directions (bottom to top, left to right, shortest travel) move to Auto cut
+- Big parts last holds only for the parts in the big part's bounding box; parts elsewhere are cut in the Auto cut order
 
 ## Build 11 Nov 2026 (`ba40568`)
 

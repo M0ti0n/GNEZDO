@@ -64,7 +64,10 @@ export const LINE_CAPABILITIES: { id: LineCapability; label: string; help: strin
  * part (no islands); then, when ticked, significantly bigger parts last (heat expansion). These outrank
  * the order the operator picks under AUTO CUT (direction, shortest travel, small to big, ...). */
 export interface CutOrderRules {
-  /** Significantly bigger parts last, so heat expansion does not shift the plate */
+  /** Significantly bigger parts last, so heat expansion does not shift the plate. "Last" within the big
+   * part's bounding box only: the AUTO CUT order (e.g. left to right) runs as usual up to the box, then
+   * cuts every part in the box (touching it counts) in the same order, then the big part, then carries
+   * on past the box. Parts away from the box are not held back. */
   bigLast: boolean;
   /** "Significantly bigger": area over this many times the sheet's median part ... */
   bigTimesMedian: number;

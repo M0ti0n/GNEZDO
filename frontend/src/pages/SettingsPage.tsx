@@ -189,6 +189,8 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
                   <NumInput value={co.bigTimesMedian} min={1} disabled={!co.bigLast} aria-label="Times the median part" onCommit={(n) => setCo({ bigTimesMedian: n })} />× the median part, or over
                   <NumInput value={co.bigSheetPct} min={1} disabled={!co.bigLast} aria-label="Percent of the sheet" onCommit={(n) => setCo({ bigSheetPct: Math.min(100, n) })} />% of the sheet</label>
               </div>
+              <p className="rule-help">Last within its bounding box: the order picked under AUTO CUT runs up to the big part's box, cuts the parts in the box (touching it counts) in the same order, then the big part, then carries on.</p>
+              
               <div className="mc-row"><button type="button" className="btn btn-plain" disabled={isDef} onClick={() => setM({ cutOrder: { ...DEFAULT_CUT_ORDER } })}>Back to the defaults</button></div>
             </section>
           );
