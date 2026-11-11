@@ -489,9 +489,16 @@ jobs:
         run: |
           ls -la dl
           gh release delete test-build --yes --cleanup-tag || true
+          # the release text: how to install, then what changed in each build (CHANGES.md at this commit)
+          {
+            echo "**Server for Windows:** gnezdo-windows.zip (unzip, start.bat, open http://localhost:8090; a demo until a database is set in config.json - see INSTALL.txt)."
+            echo
+            echo "**Desktop, one PC:** gnezdo-desktop-windows.zip (unzip, double-click GNEZDO.exe) or gnezdo-desktop-linux.tar.gz - see INSTALL.txt inside."
+            echo
+            gh api "repos/${GITHUB_REPOSITORY}/contents/CHANGES.md?ref=${GITHUB_SHA}" -H "Accept: application/vnd.github.raw" || true
+          } > notes.md
           gh release create test-build dl/gnezdo-windows.zip dl/gnezdo-desktop-windows.zip dl/gnezdo-desktop-linux.tar.gz \
             --prerelease --target "$GITHUB_SHA" \
             --title "Test build ($(date -u +%Y-%m-%d), ${GITHUB_REF_NAME})" \
-            --notes "Server for Windows: gnezdo-windows.zip (unzip, start.bat, open http://localhost:8090; a demo until a database is set in config.json - see INSTALL.txt).
-          Desktop, one PC: gnezdo-desktop-windows.zip (unzip, double-click GNEZDO.exe) or gnezdo-desktop-linux.tar.gz - see INSTALL.txt inside."
+            --notes-file notes.md
           echo "::notice title=Download::https://github.com/${GITHUB_REPOSITORY}/releases/tag/test-build"
