@@ -28,6 +28,21 @@ const loadRule = (): CutRule => { try { const r = localStorage.getItem(RULE_KEY)
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 
+/** A gear outline with a hole (for the PROCESS button: two gears in mesh). */
+function gear(cx: number, cy: number, r: number, teeth: number, phase: number, hole: number): string {
+  const pts: string[] = [];
+  const tip = r, root = r * 0.74;
+  for (let k = 0; k < teeth * 4; k++) {
+    const a = phase + (k / (teeth * 4)) * 2 * Math.PI;
+    const rr = k % 4 === 0 || k % 4 === 1 ? tip : root;
+    pts.push(`${(cx + rr * Math.cos(a)).toFixed(2)} ${(cy + rr * Math.sin(a)).toFixed(2)}`);
+  }
+  const h = `M${cx + hole} ${cy}a${hole} ${hole} 0 1 0 ${-2 * hole} 0a${hole} ${hole} 0 1 0 ${2 * hole} 0Z`;
+  return `M${pts.join("L")}Z${h}`;
+}
+const GEAR_BIG = gear(14, 18, 12.5, 10, 0, 4);
+const GEAR_SMALL = gear(30.5, 9.5, 8.5, 7, Math.PI / 7, 2.8);
+
 export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, onIndex, onClose, onInfo, locked, onToggleLock, onCut, needsSave, onSave }: {
   sol: Solution; index: number; sheets: NestedSheet[]; jobParts: JobPart[]; parts: Map<string, PartRef>;
   machine: Machine; origin: Origin;
@@ -51,6 +66,8 @@ export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, 
   const [busy, setBusy] = useState(false);
   const [askSave, setAskSave] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
+  /** the row chosen in the list (part index), moved by Up / Down */
+  const [rowSel, setRowSel] = useState<number | null>(null);
   const byPart = useMemo(() => new Map(jobParts.map((jp) => [jp.part.id, jp])), [jobParts]);
   const paths = useMemo(() => new Map([...parts].map(([id, r]) => [id, r.path])), [parts]);
   const picks = mode === "parts" || mode === "trace" || mode === "internal";
@@ -111,8 +128,9 @@ export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, 
             {MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
           <button type="button" className="ac-process" disabled={busy} onClick={() => void run()}>
-            <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
-              <path d="M16 1l3 9 8-5-4 8 9 3-9 3 4 8-8-5-3 9-3-9-8 5 4-8-9-3 9-3-4-8 8 5z" fill="currentColor" />
+            <svg viewBox="0 0 40 32" width="34" height="28" aria-hidden="true">
+              <path d={GEAR_BIG} fill="currentColor" fillRule="evenodd" />
+              <path d={GEAR_SMALL} fill="currentColor" fillRule="evenodd" />
             </svg>
             {busy ? "Working…" : "Process"}
           </button>
@@ -132,29 +150,40 @@ export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, 
         <div className="ac-pickbar">
           <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} onClick={() => setPicking((v) => !v)}
             title="On: click a part to pick it, click it again to take it out">Select</button>
-          <button type="button" className="btn btn-plain" disabled={!picked.length} onClick={() => { setPicked([]); setNoTrace(new Set()); }}>Clear all</button>
+          <button type="button" className="btn btn-plain" disabled={!picked.length} onClick={() => { setPicked([]); setNoTrace(new Set()); setRowSel(null); }}>Clear all</button>
         </div>
-        <div className="ac-list">
-          <span className="ac-side">Cut order · 1 on top</span>
-          <ol className="ac-rows pane-scroll">
-            {picked.map((i, k) => (
-              <li key={i} className={`ac-row${dragFrom === k ? " is-drag" : ""}`} draggable
-                onDragStart={(e) => { setDragFrom(k); e.dataTransfer.effectAllowed = "move"; }}
-                onDragOver={(e) => { e.preventDefault(); if (dragFrom !== null && dragFrom !== k) { move(dragFrom, k); setDragFrom(k); } }}
-                onDragEnd={() => setDragFrom(null)}>
-                <span className="ac-no">{k + 1}</span>
-                <span className="ac-name" title={nameOf(i)}>{nameOf(i)}</span>
-                <button type="button" className="ac-mv" disabled={k === 0} onClick={() => move(k, k - 1)} aria-label="Earlier">▲</button>
-                <button type="button" className="ac-mv" disabled={k === picked.length - 1} onClick={() => move(k, k + 1)} aria-label="Later">▼</button>
-                {mode === "parts" && (
-                  <input type="checkbox" className="ac-trace" checked={machineCan(machine, "trace") && !noTrace.has(i)} disabled={!machineCan(machine, "trace")} aria-label={`Trace ${nameOf(i)}`}
-                    title="Cut its tracing too" onChange={() => setNoTrace((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; })} />
-                )}
-              </li>
-            ))}
-            {!picked.length && <li className="ac-empty">{picking ? "Click the parts in the order to cut them." : "Press SELECT, then click parts."}</li>}
-          </ol>
-          {mode === "parts" && <span className="ac-side is-right">Trace</span>}
+        <div className="ac-list pane-scroll">
+          <div className={`ac-table${mode === "parts" ? " has-trace" : ""}`}>
+            <span className="ac-col is-no" aria-hidden="true" />
+            {mode === "parts" && <span className="ac-col is-trace" aria-hidden="true" />}
+            <ol className="ac-rows">
+              {picked.map((i, k) => (
+                <li key={i} className={`ac-row${dragFrom === k ? " is-drag" : ""}${rowSel === i ? " is-sel" : ""}`} draggable
+                  onClick={() => setRowSel(i)}
+                  onDragStart={(e) => { setDragFrom(k); setRowSel(i); e.dataTransfer.effectAllowed = "move"; }}
+                  onDragOver={(e) => { e.preventDefault(); if (dragFrom !== null && dragFrom !== k) { move(dragFrom, k); setDragFrom(k); } }}
+                  onDragEnd={() => setDragFrom(null)}>
+                  <span className="ac-no">{k + 1}</span>
+                  <span className="ac-name" title={nameOf(i)}>{nameOf(i)}</span>
+                  {mode === "parts" && (
+                    <span className="ac-tr">
+                      <input type="checkbox" className="ac-trace" checked={machineCan(machine, "trace") && !noTrace.has(i)} disabled={!machineCan(machine, "trace")} aria-label={`Trace ${nameOf(i)}`}
+                        title={machineCan(machine, "trace") ? "Cut its tracing too" : `${machine.name} does not trace`}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => setNoTrace((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; })} />
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+            {!picked.length && <p className="ac-empty">{picking ? "Click the parts in the order to cut them." : "Press SELECT, then click parts."}</p>}
+          </div>
+        </div>
+        <div className="ac-movebar">
+          <button type="button" className="btn btn-plain" disabled={rowSel === null || picked.indexOf(rowSel) <= 0}
+            onClick={() => rowSel !== null && move(picked.indexOf(rowSel), picked.indexOf(rowSel) - 1)} title="The part picked in the list one place earlier">▲ Up</button>
+          <button type="button" className="btn btn-plain" disabled={rowSel === null || picked.indexOf(rowSel) < 0 || picked.indexOf(rowSel) === picked.length - 1}
+            onClick={() => rowSel !== null && move(picked.indexOf(rowSel), picked.indexOf(rowSel) + 1)} title="The part picked in the list one place later">▼ Down</button>
         </div>
       </>)}
       {msg && <p className={`tech-msg ac-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}

@@ -818,9 +818,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     };
   })();
 
-  const cutDone = useMemo(() => (cut ? processedParts(sheet) : new Set<number>()), [cut, sheet]);
-  const cutLive = useMemo(() => (cut ? liveContours(sheet) : []), [cut, sheet]);
-  const cutRapids = useMemo(() => (cut ? rapidsOf(cutLive, originPoint(sheet, origin)) : []), [cut, cutLive, sheet, origin]);
+  // processed parts (Process): their cut path, here too; a part moved since is not processed any more
+  const shownSheet = useMemo(() => ({ ...sheet, parts: items }), [sheet, items]);
+  const cutDone = useMemo(() => processedParts(shownSheet), [shownSheet]);
+  const cutLive = useMemo(() => liveContours(shownSheet), [shownSheet]);
+  const cutRapids = useMemo(() => rapidsOf(cutLive, originPoint(sheet, origin)), [cutLive, sheet, origin]);
   const pathOf = (lp: Pt[][]) => lp.map((l) => l.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(2)} ${y.toFixed(2)}`).join("") + "Z").join("");
   const v = view ?? { s: 1, tx: 0, ty: 0 };
   const right = origin.endsWith("right"), bottom = origin.startsWith("bottom");
@@ -886,10 +888,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                     </path>
                   );
                 }
+                const done = cutDone.has(i) && !(sel.has(i) && moving);
                 return (
                   <path key={i} d={pathOf(g.loops)} fillRule="evenodd"
-                    className={`mn-part${sel.has(i) ? " is-sel" : ""}${bad.has(i) ? " is-bad" : ""}${sel.has(i) && moving ? " is-moving" : ""}${p.lock ? " is-locked" : ""}`}
-                    style={{ fill: c.fill, stroke: sel.has(i) ? undefined : c.stroke, strokeWidth: (sel.has(i) ? 2.2 : 1) / v.s }}>
+                    className={`mn-part${done ? " is-cut" : ""}${sel.has(i) ? " is-sel" : ""}${bad.has(i) ? " is-bad" : ""}${sel.has(i) && moving ? " is-moving" : ""}${p.lock ? " is-locked" : ""}`}
+                    style={{ fill: done ? undefined : c.fill, stroke: sel.has(i) || done ? undefined : c.stroke, strokeWidth: (sel.has(i) ? 2.2 : 1) / v.s }}>
                     <title>{r.name}</title>
                   </path>
                 );
@@ -906,7 +909,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 const c = partColor(r.no);
                 return <path key={`g${k}`} className="mn-ghost" d={pathOf(g.loops)} fillRule="evenodd" style={{ fill: c.fill, stroke: c.stroke, strokeWidth: 1 / v.s }} />;
               })}
-              {cut && (() => {
+              {(cut || cutLive.length > 0) && (() => {
                 const line = (pts: [number, number][]) => pts.map(([x, y], k) => `${k ? "L" : "M"}${x} ${y}`).join("");
                 return (
                   <g className="cut-path">
@@ -919,7 +922,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                         {(c.leadIn[0] ?? c.pts[0]) && <circle className="cut-pierce" cx={(c.leadIn[0] ?? c.pts[0])[0]} cy={(c.leadIn[0] ?? c.pts[0])[1]} r={1.8 / v.s} />}
                       </g>
                     ))}
-                    {cut.picked.map((i, k) => {
+                    {cut?.picked.map((i, k) => {
                       const g = geo[i];
                       if (!g) return null;
                       return <text key={`n${i}`} className="cut-no" x={(g.box.x0 + g.box.x1) / 2} y={(g.box.y0 + g.box.y1) / 2} style={{ fontSize: 16 / v.s, strokeWidth: 3 / v.s }}>{k + 1}</text>;

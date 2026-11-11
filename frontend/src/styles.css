@@ -2098,16 +2098,27 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .ac-pickbar { display: flex; gap: 8px; }
 .ac-pickbar .btn { flex: 1; text-transform: uppercase; }
 .ac-pickbar .btn.is-on { background: var(--green-tint); border-color: var(--green); color: var(--green-ink); }
-.ac-list { flex: 1; min-height: 0; display: flex; gap: 6px; border: 1.5px solid var(--line); border-radius: 6px; padding: 6px; }
-.ac-side { flex: none; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #2a5bd7; border: 1px solid #2a5bd7; border-radius: 4px; padding: 6px 2px; }
-.ac-side.is-right { transform: none; color: var(--green-ink); border-color: var(--green); }
-.ac-rows { flex: 1; min-width: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; }
-.ac-row { display: flex; align-items: center; gap: 6px; padding: 4px 4px; border-bottom: 1px solid var(--line); cursor: grab; font-size: 13.5px; }
-.ac-row.is-drag { background: var(--yellow-tint); }
-.ac-no { flex: none; width: 22px; text-align: right; font-weight: 700; color: #2a5bd7; }
-.ac-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c62828; }
-.ac-mv { flex: none; width: 22px; height: 22px; border: 1px solid var(--line); border-radius: 4px; background: #fff; font-size: 10px; color: var(--ink-2); }
-.ac-mv:disabled { opacity: .35; }
-.ac-trace { flex: none; width: 17px; height: 17px; accent-color: var(--green); }
-.ac-empty { padding: 10px 4px; color: var(--ink-3); font-size: 13px; cursor: default; }
+.ac-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; border: 1.5px solid var(--line); border-radius: 6px; }
+/* ten rows by default, growing with the list; past the panel's room it scrolls (the buttons below stay) */
+.ac-table { position: relative; min-height: calc(10 * 30px + 12px); padding: 6px 6px; }
+.ac-col { position: absolute; top: 4px; bottom: 4px; width: 34px; border: 1.5px solid #2a5bd7; border-radius: 4px; pointer-events: none; }
+.ac-col.is-no { left: 4px; }
+.ac-col.is-trace { right: 4px; border-color: var(--green); }
+.ac-rows { margin: 0; padding: 0; list-style: none; }
+.ac-row { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; height: 30px; padding: 0 2px 0 0; cursor: grab; font-size: 13.5px; border-radius: 4px; }
+.has-trace .ac-row { grid-template-columns: 34px 1fr 34px; }
+.ac-row:hover { background: var(--green-tint); }
+.ac-row.is-sel { background: var(--yellow-tint); }
+.ac-row.is-drag { opacity: .6; }
+.ac-no { text-align: center; font-weight: 700; color: #2a5bd7; }
+.ac-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c62828; }
+.ac-tr { display: grid; place-items: center; }
+.ac-trace { width: 17px; height: 17px; margin: 0; accent-color: var(--green); }
+.ac-empty { position: absolute; top: 10px; left: 48px; right: 48px; margin: 0; color: var(--ink-3); font-size: 13px; }
+.ac-movebar { flex: none; display: flex; gap: 8px; }
+.ac-movebar .btn { flex: 1; }
+.sheet-part.is-cut { fill: none; stroke: #1b1b1b; }
+.sheet-mark { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.sheet-mark.is-trace { stroke: var(--ln-trace); }
+.sheet-mark.is-open { stroke: var(--ln-open-done); }
 .ac-msg { margin: 0; }
