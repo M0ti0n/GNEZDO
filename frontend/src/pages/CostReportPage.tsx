@@ -47,17 +47,34 @@ export function CostReportPage({ job, jobParts, userName }: { job: ReportJob; jo
       const kg = partKg(jp.part);
       const cutS = partCutSeconds(jp.part.path, row);
       const pm = priceOf(jp.part.material);
-      const each = kg * pm.kg + ((cutS ?? 0) / 60) * pm.min;
-      return { jp, kg, cutS, each };
+      const matEach = kg * pm.kg, cutEach = ((cutS ?? 0) / 60) * pm.min;
+      return { jp, kg, cutS, each: matEach + cutEach, matEach, cutEach };
     }),
   });
   const [snap, setSnap] = useState(build);
+  // sums by material and thickness
+  const groups = useMemo(() => {
+    const m = new Map<string, { label: string; pcs: number; kg: number; min: number; mat: number; cut: number; noTime: boolean }>();
+    for (const r of snap.rows) {
+      const key = `${r.jp.part.material}|${r.jp.part.thicknessMm}`;
+      const g = m.get(key) ?? { label: `${r.jp.part.material} ${r.jp.part.thicknessMm} mm`, pcs: 0, kg: 0, min: 0, mat: 0, cut: 0, noTime: false };
+      const q = r.jp.qty;
+      g.pcs += q; g.kg += r.kg * q; g.min += ((r.cutS ?? 0) / 60) * q; g.mat += r.matEach * q; g.cut += r.cutEach * q;
+      if (r.cutS === null) g.noTime = true;
+      m.set(key, g);
+    }
+    return [...m.values()].sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  }, [snap]);
   const pages = useMemo(() => {
     const out: (typeof snap.rows)[] = [];
     out.push(snap.rows.slice(0, ROWS_FIRST));
     for (let k = ROWS_FIRST; k < snap.rows.length; k += ROWS_MORE) out.push(snap.rows.slice(k, k + ROWS_MORE));
+    // the sums need room after the last rows: else a page of their own
+    const last = out[out.length - 1];
+    const room = (out.length === 1 ? ROWS_FIRST : ROWS_MORE) * 68;
+    if (last.length * 68 + (groups.length + 5) * 26 + 40 > room) out.push([]);
     return out;
-  }, [snap]);
+  }, [snap, groups]);
   const sum = snap.rows.reduce((a, r) => a + r.each * r.jp.qty, 0) + snap.fixed;
   const noTime = snap.rows.filter((r) => r.cutS === null).length;
 
@@ -108,8 +125,29 @@ export function CostReportPage({ job, jobParts, userName }: { job: ReportJob; jo
       </div>
       {i === pages.length - 1 && (
         <div className="cp-sum">
-          {snap.fixed > 0 && <div><span>Fixed cost</span><b>{money(snap.fixed, snap.currency)}</b></div>}
-          <div className="cp-total"><span>Σ Sum</span><b>{money(sum, snap.currency)}</b></div>
+          <table className="cp-groups">
+            <thead><tr><th>Σ by material / thickness</th><th className="num">Pieces</th><th className="num">Weight kg</th><th className="num">Cutting min</th>
+              <th className="num">Material</th><th className="num">Cutting</th><th className="num">Sum</th></tr></thead>
+            <tbody>
+              {groups.map((g) => (
+                <tr key={g.label}>
+                  <td><b>{g.label}</b></td><td className="num">{g.pcs}</td><td className="num">{g.kg.toFixed(1)}</td>
+                  <td className="num">{g.noTime ? "—" : g.min.toFixed(1)}</td>
+                  <td className="num">{money(g.mat, snap.currency)}</td><td className="num">{money(g.cut, snap.currency)}</td>
+                  <td className="num"><b>{money(g.mat + g.cut, snap.currency)}</b></td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              {snap.fixed > 0 && <tr><td colSpan={6}>Fixed cost</td><td className="num">{money(snap.fixed, snap.currency)}</td></tr>}
+              <tr className="cp-total"><td colSpan={2}>Σ Sum total</td>
+                <td className="num">{groups.reduce((a, g) => a + g.kg, 0).toFixed(1)}</td>
+                <td className="num">{groups.reduce((a, g) => a + g.min, 0).toFixed(1)}</td>
+                <td className="num">{money(groups.reduce((a, g) => a + g.mat, 0), snap.currency)}</td>
+                <td className="num">{money(groups.reduce((a, g) => a + g.cut, 0), snap.currency)}</td>
+                <td className="num">{money(sum, snap.currency)}</td></tr>
+            </tfoot>
+          </table>
         </div>
       )}
       <footer className="rp-foot"><span>GNEZDO · cost report · {job.title}</span><span>Page {i + 1} / {pages.length}</span></footer>
