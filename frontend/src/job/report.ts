@@ -107,3 +107,52 @@ export function parsePages(text: string, max: number): number[] {
   }
   return [...out].sort((x, y) => x - y);
 }
+
+/**
+ * Where a part's number goes: the point on its material (inside the outline, outside every hole) that
+ * is farthest from all its edges, in the part's own coordinates, with that distance (the room there).
+ */
+const labelCache = new Map<string, { x: number; y: number; room: number }>();
+export function labelPoint(path: string): { x: number; y: number; room: number } {
+  const hit = labelCache.get(path);
+  if (hit) return hit;
+  const loops = loopsOf(path);
+  if (!loops.length) return { x: 0, y: 0, room: 0 };
+  const outer = loops.reduce((a, b) => (area(b) > area(a) ? b : a));
+  const inside = (x: number, y: number, lp: Loop) => {
+    let c = false;
+    for (let i = 0, j = lp.length - 1; i < lp.length; j = i++) {
+      const [xi, yi] = lp[i], [xj, yj] = lp[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  const onMaterial = (x: number, y: number) => inside(x, y, outer) && !loops.some((lp) => lp !== outer && inside(x, y, lp));
+  const edgeDist = (x: number, y: number) => {
+    let d = Infinity;
+    for (const lp of loops) for (let i = 0; i < lp.length; i++) {
+      const [ax, ay] = lp[i], [bx, by] = lp[(i + 1) % lp.length];
+      const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-12;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L2));
+      d = Math.min(d, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)));
+    }
+    return d;
+  };
+  const b = box(outer);
+  let best = { x: b.cx, y: b.cy, room: onMaterial(b.cx, b.cy) ? edgeDist(b.cx, b.cy) : -1 };
+  // a grid over the part, then finer grids around the best point
+  let cx = b.cx, cy = b.cy, w = b.w, h = b.h;
+  for (let round = 0; round < 4; round++) {
+    const n = round === 0 ? 24 : 10;
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+      const x = cx - w / 2 + (w * i) / n, y = cy - h / 2 + (h * j) / n;
+      if (!onMaterial(x, y)) continue;
+      const d = edgeDist(x, y);
+      if (d > best.room) best = { x, y, room: d };
+    }
+    cx = best.x; cy = best.y; w = (w * 2.5) / (round === 0 ? 24 : 10); h = (h * 2.5) / (round === 0 ? 24 : 10);
+  }
+  const out = { ...best, room: Math.max(0, best.room) };
+  labelCache.set(path, out);
+  return out;
+}

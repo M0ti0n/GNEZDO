@@ -1997,7 +1997,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .rp-f.is-strong b { font-size: 14px; }
 .rp-sheet { display: block; margin: 0 auto; overflow: visible; }
 .rp-plate { fill: #eef3f2; stroke: #6b7d83; stroke-width: 1; }
-.rp-no { font: 700 15px var(--font); fill: #1b2a30; text-anchor: middle; paint-order: stroke; stroke: rgba(255,255,255,.85); stroke-width: 2.5px; }
+.rp-no { font: 700 15px var(--font); fill: #1b2a30; text-anchor: middle; paint-order: stroke; stroke: #fff; stroke-width: 6px; stroke-linejoin: round; }
 .rp-no-out { font-size: 14px; }
 .rp-lead { stroke: #1b2a30; stroke-width: .7; }
 .rp-ruler line { stroke: #8a62b8; stroke-width: 1; }
