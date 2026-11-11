@@ -1,3 +1,4 @@
+import { DEFAULT_REMNANT_SETTINGS, type RemnantSettings } from "./remnant";
 // Stock sheets of a job (the STOCK panel of the Work parts screen).
 
 /** manual: added by Add sheet in Manual nest */
@@ -78,6 +79,8 @@ export interface StockSettings {
   globalLengthMm: number;
   globalWidthMm: number;
   slots: [DefaultSlot, DefaultSlot, DefaultSlot];
+  /** Process -> Remnant */
+  remnant: RemnantSettings;
 }
 
 export const DEFAULT_STOCK_SETTINGS: StockSettings = {
@@ -88,6 +91,7 @@ export const DEFAULT_STOCK_SETTINGS: StockSettings = {
     { material: "", lengthMm: 2500, widthMm: 1250 },
     { material: "", lengthMm: 2000, widthMm: 1000 },
   ],
+  remnant: DEFAULT_REMNANT_SETTINGS,
 };
 
 const KEY = "gnezdo.stockSettings";
@@ -98,7 +102,7 @@ export function loadStockSettings(): StockSettings {
     if (!raw) return DEFAULT_STOCK_SETTINGS;
     const v = JSON.parse(raw) as Partial<StockSettings>;
     const slots = DEFAULT_STOCK_SETTINGS.slots.map((d, i) => ({ ...d, ...(v.slots?.[i] ?? {}) })) as StockSettings["slots"];
-    return { ...DEFAULT_STOCK_SETTINGS, ...v, slots };
+    return { ...DEFAULT_STOCK_SETTINGS, ...v, slots, remnant: { ...DEFAULT_REMNANT_SETTINGS, ...(v.remnant ?? {}) } };
   } catch {
     return DEFAULT_STOCK_SETTINGS;
   }

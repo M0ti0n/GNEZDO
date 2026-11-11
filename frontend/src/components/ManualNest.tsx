@@ -13,6 +13,7 @@ import { arrange, arrangeAgain, mirrorGroup, partRules, stack, type PartRules } 
 import { loadNestingRules } from "../job/nestRules";
 import { loadManualView } from "../job/manualView";
 import { liveContours, originPoint, processedParts, rapidsOf } from "../job/cutPath";
+import { RemnantOverlay } from "./RemnantOverlay";
 import { commonEdges, commonLayout, partCommonLines, placedEdges, sharedLines, snapMove, type CommonEdge, type CommonLayout } from "../job/commonCut";
 
 /** Ctrl+C: the copied parts, around the middle of their box (kept across sheets of the job). */
@@ -28,6 +29,10 @@ export interface CutMode {
   onPick: (i: number) => void;
   panel: ReactNode;
   hint: string;
+  /** a tool that clicks on the sheet (Remnant: CUT V / CUT H / DELETE CUT): the point in mm */
+  onPoint?: (x: number, y: number) => void;
+  /** the pointer over the sheet while that tool is on */
+  cursor?: string;
 }
 
 // Manual nesting of one sheet (EDIT / VIEW on a sheet card). The parts on the sheet are moved with
@@ -398,7 +403,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     if (e.button === 1 || e.button === 2) { pan.current = { x: e.clientX, y: e.clientY, from: { x: e.clientX, y: e.clientY }, button: e.button }; return; }
     if (e.button !== 0) return;
     if (cut) {
-      if (cut.picking) { const [cx, cy] = toMm(p.x, p.y); const i = hit(cx, cy); if (i >= 0) cut.onPick(i); }
+      if (cut.onPoint) { const [cx, cy] = toMm(p.x, p.y); cut.onPoint(cx, cy); }
+      else if (cut.picking) { const [cx, cy] = toMm(p.x, p.y); const i = hit(cx, cy); if (i >= 0) cut.onPick(i); }
       return;
     }
     const [x, y] = toMm(p.x, p.y);
@@ -858,6 +864,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       <div className="mn-stage">
         <Ruler axis="y" view={v} size={size} />
         <div ref={host} className={`mn-canvas${hover >= 0 && edit ? " is-over" : ""}${paste ? " is-paste" : ""}${align ? " is-align" : ""}`}
+          style={cut?.cursor ? { cursor: cut.cursor } : undefined}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           onContextMenu={(e) => e.preventDefault()}
           // the browser's own drag and drop of the sheet picture (a faded copy of the whole sheet
@@ -930,6 +937,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                   </g>
                 );
               })()}
+              <RemnantOverlay sheet={shownSheet} s={v.s} />
               <circle cx={right ? sheet.lengthMm : 0} cy={bottom ? sheet.widthMm : 0} r={6 / v.s} className="mn-origin" />
             </g>
             {box && (

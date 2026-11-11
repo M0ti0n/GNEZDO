@@ -9,6 +9,7 @@ import { loadNestingRules } from "./nestRules";
 import { diag, diagHeaders } from "./diag";
 import { checkGeometry, isCommon, type Entity } from "../import/geometry";
 import type { SheetCut } from "./cutPath";
+import type { SheetRemnant } from "./remnant";
 
 /** manual: a solution started by Add sheet (Manual nest), nested by hand */
 export type NestMode = "fast" | "thorough" | "custom" | "manual";
@@ -96,6 +97,8 @@ export interface NestedSheet {
   parts: PlacedPart[];
   /** the cut path (Process -> Auto cut); missing = not processed */
   cut?: SheetCut;
+  /** the remnant (Process -> Remnant); missing = not worked out */
+  remnant?: SheetRemnant;
   /** from a run continuing a solution: the parts added to that solution's sheet at this index */
   fixedIndex?: number;
 }

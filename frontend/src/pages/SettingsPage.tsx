@@ -86,6 +86,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
   const setSlot = (i: number, patch: Partial<StockSettings["slots"][number]>) =>
     set({ slots: stock.slots.map((s, j) => (j === i ? { ...s, ...patch } : s)) as StockSettings["slots"] });
   const tooBig = (l: number, w: number) => l > 0 && w > 0 && !fitsMachine(l, w);
+  const setRem = (patch: Partial<StockSettings["remnant"]>) => set({ remnant: { ...stock.remnant, ...patch } });
 
   return (
     <div className="settings">
@@ -284,6 +285,25 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
             ))}
           </div>
           <p className="rule-help">Red: bigger than the machine can cut ({MACHINE_LIMIT.join(" × ")} mm).</p>
+        </section>
+
+        <section className="rule">
+          <h3>Remnants</h3>
+          <p className="rule-help">How Process → <b>Remnant</b> works a sheet's remnant out (TRIM, RECTANGULAR, SKELET).</p>
+          <div className="mc-row">
+            <label className="mc-field"><span>Minimum distance to parts (mm)</span>
+              <NumInput value={stock.remnant.minDistMm} min={0} aria-label="Minimum distance to parts (mm)" onCommit={(n) => setRem({ minDistMm: n })} /></label>
+            <label className="mc-field"><span>Smallest edge (mm)</span>
+              <NumInput value={stock.remnant.minEdgeMm} min={1} aria-label="Smallest remnant edge (mm)" onCommit={(n) => setRem({ minEdgeMm: n })} /></label>
+            <label className="mc-field"><span>Smallest remnant (% of the sheet)</span>
+              <NumInput value={stock.remnant.minAreaPct} min={0} aria-label="Smallest remnant (% of the sheet)" onCommit={(n) => setRem({ minAreaPct: Math.min(100, n) })} /></label>
+          </div>
+          <p className="rule-help">No remnant edge, and no step of a TRIM outline, shorter than the smallest edge; a smaller piece is scrap and is not listed.</p>
+          <div className="mc-row">
+            <span className="mc-sub">RECTANGULAR: first cut</span>
+            <label className="chk"><input type="radio" name="rem-dir" checked={stock.remnant.rectDir === "x"} onChange={() => setRem({ rectDir: "x" })} /> Along X (the whole length, then up to it)</label>
+            <label className="chk"><input type="radio" name="rem-dir" checked={stock.remnant.rectDir === "y"} onChange={() => setRem({ rectDir: "y" })} /> Along Y (the whole width, then up to it)</label>
+          </div>
         </section>
 
         <footer className="settings-foot">

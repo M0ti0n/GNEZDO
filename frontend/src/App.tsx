@@ -29,7 +29,7 @@ import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
 import { buildRequest, commonCutNote, continuedSheets, countsOf, isFinished, missingParts, nestApi, nestProblem, nestsOfJob, solutionsFromSaved, type NestMode, type NestRun, type NestedSheet, type Solution } from "./job/nest";
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
-import { NestPage, type NestSelection } from "./components/NestView";
+import { NestPage, type ProcessTool, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
 import { loadLocalMachines, machineCan, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
 import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
@@ -868,7 +868,9 @@ export function App() {
   // opening Automatic nest there leaves manual nesting
   const [toolbarReq, setToolbarReq] = useState<{ section: "auto" | "manual" | null; n: number }>({ section: null, n: 0 });
   // Process open on the toolbar: the nest screen shows a sheet with the AUTO CUT panel
-  const [processOn, setProcessOn] = useState<Record<string, boolean>>({});
+  const [processOn, setProcessOn] = useState<Record<string, false | ProcessTool>>({});
+  /** the Process tool last used per job (the Process tile opens it again) */
+  const lastProcess = useRef<Record<string, ProcessTool>>({});
   const [leaveManual, setLeaveManual] = useState(0);
   // Manual nest tools: to the sheet open in manual nest (a new n each click)
   const [manualTool, setManualTool] = useState<{ tool: string; n: number }>({ tool: "", n: 0 });
@@ -1022,8 +1024,11 @@ export function App() {
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (section === "report" && (tool === "nestReport" || tool === "costReport")) { setJobScreen((m) => ({ ...m, [job.id]: tool })); return; }
     if (section === "process") {
-      if (tool === "autoCut") { setProcessOn((m) => ({ ...m, [job.id]: true })); setJobScreen((m) => ({ ...m, [job.id]: "nest" })); }
-      else setToast("Not built yet: Auto cut works so far");
+      if (tool === "autoCut" || tool === "remnant") {
+        lastProcess.current[job.id] = tool;
+        setProcessOn((m) => ({ ...m, [job.id]: tool }));
+        setJobScreen((m) => ({ ...m, [job.id]: "nest" }));
+      } else setToast("Not built yet: Auto cut and Remnant work so far");
       return;
     }
     if (tool === "fastNest") void startNest(job.id, "fast");
@@ -1083,7 +1088,7 @@ export function App() {
         <div className="workspace">
           {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq} lit={{ commonCut: !!(job && commonSnap[job.id]) }}
             onSection={(sec) => {
-              if (job) setProcessOn((m) => ({ ...m, [job.id]: sec === "process" }));
+              if (job) setProcessOn((m) => ({ ...m, [job.id]: sec === "process" ? lastProcess.current[job.id] ?? "autoCut" : false }));
               // Automatic nest (and Work parts) go back to the sheets; Manual nest and Process keep the view as it is
               if (sec === "auto" || sec === "work") { setLeaveManual((n) => n + 1); manualOn.current = false; }
               if (sec === "process") manualOn.current = false;
@@ -1114,7 +1119,9 @@ export function App() {
                 onEditSheet={(id, i, patch) => editSheet(job.id, id, i, patch)}
                 onRenestSheet={(id, i) => void renestSheet(job.id, id, i)}
                 onToggleLock={(id, i) => patchSol(job.id, id, (x) => ({ ...x, locked: x.locked.includes(i) ? x.locked.filter((n) => n !== i) : [...x.locked, i] }))}
-                process={!!processOn[job.id]}
+                process={processOn[job.id] ?? false}
+                jobName={job.title}
+                remnantSettings={stockSettings.remnant}
                 needsSave={!(jobServerId[job.id] ?? (job.id.startsWith("new-") ? null : job.id))}
                 onSaveJob={() => saveJob(job.id, job.title)}
               />
