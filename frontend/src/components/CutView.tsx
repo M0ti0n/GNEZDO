@@ -157,11 +157,11 @@ export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, 
           <div className="ac-pickbar">
             <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} onClick={() => setPicking((v) => !v)}
               title="On: click a part on the sheet to pick it, click it again to take it out">Select</button>
-            <button type="button" className="btn btn-plain" disabled={!picked.length} onClick={() => { setPicked([]); setNoTrace(new Set()); setRowSel(null); }}>Clear all</button>
+            <button type="button" className="btn btn-plain ac-clear" disabled={!picked.length} onClick={() => { setPicked([]); setNoTrace(new Set()); setRowSel(null); }}>Clear all</button>
           </div>
           <div className="ac-list pane-scroll">
             <div className="ac-table">
-              <div className="ac-headrow"><span /><span>Part</span>{mode === "parts" && <span>Trace</span>}</div>
+              <div className={`ac-headrow${mode === "parts" ? " has-trace" : ""}`}><span /><span>Part</span>{mode === "parts" && <span>Trace</span>}</div>
               {picked.map((i, k) => {
                 const no = partNo(i);
                 const c = no !== undefined ? partColor(no) : null;
