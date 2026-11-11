@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { JobPart } from "../api/types";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
-import { partColor, placedExtentOf, type NestedSheet } from "../job/nest";
+import { partColor, type NestedSheet } from "../job/nest";
 import type { Machine, Origin } from "../job/machine";
-import { hmsOf, mmss, parsePages, sheetReport, type SheetReport } from "../job/report";
+import { hmsOf, labelPoint, mmss, parsePages, sheetReport, type SheetReport } from "../job/report";
 
 // Nest report (toolbar -> Report -> Nest report), after Fab's layout: A4 pages side by side, a page
 // per sheet (more when its part list is long); on the right GENERATE, PRINT and which pages to print.
@@ -208,9 +208,13 @@ function SheetDrawing({ sheet, rep }: { sheet: NestedSheet; rep: SheetReport }) 
   const marks = sheet.parts.map((p) => {
     const jp = byId.get(p.partId);
     if (!jp) return null;
-    const e = placedExtentOf(jp.part.path, p);
-    const cx = ((e.minX + e.maxX) / 2) * s, cy = ((e.minY + e.maxY) / 2) * s;
-    const big = (e.maxX - e.minX) * s >= 24 && (e.maxY - e.minY) * s >= 19;
+    // the number on the part's material (not in a hole, not over a neighbour in an L's corner)
+    const lp = labelPoint(jp.part.path);
+    const a = (p.angle * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    const lx = p.mirror ? -lp.x : lp.x;
+    const cx = (lx * c - lp.y * sn + p.x) * s, cy = (lx * sn + lp.y * c + p.y) * s;
+    // room enough at that point, or a part big enough that the number stays on it (thin frames, rings)
+    const big = lp.room * s >= 11 || (jp.part.w * s >= 34 && jp.part.h * s >= 26 && lp.room * s >= 3);
     return { jp, p, cx, cy, big };
   }).filter((m): m is NonNullable<typeof m> => !!m);
   // small parts: numbered above the sheet, a line down to the part (at most 40)
