@@ -1084,7 +1084,9 @@ export function App() {
           {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq} lit={{ commonCut: !!(job && commonSnap[job.id]) }}
             onSection={(sec) => {
               if (job) setProcessOn((m) => ({ ...m, [job.id]: sec === "process" }));
-              if (sec === "auto" || sec === "work" || sec === "process") { setLeaveManual((n) => n + 1); manualOn.current = false; }
+              // Automatic nest (and Work parts) go back to the sheets; Manual nest and Process keep the view as it is
+              if (sec === "auto" || sec === "work") { setLeaveManual((n) => n + 1); manualOn.current = false; }
+              if (sec === "process") manualOn.current = false;
               if (job && sec) setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" || sec === "process" ? "nest" : m[job.id] === "nestReport" || m[job.id] === "costReport" ? (sec === "report" ? m[job.id] : "nest") : m[job.id] }));
             }} />
             : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
@@ -1113,7 +1115,6 @@ export function App() {
                 onRenestSheet={(id, i) => void renestSheet(job.id, id, i)}
                 onToggleLock={(id, i) => patchSol(job.id, id, (x) => ({ ...x, locked: x.locked.includes(i) ? x.locked.filter((n) => n !== i) : [...x.locked, i] }))}
                 process={!!processOn[job.id]}
-                onLeaveProcess={() => { setProcessOn((m) => ({ ...m, [job.id]: false })); setToolbarReq((r) => ({ section: "auto", n: r.n + 1 })); }}
                 needsSave={!(jobServerId[job.id] ?? (job.id.startsWith("new-") ? null : job.id))}
                 onSaveJob={() => saveJob(job.id, job.title)}
               />
