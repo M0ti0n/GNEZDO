@@ -8,7 +8,7 @@ import {
 import type { Machine, Origin } from "../job/machine";
 import type { StockSheet } from "../job/stock";
 import { ManualNest } from "./ManualNest";
-import { CutView } from "./CutView";
+import { useAutoCut } from "./CutView";
 import { liveContours, processedParts } from "../job/cutPath";
 import { SheetPropertiesDialog } from "./SheetPropertiesDialog";
 import { strategyLabel } from "./CustomNestDialog";
@@ -53,8 +53,6 @@ interface Props {
   renesting: string | null;
   /** Process (Auto cut) open: the sheet with the AUTO CUT panel */
   process?: boolean;
-  /** BACK in Process: back to the sheets */
-  onLeaveProcess?: () => void;
   /** the job was never saved (Multi sheet saves it first) */
   needsSave?: boolean;
   onSaveJob?: () => Promise<boolean>;
@@ -100,7 +98,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false, process = false, onLeaveProcess, needsSave = false, onSaveJob }: Props) {
+export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false, process = false, needsSave = false, onSaveJob }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -129,6 +127,17 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
   const finished = sol && isFinished(sol.run) && !sol.error;
   const editable = (i: number) => !!finished && !sol!.locked.includes(i);
 
+  // Process: the AUTO CUT panel, beside the sheets or beside the one sheet open (the view stays as it is
+  // when Manual nest / Process is chosen on the toolbar; Automatic nest goes back to the sheets)
+  const ac = useAutoCut({
+    index: Math.min(full ?? sheetNo, Math.max(0, sheets.length - 1)), single: full !== null, sheets, jobParts: parts, parts: byId,
+    machine, origin: sol?.origin ?? machine.origin, needsSave, onSave: onSaveJob ?? (async () => true),
+    onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
+  });
+  const cutOn = process && !!sol && !!finished && sheets.length > 0;
+  /** EDIT / VIEW on a sheet card: the one-sheet view (Manual nest's, or Process's) */
+  const openSheet = (i: number) => (cutOn ? setFullState(i) : setFull(i));
+
   const propsDialog = props !== null && sol && sheets[props] && (
     <SheetPropertiesDialog nested index={props} machine={machine}
       sheet={nestedAsStock(sheets[props], stock.find((s) => s.id === sheets[props].sheetId), machine)}
@@ -140,18 +149,17 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
         : () => onDeleteSheet(sol.id, props)} />
   );
 
-  // Process: the sheet shown (or chosen) with the AUTO CUT panel
-  if (process && sol && finished && sheets.length) {
-    const i = Math.min(full ?? sheetNo, sheets.length - 1);
+  // Process, one sheet: its view with the AUTO CUT panel (BACK: the sheets, still in Process)
+  if (cutOn && full !== null && sheets[full]) {
     return (
       <div className="nest-page is-manual">
-        <CutView sol={sol} index={i} sheets={sheets} jobParts={parts} parts={byId} machine={machine} origin={sol.origin ?? machine.origin}
-          onIndex={(k) => { setFullState(k); onSelect({ sol: sol.id, sheet: k }); }}
-          onClose={() => { setFullState(null); onLeaveProcess?.(); }}
-          onInfo={(k) => setProps(k)}
-          locked={sol.locked.includes(i)} onToggleLock={() => onToggleLock(sol.id, i)}
-          onCut={(k, cut) => onEditSheet(sol.id, k, { cut })}
-          needsSave={needsSave} onSave={onSaveJob ?? (async () => true)} />
+        <ManualNest sol={sol!} index={full} sheets={sheets} jobParts={parts} parts={byId} edit={false}
+          origin={sol!.origin ?? machine.origin} counts={countsOf(sheets)}
+          onIndex={(k) => { setFullState(k); onSelect({ sol: sol!.id, sheet: k }); }}
+          onClose={() => setFullState(null)}
+          locked={sol!.locked.includes(full)} onToggleLock={() => onToggleLock(sol!.id, full)}
+          onChange={() => { /* nothing moves in Process */ }}
+          onInfo={(k) => setProps(k)} cut={ac.cut} />
         {propsDialog}
       </div>
     );
@@ -200,7 +208,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
               {liveSheets && <span className="nest-live-tag">best so far</span>}
               {(sh.cutNumber ?? 1) > 1 && <span className="nest-cut-tag" title="This layout is cut this many times">×{sh.cutNumber}</span>}
               <span className="nest-card-gap" />
-              <button type="button" className="nest-view" onClick={(e) => { e.stopPropagation(); onSelect({ sol: sol!.id, sheet: i }); setFull(i); }}
+              <button type="button" className="nest-view" onClick={(e) => { e.stopPropagation(); onSelect({ sol: sol!.id, sheet: i }); openSheet(i); }}
                 title={editable(i) ? "Full screen, to change the sheet by hand" : "Full screen"}>{editable(i) ? "EDIT" : "VIEW"}</button>
               <button type="button" className={`nest-lock${sol!.locked.includes(i) ? " is-locked" : ""}`}
                 disabled={!finished}
@@ -228,10 +236,10 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
       </div>
 
       <aside className="nest-side">
-        <SolutionsPanel solutions={solutions} current={sol?.id ?? null} sheetNo={sheetNo}
+        {cutOn ? ac.panel : <SolutionsPanel solutions={solutions} current={sol?.id ?? null} sheetNo={sheetNo}
           onSelect={onSelect} onAdd={onAdd} onStop={onStop} onRemove={onRemove}>
           {sol && sheets.length > 0 && <InfoTabs sol={sol} sheets={sheets} sheetNo={sheetNo} parts={byId} jobParts={parts} />}
-        </SolutionsPanel>
+        </SolutionsPanel>}
       </aside>
 
       {propsDialog}

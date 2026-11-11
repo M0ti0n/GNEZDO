@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { JobPart } from "../api/types";
 import { CUT_RULES, liveContours, processSheet, type CutRule, type CutWhat } from "../job/cutPath";
 import { diag } from "../job/diag";
 import { machineCan, type Machine, type Origin } from "../job/machine";
-import { countsOf, partColor, type NestedSheet, type Solution } from "../job/nest";
+import { partColor, type NestedSheet } from "../job/nest";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { ManualNest } from "./ManualNest";
+import type { CutMode } from "./ManualNest";
 import toolAutoCut from "../shell/jobtools/tool-autoCut.png";
 
 // Process -> Auto cut (after Fab's layout): the sheet with the AUTO CUT panel on the right. Select
@@ -43,18 +43,25 @@ function gear(cx: number, cy: number, r: number, teeth: number, phase: number, h
 const GEAR_BIG = gear(14, 18, 12.5, 10, 0, 4);
 const GEAR_SMALL = gear(30.5, 9.5, 8.5, 7, Math.PI / 7, 2.8);
 
-export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, onIndex, onClose, onInfo, locked, onToggleLock, onCut, needsSave, onSave }: {
-  sol: Solution; index: number; sheets: NestedSheet[]; jobParts: JobPart[]; parts: Map<string, PartRef>;
+/**
+ * The AUTO CUT panel and what it does: shown beside the sheets (several sheets: the shown one is the
+ * selected card; parts are picked in the one-sheet view) or beside one sheet. `cut` goes to that sheet's
+ * view (ManualNest) for the picking and the look of picked parts.
+ */
+export function useAutoCut({ index, single, sheets, jobParts, parts, machine, origin, onCut, needsSave, onSave }: {
+  /** the sheet shown or selected */
+  index: number;
+  /** one sheet shown (parts can be picked) */
+  single: boolean;
+  sheets: NestedSheet[]; jobParts: JobPart[]; parts: Map<string, PartRef>;
   machine: Machine; origin: Origin;
-  onIndex: (i: number) => void; onClose: () => void; onInfo: (i: number) => void;
-  locked: boolean; onToggleLock: () => void;
   /** a sheet's new cut path */
   onCut: (index: number, cut: NestedSheet["cut"]) => void;
   /** the job was never saved: Multi sheet saves it first */
   needsSave: boolean;
   onSave: () => Promise<boolean>;
-}) {
-  const sheet = sheets[index];
+}): { panel: ReactNode; cut: CutMode } {
+  const sheet = sheets[index] ?? { parts: [] } as unknown as NestedSheet;
   const [mode, setMode] = useState<SelectMode>("multi");
   const [rule, setRuleState] = useState<CutRule>(loadRule);
   const setRule = (r: CutRule) => { setRuleState(r); try { localStorage.setItem(RULE_KEY, r); } catch { /* not kept */ } };
@@ -73,7 +80,7 @@ export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, 
   const picks = mode === "parts" || mode === "trace" || mode === "internal";
   // another sheet or mode: a fresh pick
   useEffect(() => { setPicked([]); setPicking(false); setNoTrace(new Set()); }, [index, mode]);
-  useEffect(() => { if (!picks) setPicking(false); }, [picks]);
+  useEffect(() => { if (!picks || !single) setPicking(false); }, [picks, single]);
 
   const nameOf = (i: number) => { const p = sheet.parts[i]; return p ? byPart.get(p.partId)?.part.name ?? parts.get(p.partId)?.name ?? p.partId : "?"; };
   const pick = (i: number) => setPicked((l) => (l.includes(i) ? l.filter((x) => x !== i) : [...l, i]));
@@ -155,8 +162,8 @@ export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, 
         </>)}
         {picks && (<>
           <div className="ac-pickbar">
-            <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} onClick={() => setPicking((v) => !v)}
-              title="On: click a part on the sheet to pick it, click it again to take it out">Select</button>
+            <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} disabled={!single} onClick={() => setPicking((v) => !v)}
+              title={single ? "On: click a part on the sheet to pick it, click it again to take it out" : "Open a sheet (VIEW / EDIT) to pick its parts"}>Select</button>
             <button type="button" className="btn btn-plain ac-clear" disabled={!picked.length} onClick={() => { setPicked([]); setNoTrace(new Set()); setRowSel(null); }}>Clear all</button>
           </div>
           <div className="ac-list pane-scroll">
@@ -182,7 +189,7 @@ export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, 
                   </div>
                 );
               })}
-              {!picked.length && <p className="ac-empty">{picking ? "Click the parts on the sheet in the order to cut them." : "Press SELECT, then click the parts on the sheet."}</p>}
+              {!picked.length && <p className="ac-empty">{!single ? `Open a sheet (VIEW / EDIT) to pick its parts. Sheet ${index + 1} is selected.` : picking ? "Click the parts on the sheet in the order to cut them." : "Press SELECT, then click the parts on the sheet."}</p>}
             </div>
           </div>
           <div className="ac-pickbar">
@@ -198,20 +205,18 @@ export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, 
   );
 
 
-  return (<>
-    <ManualNest sol={sol} index={index} sheets={sheets} jobParts={jobParts} parts={parts} edit={false}
-      origin={origin} counts={countsOf(sheets)} onIndex={onIndex} onClose={onClose} onChange={() => { /* nothing moves here */ }}
-      onInfo={onInfo} locked={locked} onToggleLock={onToggleLock}
-      cut={{
-        picking, picked, onPick: pick, panel,
-        hint: picking ? "Click parts in the order to cut them (click again: out). Drag them in the list to change the order."
-          : picks ? "Press SELECT on the right, then click the parts." : "Pick the select mode and the rule on the right, then PROCESS.",
-      }} />
-    {askSave && (
-      <ConfirmDialog title="Save the job first?" confirmLabel="Save and process" onCancel={() => setAskSave(false)}
-        onConfirm={() => { setAskSave(false); void onSave().then((ok) => { if (ok) void run(true); }); }}>
-        Multi sheet processes every sheet of the solution: the job is saved first, so the cut paths are kept with it.
-      </ConfirmDialog>
-    )}
-  </>);
+  const dialog = askSave && (
+    <ConfirmDialog title="Save the job first?" confirmLabel="Save and process" onCancel={() => setAskSave(false)}
+      onConfirm={() => { setAskSave(false); void onSave().then((ok) => { if (ok) void run(true); }); }}>
+      Multi sheet processes every sheet of the solution: the job is saved first, so the cut paths are kept with it.
+    </ConfirmDialog>
+  );
+  return {
+    panel: <>{panel}{dialog}</>,
+    cut: {
+      picking, picked, onPick: pick, panel: <>{panel}{dialog}</>,
+      hint: picking ? "Click parts in the order to cut them (click again: out). Drag them in the list to change the order."
+        : picks ? "Press SELECT on the right, then click the parts." : "Pick the select mode and the rule on the right, then PROCESS.",
+    },
+  };
 }

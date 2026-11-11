@@ -2124,3 +2124,4 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .sheet-mark.is-trace { stroke: var(--ln-trace); }
 .sheet-mark.is-open { stroke: var(--ln-open-done); }
 .ac-msg { margin: 0; }
+.nest-side .ac { flex: 1; min-height: 0; }
