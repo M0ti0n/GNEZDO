@@ -1,0 +1,542 @@
+// The cut path of a sheet (Process -> Auto cut -> PROCESS): for every part its contours in cutting
+// order, each with a lead-in and lead-out, and the parts in an order that never cuts a part loose
+// before what lies in it. Sheet frame (mm, y down, as the sheet is drawn); the head travels from the
+// machine's 0,0 corner from one lead-in to the next.
+//
+// Always: tracing first, then open cuts, holes, the outline last; a part lying in another part's hole
+// before that part. Then the machine's Big parts last (within the big part's bounding box), then the
+// order picked under AUTO CUT. Outlines are cut clockwise, holes counter-clockwise (as seen on the
+// sheet): the scrap is on the left, where the kerf goes (G41).
+
+import { api } from "../api/api";
+import { checkGeometry, pointsAlong, roleOf } from "../import/geometry";
+import { DEFAULT_ANGLE, LEAD_TYPES, leadRulesOf, type LeadRules, type LeadType } from "./leads";
+import { cutOrderOf, machineCan, type Machine, type Origin } from "./machine";
+import { partLoops, pointIn, transform, type Box, type Pt } from "./manualGeom";
+import type { NestedSheet, PlacedPart } from "./nest";
+import { techRowFor, type TechRow } from "./technology";
+
+/** The order picked under AUTO CUT. */
+export type CutRule = "leftRight" | "rightLeft" | "bottomTop" | "topBottom" | "shortest" | "smallBig";
+
+export const CUT_RULES: { id: CutRule; label: string; hint: string }[] = [
+  { id: "leftRight", label: "Left to right", hint: "Columns from the left edge to the right, up and down in turn" },
+  { id: "bottomTop", label: "Bottom to top", hint: "Rows from the bottom edge up, left and right in turn" },
+  { id: "rightLeft", label: "Right to left", hint: "Columns from the right edge to the left (for counter-clockwise cutting)" },
+  { id: "topBottom", label: "Top to bottom", hint: "Rows from the top edge down (for counter-clockwise cutting)" },
+  { id: "shortest", label: "Shortest distance", hint: "Always the nearest part next" },
+  { id: "smallBig", label: "Smallest to biggest", hint: "Parts by their area, the smallest first" },
+];
+
+export type CutKind = "outer" | "inner" | "open" | "trace";
+
+/** One contour as it is cut: the pierce at leadIn[0] (or pts[0] without a lead), the cut along pts, out along leadOut. */
+export interface CutContour {
+  /** the part's index in the sheet's parts */
+  part: number;
+  kind: CutKind;
+  pts: Pt[];
+  leadIn: Pt[];
+  leadOut: Pt[];
+  /** cut at the small-hole speed */
+  small?: boolean;
+  lead?: LeadType;
+}
+
+export interface SheetCut {
+  at: string;
+  rule: CutRule | "manual";
+  contours: CutContour[];
+  /** per part index: where the part was when it was processed (moved since: not processed any more) */
+  keys: Record<number, string>;
+}
+
+/** What PROCESS does with the parts it gets. */
+export type CutWhat = "all" | "trace" | "internal";
+
+export const partKey = (p: PlacedPart) => `${p.partId}|${p.x.toFixed(3)}|${p.y.toFixed(3)}|${p.angle}|${p.mirror ? 1 : 0}`;
+
+/** The parts of the sheet whose cut path is still good. */
+export function processedParts(sheet: NestedSheet): Set<number> {
+  const c = sheet.cut;
+  const out = new Set<number>();
+  if (!c) return out;
+  for (const ct of c.contours) {
+    const p = sheet.parts[ct.part];
+    if (p && c.keys[ct.part] === partKey(p)) out.add(ct.part);
+  }
+  return out;
+}
+
+/** The contours still good, in cutting order. */
+export const liveContours = (sheet: NestedSheet): CutContour[] => {
+  const ok = processedParts(sheet);
+  return (sheet.cut?.contours ?? []).filter((c) => ok.has(c.part));
+};
+
+/** The machine's 0,0 on the sheet (sheet frame). */
+export const originPoint = (sheet: Pick<NestedSheet, "lengthMm" | "widthMm">, origin: Origin): Pt =>
+  [origin.endsWith("right") ? sheet.lengthMm : 0, origin.startsWith("bottom") ? sheet.widthMm : 0];
+
+// ------------------------------------------------------------------ tracing and open cut lines of a part
+
+type Marks = { trace: Pt[][]; open: Pt[][] };
+const markCache = new Map<string, { at: number; marks: Promise<Marks> }>();
+
+/** A part's trace and open cut lines in its outline's frame (as the thumbnail path: y down), joined into runs. */
+export function partMarks(partId: string): Promise<Marks> {
+  let r = markCache.get(partId);
+  if (!r || Date.now() - r.at > 60_000) {
+    r = { at: Date.now(), marks: loadMarks(partId) };
+    markCache.set(partId, r);
+  }
+  return r.marks;
+}
+
+async function loadMarks(partId: string): Promise<Marks> {
+  const g = await api.partGeometry(partId).catch(() => null);
+  const ents = g?.entities ?? [];
+  const marks = ents.filter((e) => roleOf(e) === "trace" || roleOf(e) === "openCut");
+  if (!marks.length) return { trace: [], open: [] };
+  const report = checkGeometry(ents);
+  const box = report.contours.find((c) => c.closed && c.outer)?.box ?? report.box;
+  const f = (q: { x: number; y: number }): Pt => [q.x - box.minX, box.maxY - q.y];
+  const runs = (role: string) => chain(marks.filter((e) => roleOf(e) === role).map((e) => pointsAlong(e).map(f)));
+  return { trace: runs("trace"), open: runs("openCut") };
+}
+
+const near = (a: Pt, b: Pt, tol = 0.05) => Math.abs(a[0] - b[0]) <= tol && Math.abs(a[1] - b[1]) <= tol;
+
+/** Lines that meet end to end joined into one run (one pierce). */
+function chain(lines: Pt[][]): Pt[][] {
+  const left = lines.filter((l) => l.length > 1);
+  const out: Pt[][] = [];
+  while (left.length) {
+    let run = left.shift()!;
+    for (let grew = true; grew;) {
+      grew = false;
+      for (let k = 0; k < left.length; k++) {
+        const l = left[k];
+        const a = run[0], b = run[run.length - 1];
+        if (near(b, l[0])) run = [...run, ...l.slice(1)];
+        else if (near(b, l[l.length - 1])) run = [...run, ...l.slice(0, -1).reverse()];
+        else if (near(a, l[l.length - 1])) run = [...l.slice(0, -1), ...run];
+        else if (near(a, l[0])) run = [...l.slice(1).reverse(), ...run];
+        else continue;
+        left.splice(k, 1);
+        grew = true;
+        break;
+      }
+    }
+    out.push(run);
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------ geometry helpers
+
+const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
+const add = (a: Pt, b: Pt): Pt => [a[0] + b[0], a[1] + b[1]];
+const mul = (a: Pt, k: number): Pt => [a[0] * k, a[1] * k];
+const dot = (a: Pt, b: Pt) => a[0] * b[0] + a[1] * b[1];
+const len = (a: Pt) => Math.hypot(a[0], a[1]);
+const unit = (a: Pt): Pt => { const l = len(a) || 1; return [a[0] / l, a[1] / l]; };
+const rot = (v: Pt, deg: number): Pt => { const r = (deg * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r); return [v[0] * c - v[1] * s, v[0] * s + v[1] * c]; };
+/** The scrap side of a cut going along d (left of it as seen on the sheet). */
+const scrapN = (d: Pt): Pt => [d[1], -d[0]];
+const r2 = (p: Pt): Pt => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
+/** Shoelace in the sheet frame: > 0 clockwise as seen on the sheet (y down). */
+const signedArea = (lp: Pt[]) => lp.reduce((s, p, i) => { const q = lp[(i + 1) % lp.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2;
+const boxOf = (pts: Pt[]): Box => {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  return { x0, y0, x1, y1 };
+};
+const touches = (a: Box, b: Box) => a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
+
+/** Without a repeated closing point; clockwise (as seen) when cw, else counter-clockwise. */
+function oriented(lp: Pt[], cw: boolean): Pt[] {
+  let l = lp.length > 1 && near(lp[0], lp[lp.length - 1], 1e-6) ? lp.slice(0, -1) : lp.slice();
+  l = l.filter((p, i) => i === 0 || !near(p, l[i - 1], 1e-6));
+  return (signedArea(l) > 0) === cw ? l : l.reverse();
+}
+
+/** Distance from p along d to the loop (Infinity: it does not meet it). */
+function rayHit(lp: Pt[], p: Pt, d: Pt): number {
+  let best = Infinity;
+  for (let i = 0; i < lp.length; i++) {
+    const a = lp[i], b = lp[(i + 1) % lp.length];
+    const e = sub(b, a);
+    const den = d[0] * e[1] - d[1] * e[0];
+    if (Math.abs(den) < 1e-12) continue;
+    const w = sub(a, p);
+    const t = (w[0] * e[1] - w[1] * e[0]) / den;
+    const u = (w[0] * d[1] - w[1] * d[0]) / den;
+    if (t > 1e-4 && u >= -1e-9 && u <= 1 + 1e-9) best = Math.min(best, t);
+  }
+  return best;
+}
+
+/** Walks along the polyline from its start for `dist` mm (the points passed and the point reached). */
+function walk(pts: Pt[], dist: number): Pt[] {
+  const out: Pt[] = [pts[0]];
+  let left = dist;
+  for (let i = 1; i < pts.length && left > 1e-9; i++) {
+    const seg = len(sub(pts[i], pts[i - 1]));
+    if (seg >= left) { out.push(add(pts[i - 1], mul(unit(sub(pts[i], pts[i - 1])), left))); return out; }
+    out.push(pts[i]);
+    left -= seg;
+  }
+  return out;
+}
+
+/** Quarter arc from `from` round to `to`: the points between them (both included). */
+function arcPts(c: Pt, from: Pt, to: Pt, n = 8): Pt[] {
+  const a0 = Math.atan2(from[1] - c[1], from[0] - c[0]);
+  let a1 = Math.atan2(to[1] - c[1], to[0] - c[0]);
+  while (a1 - a0 > Math.PI) a1 -= 2 * Math.PI;
+  while (a0 - a1 > Math.PI) a1 += 2 * Math.PI;
+  const r = len(sub(from, c));
+  return Array.from({ length: n + 1 }, (_, i) => { const a = a0 + ((a1 - a0) * i) / n; return [c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)] as Pt; });
+}
+
+// ------------------------------------------------------------------ leads
+
+interface LeadValues { lin: number; lout: number; gap: number; aIn: number; aOut: number; radius: number }
+
+function leadValues(kind: "outer" | "inner", row: TechRow | null, type: LeadType): LeadValues {
+  const outer = kind === "outer";
+  const lin = row ? (outer ? row.outLeadInMm : row.holeLeadInMm) || 0 : outer ? 5 : 3;
+  const lout = row ? (outer ? row.outLeadOutMm : row.holeLeadOutMm) || 0 : outer ? 2 : 1;
+  const usesGap = type === "perpGap" || type === "angled" || type === "arc";
+  const gap = usesGap && row ? (outer ? row.outGapMm : row.holeGapMm) ?? 0 : 0;
+  const def = DEFAULT_ANGLE[type] ?? 90;
+  return {
+    lin, lout, gap,
+    aIn: (row?.leadInAngle || 0) > 0 && (type === "cornerAngle" || type === "angled") ? row!.leadInAngle! : def,
+    aOut: (row?.leadOutAngle || 0) > 0 && (type === "cornerAngle" || type === "angled") ? row!.leadOutAngle! : def,
+    radius: (row ? (outer ? row.outLeadRadiusMm : row.holeLeadRadiusMm) : 0) || Math.max(1, lin),
+  };
+}
+
+const cornerOnly = (t: LeadType) => !!LEAD_TYPES.find((x) => x.id === t)?.cornerOnly;
+
+/** The point of the part's box the leads are put nearest to. */
+const targetOf = (b: Box, rules: LeadRules): Pt => [rules.place.endsWith("right") ? b.x1 : b.x0, rules.place.startsWith("bottom") ? b.y1 : b.y0];
+
+/**
+ * A closed contour with its leads: started at a sharp corner nearest the target with the corner type,
+ * else at the point of a straight stretch nearest it with the other type.
+ */
+function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row: TechRow | null, target: Pt): Omit<CutContour, "part" | "kind"> {
+  const n = lp.length;
+  const prev = (i: number) => lp[(i - 1 + n) % n], next = (i: number) => lp[(i + 1) % n];
+  const cType = kind === "outer" ? rules.outCorner : rules.holeCorner;
+  let oType = kind === "outer" ? rules.outOther : rules.holeOther;
+  if (cornerOnly(oType)) oType = "perp";
+  // material angle at each corner (the material is on the right of the cut)
+  const angleAt = (i: number) => {
+    const e1 = unit(sub(lp[i], prev(i))), e2 = unit(sub(next(i), lp[i]));
+    const u = mul(e1, -1);
+    const phi = (Math.acos(Math.max(-1, Math.min(1, dot(u, e2)))) * 180) / Math.PI;
+    const b = add(u, e2);
+    if (len(b) < 1e-9) return 180;
+    const matN: Pt = [-e2[1], e2[0]];
+    return dot(b, matN) > 0 ? phi : 360 - phi;
+  };
+
+  let start: { at: Pt; edge: number; vertex: boolean; t: Pt } | null = null;
+  let type: LeadType = oType;
+  if (cornerOnly(cType)) {
+    let best = Infinity;
+    for (let i = 0; i < n; i++) {
+      if (len(sub(lp[i], prev(i))) < 0.5 || len(sub(next(i), lp[i])) < 0.5) continue;
+      if (angleAt(i) > rules.sharpMaxDeg) continue;
+      const d = len(sub(lp[i], target));
+      if (d < best) { best = d; start = { at: lp[i], edge: i, vertex: true, t: unit(sub(next(i), lp[i])) }; }
+    }
+    if (start) type = cType;
+  }
+  if (!start) {
+    const v0 = leadValues(kind, row, oType);
+    let best = Infinity;
+    for (let i = 0; i < n; i++) {
+      const a = lp[i], b = next(i), e = sub(b, a), L = len(e);
+      if (L < 1e-6) continue;
+      const t = unit(e);
+      if (L >= 2) {
+        // a point of the edge, kept off its corners
+        const m = Math.min(L / 2, Math.max(1, v0.lin * 0.5));
+        const s = Math.max(m, Math.min(L - m, dot(sub(target, a), t)));
+        const p = add(a, mul(t, s));
+        const d = len(sub(p, target));
+        if (d < best) { best = d; start = { at: p, edge: i, vertex: false, t }; }
+      } else if (Math.abs(angleAt(i) - 180) < 25) {
+        // a point of a curve drawn in short pieces
+        const d = len(sub(a, target));
+        const tt = unit(add(unit(sub(a, prev(i))), t));
+        if (d < best) { best = d; start = { at: a, edge: i, vertex: true, t: tt }; }
+      }
+    }
+  }
+  if (!start) start = { at: lp[0], edge: 0, vertex: true, t: unit(sub(next(0), lp[0])) };
+
+  // the contour from the start round to it again
+  const ring: Pt[] = [start.at];
+  for (let k = 1; k <= n; k++) ring.push(lp[(start.edge + k) % n]);
+  if (start.vertex) ring[ring.length - 1] = start.at; else ring.push(start.at);
+  const v = leadValues(kind, row, type);
+  let pts = ring;
+  if (v.gap > 0) pts = [...ring, ...walk(ring, v.gap).slice(1)];
+  else if (v.gap < 0) pts = walk(ring, Math.max(0, totalLen(ring) + v.gap));
+
+  // a hole's leads stay in the hole: at most to its middle along the lead
+  const limit = (p: Pt, d: Pt, want: number) => {
+    if (kind !== "inner" || !rules.holeShorten) return want;
+    const hit = rayHit(lp, p, d);
+    return Number.isFinite(hit) ? Math.min(want, hit / 2) : want;
+  };
+
+  const P = start.at, end = pts[pts.length - 1];
+  const tEnd = unit(sub(end, pts[pts.length - 2] ?? P));
+  let leadIn: Pt[] = [], leadOut: Pt[] = [];
+  if (type === "corner" || type === "cornerAngle") {
+    const e1 = unit(sub(P, prev(start.edge))), e2 = start.t;
+    let dIn: Pt, dOut: Pt;
+    if (type === "corner") { dIn = mul(e2, -1); dOut = e1; }
+    else {
+      // turned from the incoming edge's line by the angle, towards the outgoing edge's back side (and the other way out)
+      const towards = (from: Pt, to: Pt, deg: number) => { const s = from[0] * to[1] - from[1] * to[0] >= 0 ? 1 : -1; return rot(from, s * deg); };
+      dIn = towards(e1, mul(e2, -1), v.aIn);
+      dOut = towards(mul(e2, -1), e1, v.aOut);
+    }
+    const li = limit(P, dIn, v.lin), lo = limit(P, dOut, v.lout);
+    if (li > 0) leadIn = [add(P, mul(dIn, li)), P];
+    if (lo > 0) leadOut = [end, add(end, mul(dOut, lo))];
+  } else if (type === "arc") {
+    const nP = scrapN(start.t), nE = scrapN(tEnd);
+    const R = Math.min(v.radius, limit(P, nP, v.radius * 2) / 2 || v.radius);
+    const c = add(P, mul(nP, R));
+    const s1 = add(c, rot(mul(nP, -R), 90)), s2 = add(c, rot(mul(nP, -R), -90));
+    const S = dot(sub(s1, P), start.t) < 0 ? s1 : s2;
+    leadIn = arcPts(c, S, P);
+    const c2 = add(end, mul(nE, R));
+    const e1 = add(c2, rot(mul(nE, -R), 90)), e2 = add(c2, rot(mul(nE, -R), -90));
+    leadOut = arcPts(c2, end, dot(sub(e1, end), tEnd) > 0 ? e1 : e2);
+  } else {
+    // perpendicular (90°) or at an angle to the edge, from the scrap side
+    const aIn = type === "angled" ? v.aIn : 90, aOut = type === "angled" ? v.aOut : 90;
+    const rad = (d: number) => (d * Math.PI) / 180;
+    const dIn = unit(add(mul(start.t, -Math.cos(rad(aIn))), mul(scrapN(start.t), Math.sin(rad(aIn)))));
+    const dOut = unit(add(mul(tEnd, Math.cos(rad(aOut))), mul(scrapN(tEnd), Math.sin(rad(aOut)))));
+    const li = limit(P, dIn, v.lin), lo = limit(end, dOut, v.lout);
+    if (li > 0) leadIn = [add(P, mul(dIn, li)), P];
+    if (lo > 0) leadOut = [end, add(end, mul(dOut, lo))];
+  }
+  const b = boxOf(lp);
+  const small = kind === "inner" && !!row && row.smallHoleMm > 0 && (b.x1 - b.x0 + b.y1 - b.y0) / 2 <= row.smallHoleMm;
+  return { pts: pts.map(r2), leadIn: leadIn.map(r2), leadOut: leadOut.map(r2), lead: type, ...(small ? { small } : {}) };
+}
+
+const totalLen = (pts: Pt[]) => pts.reduce((s, p, i) => (i ? s + len(sub(p, pts[i - 1])) : 0), 0);
+
+// ------------------------------------------------------------------ parts and their order
+
+interface PartGeo { i: number; outer: Pt[]; holes: Pt[][]; trace: Pt[][]; open: Pt[][]; box: Box; area: number }
+
+async function partGeos(sheet: NestedSheet, paths: Map<string, string>, idx: number[], wantMarks: boolean): Promise<PartGeo[]> {
+  return Promise.all(idx.map(async (i) => {
+    const p = sheet.parts[i];
+    const path = paths.get(p.partId) ?? "";
+    const f = transform(p);
+    const loops = partLoops(path).map((lp) => lp.map(f));
+    const marks = wantMarks ? await partMarks(p.partId) : { trace: [], open: [] };
+    const outer = loops[0] ? oriented(loops[0], true) : [];
+    return {
+      i, outer, holes: loops.slice(1).map((lp) => oriented(lp, false)),
+      trace: marks.trace.map((l) => l.map(f)), open: marks.open.map((l) => l.map(f)),
+      box: boxOf(outer), area: Math.abs(signedArea(outer)),
+    };
+  }));
+}
+
+interface El { parts: number[]; box: Box; area: number }
+
+const center = (b: Box): Pt => [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
+const median = (v: number[]) => { const s = v.slice().sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+
+/** Elements in the order of the rule (columns / rows go back and forth). */
+function sortEls(els: El[], rule: CutRule, from: Pt): El[] {
+  if (els.length < 2) return els.slice();
+  if (rule === "smallBig") return els.slice().sort((a, b) => a.area - b.area);
+  if (rule === "shortest") {
+    const left = els.slice(), out: El[] = [];
+    let at = from;
+    while (left.length) {
+      let k = 0, best = Infinity;
+      left.forEach((e, j) => { const d = len(sub(center(e.box), at)); if (d < best) { best = d; k = j; } });
+      const e = left.splice(k, 1)[0];
+      out.push(e);
+      at = center(e.box);
+    }
+    return out;
+  }
+  const cols = rule === "leftRight" || rule === "rightLeft";
+  const size = median(els.map((e) => (cols ? e.box.x1 - e.box.x0 : e.box.y1 - e.box.y0)));
+  const band = Math.max(30, Math.min(600, size || 100));
+  // distance of an element's leading edge from where the sweep starts
+  const lead = (e: El) => rule === "leftRight" ? e.box.x0 : rule === "rightLeft" ? -e.box.x1 : rule === "bottomTop" ? -e.box.y1 : e.box.y0;
+  const across = (e: El) => (cols ? -center(e.box)[1] : center(e.box)[0]);   // columns: bottom up first; rows: left first
+  const base = Math.min(...els.map(lead));
+  return els.map((e) => ({ e, b: Math.floor((lead(e) - base) / band), a: across(e) }))
+    .sort((p, q) => p.b - q.b || (p.b % 2 ? q.a - p.a : p.a - q.a))
+    .map((x) => x.e);
+}
+
+/** The parts in cutting order (see the top of this file). */
+function orderParts(geos: PartGeo[], rule: CutRule, machine: Machine, sheet: NestedSheet, from: Pt): number[] {
+  const by = new Map(geos.map((g) => [g.i, g]));
+  // a part in another part's hole: that part (the smallest one holding it) is its container
+  const container = new Map<number, number>();
+  for (const g of geos) {
+    const p = g.outer[0];
+    if (!p) continue;
+    let best: PartGeo | null = null;
+    for (const h of geos) {
+      if (h === g || h.area <= g.area || !touches(h.box, g.box)) continue;
+      if (h.holes.some((lp) => pointIn(lp, p[0], p[1])) && (!best || h.area < best.area)) best = h;
+    }
+    if (best) container.set(g.i, best.i);
+  }
+  const kids = new Map<number, number[]>();
+  for (const [c, h] of container) kids.set(h, [...(kids.get(h) ?? []), c]);
+  const unitOf = (i: number): El => {
+    const g = by.get(i)!;
+    const inner = sortEls((kids.get(i) ?? []).map(unitOf), rule, from).flatMap((e) => e.parts);
+    return { parts: [...inner, i], box: g.box, area: g.area };
+  };
+  const top = geos.filter((g) => !container.has(g.i)).map((g) => unitOf(g.i));
+
+  const co = cutOrderOf(machine);
+  const sheetArea = sheet.lengthMm * sheet.widthMm;
+  const med = median(top.map((e) => e.area));
+  const isBig = (e: El) => co.bigLast && top.length > 1 && (e.area > co.bigTimesMedian * med || e.area > (co.bigSheetPct / 100) * sheetArea);
+  const bigs = top.filter(isBig);
+  // big parts whose boxes overlap make one box
+  const groups: { bigs: El[]; box: Box }[] = [];
+  for (const b of bigs.sort((x, y) => x.area - y.area)) {
+    const hit = groups.filter((g) => touches(g.box, b.box));
+    const merged = { bigs: [...hit.flatMap((g) => g.bigs), b], box: hit.reduce((u, g) => ({ x0: Math.min(u.x0, g.box.x0), y0: Math.min(u.y0, g.box.y0), x1: Math.max(u.x1, g.box.x1), y1: Math.max(u.y1, g.box.y1) }), b.box) };
+    for (const g of hit) groups.splice(groups.indexOf(g), 1);
+    groups.push(merged);
+  }
+  const taken = new Set<El>();
+  const els: El[] = [];
+  for (const g of groups) {
+    const members = top.filter((e) => !isBig(e) && !taken.has(e) && touches(e.box, g.box));
+    members.forEach((e) => taken.add(e));
+    const parts = [...sortEls(members, rule, from).flatMap((e) => e.parts), ...g.bigs.sort((x, y) => x.area - y.area).flatMap((e) => e.parts)];
+    els.push({ parts, box: g.box, area: Math.max(...g.bigs.map((e) => e.area)) });
+  }
+  for (const e of top) if (!isBig(e) && !taken.has(e)) els.push(e);
+  return sortEls(els, rule, from).flatMap((e) => e.parts);
+}
+
+// ------------------------------------------------------------------ PROCESS
+
+export interface CutRequest {
+  sheet: NestedSheet;
+  /** the parts' outline paths by part id */
+  paths: Map<string, string>;
+  machine: Machine;
+  origin: Origin;
+  rule: CutRule;
+  /** the part indexes to process (null: every part); `ordered`: in this order (Selected parts) */
+  parts: number[] | null;
+  ordered?: boolean;
+  what: CutWhat;
+  /** tracing of this part is cut (Skip trace lines / the trace box of a selected part) */
+  traceOf: (i: number) => boolean;
+}
+
+/** The sheet's cut path after PROCESS (every part: a new one; chosen parts: theirs replaced, put after the others). */
+export async function processSheet(q: CutRequest): Promise<SheetCut> {
+  const { sheet, machine } = q;
+  const idx = q.parts ?? sheet.parts.map((_, i) => i);
+  const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row ?? null;
+  const rules = leadRulesOf(machine);
+  const canTrace = machineCan(machine, "trace"), canOpen = machineCan(machine, "openCut");
+  const geos = await partGeos(sheet, q.paths, idx, q.what !== "internal" && (canTrace || canOpen));
+  const from = originPoint(sheet, q.origin);
+  const order = q.ordered ? idx : orderParts(geos, q.rule, machine, sheet, from);
+  const by = new Map(geos.map((g) => [g.i, g]));
+
+  const fresh: CutContour[] = [];
+  let at = from;
+  const startOf = (c: Omit<CutContour, "part" | "kind">) => c.leadIn[0] ?? c.pts[0];
+  const endOf = (c: Omit<CutContour, "part" | "kind">) => c.leadOut[c.leadOut.length - 1] ?? c.pts[c.pts.length - 1];
+  /** open runs from the end nearer the head */
+  const openRuns = (runs: Pt[][], part: number, kind: "open" | "trace") => {
+    const left = runs.filter((r) => r.length > 1).slice();
+    while (left.length) {
+      let k = 0, best = Infinity, rev = false;
+      left.forEach((r, j) => {
+        const a = len(sub(r[0], at)), b = len(sub(r[r.length - 1], at));
+        if (a < best) { best = a; k = j; rev = false; }
+        if (b < best) { best = b; k = j; rev = true; }
+      });
+      const r = left.splice(k, 1)[0];
+      const pts = (rev ? r.slice().reverse() : r).map(r2);
+      fresh.push({ part, kind, pts, leadIn: [], leadOut: [] });
+      at = pts[pts.length - 1];
+    }
+  };
+  for (const i of order) {
+    const g = by.get(i);
+    if (!g || !g.outer.length) continue;
+    const target = targetOf(g.box, rules);
+    if (q.what !== "internal") {
+      if (canTrace && q.traceOf(i)) openRuns(g.trace, i, "trace");
+      if (q.what === "trace") continue;
+      if (canOpen) openRuns(g.open, i, "open");
+    }
+    // the holes, the nearest next
+    const holes = g.holes.map((lp) => closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules)));
+    while (holes.length) {
+      let k = 0, best = Infinity;
+      holes.forEach((h, j) => { const d = len(sub(startOf(h), at)); if (d < best) { best = d; k = j; } });
+      const h = holes.splice(k, 1)[0];
+      fresh.push({ part: i, kind: "inner", ...h });
+      at = endOf(h);
+    }
+    if (q.what === "internal") continue;
+    const o = closedContour(g.outer, "outer", rules, row, target);
+    fresh.push({ part: i, kind: "outer", ...o });
+    at = endOf(o);
+  }
+
+  const keys: Record<number, string> = {};
+  // chosen parts: their old contours of this kind go, the rest of the sheet's path stays before them
+  let kept: CutContour[] = [];
+  if (q.parts) {
+    const good = processedParts(sheet);
+    const chosen = new Set(idx);
+    const drop = (c: CutContour) => chosen.has(c.part) && (q.what === "all" || (q.what === "trace" ? c.kind === "trace" : c.kind === "inner"));
+    kept = (sheet.cut?.contours ?? []).filter((c) => good.has(c.part) && !drop(c));
+    for (const c of kept) keys[c.part] = partKey(sheet.parts[c.part]);
+  }
+  for (const c of fresh) keys[c.part] = partKey(sheet.parts[c.part]);
+  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours: [...kept, ...fresh], keys };
+}
+
+/** Rapid moves of the path: from 0,0 to every pierce and back (sheet frame). */
+export function rapidsOf(contours: CutContour[], from: Pt): [Pt, Pt][] {
+  const out: [Pt, Pt][] = [];
+  let at = from;
+  for (const c of contours) {
+    const s = c.leadIn[0] ?? c.pts[0];
+    if (s && len(sub(s, at)) > 0.01) out.push([at, s]);
+    at = c.leadOut[c.leadOut.length - 1] ?? c.pts[c.pts.length - 1] ?? at;
+  }
+  return out;
+}

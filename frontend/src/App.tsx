@@ -867,6 +867,8 @@ export function App() {
   // manual nesting (EDIT / VIEW on a sheet) opens Manual nest on the toolbar, BACK Automatic nest;
   // opening Automatic nest there leaves manual nesting
   const [toolbarReq, setToolbarReq] = useState<{ section: "auto" | "manual" | null; n: number }>({ section: null, n: 0 });
+  // Process open on the toolbar: the nest screen shows a sheet with the AUTO CUT panel
+  const [processOn, setProcessOn] = useState<Record<string, boolean>>({});
   const [leaveManual, setLeaveManual] = useState(0);
   // Manual nest tools: to the sheet open in manual nest (a new n each click)
   const [manualTool, setManualTool] = useState<{ tool: string; n: number }>({ tool: "", n: 0 });
@@ -1019,6 +1021,11 @@ export function App() {
     }
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (section === "report" && (tool === "nestReport" || tool === "costReport")) { setJobScreen((m) => ({ ...m, [job.id]: tool })); return; }
+    if (section === "process") {
+      if (tool === "autoCut") { setProcessOn((m) => ({ ...m, [job.id]: true })); setJobScreen((m) => ({ ...m, [job.id]: "nest" })); }
+      else setToast("Not built yet: Auto cut works so far");
+      return;
+    }
     if (tool === "fastNest") void startNest(job.id, "fast");
     else if (tool === "thoroughNest") void startNest(job.id, "thorough");
     else if (tool === "customNest") { if (custom) void startNest(job.id, "custom", custom); else setCustomFor({ jobId: job.id, fresh: false }); }
@@ -1076,8 +1083,9 @@ export function App() {
         <div className="workspace">
           {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq} lit={{ commonCut: !!(job && commonSnap[job.id]) }}
             onSection={(sec) => {
-              if (sec === "auto" || sec === "work") { setLeaveManual((n) => n + 1); manualOn.current = false; }
-              if (job && sec) setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" ? "nest" : m[job.id] === "nestReport" || m[job.id] === "costReport" ? (sec === "report" ? m[job.id] : "nest") : m[job.id] }));
+              if (job) setProcessOn((m) => ({ ...m, [job.id]: sec === "process" }));
+              if (sec === "auto" || sec === "work" || sec === "process") { setLeaveManual((n) => n + 1); manualOn.current = false; }
+              if (job && sec) setJobScreen((m) => ({ ...m, [job.id]: sec === "work" ? "parts" : sec === "auto" || sec === "manual" || sec === "process" ? "nest" : m[job.id] === "nestReport" || m[job.id] === "costReport" ? (sec === "report" ? m[job.id] : "nest") : m[job.id] }));
             }} />
             : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <ToolStrip tools={toolsFor(active.kind)} onTool={onTool} />}
           <main className={`page${active.kind === "jobSearch" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" ? " page-flush" : ""}`} aria-label={active.title}>
@@ -1104,6 +1112,10 @@ export function App() {
                 onEditSheet={(id, i, patch) => editSheet(job.id, id, i, patch)}
                 onRenestSheet={(id, i) => void renestSheet(job.id, id, i)}
                 onToggleLock={(id, i) => patchSol(job.id, id, (x) => ({ ...x, locked: x.locked.includes(i) ? x.locked.filter((n) => n !== i) : [...x.locked, i] }))}
+                process={!!processOn[job.id]}
+                onLeaveProcess={() => { setProcessOn((m) => ({ ...m, [job.id]: false })); setToolbarReq((r) => ({ section: "auto", n: r.n + 1 })); }}
+                needsSave={!(jobServerId[job.id] ?? (job.id.startsWith("new-") ? null : job.id))}
+                onSaveJob={() => saveJob(job.id, job.title)}
               />
             )}
             {active.kind === "job" && job && (jobScreen[job.id] === "nestReport" || jobScreen[job.id] === "costReport") && (() => {
