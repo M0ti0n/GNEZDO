@@ -3,7 +3,7 @@ import type { JobPart } from "../api/types";
 import { CUT_RULES, liveContours, processSheet, type CutRule, type CutWhat } from "../job/cutPath";
 import { diag } from "../job/diag";
 import { machineCan, type Machine, type Origin } from "../job/machine";
-import { countsOf, type NestedSheet, type Solution } from "../job/nest";
+import { countsOf, partColor, type NestedSheet, type Solution } from "../job/nest";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ManualNest } from "./ManualNest";
 import toolAutoCut from "../shell/jobtools/tool-autoCut.png";
@@ -118,77 +118,85 @@ export function CutView({ sol, index, sheets, jobParts, parts, machine, origin, 
     }
   };
 
+  const canTrace = machineCan(machine, "trace");
+  const partNo = (i: number) => { const p = sheet.parts[i]; return p ? byPart.get(p.partId)?.no : undefined; };
   const panel = (
     <aside className="mn-parts ac" aria-label="Auto cut">
-      <div className="ac-top">
-        <div className="ac-tool"><img src={toolAutoCut} alt="" draggable={false} /><span>Auto cut</span></div>
-        <div className="ac-main">
-          <select className="field ac-mode" value={mode} aria-label="Select mode" title={MODES.find((m) => m.id === mode)?.hint}
-            onChange={(e) => { setMode(e.target.value as SelectMode); setMsg(null); }}>
-            {MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-          </select>
-          <button type="button" className="ac-process" disabled={busy} onClick={() => void run()}>
-            <svg viewBox="0 0 40 32" width="34" height="28" aria-hidden="true">
-              <path d={GEAR_BIG} fill="currentColor" fillRule="evenodd" />
-              <path d={GEAR_SMALL} fill="currentColor" fillRule="evenodd" />
-            </svg>
-            {busy ? "Working…" : "Process"}
-          </button>
-        </div>
-      </div>
-      {!picks && (
-        <div className="ac-opts">
-          <select className="field" value={rule} aria-label="Path generation rule" title={CUT_RULES.find((r) => r.id === rule)?.hint} onChange={(e) => setRule(e.target.value as CutRule)}>
-            {CUT_RULES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-          </select>
-          <label className="chk ac-skip"><input type="checkbox" checked={skipTrace} disabled={!machineCan(machine, "trace")} onChange={(e) => setSkipTrace(e.target.checked)} /> Skip trace lines</label>
-          <p className="ac-help">Always: tracing, holes, then the outline; parts in another part's hole first.{" "}
-            {machine.cutOrder?.bigLast === false ? "" : "Big parts last (Machine → Cut order). "}Then {CUT_RULES.find((r) => r.id === rule)?.label.toLowerCase()}.</p>
-        </div>
-      )}
-      {picks && (<>
-        <div className="ac-pickbar">
-          <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} onClick={() => setPicking((v) => !v)}
-            title="On: click a part to pick it, click it again to take it out">Select</button>
-          <button type="button" className="btn btn-plain" disabled={!picked.length} onClick={() => { setPicked([]); setNoTrace(new Set()); setRowSel(null); }}>Clear all</button>
-        </div>
-        <div className="ac-list pane-scroll">
-          <div className={`ac-table${mode === "parts" ? " has-trace" : ""}`}>
-            <span className="ac-col is-no" aria-hidden="true" />
-            {mode === "parts" && <span className="ac-col is-trace" aria-hidden="true" />}
-            <ol className="ac-rows">
-              {picked.map((i, k) => (
-                <li key={i} className={`ac-row${dragFrom === k ? " is-drag" : ""}${rowSel === i ? " is-sel" : ""}`} draggable
-                  onClick={() => setRowSel(i)}
-                  onDragStart={(e) => { setDragFrom(k); setRowSel(i); e.dataTransfer.effectAllowed = "move"; }}
-                  onDragOver={(e) => { e.preventDefault(); if (dragFrom !== null && dragFrom !== k) { move(dragFrom, k); setDragFrom(k); } }}
-                  onDragEnd={() => setDragFrom(null)}>
-                  <span className="ac-no">{k + 1}</span>
-                  <span className="ac-name" title={nameOf(i)}>{nameOf(i)}</span>
-                  {mode === "parts" && (
-                    <span className="ac-tr">
-                      <input type="checkbox" className="ac-trace" checked={machineCan(machine, "trace") && !noTrace.has(i)} disabled={!machineCan(machine, "trace")} aria-label={`Trace ${nameOf(i)}`}
-                        title={machineCan(machine, "trace") ? "Cut its tracing too" : `${machine.name} does not trace`}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() => setNoTrace((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; })} />
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ol>
-            {!picked.length && <p className="ac-empty">{picking ? "Click the parts in the order to cut them." : "Press SELECT, then click parts."}</p>}
+      <header className="sol-head"><h2>Auto cut</h2></header>
+      <div className="ac-body">
+        <div className="ac-top">
+          <span className="itool-box ac-icon" aria-hidden="true"><img src={toolAutoCut} alt="" draggable={false} /></span>
+          <div className="ac-main">
+            <label className="ac-field"><span>Select mode</span>
+              <select className="field" value={mode} title={MODES.find((m) => m.id === mode)?.hint}
+                onChange={(e) => { setMode(e.target.value as SelectMode); setMsg(null); }}>
+                {MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            </label>
+            <button type="button" className="btn btn-primary ac-process" disabled={busy} onClick={() => void run()}>
+              <svg viewBox="0 0 40 32" width="30" height="24" aria-hidden="true">
+                <path d={GEAR_BIG} fill="currentColor" fillRule="evenodd" />
+                <path d={GEAR_SMALL} fill="currentColor" fillRule="evenodd" />
+              </svg>
+              {busy ? "Working…" : "Process"}
+            </button>
           </div>
         </div>
-        <div className="ac-movebar">
-          <button type="button" className="btn btn-plain" disabled={rowSel === null || picked.indexOf(rowSel) <= 0}
-            onClick={() => rowSel !== null && move(picked.indexOf(rowSel), picked.indexOf(rowSel) - 1)} title="The part picked in the list one place earlier">▲ Up</button>
-          <button type="button" className="btn btn-plain" disabled={rowSel === null || picked.indexOf(rowSel) < 0 || picked.indexOf(rowSel) === picked.length - 1}
-            onClick={() => rowSel !== null && move(picked.indexOf(rowSel), picked.indexOf(rowSel) + 1)} title="The part picked in the list one place later">▼ Down</button>
-        </div>
-      </>)}
-      {msg && <p className={`tech-msg ac-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
+        {!picks && (<>
+          <label className="ac-field"><span>Path generation rule</span>
+            <select className="field" value={rule} title={CUT_RULES.find((r) => r.id === rule)?.hint} onChange={(e) => setRule(e.target.value as CutRule)}>
+              {CUT_RULES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </select>
+          </label>
+          <label className="chk" title={canTrace ? undefined : `${machine.name} does not trace`}>
+            <input type="checkbox" checked={skipTrace || !canTrace} disabled={!canTrace} onChange={(e) => setSkipTrace(e.target.checked)} /> Skip trace lines</label>
+          <p className="rule-help ac-help">Always: tracing, holes, then the outline; parts in another part&apos;s hole first.{" "}
+            {machine.cutOrder?.bigLast === false ? "" : "Big parts last (Machine → Cut order). "}Then {CUT_RULES.find((r) => r.id === rule)?.label.toLowerCase()}.</p>
+        </>)}
+        {picks && (<>
+          <div className="ac-pickbar">
+            <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} onClick={() => setPicking((v) => !v)}
+              title="On: click a part on the sheet to pick it, click it again to take it out">Select</button>
+            <button type="button" className="btn btn-plain" disabled={!picked.length} onClick={() => { setPicked([]); setNoTrace(new Set()); setRowSel(null); }}>Clear all</button>
+          </div>
+          <div className="ac-list pane-scroll">
+            <div className="ac-table">
+              <div className="ac-headrow"><span /><span>Part</span>{mode === "parts" && <span>Trace</span>}</div>
+              {picked.map((i, k) => {
+                const no = partNo(i);
+                const c = no !== undefined ? partColor(no) : null;
+                return (
+                  <div key={k} className={`ac-row${mode === "parts" ? " has-trace" : ""}`}>
+                    {/* the place in the cut order: stays where it is when the parts are dragged */}
+                    <span className="ac-no" style={c ? { color: c.stroke, borderColor: c.stroke } : undefined}>{k + 1}</span>
+                    <span className={`ac-name${rowSel === i ? " is-sel" : ""}${dragFrom === k ? " is-drag" : ""}`} draggable title={nameOf(i)}
+                      onClick={() => setRowSel(i)}
+                      onDragStart={(e) => { setDragFrom(k); setRowSel(i); e.dataTransfer.effectAllowed = "move"; }}
+                      onDragOver={(e) => { e.preventDefault(); if (dragFrom !== null && dragFrom !== k) { move(dragFrom, k); setDragFrom(k); } }}
+                      onDragEnd={() => setDragFrom(null)}>{nameOf(i)}</span>
+                    {mode === "parts" && (
+                      <input type="checkbox" className="ac-trace" checked={canTrace && !noTrace.has(i)} disabled={!canTrace} aria-label={`Trace ${nameOf(i)}`}
+                        title={canTrace ? "Cut its tracing too" : `${machine.name} does not trace`}
+                        onChange={() => setNoTrace((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; })} />
+                    )}
+                  </div>
+                );
+              })}
+              {!picked.length && <p className="ac-empty">{picking ? "Click the parts on the sheet in the order to cut them." : "Press SELECT, then click the parts on the sheet."}</p>}
+            </div>
+          </div>
+          <div className="ac-pickbar">
+            <button type="button" className="btn btn-plain" disabled={rowSel === null || picked.indexOf(rowSel) <= 0}
+              onClick={() => rowSel !== null && move(picked.indexOf(rowSel), picked.indexOf(rowSel) - 1)} title="The part chosen in the list one place earlier">▲ Up</button>
+            <button type="button" className="btn btn-plain" disabled={rowSel === null || picked.indexOf(rowSel) < 0 || picked.indexOf(rowSel) === picked.length - 1}
+              onClick={() => rowSel !== null && move(picked.indexOf(rowSel), picked.indexOf(rowSel) + 1)} title="The part chosen in the list one place later">▼ Down</button>
+          </div>
+        </>)}
+        {msg && <p className={`tech-msg ac-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
+      </div>
     </aside>
   );
+
 
   return (<>
     <ManualNest sol={sol} index={index} sheets={sheets} jobParts={jobParts} parts={parts} edit={false}
