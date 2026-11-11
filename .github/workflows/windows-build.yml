@@ -1,7 +1,7 @@
 name: Windows test build
 
 # Builds, tests and publishes as the "test-build" release (https://github.com/M0ti0n/GNEZDO/releases/tag/test-build):
-#   gnezdo-windows.zip           the server for Windows: GNEZDO.exe (self-contained, nothing to install)
+#   gnezdo-server-windows.zip           the server for Windows: GNEZDO.exe (self-contained, nothing to install)
 #                                with the web pages, start.bat, config.example.json and INSTALL.txt
 #   gnezdo-desktop-windows.zip   the desktop build for Windows: GNEZDO.exe opens GNEZDO in an Edge window
 #   gnezdo-desktop-linux.tar.gz  the desktop build for Linux (Chromium / Chrome window)
@@ -168,8 +168,8 @@ jobs:
           js=$(curl -fsS http://localhost:8099/ | grep -o 'assets/[^"]*\.js' | head -1)
           curl -fsSI "http://localhost:8099/$js" | grep -qi 'content-type: text/javascript'
           pkill -f "demo_server.py 8099" || true
-          (cd out && zip -qr gnezdo-windows.zip gnezdo)
-          ls -la out/gnezdo-windows.zip
+          (cd out && zip -qr gnezdo-server-windows.zip gnezdo)
+          ls -la out/gnezdo-server-windows.zip
 
       - uses: actions/download-artifact@v4
         with:
@@ -195,8 +195,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: gnezdo-windows
-          path: out/gnezdo-windows.zip
+          name: gnezdo-server-windows
+          path: out/gnezdo-server-windows.zip
       - uses: actions/upload-artifact@v4
         with:
           name: gnezdo-desktop-windows
@@ -213,13 +213,13 @@ jobs:
           sparse-checkout: nesting/nestprep/examples
       - uses: actions/download-artifact@v4
         with:
-          name: gnezdo-windows
+          name: gnezdo-server-windows
       - name: Unzip and start (demo)
         shell: pwsh
         run: |
           # any failure also becomes an annotation (readable without the full log)
           trap { Write-Output "::error title=Smoke test::$($_.Exception.Message)"; break }
-          Expand-Archive gnezdo-windows.zip -DestinationPath .
+          Expand-Archive gnezdo-server-windows.zip -DestinationPath .
           # the shipped config asks for the database in the browser on the first start ("Setup": true;
           # tested in the backend's SetupTests); here the demo is switched on as INSTALL.txt says
           $cfg = Get-Content gnezdo/config.example.json -Raw | ConvertFrom-Json
@@ -491,13 +491,13 @@ jobs:
           gh release delete test-build --yes --cleanup-tag || true
           # the release text: how to install, then what changed in each build (CHANGES.md at this commit)
           {
-            echo "**Server for Windows:** gnezdo-windows.zip (unzip, start.bat, open http://localhost:8090; a demo until a database is set in config.json - see INSTALL.txt)."
+            echo "**Server for Windows:** gnezdo-server-windows.zip (unzip, start.bat, open http://localhost:8090; a demo until a database is set in config.json - see INSTALL.txt)."
             echo
             echo "**Desktop, one PC:** gnezdo-desktop-windows.zip (unzip, double-click GNEZDO.exe) or gnezdo-desktop-linux.tar.gz - see INSTALL.txt inside."
             echo
             gh api "repos/${GITHUB_REPOSITORY}/contents/CHANGES.md?ref=${GITHUB_SHA}" -H "Accept: application/vnd.github.raw" || true
           } > notes.md
-          gh release create test-build dl/gnezdo-windows.zip dl/gnezdo-desktop-windows.zip dl/gnezdo-desktop-linux.tar.gz \
+          gh release create test-build dl/gnezdo-server-windows.zip dl/gnezdo-desktop-windows.zip dl/gnezdo-desktop-linux.tar.gz \
             --prerelease --target "$GITHUB_SHA" \
             --title "Test build ($(date -u +%Y-%m-%d), ${GITHUB_REF_NAME})" \
             --notes-file notes.md
