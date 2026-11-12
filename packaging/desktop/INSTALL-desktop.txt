@@ -78,3 +78,12 @@ A config.json in the GNEZDO folder (next to GNEZDO.exe / gnezdo) can change:
 
 DesktopPort: when another program uses port 8095. Browser: a different browser.
 DesktopRoot: keep the data in another folder (e.g. "D:\\GNEZDO-data").
+
+DWG DRAWINGS: GNEZDO reads DXF and SVG itself; a DWG is converted to DXF on the
+PC GNEZDO runs on, by one of these (GNEZDO finds it by itself):
+- ODA File Converter (free, from opendesign.com: "ODA File Converter"); install
+  it in its usual folder (C:\Program Files\ODA\...).
+- LibreDWG's dwg2dxf.exe, put in a folder "tools" next to "program".
+Or set its full path as "Gnezdo": { "DwgConverter": "..." } in config.json.
+Without one, a DWG in the import list says so: save it as DXF in your CAD.
+

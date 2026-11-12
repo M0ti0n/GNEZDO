@@ -1,5 +1,6 @@
 import { checkGeometry, fixMarkRules, quantityFromName, type Drawing } from "./geometry";
-import { DxfError, readDxf } from "./dxf";
+import { DxfError } from "./dxf";
+import { drawingBaseName, isDrawingName, readDrawingFile } from "./drawingFile";
 import { applyRules, type ImportRules, type Rotation } from "./rules";
 
 /** One file in the import list. */
@@ -121,15 +122,13 @@ export function statusOf(item: ImportItem): ItemStatus {
 
 let seq = 0;
 
-/** New list entry for a dropped file; DXF is read by readItem. */
+/** New list entry for a dropped file (DXF, DWG or SVG); read by readItem. */
 export function newItem(file: File): ImportItem {
-  const name = file.name.replace(/\.(dxf|dwg)$/i, "");
-  const dwg = /\.dwg$/i.test(file.name);
+  const name = drawingBaseName(file.name);
   return {
     id: `imp-${Date.now().toString(36)}-${++seq}`,
     fileName: file.name, name, qty: quantityFromName(name),
-    state: dwg ? "dwg" : "reading",
-    error: dwg ? "DWG needs the import worker on the server" : undefined,
+    state: "reading",
     checked: false, processed: false,
   };
 }
@@ -137,7 +136,7 @@ export function newItem(file: File): ImportItem {
 export async function readItem(item: ImportItem, file: File, rules: ImportRules): Promise<ImportItem> {
   if (item.state === "dwg") return item;
   try {
-    const { drawing, ignored, declaredUnits } = readDxf(await file.text(), file.name);
+    const { drawing, ignored, declaredUnits } = await readDrawingFile(file);
     // roles come from layers and colors; the outer contour is always plain cutting and a closed
     // contour never open cut, whatever color it was drawn in
     const { entities } = fixMarkRules(applyRules(drawing.entities, rules));
@@ -147,4 +146,4 @@ export async function readItem(item: ImportItem, file: File, rules: ImportRules)
   }
 }
 
-export const isDrawingFile = (f: File) => /\.(dxf|dwg)$/i.test(f.name);
+export const isDrawingFile = (f: File) => isDrawingName(f.name);

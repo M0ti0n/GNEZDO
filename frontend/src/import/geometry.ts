@@ -275,7 +275,7 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
 
 /** "1625-25-01_P1_3pcs" -> 3: the last number before the extension is the quantity. */
 export function quantityFromName(fileName: string): number | null {
-  const m = fileName.replace(/\.(dxf|dwg)$/i, "").match(/(\d+)\D*$/);
+  const m = fileName.replace(/\.(dxf|dwg|svg)$/i, "").match(/(\d+)\D*$/);
   return m ? Number(m[1]) : null;
 }
 

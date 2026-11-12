@@ -1,6 +1,6 @@
 // A stock sheet from a DXF file (a remnant drawn in CAD): its size and shape. Used by the STOCK panel
 // (Add from DXF) and Manual nest's Add sheet (ADD FROM DXF).
-import { readDxf } from "../import/dxf";
+import { readDrawingFile } from "../import/drawingFile";
 import { boxOf, checkGeometry, union, type Entity } from "../import/geometry";
 import { loopPoints } from "../import/toPart";
 import { fitsMachine, rotateSheet, type StockSheet } from "./stock";
@@ -15,7 +15,7 @@ export type DxfSheet =
  */
 export async function sheetFromDxf(f: File, base: StockSheet): Promise<DxfSheet> {
   try {
-    const { drawing } = readDxf(await f.text(), f.name);
+    const { drawing } = await readDrawingFile(f);
     if (!drawing.entities.length) return { ok: false, message: `${f.name}: no lines to take the sheet size from` };
     const b = drawing.entities.map(boxOf).reduce(union);
     const r = (v: number) => Math.round(v * 10) / 10;
@@ -24,7 +24,7 @@ export async function sheetFromDxf(f: File, base: StockSheet): Promise<DxfSheet>
     if (!fitsMachine(l, w) && !turn) return { ok: false, tooBig: { l, w }, message: `${f.name} is ${l} × ${w} mm: bigger than the machine can cut` };
     let sheet: StockSheet = {
       ...base, source: "dxf", lengthMm: l, widthMm: w, qty: 1, unlimited: false,
-      fileName: f.name.replace(/\.dxf$/i, ""), outline: dxfOutline(drawing.entities, b), original: undefined,
+      fileName: f.name.replace(/\.(dxf|dwg|svg)$/i, ""), outline: dxfOutline(drawing.entities, b), original: undefined,
     };
     if (turn) {
       sheet = rotateSheet(sheet);

@@ -404,7 +404,7 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
           ))}
         </select>
         <button type="button" className="btn stock-add-btn" onClick={add}>Add</button>
-        <input ref={file} type="file" accept=".dxf" hidden
+        <input ref={file} type="file" accept=".dxf,.dwg,.svg" hidden
           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void fromDxf(f); }} />
       </div>
 
