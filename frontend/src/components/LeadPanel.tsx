@@ -13,8 +13,9 @@ import toolLeadInOut from "../shell/jobtools/tool-leadInOut.png";
 // Process -> Lead in / out (after Fab's layout): click a lead (or its contour) on the open sheet to
 // pick it. MOVE: the first click picks a lead, the second puts it at the nearest point of the same
 // contour (a sharp corner within 3 mm: on the corner). LEAD IN / OUT TYPE picks the type; its values
-// are set in the drawing below; APPLY puts them on the picked lead. RESET: the automatic cut's type and
-// the Technology row's values; DELETE: no leads (0 / 0, pierced on the contour). The toggle: only
+// are set in the drawing below (it follows them as they are typed: lengths to scale with each other,
+// angles as they are); APPLY puts them on the picked lead. RESET: the automatic cut's type and the
+// Technology row's values; DELETE (red): no leads (0 / 0, pierced on the contour). The toggle: only
 // this part, or every copy of it on the sheet.
 
 type PartRef = { path: string };
@@ -117,7 +118,7 @@ export function useLeadInOut({ index, single, sheets, parts, machine, onCut }: {
             onClick={() => draft && run({ op: "set", type: draft.type, spec: draft.spec }, "Lead changed")}>Apply</button>
         </div>
         <div className="ac-pickbar li-bar">
-          <button type="button" className="btn btn-plain ac-clear li-del" disabled={!selOk}
+          <button type="button" className="btn btn-plain li-del" disabled={!selOk}
             title="No lead-in and no lead-out (0 / 0): pierced right on the contour"
             onClick={() => run({ op: "delete" }, "Leads deleted")}>Delete</button>
           <span className="li-spacer" />
@@ -217,14 +218,17 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
     const x = Math.max(40, Math.min(W - 40, p[0])), y = Math.max(16, Math.min(H - 16, p[1]));
     return (
       <label key={k} className="li-val" style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, borderColor: color }} title={label}>
-        <NumInput value={spec[k]} min={min} placeholder="0" aria-label={label} className="li-num"
+        <NumInput value={spec[k]} min={min} live placeholder="0" aria-label={label} className="li-num"
           onCommit={(n) => set(k, Math.min(max, n))} />
         <span>{unit}</span>
       </label>
     );
   };
   const clampA = (a: number) => Math.max(1, Math.min(179, a || 90));
-  const LIN = 80, LOUT = 62;
+  // the leads drawn to scale with each other (the longer one 80), a short one still to be seen
+  const k = 80 / Math.max(spec.lin, spec.lout, 0.001);
+  const px = (v: number) => (v > 0 ? Math.max(14, Math.min(80, v * k)) : 0);
+  const LIN = px(spec.lin), LOUT = px(spec.lout);
   let drawing: ReactNode, boxes: ReactNode[] = [];
 
   if (type === "corner" || type === "cornerAngle") {
@@ -234,7 +238,7 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
     const angled = type === "cornerAngle";
     const aIn = angled ? clampA(spec.aIn) : 90, aOut = angled ? clampA(spec.aOut) : 90;
     const dIn = dirOf(-90 + aIn), dOut = dirOf(180 - aOut);
-    const PI = at(C, dIn, spec.lin > 0 ? LIN : 0), PO = at(C, dOut, spec.lout > 0 ? LOUT : 0);
+    const PI = at(C, dIn, LIN), PO = at(C, dOut, LOUT);
     drawing = (<>
       <rect x={14} y={18} width={C[0] - 14} height={C[1] - 18} fill="rgba(27,42,48,.09)" />
       {angled && <Wedge c={C} a0={-90} a1={-90 + aIn} r={46} color={AIN} />}
@@ -246,8 +250,8 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
       {dot(PI, IN)}
     </>);
     boxes = [
-      box("lin", at(C, dIn, LIN + 40), IN, "mm", "Lead-in (mm)"),
-      box("lout", at(C, dOut, LOUT + 40), OUT, "mm", "Lead-out (mm)"),
+      box("lin", at(C, dIn, 120), IN, "mm", "Lead-in (mm)"),
+      box("lout", at(C, dOut, 102), OUT, "mm", "Lead-out (mm)"),
       ...(angled ? [box("aIn", at(C, dirOf(-90 + aIn / 2), 66), AIN, "°", "Lead-in angle from the edge (°)", 1, 179),
         box("aOut", at(C, dirOf(180 - aOut / 2), 66), AOUT, "°", "Lead-out angle from the edge (°)", 1, 179)] : []),
     ];
@@ -256,13 +260,13 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
     // then leaves; the leads are on the scrap side (above)
     const y = 150, P: V = [128, y];
     const usesGap = type !== "perp";
-    const g = usesGap ? Math.max(-46, Math.min(46, spec.gap * 8)) : 0;
+    const g = usesGap && spec.gap ? Math.sign(spec.gap) * Math.max(6, Math.min(46, Math.abs(spec.gap) * Math.min(k, 12))) : 0;
     const E: V = [P[0] + (type === "perp" || (type === "perpGap" && g === 0) ? 10 : g), y];   // 90° leads side by side
     const angled = type === "angled";
     const aIn = angled ? clampA(spec.aIn) : 90, aOut = angled ? clampA(spec.aOut) : 90;
     const dIn = dirOf(180 + aIn), dOut = dirOf(-aOut);   // from P: back along the edge turned up by the angle
     const R = 50;
-    const PI = at(P, dIn, spec.lin > 0 ? LIN : 0), PO = at(E, dOut, spec.lout > 0 ? LOUT : 0);
+    const PI = at(P, dIn, LIN), PO = at(E, dOut, LOUT);
     drawing = (<>
       <rect x={14} y={y} width={W - 28} height={H - y - 8} fill="rgba(27,42,48,.09)" />
       <path d={`M14 ${y}H${W - 14}`} stroke="var(--ink, #1b2a30)" strokeWidth={5} fill="none" />
@@ -280,14 +284,15 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
         {dot(PI, IN)}
       </>)}
     </>);
-    // straight up (90°): the two boxes beside their lines, else beyond the lines' ends
+    // straight up (90°): the two boxes beside their lines, else beyond the lines' ends (where they stay
+    // while a value is typed: the lines follow the values as they are typed)
     const side = !angled;
     boxes = type === "arc" ? [
       box("radius", [P[0] - R - 6, y - R - 30], IN, "mm", "Arc radius (mm)"),
       box("gap", [(P[0] + E[0]) / 2, y + 34], GAP, "mm", "Gap (mm): + runs past the start, − stops short", -999),
     ] : [
-      box("lin", side ? [PI[0] - 46, (PI[1] + P[1]) / 2 - 10] : at(P, dIn, LIN + 40), IN, "mm", "Lead-in (mm)"),
-      box("lout", side ? [PO[0] + 46, (PO[1] + E[1]) / 2] : at(E, dOut, LOUT + 40), OUT, "mm", "Lead-out (mm)"),
+      box("lin", side ? [P[0] - 46, P[1] - 50] : at(P, dIn, 120), IN, "mm", "Lead-in (mm)"),
+      box("lout", side ? [E[0] + 46, E[1] - 31] : at(E, dOut, 102), OUT, "mm", "Lead-out (mm)"),
       ...(usesGap ? [box("gap", [(P[0] + E[0]) / 2, y + 34], GAP, "mm", "Gap (mm): + runs past the start, − stops short", -999)] : []),
       ...(angled ? [box("aIn", at(P, dirOf(180 + aIn / 2), 66), AIN, "°", "Lead-in angle from the edge (°)", 1, 179),
         box("aOut", at(E, dirOf(-aOut / 2), 62), AOUT, "°", "Lead-out angle from the edge (°)", 1, 179)] : []),
