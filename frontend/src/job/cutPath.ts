@@ -8,11 +8,17 @@
 // order picked under AUTO CUT. Outlines are cut clockwise, holes counter-clockwise, as the machine
 // sees them (its X / Y from its 0,0 corner): the scrap is on the left, where the kerf goes (G41). With a
 // 0,0 corner that mirrors the sheet as drawn (top-left, bottom-right) that is the other way round on screen.
+//
+// Common cut (machine can, parts with the Common cut rule nested a kerf apart along their marked
+// lines): the parts make a block, cut as one: their holes, each shared line once (job/commonPath.ts),
+// then the block's outline.
 
 import { api } from "../api/api";
 import { checkGeometry, pointsAlong, roleOf } from "../import/geometry";
 import { DEFAULT_ANGLE, LEAD_TYPES, leadRulesOf, type LeadRules, type LeadType } from "./leads";
-import { cutOrderOf, machineCan, type Machine, type Origin } from "./machine";
+import { commonEdges, partCommonLines, placedEdges, type CommonEdge } from "./commonCut";
+import { commonBlocks, sharedLineCut, type CommonBlock } from "./commonPath";
+import { cutOrderOf, gapsFor, machineCan, type Machine, type Origin } from "./machine";
 import { partLoops, pointIn, transform, type Box, type Pt } from "./manualGeom";
 import type { NestedSheet, PlacedPart } from "./nest";
 import { techRowFor, type TechRow } from "./technology";
@@ -42,6 +48,10 @@ export interface CutContour {
   /** cut at the small-hole speed */
   small?: boolean;
   lead?: LeadType;
+  /** a common cut block's outline: every part of the block (the cut path is good while they all stay put) */
+  parts?: number[];
+  /** a shared common cut line (cut once for two parts, along the middle of the kerf gap) */
+  common?: boolean;
 }
 
 export interface SheetCut {
@@ -64,17 +74,18 @@ export function processedParts(sheet: NestedSheet): Set<number> {
   const c = sheet.cut;
   const out = new Set<number>();
   if (!c) return out;
-  for (const ct of c.contours) {
-    const p = sheet.parts[ct.part];
-    if (p && c.keys[ct.part] === partKey(p)) out.add(ct.part);
-  }
+  const good = (i: number) => { const p = sheet.parts[i]; return !!p && c.keys[i] === partKey(p); };
+  // a common cut block counts only while every part of it is where it was
+  const bad = new Set<number>();
+  for (const ct of c.contours) if (ct.parts && !ct.parts.every(good)) ct.parts.forEach((i) => bad.add(i));
+  for (const ct of c.contours) for (const i of ct.parts ?? [ct.part]) if (good(i) && !bad.has(i)) out.add(i);
   return out;
 }
 
 /** The contours still good, in cutting order. */
 export const liveContours = (sheet: NestedSheet): CutContour[] => {
   const ok = processedParts(sheet);
-  return (sheet.cut?.contours ?? []).filter((c) => ok.has(c.part));
+  return (sheet.cut?.contours ?? []).filter((c) => (c.parts ?? [c.part]).every((i) => ok.has(i)));
 };
 
 /** The machine's 0,0 on the sheet (sheet frame). */
@@ -553,7 +564,13 @@ export interface CutRequest {
 /** The sheet's cut path after PROCESS (every part: a new one; chosen parts: theirs replaced, put after the others). */
 export async function processSheet(q: CutRequest): Promise<SheetCut> {
   const { sheet, machine } = q;
-  const idx = q.parts ?? sheet.parts.map((_, i) => i);
+  let idx = q.parts ?? sheet.parts.map((_, i) => i);
+  // a chosen part of a common cut block brings the block's other parts along (it is cut as one)
+  if (q.parts && q.what === "all") {
+    const more = new Set(idx);
+    for (const c of sheet.cut?.contours ?? []) if (c.parts?.some((k) => more.has(k))) c.parts.forEach((k) => more.add(k));
+    idx = [...idx, ...[...more].filter((k) => !idx.includes(k))];
+  }
   const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row ?? null;
   const rules = leadRulesOf(machine);
   const canTrace = machineCan(machine, "trace"), canOpen = machineCan(machine, "openCut");
@@ -563,6 +580,25 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   const from = originPoint(sheet, q.origin);
   const order = q.ordered ? idx : orderParts(geos, q.rule, machine, sheet, from);
   const by = new Map(geos.map((g) => [g.i, g]));
+
+  // common cut: parts a kerf apart along their marked lines make blocks, cut as one (job/commonPath.ts)
+  const blockOf = new Map<number, CommonBlock>();
+  const lastOf = new Map<CommonBlock, number>();
+  const gaps = gapsFor(machine, sheet.material, sheet.thicknessMm);
+  const kerf = sheet.kerfMm ?? gaps.kerfMm ?? 0;
+  if (q.what === "all" && machineCan(machine, "commonCut") && geos.length > 1) {
+    const withEdges = await Promise.all(geos.map(async (g) => {
+      const p = sheet.parts[g.i];
+      const lines = await partCommonLines(p.partId);
+      const edges: CommonEdge[] = lines.length ? placedEdges(p, commonEdges(q.paths.get(p.partId) ?? "", lines)) : [];
+      return { i: g.i, outer: g.outer, box: g.box, edges };
+    }));
+    if (withEdges.some((w) => w.edges.length)) {
+      for (const b of commonBlocks(withEdges, kerf)) for (const i of b.members) blockOf.set(i, b);
+      // a block is cut where its last part comes in the order (what lies in its parts' holes is done by then)
+      for (const i of order) { const b = blockOf.get(i); if (b) lastOf.set(b, i); }
+    }
+  }
 
   const fresh: CutContour[] = [];
   let at = from;
@@ -603,6 +639,35 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
       at = endOf(h);
     }
     if (q.what === "internal") continue;
+    const blk = blockOf.get(i);
+    if (blk) {
+      if (lastOf.get(blk) !== i) continue;   // its outline: with the block's
+      const members = blk.members;
+      // scrap the block closes in, then the shared lines, then the block's outline
+      for (const lp of blk.inner) {
+        const h = closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules), side);
+        fresh.push({ part: i, kind: "inner", parts: members, ...h });
+        at = endOf(h);
+      }
+      const inside = (p: Pt) => members.some((m) => { const mg = by.get(m); return !!mg && pointIn(mg.outer, p[0], p[1]); });
+      const room = Math.max(0, (sheet.partGapMm ?? gaps.partGapMm) - kerf - 0.5);
+      const ext = Math.min(row?.outLeadInMm || 3, room), extOut = Math.min(row?.outLeadOutMm || 1, room);
+      const left = blk.lines.slice();
+      while (left.length) {
+        let k = 0, best = Infinity;
+        left.forEach((l, j) => { const d = Math.min(len(sub(l[0], at)), len(sub(l[1], at))); if (d < best) { best = d; k = j; } });
+        const c = sharedLineCut(left.splice(k, 1)[0], inside, at, ext, extOut, kerf);
+        const cc = { pts: c.pts.map(r2), leadIn: c.leadIn.map(r2), leadOut: c.leadOut.map(r2) };
+        fresh.push({ part: i, kind: "open", common: true, parts: members, ...cc });
+        at = endOf(cc);
+      }
+      for (const lp of blk.outer) {
+        const o = closedContour(lp, "outer", rules, row, targetOf(boxOf(lp), rules), side);
+        fresh.push({ part: i, kind: "outer", parts: members, ...o });
+        at = endOf(o);
+      }
+      continue;
+    }
     const o = closedContour(g.outer, "outer", rules, row, target, side);
     fresh.push({ part: i, kind: "outer", ...o });
     at = endOf(o);
@@ -616,10 +681,12 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     const good = processedParts(sheet);
     const chosen = new Set(idx);
     const drop = (c: CutContour) => chosen.has(c.part) && (q.what === "all" || (q.what === "trace" ? c.kind === "trace" : c.kind === "inner"));
-    kept = (sheet.cut?.contours ?? []).filter((c) => good.has(c.part) && !drop(c));
-    for (const c of kept) keys[c.part] = partKey(sheet.parts[c.part]);
+    // a block one of whose parts is chosen goes whole
+    const dropBlock = (c: CutContour) => q.what === "all" && !!c.parts?.some((k) => chosen.has(k));
+    kept = (sheet.cut?.contours ?? []).filter((c) => (c.parts ?? [c.part]).every((k) => good.has(k)) && !drop(c) && !dropBlock(c));
+    for (const c of kept) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
   }
-  for (const c of fresh) keys[c.part] = partKey(sheet.parts[c.part]);
+  for (const c of fresh) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
   return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours: [...kept, ...fresh], keys, ...(mirrored ? { mirrored } : {}) };
 }
 

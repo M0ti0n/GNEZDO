@@ -964,11 +964,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                       const end = c.leadOut.length ? undefined : c.pts[c.pts.length - 1];
                       return (
                         <g key={k}>
-                          <path className={`cut-${c.kind}`} d={line(c.pts)} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
+                          <path className={`cut-${c.kind}${c.common ? " cut-common" : ""}`} d={line(c.pts)} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
                           {c.leadIn.length > 1 && <path className="cut-in" d={line(c.leadIn)} style={{ strokeWidth: 1.6 / v.s }} />}
                           {c.leadOut.length > 1 && <path className="cut-out" d={line(c.leadOut)} style={{ strokeWidth: 1.6 / v.s }} />}
                           {viewPrefs.cutArrows && arrowsAlong(c.pts, 220 / v.s, 30 / v.s).map(([p, d], j) => (
-                            <path key={`a${j}`} className={`cut-${c.kind} cut-arrow`} d={arrowHead(p, d, 4.5 / v.s)} style={{ strokeWidth: 0.9 / v.s }} />
+                            <path key={`a${j}`} className={`cut-${c.kind}${c.common ? " cut-common" : ""} cut-arrow`} d={arrowHead(p, d, 4.5 / v.s)} style={{ strokeWidth: 0.9 / v.s }} />
                           ))}
                           {/* where it pierces (green) and, with no lead-out, where it ends (red) */}
                           {end && <circle className="cut-end" cx={end[0]} cy={end[1]} r={1.8 / v.s} />}
