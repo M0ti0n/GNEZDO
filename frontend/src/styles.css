@@ -2080,6 +2080,8 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .cut-in { stroke: #1fa83a; }
 .cut-out { stroke: #e3262b; }
 .cut-pierce { fill: #1fa83a; }
+.cut-end { fill: #e3262b; }
+.cut-path .cut-arrow { fill: none; stroke-dasharray: none; stroke-linecap: round; stroke-linejoin: round; }
 .cut-rapid { stroke: #7a8896; opacity: .8; }
 .cut-no { fill: #1b1b1b; stroke: #fff; paint-order: stroke; font-weight: 700; text-anchor: middle; dominant-baseline: central; font-family: var(--font); }
 .ac { overflow: hidden; }

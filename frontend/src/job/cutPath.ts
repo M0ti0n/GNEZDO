@@ -254,7 +254,9 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
 
   let start: { at: Pt; edge: number; vertex: boolean; t: Pt } | null = null;
   let type: LeadType = oType;
-  if (cornerOnly(cType)) {
+  // a window (not a round hole): the middle of a radius, else well away from its corners
+  if (kind === "inner" && !isRound(lp)) start = windowStart(lp, target, leadValues(kind, row, oType).lin);
+  if (!start && cornerOnly(cType)) {
     let best = Infinity;
     for (let i = 0; i < n; i++) {
       if (len(sub(lp[i], prev(i))) < 0.5 || len(sub(next(i), lp[i])) < 0.5) continue;
@@ -343,6 +345,88 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
   const b = boxOf(lp);
   const small = kind === "inner" && !!row && row.smallHoleMm > 0 && (b.x1 - b.x0 + b.y1 - b.y0) / 2 <= row.smallHoleMm;
   return { pts: pts.map(r2), leadIn: leadIn.map(r2), leadOut: leadOut.map(r2), lead: type, ...(small ? { small } : {}) };
+}
+
+/** Signed turn at each vertex [°] (+ / − by the loop's sense). */
+function turns(lp: Pt[]): number[] {
+  const n = lp.length;
+  return lp.map((p, i) => {
+    const a = unit(sub(p, lp[(i - 1 + n) % n])), b = unit(sub(lp[(i + 1) % n], p));
+    return (Math.atan2(a[0] * b[1] - a[1] * b[0], dot(a, b)) * 180) / Math.PI;
+  });
+}
+
+/** A round hole: every vertex turns a little the same way, all at about the same distance from the middle. */
+function isRound(lp: Pt[]): boolean {
+  if (lp.length < 8) return false;
+  const t = turns(lp);
+  if (!t.every((x) => Math.abs(x) < 25 && Math.sign(x) === Math.sign(t[0]))) return false;
+  const c: Pt = [lp.reduce((s, p) => s + p[0], 0) / lp.length, lp.reduce((s, p) => s + p[1], 0) / lp.length];
+  const r = lp.map((p) => len(sub(p, c)));
+  const mean = r.reduce((s, x) => s + x, 0) / r.length;
+  return r.every((x) => Math.abs(x - mean) <= 0.03 * mean + 0.05);
+}
+
+/**
+ * Where the leads go on a window (an inner contour that is not a round hole): the middle of its arc
+ * (a radius) nearest the target if it has one, else on a straight side at least 2 × the lead-in from
+ * its corners (the middle of a side too short for that), nearest the target.
+ */
+function windowStart(lp: Pt[], target: Pt, lin: number): { at: Pt; edge: number; vertex: boolean; t: Pt } | null {
+  const n = lp.length;
+  const t = turns(lp);
+  const curved = (i: number) => Math.abs(t[i]) >= 0.5 && Math.abs(t[i]) < 25;
+  // points along the loop from vertex i, `d` mm on
+  const along = (i: number, d: number): { at: Pt; edge: number; vertex: boolean; t: Pt } => {
+    let k = i, left = d;
+    for (let guard = 0; guard < n; guard++) {
+      const a = lp[k], b = lp[(k + 1) % n], L = len(sub(b, a));
+      if (left < L - 1e-6) {
+        if (left < 1e-6) return { at: a, edge: k, vertex: true, t: unit(add(unit(sub(a, lp[(k - 1 + n) % n])), unit(sub(b, a)))) };
+        return { at: add(a, mul(unit(sub(b, a)), left)), edge: k, vertex: false, t: unit(sub(b, a)) };
+      }
+      left -= L; k = (k + 1) % n;
+    }
+    return { at: lp[i], edge: i, vertex: true, t: unit(sub(lp[(i + 1) % n], lp[i])) };
+  };
+  const segLen = (k: number) => len(sub(lp[(k + 1) % n], lp[k]));
+  const lens = lp.map((_, k) => segLen(k));
+  const med = lens.slice().sort((x, y) => x - y)[Math.floor(n / 2)];
+  const short = (k: number) => lens[(k + n) % n] <= 4 * med;
+  // vertex v joins two pieces of one arc: both segments short, a small turn
+  const links = (v: number) => curved(v) && short(v - 1) && short(v) && (Math.sign(t[v]) === Math.sign(t[(v - 1 + n) % n]) || !curved((v - 1 + n) % n));
+  const cands: { at: Pt; edge: number; vertex: boolean; t: Pt }[] = [];
+  const first = lp.findIndex((_, v) => !links(v));
+  if (first < 0) return null;
+  // arcs: runs of short segments joined by small turns of one sense
+  for (let s0 = 0; s0 < n; s0++) {
+    const k0 = (first + s0) % n;
+    if (links(k0) || !short(k0)) continue;
+    let k = k0, L = lens[k0], turn = curved(k0) ? t[k0] / 2 : 0;
+    while (links((k + 1) % n) && (k + 1) % n !== k0) { k = (k + 1) % n; L += lens[k]; turn += t[k]; }
+    const end = (k + 1) % n;
+    if (curved(end)) turn += t[end] / 2;
+    if (k !== k0 && Math.abs(turn) >= 20) cands.push(along(k0, L / 2));
+  }
+  if (!cands.length) {
+    // straight sides between corners (collinear pieces count as one side)
+    const corner = (v: number) => Math.abs(t[v]) >= 0.5;
+    const c0 = lp.findIndex((_, v) => corner(v));
+    if (c0 < 0) return null;
+    for (let s0 = 0; s0 < n; s0++) {
+      const i0 = (c0 + s0) % n;
+      if (!corner(i0)) continue;
+      let j = (i0 + 1) % n, L = lens[i0];
+      while (!corner(j) && j !== i0) { L += lens[j]; j = (j + 1) % n; }
+      const off = 2 * lin;
+      const a0 = lp[i0], e = unit(sub(lp[(i0 + 1) % n], a0));
+      const want = Math.max(0, Math.min(L, dot(sub(target, a0), e)));
+      const d = off > L / 2 ? L / 2 : Math.max(off, Math.min(L - off, want));
+      cands.push(along(i0, d));
+    }
+  }
+  if (!cands.length) return null;
+  return cands.reduce((b, c) => (len(sub(c.at, target)) < len(sub(b.at, target)) ? c : b));
 }
 
 const totalLen = (pts: Pt[]) => pts.reduce((s, p, i) => (i ? s + len(sub(p, pts[i - 1])) : 0), 0);

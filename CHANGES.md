@@ -4,7 +4,12 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+**New**
+- Process: direction arrows in the middle of each rapid move (dashed line, same color) and small arrows along the cut contours (cutting direction); Settings → Personal → Cut path turns each on or off
+- Process: a red dot where a cut ends when it has no lead-out (the green dot marks the pierce, also with no lead-in)
+
 **Changed**
+- Auto cut, windows and slots (inner contours that are not round holes): the leads go in the middle of a radius (arc) if the contour has one, else on a straight side at least 2 × the lead-in from its corners (the middle of a side too short for that), nearest the lead corner
 - A new sheet's gaps come from the machine's Technology row for its material and thickness: Gaps · Parts (parts gap), Gaps · **Sheet trim** (was Border; all four edges) and Cutting · Kerf (cut diameter). Another material or thickness in the stock list or Sheet properties brings that row's gaps (unless they were changed by hand). The machine's own Gaps of a new sheet stay only for a thickness without a row
 - HACO KOMPAKT plasma zip: parts gap = outline lead-in + 3 mm (2–25 mm), + 5 mm (30, 35 mm); sheet trim = outline lead-out + 2 mm. Import the zip again to get them
 

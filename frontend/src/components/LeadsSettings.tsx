@@ -69,8 +69,7 @@ export function LeadsSettings({ machine, onChange }: { machine: Machine; onChang
           {picker("holeOther", true, "Holes, elsewhere")}
           <label className="chk"><input type="checkbox" checked={r.holeShorten} onChange={(e) => set({ holeShorten: e.target.checked })} />
             A lead-in longer than the hole's radius is cut to the radius (starts at the center)</label>
-          <label className="chk"><input type="checkbox" checked={r.slotMiddle} onChange={(e) => set({ slotMiddle: e.target.checked })} />
-            Slots narrower than 2 × the lead-in: in the middle of the end arc / short edge</label>
+          <p className="rule-help">Windows and slots (inner contours that are not round holes): the leads go in the middle of a radius (arc) if there is one, else on a straight side at least 2 × the lead-in from its corners (the middle of a side shorter than that).</p>
         </section>
         <section className="lead-sec">
           <h3>Remnant cut <small>open cuts of Process → Remnant · from the scrap side</small></h3>
