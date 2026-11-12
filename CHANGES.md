@@ -5,7 +5,8 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 ## Next build
 
 **New**
-- Process: direction arrows in the middle of each rapid move (dashed line, same color) and small arrows along the cut contours (cutting direction); Settings → Personal → Cut path turns each on or off
+- Process: small, thin direction arrows in the middle of each rapid move (same color as its dashed line) and along the cut contours (cutting direction); Settings → Personal → Cut path turns each on or off
+- Process → Remnant: **Cut along X / Cut along Y** under the modes picks RECTANGULAR's first cut (the whole length or the whole width, the second one up to it) and works the remnant out at once; Settings → Stock → Remnants holds the one to start with
 - Process: a red dot where a cut ends when it has no lead-out (the green dot marks the pierce, also with no lead-in)
 
 **Changed**

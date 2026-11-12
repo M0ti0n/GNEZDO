@@ -955,9 +955,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                     {cutRapids.map(([a, b], k) => <line key={`r${k}`} className="cut-rapid" x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} style={{ strokeWidth: 0.8 / v.s, strokeDasharray: `${4 / v.s} ${3 / v.s}` }} />)}
                     {viewPrefs.rapidArrows && cutRapids.map(([a, b], k) => {
                       // the way the head travels: an arrow in the middle of the rapid move
-                      const l = Math.hypot(b[0] - a[0], b[1] - a[1]), size = 7 / v.s;
+                      const l = Math.hypot(b[0] - a[0], b[1] - a[1]), size = 5 / v.s;
                       if (l < 4 * size) return null;
-                      return <path key={`ra${k}`} className="cut-rapid cut-arrow" d={arrowHead([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], [(b[0] - a[0]) / l, (b[1] - a[1]) / l], size)} style={{ strokeWidth: 1 / v.s }} />;
+                      return <path key={`ra${k}`} className="cut-rapid cut-arrow" d={arrowHead([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], [(b[0] - a[0]) / l, (b[1] - a[1]) / l], size)} style={{ strokeWidth: 0.7 / v.s }} />;
                     })}
                     {cutLive.map((c, k) => {
                       const pierce = c.leadIn[0] ?? c.pts[0];
@@ -968,7 +968,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                           {c.leadIn.length > 1 && <path className="cut-in" d={line(c.leadIn)} style={{ strokeWidth: 1.6 / v.s }} />}
                           {c.leadOut.length > 1 && <path className="cut-out" d={line(c.leadOut)} style={{ strokeWidth: 1.6 / v.s }} />}
                           {viewPrefs.cutArrows && arrowsAlong(c.pts, 220 / v.s, 30 / v.s).map(([p, d], j) => (
-                            <path key={`a${j}`} className={`cut-${c.kind} cut-arrow`} d={arrowHead(p, d, 6 / v.s)} style={{ strokeWidth: 1.4 / v.s }} />
+                            <path key={`a${j}`} className={`cut-${c.kind} cut-arrow`} d={arrowHead(p, d, 4.5 / v.s)} style={{ strokeWidth: 0.9 / v.s }} />
                           ))}
                           {/* where it pierces (green) and, with no lead-out, where it ends (red) */}
                           {end && <circle className="cut-end" cx={end[0]} cy={end[1]} r={1.8 / v.s} />}
