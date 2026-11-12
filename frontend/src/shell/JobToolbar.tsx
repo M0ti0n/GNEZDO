@@ -28,6 +28,7 @@ import toolAlignEdge from "./jobtools/tool-alignEdge.png";
 import toolAddSheet from "./jobtools/tool-addSheet.png";
 import toolNestReport from "./jobtools/tool-nestReport.png";
 import toolAutoCut from "./jobtools/tool-autoCut.png";
+import toolSimulation from "./jobtools/tool-simulation.png";
 import toolManualCut from "./jobtools/tool-manualCut.png";
 import toolBreakCut from "./jobtools/tool-breakCut.png";
 import toolMicroJoint from "./jobtools/tool-microJoint.png";
@@ -83,6 +84,7 @@ const SECTIONS: Section[] = [
       { id: "remnant", label: "Remnant", icon: toolRemnant, ready: true, hint: "Remnant: what is left of the sheet, worked out, named and saved for later" },
       { id: "processDel", label: "Process del", icon: toolProcessDel, ready: true, hint: "Process del: delete the remnant, the cut path, or both" },
       { id: "postProcess", label: "Post process", icon: toolPostProcess, ready: true, hint: "Post process: the NC program for the machine, written to its NC folder" },
+      { id: "simulation", label: "Simulation", icon: toolSimulation, ready: true, hint: "Simulation: play the open sheet's cut back (play / pause, stop, a playback bar, the speed): the parts turn see-through as they are cut out" },
     ],
   },
   {

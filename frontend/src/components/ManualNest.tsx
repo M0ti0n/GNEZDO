@@ -36,6 +36,8 @@ export interface CutMode {
   cursor?: string;
   /** contours shown picked (Lead in / out) */
   highlight?: Set<CutContour>;
+  /** Simulation: the path as far as the head has come, the parts cut out so far, the head */
+  sim?: { shown: CutContour[]; current?: CutContour; rapids: [Pt, Pt][]; done: Set<number>; head: Pt };
 }
 
 // Manual nesting of one sheet (EDIT / VIEW on a sheet card). The parts on the sheet are moved with
@@ -934,7 +936,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 if (!g || !r) return null;
                 const c = partColor(r.no);
                 if (cut) {
-                  const done = cutDone.has(i), pick = cut.picked.includes(i);
+                  const done = cut.sim ? cut.sim.done.has(i) : cutDone.has(i), pick = cut.picked.includes(i);
                   return (
                     <path key={i} d={pathOf(g.loops)} fillRule="evenodd" className={`mn-part is-process${done ? " is-cut" : ""}${pick ? " is-picked" : ""}`}
                       style={done ? { strokeWidth: 1.2 / v.s } : { fill: c.fill, stroke: c.stroke, strokeWidth: 1 / v.s }}>
@@ -967,21 +969,22 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 const line = (pts: [number, number][]) => pts.map(([x, y], k) => `${k ? "L" : "M"}${x} ${y}`).join("");
                 return (
                   <g className="cut-path">
-                    {cutRapids.map(([a, b], k) => <line key={`r${k}`} className="cut-rapid" x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} style={{ strokeWidth: 0.8 / v.s, strokeDasharray: `${4 / v.s} ${3 / v.s}` }} />)}
-                    {viewPrefs.rapidArrows && cutRapids.map(([a, b], k) => {
+                    {(cut?.sim ? cut.sim.rapids : cutRapids).map(([a, b], k) => <line key={`r${k}`} className="cut-rapid" x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} style={{ strokeWidth: 0.8 / v.s, strokeDasharray: `${4 / v.s} ${3 / v.s}` }} />)}
+                    {viewPrefs.rapidArrows && (cut?.sim ? cut.sim.rapids : cutRapids).map(([a, b], k) => {
                       // the way the head travels: an arrow in the middle of the rapid move
                       const l = Math.hypot(b[0] - a[0], b[1] - a[1]), size = 5 / v.s;
                       if (l < 4 * size) return null;
                       return <path key={`ra${k}`} className="cut-rapid cut-arrow" d={arrowHead([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], [(b[0] - a[0]) / l, (b[1] - a[1]) / l], size)} style={{ strokeWidth: 0.7 / v.s }} />;
                     })}
-                    {cutLive.map((c, k) => {
+                    {(cut?.sim ? cut.sim.shown : cutLive).map((c, k) => {
                       const pierce = c.leadIn[0] ?? c.pts[0];
-                      const end = c.leadOut.length ? undefined : c.pts[c.pts.length - 1];
+                      const now = c === cut?.sim?.current;
+                      const end = c.leadOut.length || now ? undefined : c.pts[c.pts.length - 1];
                       const hl = cut?.highlight?.has(c);
                       return (
                         <g key={k}>
                           {hl && <path className="cut-hl" d={line([...c.leadIn, ...c.pts, ...c.leadOut])} style={{ strokeWidth: 7 / v.s }} />}
-                          <path className={`cut-${c.kind}${c.common ? " cut-common" : ""}`} d={line(c.pts)} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
+                          <path className={`cut-${c.kind}${c.common ? " cut-common" : ""}${now ? " cut-now" : ""}`} d={line(c.pts)} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
                           {c.leadIn.length > 1 && <path className="cut-in" d={line(c.leadIn)} style={{ strokeWidth: 1.6 / v.s }} />}
                           {c.leadOut.length > 1 && <path className="cut-out" d={line(c.leadOut)} style={{ strokeWidth: 1.6 / v.s }} />}
                           {viewPrefs.cutArrows && arrowsAlong(c.pts, 220 / v.s, 30 / v.s).map(([p, d], j) => (
@@ -993,6 +996,17 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                         </g>
                       );
                     })}
+                    {cut?.sim && (() => {
+                      // the head: a crosshair
+                      const [hx, hy] = cut.sim.head, r = 9 / v.s, g = 5 / v.s, e = 15 / v.s;
+                      return (
+                        <g className="sim-head" style={{ strokeWidth: 1.6 / v.s }}>
+                          <circle cx={hx} cy={hy} r={r} />
+                          <circle className="sim-head-dot" cx={hx} cy={hy} r={2.6 / v.s} />
+                          <path d={`M${hx - e} ${hy}H${hx - g}M${hx + g} ${hy}H${hx + e}M${hx} ${hy - e}V${hy - g}M${hx} ${hy + g}V${hy + e}`} />
+                        </g>
+                      );
+                    })()}
                     {cut?.picked.map((i, k) => {
                       const g = geo[i];
                       if (!g) return null;
