@@ -13,8 +13,8 @@ import toolLeadInOut from "../shell/jobtools/tool-leadInOut.png";
 // Process -> Lead in / out (after Fab's layout): click a lead (or its contour) on the open sheet to
 // pick it. MOVE: the first click picks a lead, the second puts it at the nearest point of the same
 // contour (a sharp corner within 3 mm: on the corner). LEAD IN / OUT TYPE picks the type; its values
-// are set in the drawing below (it follows them as they are typed: lengths to scale with each other,
-// angles as they are); APPLY puts them on the picked lead. RESET: the automatic cut's type and the
+// are set in the drawing below (not to scale: the lines show the directions, the gap always drawn);
+// APPLY puts them on the picked lead. RESET: the automatic cut's type and the
 // Technology row's values; DELETE (red): no leads (0 / 0, pierced on the contour). The toggle: only
 // this part, or every copy of it on the sheet.
 
@@ -218,17 +218,14 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
     const x = Math.max(40, Math.min(W - 40, p[0])), y = Math.max(16, Math.min(H - 16, p[1]));
     return (
       <label key={k} className="li-val" style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, borderColor: color }} title={label}>
-        <NumInput value={spec[k]} min={min} live placeholder="0" aria-label={label} className="li-num"
+        <NumInput value={spec[k]} min={min} placeholder="0" aria-label={label} className="li-num"
           onCommit={(n) => set(k, Math.min(max, n))} />
         <span>{unit}</span>
       </label>
     );
   };
   const clampA = (a: number) => Math.max(1, Math.min(179, a || 90));
-  // the leads drawn to scale with each other (the longer one 80), a short one still to be seen
-  const k = 80 / Math.max(spec.lin, spec.lout, 0.001);
-  const px = (v: number) => (v > 0 ? Math.max(14, Math.min(80, v * k)) : 0);
-  const LIN = px(spec.lin), LOUT = px(spec.lout);
+  const LIN = 80, LOUT = 62;
   let drawing: ReactNode, boxes: ReactNode[] = [];
 
   if (type === "corner" || type === "cornerAngle") {
@@ -238,7 +235,7 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
     const angled = type === "cornerAngle";
     const aIn = angled ? clampA(spec.aIn) : 90, aOut = angled ? clampA(spec.aOut) : 90;
     const dIn = dirOf(-90 + aIn), dOut = dirOf(180 - aOut);
-    const PI = at(C, dIn, LIN), PO = at(C, dOut, LOUT);
+    const PI = at(C, dIn, spec.lin > 0 ? LIN : 0), PO = at(C, dOut, spec.lout > 0 ? LOUT : 0);
     drawing = (<>
       <rect x={14} y={18} width={C[0] - 14} height={C[1] - 18} fill="rgba(27,42,48,.09)" />
       {angled && <Wedge c={C} a0={-90} a1={-90 + aIn} r={46} color={AIN} />}
@@ -260,17 +257,18 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
     // then leaves; the leads are on the scrap side (above)
     const y = 150, P: V = [128, y];
     const usesGap = type !== "perp";
-    const g = usesGap && spec.gap ? Math.sign(spec.gap) * Math.max(6, Math.min(46, Math.abs(spec.gap) * Math.min(k, 12))) : 0;
-    const E: V = [P[0] + (type === "perp" || (type === "perpGap" && g === 0) ? 10 : g), y];   // 90° leads side by side
+    // the gap always drawn (not to scale): solid when it runs past the start, dashed when it stops short
+    const g = usesGap ? (spec.gap < 0 ? -30 : 30) : 0;
+    const E: V = [P[0] + (type === "perp" ? 10 : g), y];   // 90° leads side by side
     const angled = type === "angled";
     const aIn = angled ? clampA(spec.aIn) : 90, aOut = angled ? clampA(spec.aOut) : 90;
     const dIn = dirOf(180 + aIn), dOut = dirOf(-aOut);   // from P: back along the edge turned up by the angle
     const R = 50;
-    const PI = at(P, dIn, LIN), PO = at(E, dOut, LOUT);
+    const PI = at(P, dIn, spec.lin > 0 ? LIN : 0), PO = at(E, dOut, spec.lout > 0 ? LOUT : 0);
     drawing = (<>
       <rect x={14} y={y} width={W - 28} height={H - y - 8} fill="rgba(27,42,48,.09)" />
       <path d={`M14 ${y}H${W - 14}`} stroke="var(--ink, #1b2a30)" strokeWidth={5} fill="none" />
-      {usesGap && g !== 0 && <path d={`M${P[0]} ${y}H${E[0]}`} stroke={GAP} strokeWidth={6} strokeLinecap="round" opacity={g < 0 ? 0.55 : 1} strokeDasharray={g < 0 ? "5 5" : undefined} />}
+      {usesGap && <path d={`M${P[0]} ${y}H${E[0]}`} stroke={GAP} strokeWidth={6} strokeLinecap="round" opacity={g < 0 ? 0.55 : 1} strokeDasharray={g < 0 ? "5 5" : undefined} />}
       {angled && <Wedge c={P} a0={180 + aIn} a1={180} r={46} color={AIN} />}
       {angled && <Wedge c={E} a0={0} a1={-aOut} r={42} color={AOUT} />}
       {type === "arc" ? (<>
@@ -284,8 +282,7 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
         {dot(PI, IN)}
       </>)}
     </>);
-    // straight up (90°): the two boxes beside their lines, else beyond the lines' ends (where they stay
-    // while a value is typed: the lines follow the values as they are typed)
+    // straight up (90°): the two boxes beside their lines, else beyond the lines' ends
     const side = !angled;
     boxes = type === "arc" ? [
       box("radius", [P[0] - R - 6, y - R - 30], IN, "mm", "Arc radius (mm)"),

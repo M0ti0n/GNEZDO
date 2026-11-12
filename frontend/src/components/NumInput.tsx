@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 
-/** A number field that is edited freely and checked when it is left (Enter or leaving the field); `live`: also as it is typed. */
-export function NumInput({ value, min = 0, int = false, live = false, onCommit, className = "field", ...rest }: {
-  value: number; min?: number; int?: boolean; live?: boolean; onCommit: (n: number) => void; className?: string;
+/** A number field that is edited freely and checked when it is left (Enter or leaving the field). */
+export function NumInput({ value, min = 0, int = false, onCommit, className = "field", ...rest }: {
+  value: number; min?: number; int?: boolean; onCommit: (n: number) => void; className?: string;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "min">) {
   const [draft, setDraft] = useState<string | null>(null);
   const cancelled = useRef(false);
@@ -16,10 +16,7 @@ export function NumInput({ value, min = 0, int = false, live = false, onCommit, 
   return (
     <input {...rest} className={className} inputMode={int ? "numeric" : "decimal"}
       value={draft ?? (value ? String(value) : "")}
-      onChange={(e) => {
-        setDraft(e.target.value);
-        if (live) { const n = Number(e.target.value.replace(",", ".")); if (e.target.value.trim() !== "" && Number.isFinite(n)) onCommit(Math.max(min, int ? Math.round(n) : n)); }
-      }}
+      onChange={(e) => setDraft(e.target.value)}
       onFocus={(e) => e.target.select()}
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { cancelled.current = true; (e.target as HTMLInputElement).blur(); } }} />
