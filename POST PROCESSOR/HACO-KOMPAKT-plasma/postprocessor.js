@@ -6,7 +6,8 @@
 //   N4 G91 G41 D02 F<feed> G01 X.. Y.. M07 M50      lead-in, torch on (D01 outline, D02 holes), then G91
 //   N6 G01 X.. Y.. / G02|G03 X.. Y.. I.. J..        contour, incremental; I J = center - start
 //   N8 M09                                          torch off (after an arc: on the arc's block)
-//   N10 G00 G40 X.. Y..                             rapid to the next pierce point
+//   N10 G00 G40 X.. Y..                             rapid to the next pierce point (one block per point
+//                                                    of Process → Movement first, if the rapid has any)
 //   ...
 //   Nn G00 G40 X.. Y..                              back to 0,0
 //   Nn M30
@@ -55,9 +56,13 @@ function postprocess(p, nc) {
   for (const c of p.contours) {
     if (!c.segs.length) continue;
     const feed = feedOf(c);
-    // rapid to the pierce point
-    if (first) N(`G00 G40 G90 G23 F${speed} X${num(c.start.x)} Y${num(c.start.y)}`);
-    else N(`G00 G40 X${num(c.start.x - pos.x)} Y${num(c.start.y - pos.y)}`);
+    // rapid to the pierce point (through Movement's points first, if it has any); the first rapid is
+    // absolute (G90 until the lead-in's G91)
+    [...(c.via || []), c.start].forEach((q, j, all) => {
+      if (first) N(j === 0 ? `G00 G40 G90 G23 F${speed} X${num(q.x)} Y${num(q.y)}` : `G00 X${num(q.x)} Y${num(q.y)}`);
+      else N(`G00 G40 X${num(q.x - pos.x)} Y${num(q.y - pos.y)}`);
+      if (j < all.length - 1) pos = q;
+    });
     if (Math.hypot(c.start.x - pos.x, c.start.y - pos.y) >= 0.01) {
       if (feed !== feedState) feedState = feed;
       const g = angOf(pos, c.start);

@@ -2086,6 +2086,10 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .sim-head path { fill: none; }
 .cut-glow { fill: none; stroke: #ffc21a; stroke-opacity: .5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 3px rgba(255, 176, 0, .85)); }
 .cut-glow.is-strong { stroke: #ff8a00; stroke-opacity: .8; filter: drop-shadow(0 0 4px #ff8a00) drop-shadow(0 0 9px rgba(255, 120, 0, .9)); }
+.cut-via { fill: #1e8db5; stroke: #fff; }
+.cut-via.is-draft { fill: #8e44ad; }
+.cut-target { fill: none; stroke: #8e44ad; }
+.cut-draft { fill: none; stroke: #8e44ad; stroke-linecap: round; }
 .cut-hl { fill: none; stroke: #f5b800; stroke-opacity: .55; stroke-linecap: round; stroke-linejoin: round; }
 .cut-end { fill: #e3262b; }
 .cut-path .cut-common { stroke: var(--ln-common); }
@@ -2296,3 +2300,11 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .mc-del { justify-self: center; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1.5px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink-3); cursor: pointer; }
 .mc-del:hover { border-color: #f2c4c2; background: #fde8e8; color: var(--red); }
 .pp-btn.pd-sel.is-on { background: #fde8e8; border-color: var(--red); color: var(--red); box-shadow: 0 0 0 2px #fde8e8; }
+
+/* Process -> Movement */
+.mv-modes { display: flex; flex-direction: column; gap: 8px; }
+.mv-btn { height: 42px; justify-content: center; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; background: transparent; border: 1.5px solid var(--green); color: var(--green-ink); }
+.mv-btn:hover:not(:disabled), .mv-btn.is-on { background: var(--green-tint); }
+.mv-btn.is-on { box-shadow: 0 0 0 2px var(--green-tint); }
+.mv-btn.is-del { border-color: var(--red); color: var(--red); }
+.mv-btn.is-del:hover:not(:disabled), .mv-btn.is-del.is-on { background: #fde8e8; box-shadow: 0 0 0 2px #fde8e8; }

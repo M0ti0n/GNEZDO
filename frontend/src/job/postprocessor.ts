@@ -29,6 +29,8 @@ export interface NcContour {
   heightMm: number;
   /** Cut at the small-hole speed (marked as a hole in the importer, or set by hand); missing = by size */
   small?: boolean;
+  /** Process → Movement: the rapid to `start` goes through these points first (in order) */
+  via?: NcPt[];
   /** Which part it belongs to (its name), for comments */
   part?: string;
   /** The part's number on the sheet (program.parts); a common cut block's shared lines and outline: every member in `partNos` */

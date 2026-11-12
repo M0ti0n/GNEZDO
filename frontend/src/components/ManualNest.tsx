@@ -12,7 +12,7 @@ import {
 import { arrange, arrangeAgain, mirrorGroup, partRules, stack, type PartRules } from "../job/manualTools";
 import { loadNestingRules } from "../job/nestRules";
 import { loadManualView } from "../job/manualView";
-import { liveContours, originPoint, processedParts, rapidsOf, type CutContour } from "../job/cutPath";
+import { liveContours, originPoint, processedParts, rapidsOf, viaOf, type CutContour } from "../job/cutPath";
 import { useViewPrefs } from "../job/viewPrefs";
 import { RemnantOverlay } from "./RemnantOverlay";
 import { commonEdges, commonLayout, partCommonLines, placedEdges, sharedLines, snapMove, type CommonEdge, type CommonLayout } from "../job/commonCut";
@@ -32,12 +32,16 @@ export interface CutMode {
   hint: string;
   /** a tool that clicks on the sheet (Remnant: CUT V / CUT H / DELETE CUT): the point in mm */
   onPoint?: (x: number, y: number, scale: number) => void;
+  /** the pointer over the sheet (mm), while that tool wants it */
+  onHover?: (x: number, y: number, scale: number) => void;
   /** the pointer over the sheet while that tool is on */
   cursor?: string;
   /** contours shown picked (Lead in / out) */
   highlight?: Set<CutContour>;
   /** contours with a glow (Manual cut: the picked ones), `strong` with a stronger one (chosen in the list) */
   glow?: { all: Set<CutContour>; strong?: CutContour };
+  /** Movement: the rapid picked (glow) and the way being drawn (points so far, then the pointer) */
+  move?: { sel?: Pt[]; draft?: Pt[]; targets?: Pt[] };
   /** Simulation: the path as far as the head has come, the parts cut out so far, the head */
   sim?: { shown: CutContour[]; current?: CutContour; rapids: [Pt, Pt][]; done: Set<number>; head: Pt };
 }
@@ -485,6 +489,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       return;
     }
     if (box) { setBox((b) => b && { ...b, x1: p.x, y1: p.y }); return; }
+    if (cut?.onHover) { const q = lastPt.current!; cut.onHover(q[0], q[1], view?.s ?? 1); }
     const d = dragging.current;
     const [x, y] = toMm(p.x, p.y);
     if (d) {
@@ -1000,6 +1005,16 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                         </g>
                       );
                     })}
+                    {/* Movement's points on the rapids */}
+                    {!cut?.sim && cutLive.map((c, k) => viaOf(c, cutLive[k - 1]).map((q, j) => (
+                      <circle key={`v${k}-${j}`} className="cut-via" cx={q[0]} cy={q[1]} r={3.4 / v.s} style={{ strokeWidth: 1 / v.s }} />
+                    )))}
+                    {cut?.move?.sel && <path className="cut-glow is-strong" d={line(cut.move.sel)} style={{ strokeWidth: 8 / v.s }} />}
+                    {cut?.move?.targets?.map((q, j) => <circle key={`t${j}`} className="cut-target" cx={q[0]} cy={q[1]} r={6 / v.s} style={{ strokeWidth: 1.8 / v.s }} />)}
+                    {cut?.move?.draft && cut.move.draft.length > 1 && (<>
+                      <path className="cut-draft" d={line(cut.move.draft)} style={{ strokeWidth: 1.6 / v.s, strokeDasharray: `${5 / v.s} ${3 / v.s}` }} />
+                      {cut.move.draft.slice(1).map((q, j) => <circle key={`d${j}`} className="cut-via is-draft" cx={q[0]} cy={q[1]} r={3 / v.s} style={{ strokeWidth: 1 / v.s }} />)}
+                    </>)}
                     {cut?.sim && (() => {
                       // the head: a crosshair
                       const [hx, hy] = cut.sim.head, r = 9 / v.s, g = 5 / v.s, e = 15 / v.s;

@@ -8,7 +8,9 @@
 // the part's corner (its box, lower X and Y). A part with marking gets two: its marking (T2) and its
 // cutting (T1); all marking is placed before the first cut (a T2 subprogram with cuts in it does not
 // run with pre-pierce on).
-//   N10 G0 X.. Y..            rapid to the pierce point (G0 G40 from the second contour on)
+//   N10 G0 X.. Y..            rapid to the pierce point (G0 G40 from the second contour on); Process →
+//                             Movement's points first, one G0 each (the part then has a subprogram
+//                             of its own: the moves between parts are the machine's, made at G980)
 //   M98P8036                  pierce
 //   IF[#516GT0]GOTO19         pre-pierce pass (#516 = the row's "Pre-pierce"): pierce only
 //   G41                       kerf compensation (outlines and holes; not on open cuts)
@@ -81,7 +83,10 @@ function postprocess(p) {
     contours.forEach((c, i) => {
       const n = (i + 1) * 10;
       const e = eOf(c);
-      body.push(`N${n} G0 ${i ? "G40 " : ""}X${X(c.start.x)} Y${Y(c.start.y)}`);
+      // the rapid to the pierce point, through Movement's points first (the first block carries N:
+      // a restart at this contour goes the same way)
+      const to = [...(c.via || []), c.start];
+      to.forEach((q, j) => body.push(j ? `G0 X${X(q.x)} Y${Y(q.y)}` : `N${n} G0 ${i ? "G40 " : ""}X${X(q.x)} Y${Y(q.y)}`));
       if (marking) body.push(`IF[#516GT0]GOTO${n + 10}`, "M98P8033");
       else {
         body.push("M98P8036", `IF[#516GT0]GOTO${n + 9}`);
