@@ -10,10 +10,11 @@ import type { StockSheet } from "../job/stock";
 import { ManualNest } from "./ManualNest";
 import { useAutoCut } from "./CutView";
 import { useRemnant } from "./RemnantPanel";
+import { usePostProcess, useProcessDel } from "./ProcessPanels";
 import { RemnantOverlay } from "./RemnantOverlay";
 import { DEFAULT_REMNANT_SETTINGS, type RemnantSettings } from "../job/remnant";
 
-export type ProcessTool = "autoCut" | "remnant";
+export type ProcessTool = "autoCut" | "remnant" | "processDel" | "postProcess";
 import { liveContours, processedParts } from "../job/cutPath";
 import { SheetPropertiesDialog } from "./SheetPropertiesDialog";
 import { strategyLabel } from "./CustomNestDialog";
@@ -148,8 +149,14 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
     index: Math.min(full ?? sheetNo, Math.max(0, sheets.length - 1)), single: full !== null, sheets, parts: byId, jobParts: parts, jobName,
     settings: remnantSettings, onRemnant: (k, remnant) => sol && onEditSheet(sol.id, k, { remnant }),
   });
+  const curIndex = Math.min(full ?? sheetNo, Math.max(0, sheets.length - 1));
+  const pdel = useProcessDel({ index: curIndex, sheets, onClear: (k, patch) => sol && onEditSheet(sol.id, k, patch) });
+  const post = usePostProcess({
+    index: curIndex, sheets, machine, origin: sol?.origin ?? machine.origin, jobName, needsSave, onSave: onSaveJob ?? (async () => true),
+    partName: (sh, i) => byId.get(sh.parts[i]?.partId ?? "")?.name,
+  });
   const cutOn = !!process && !!sol && !!finished && sheets.length > 0;
-  const tool = process === "remnant" ? rm : ac;
+  const tool = process === "remnant" ? rm : process === "processDel" ? pdel : process === "postProcess" ? post : ac;
   /** EDIT / VIEW on a sheet card: the one-sheet view (Manual nest's, or Process's) */
   const openSheet = (i: number) => (cutOn ? setFullState(i) : setFull(i));
 

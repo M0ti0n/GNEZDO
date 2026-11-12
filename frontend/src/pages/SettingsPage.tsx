@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { machineFileName, machineZip, readMachineFile } from "../job/machineFile";
 import { NavClose } from "./NavClose";
+import { loadJobPrefix, saveJobPrefix, suggestJobName } from "../job/jobName";
 import { flush, logDownloadUrl, logSettings, reportProblem, setLogEnabled, type LogSettings as LogSettingsData } from "../job/diag";
 import { Combobox } from "../components/Combobox";
 import { DatabaseForm } from "../components/DatabaseSetup";
@@ -17,11 +18,12 @@ import { DEFAULT_CUT_ORDER, LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, cutOrderOf
 import { DEFAULT_KEYS, KEY_ACTIONS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
-type Section = "stock" | "machine" | "keys" | "data" | "log";
+type Section = "stock" | "machine" | "keys" | "personal" | "data" | "log";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock", ready: true },
   { id: "machine", label: "Machines", ready: true },
   { id: "keys", label: "Manual nest", ready: true },
+  { id: "personal", label: "Personal", ready: true },
   { id: "data", label: "Data", ready: true },
   { id: "log", label: "Diagnostic log", ready: true },
 ];
@@ -102,6 +104,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
       </nav>
 
       {section === "keys" && <KeysSettings />}
+      {section === "personal" && <PersonalSettings />}
       {section === "data" && <DataSettings />}
       {section === "log" && <LogSettings isAdmin={isAdmin} />}
 
@@ -319,6 +322,32 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
 }
 
 /** Manual nest keys: two per action; click a key and press the new one (Esc: keep, Backspace: none). */
+function PersonalSettings() {
+  const [prefix, setPrefix] = useState(loadJobPrefix);
+  const [example, setExample] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => { saveJobPrefix(prefix); void suggestJobName().then(setExample); }, 300);
+    return () => clearTimeout(t);
+  }, [prefix]);
+  return (
+    <div className="settings-main">
+      <header className="settings-head">
+        <h2>Personal</h2>
+        <p>Your own preferences, kept in this browser.</p>
+      </header>
+      <section className="rule">
+        <h3>Job names</h3>
+        <p className="rule-help">New job suggests the next number of your own job name: with <b>JOHN</b> and JOHN231, JOHN232, JOHN233 saved last, it suggests <b>JOHN234</b>. It goes on from the latest job that has the two numbers before it saved too, so a lone or old number is not where it continues. Empty: “New job”.</p>
+        <div className="mc-row">
+          <label className="mc-field"><span>Job name</span>
+            <input className="field" value={prefix} placeholder="e.g. JOHN" spellCheck={false} onChange={(e) => setPrefix(e.target.value)} /></label>
+          {prefix.trim() && example && <span className="rule-help">Next suggested: <b>{example}</b></span>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function KeysSettings() {
   const [keys, setKeysState] = useState<KeyMap>(loadKeys);
   const [wait, setWait] = useState<{ a: KeyAction; k: 0 | 1 } | null>(null);

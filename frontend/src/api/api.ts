@@ -386,6 +386,9 @@ export const api = {
   /** An NC program into the machine's NC folder; the full path written. */
   writeNc: (machineId: string, name: string, content: string): Promise<{ path: string }> =>
     useApi ? post(`/api/machines/${encodeURIComponent(machineId)}/nc`, { name, content }) : Promise.reject(new Error("The demo has no server to write files.")),
+  /** Is an NC program of this name in the machine's NC folder already? (false without a folder) */
+  ncExists: async (machineId: string, name: string): Promise<boolean> =>
+    useApi ? (await get<{ exists: boolean }>(`/api/machines/${encodeURIComponent(machineId)}/nc/exists?name=${encodeURIComponent(name)}`)).exists : false,
   /** Saved remnants (Process -> Remnant -> SAVE); in the demo: this browser. */
   remnants: (): Promise<SavedRemnant[]> => (useApi ? get<SavedRemnant[]>("/api/remnants") : delay(localRemnants())),
   /** Saves remnants (one of the same name is replaced). */
