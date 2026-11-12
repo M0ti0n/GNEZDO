@@ -48,6 +48,8 @@ export interface CutContour {
   /** cut at the small-hole speed */
   small?: boolean;
   lead?: LeadType;
+  /** the lead values set by hand (Process → Lead in / out); missing: the Technology row's */
+  spec?: LeadSpec;
   /** a common cut block's outline: every part of the block (the cut path is good while they all stay put) */
   parts?: number[];
   /** a shared common cut line (cut once for two parts, along the middle of the kerf gap) */
@@ -173,7 +175,7 @@ const boxOf = (pts: Pt[]): Box => {
 const touches = (a: Box, b: Box) => a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
 
 /** Without a repeated closing point; clockwise (as seen) when cw, else counter-clockwise. */
-function oriented(lp: Pt[], cw: boolean): Pt[] {
+export function oriented(lp: Pt[], cw: boolean): Pt[] {
   let l = lp.length > 1 && near(lp[0], lp[lp.length - 1], 1e-6) ? lp.slice(0, -1) : lp.slice();
   l = l.filter((p, i) => i === 0 || !near(p, l[i - 1], 1e-6));
   return (signedArea(l) > 0) === cw ? l : l.reverse();
@@ -220,9 +222,12 @@ function arcPts(c: Pt, from: Pt, to: Pt, n = 8): Pt[] {
 
 // ------------------------------------------------------------------ leads
 
-interface LeadValues { lin: number; lout: number; gap: number; aIn: number; aOut: number; radius: number }
+/** A lead pair's values: lengths, gap (+ overlap, − stops short), angles [°], arc radius [mm]. */
+export interface LeadSpec { lin: number; lout: number; gap: number; aIn: number; aOut: number; radius: number }
+type LeadValues = LeadSpec;
 
-function leadValues(kind: "outer" | "inner", row: TechRow | null, type: LeadType): LeadValues {
+/** What the Technology row gives a lead type (the automatic cut's values). */
+export function leadValues(kind: "outer" | "inner", row: TechRow | null, type: LeadType): LeadValues {
   const outer = kind === "outer";
   const lin = row ? (outer ? row.outLeadInMm : row.holeLeadInMm) || 0 : outer ? 5 : 3;
   const lout = row ? (outer ? row.outLeadOutMm : row.holeLeadOutMm) || 0 : outer ? 2 : 1;
@@ -237,7 +242,7 @@ function leadValues(kind: "outer" | "inner", row: TechRow | null, type: LeadType
   };
 }
 
-const cornerOnly = (t: LeadType) => !!LEAD_TYPES.find((x) => x.id === t)?.cornerOnly;
+export const cornerOnly = (t: LeadType) => !!LEAD_TYPES.find((x) => x.id === t)?.cornerOnly;
 
 /** The point of the part's box the leads are put nearest to. */
 const targetOf = (b: Box, rules: LeadRules): Pt => [rules.place.endsWith("right") ? b.x1 : b.x0, rules.place.startsWith("bottom") ? b.y1 : b.y0];
@@ -252,16 +257,7 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
   const cType = kind === "outer" ? rules.outCorner : rules.holeCorner;
   let oType = kind === "outer" ? rules.outOther : rules.holeOther;
   if (cornerOnly(oType)) oType = "perp";
-  // material angle at each corner (the material is on the right of the cut)
-  const angleAt = (i: number) => {
-    const e1 = unit(sub(lp[i], prev(i))), e2 = unit(sub(next(i), lp[i]));
-    const u = mul(e1, -1);
-    const phi = (Math.acos(Math.max(-1, Math.min(1, dot(u, e2)))) * 180) / Math.PI;
-    const b = add(u, e2);
-    if (len(b) < 1e-9) return 180;
-    const matN: Pt = [-side * e2[1], side * e2[0]];
-    return dot(b, matN) > 0 ? phi : 360 - phi;
-  };
+  const angleAt = (i: number) => cornerAngle(lp, i, side);
 
   let start: { at: Pt; edge: number; vertex: boolean; t: Pt } | null = null;
   let type: LeadType = oType;
@@ -300,12 +296,32 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
     }
   }
   if (!start) start = { at: lp[0], edge: 0, vertex: true, t: unit(sub(next(0), lp[0])) };
+  return leadsAt(lp, kind, rules, row, start, type, leadValues(kind, row, type), side);
+}
+
+export interface LeadStart { at: Pt; edge: number; vertex: boolean; t: Pt }
+
+/** The material angle at corner i of a loop [°] (the material on the right of the cut). */
+export function cornerAngle(lp: Pt[], i: number, side: 1 | -1): number {
+  const n = lp.length;
+  const e1 = unit(sub(lp[i], lp[(i - 1 + n) % n])), e2 = unit(sub(lp[(i + 1) % n], lp[i]));
+  const u = mul(e1, -1);
+  const phi = (Math.acos(Math.max(-1, Math.min(1, dot(u, e2)))) * 180) / Math.PI;
+  const b = add(u, e2);
+  if (len(b) < 1e-9) return 180;
+  const matN: Pt = [-side * e2[1], side * e2[0]];
+  return dot(b, matN) > 0 ? phi : 360 - phi;
+}
+
+/** A closed contour started at `start` with this lead pair (by hand: Process → Lead in / out). */
+export function leadsAt(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row: TechRow | null, start: LeadStart, type: LeadType, v: LeadSpec, side: 1 | -1): Omit<CutContour, "part" | "kind"> {
+  const n = lp.length;
+  const prev = (i: number) => lp[(i - 1 + n) % n];
 
   // the contour from the start round to it again
   const ring: Pt[] = [start.at];
   for (let k = 1; k <= n; k++) ring.push(lp[(start.edge + k) % n]);
   if (start.vertex) ring[ring.length - 1] = start.at; else ring.push(start.at);
-  const v = leadValues(kind, row, type);
   let pts = ring;
   if (v.gap > 0) pts = [...ring, ...walk(ring, v.gap).slice(1)];
   else if (v.gap < 0) pts = walk(ring, Math.max(0, totalLen(ring) + v.gap));

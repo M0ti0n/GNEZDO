@@ -12,7 +12,7 @@ import {
 import { arrange, arrangeAgain, mirrorGroup, partRules, stack, type PartRules } from "../job/manualTools";
 import { loadNestingRules } from "../job/nestRules";
 import { loadManualView } from "../job/manualView";
-import { liveContours, originPoint, processedParts, rapidsOf } from "../job/cutPath";
+import { liveContours, originPoint, processedParts, rapidsOf, type CutContour } from "../job/cutPath";
 import { useViewPrefs } from "../job/viewPrefs";
 import { RemnantOverlay } from "./RemnantOverlay";
 import { commonEdges, commonLayout, partCommonLines, placedEdges, sharedLines, snapMove, type CommonEdge, type CommonLayout } from "../job/commonCut";
@@ -34,6 +34,8 @@ export interface CutMode {
   onPoint?: (x: number, y: number) => void;
   /** the pointer over the sheet while that tool is on */
   cursor?: string;
+  /** contours shown picked (Lead in / out) */
+  highlight?: Set<CutContour>;
 }
 
 // Manual nesting of one sheet (EDIT / VIEW on a sheet card). The parts on the sheet are moved with
@@ -975,8 +977,10 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                     {cutLive.map((c, k) => {
                       const pierce = c.leadIn[0] ?? c.pts[0];
                       const end = c.leadOut.length ? undefined : c.pts[c.pts.length - 1];
+                      const hl = cut?.highlight?.has(c);
                       return (
                         <g key={k}>
+                          {hl && <path className="cut-hl" d={line([...c.leadIn, ...c.pts, ...c.leadOut])} style={{ strokeWidth: 7 / v.s }} />}
                           <path className={`cut-${c.kind}${c.common ? " cut-common" : ""}`} d={line(c.pts)} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
                           {c.leadIn.length > 1 && <path className="cut-in" d={line(c.leadIn)} style={{ strokeWidth: 1.6 / v.s }} />}
                           {c.leadOut.length > 1 && <path className="cut-out" d={line(c.leadOut)} style={{ strokeWidth: 1.6 / v.s }} />}
