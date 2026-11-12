@@ -21,16 +21,44 @@ const panelHead = (icon: string, title: string) => (
 const quiet: Omit<CutMode, "panel" | "hint"> = { picking: false, picked: [], onPick: () => { /* nothing to pick */ } };
 
 /** PROCESS DEL: take the remnant, the cut path, or both off the sheet. */
-export function useProcessDel({ index, sheets, onClear }: {
-  index: number; sheets: NestedSheet[];
+export function useProcessDel({ index, single, sheets, partName, onClear }: {
+  index: number;
+  /** one sheet open (DELETE SELECTED works there) */
+  single: boolean;
+  sheets: NestedSheet[];
+  partName: (sheet: NestedSheet, i: number) => string | undefined;
   onClear: (index: number, patch: Partial<Pick<NestedSheet, "cut" | "remnant">>) => void;
 }): { panel: ReactNode; cut: CutMode } {
   const sheet = sheets[index] as NestedSheet | undefined;
   const [ask, setAsk] = useState<null | "remnant" | "cut" | "all">(null);
   const [msg, setMsg] = useState<string | null>(null);
-  /** what the last delete took, for UNDO */
-  const [last, setLast] = useState<{ index: number; patch: Partial<Pick<NestedSheet, "cut" | "remnant">> } | null>(null);
+  /** DELETE SELECTED on: a click on a processed part takes its cut path away */
+  const [delSel, setDelSel] = useState(false);
+  /** what the deletes took, newest last, for UNDO (one step a press) */
+  const [undo, setUndo] = useState<{ index: number; patch: Partial<Pick<NestedSheet, "cut" | "remnant">> }[]>([]);
+  const last = undo[undo.length - 1] ?? null;
+  const setLast = (u: { index: number; patch: Partial<Pick<NestedSheet, "cut" | "remnant">> } | null) =>
+    setUndo((l) => (u ? [...l, u].slice(-50) : l.slice(0, -1)));
   useEffect(() => setMsg(null), [index]);
+  useEffect(() => { if (!single) setDelSel(false); }, [single]);
+
+  /** a part's cut path off the sheet (a common cut block's: the whole block) */
+  const unprocess = (i: number) => {
+    const cut = sheet?.cut;
+    if (!sheet || !cut) return;
+    const parts = new Set([i]);
+    for (const c of cut.contours) if (c.parts?.includes(i)) c.parts.forEach((k) => parts.add(k));
+    const goes = (c: { part: number; parts?: number[] }) => (c.parts ?? [c.part]).some((k) => parts.has(k));
+    if (!cut.contours.some(goes)) { setMsg(`${partName(sheet, i) ?? `Part ${i + 1}`} is not processed`); return; }
+    const contours = cut.contours.filter((c) => !goes(c));
+    const keys = { ...cut.keys };
+    for (const k of parts) delete keys[k];
+    setLast({ index, patch: { cut } });
+    onClear(index, { cut: contours.length ? { ...cut, contours, keys } : undefined });
+    diag("process", "Process del: part", { sheet: index + 1, parts: [...parts] });
+    const names = [...parts].map((k) => partName(sheet, k) ?? `Part ${k + 1}`);
+    setMsg(`${names.join(", ")}: not processed any more`);
+  };
   const has = { remnant: !!sheet?.remnant, cut: !!sheet?.cut?.contours.length };
   const what = { remnant: "the remnant", cut: "the cut path", all: "the cut path and the remnant" };
   const go = (k: "remnant" | "cut" | "all") => {
@@ -50,11 +78,14 @@ export function useProcessDel({ index, sheets, onClear }: {
           <button type="button" className="btn btn-plain pp-btn is-del" disabled={!has.cut} onClick={() => setAsk("cut")}>Delete cut path</button>
           <button type="button" className="btn btn-plain pp-btn is-del" disabled={!has.cut && !has.remnant} onClick={() => setAsk("all")}>Delete process</button>
         </div>
-        <p className="rule-help ac-help">Delete process: the cut path and the remnant both. Works on the sheet that is open, or the sheet selected among all sheets.</p>
+        <button type="button" className={`btn btn-plain pp-btn is-del pd-sel${delSel ? " is-on" : ""}`} aria-pressed={delSel} disabled={!single || !has.cut}
+          title={!single ? "Open a sheet (VIEW / EDIT) to delete the cut path of parts on it" : "On: click processed parts to take their cut path away (they are not processed any more); click again to turn it off"}
+          onClick={() => setDelSel((v) => !v)}>Delete selected</button>
+        <p className="rule-help ac-help">Delete process: the cut path and the remnant both. Works on the sheet that is open, or the sheet selected among all sheets. Delete selected (on / off): click parts on the open sheet to take their cut path away (a common cut block's whole).</p>
         {msg && <p className="tech-msg ac-msg" role="status">{msg}</p>}
         {last && (
           <button type="button" className="btn btn-plain pp-btn" title={`Sheet ${last.index + 1}: bring back what was deleted`}
-            onClick={() => { onClear(last.index, last.patch); diag("process", "Process del: undone", { sheet: last.index + 1 }); setMsg(`Sheet ${last.index + 1}: brought back`); setLast(null); }}>Undo delete</button>
+            onClick={() => { onClear(last.index, last.patch); diag("process", "Process del: undone", { sheet: last.index + 1 }); setMsg(`Sheet ${last.index + 1}: brought back`); setLast(null); }}>Undo delete{undo.length > 1 ? ` (${undo.length})` : ""}</button>
         )}
       </div>
       {ask && (
@@ -64,7 +95,12 @@ export function useProcessDel({ index, sheets, onClear }: {
       )}
     </aside>
   );
-  return { panel, cut: { ...quiet, panel, hint: "Process del: delete the remnant, the cut path, or both, of this sheet." } };
+  return {
+    panel,
+    cut: delSel && single
+      ? { picking: true, picked: [], onPick: unprocess, panel, hint: "DELETE SELECTED: click processed parts to take their cut path away. UNDO DELETE brings it back." }
+      : { ...quiet, panel, hint: "Process del: delete the remnant, the cut path, or both, of this sheet; DELETE SELECTED: of parts you click." },
+  };
 }
 
 interface Done { sheet: number; file?: string; error?: string }
