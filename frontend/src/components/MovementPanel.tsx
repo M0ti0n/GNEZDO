@@ -13,7 +13,7 @@ import mvMulti from "../shell/jobtools/mv-multi.svg";
 import mvDelete from "../shell/jobtools/mv-delete.svg";
 
 // Process -> Movement (after Fab's drawing): SINGLE POINT: click a rapid move, then the point it
-// should go through (done). MULTI POINT: click a rapid move, then its points one by one, and close on
+// should go through (done). MULTIPOINT: click a rapid move, then its points one by one, and close on
 // a lead-in. Closing on another contour's lead-in changes the cut order (from an outline: another part;
 // from a hole or open cut: another hole or open cut of the same part). DELETE POINT (on / off): a
 // click on a point takes it out. The modes stay on until switched off.
@@ -23,7 +23,7 @@ type PartRef = { path: string; name?: string };
 
 const MODES: { id: Mode; label: string; icon: string; hint: string }[] = [
   { id: "single", label: "Single point", icon: mvSingle, hint: "Click a rapid move, then the point it should go through" },
-  { id: "multi", label: "Multi point", icon: mvMulti, hint: "Click a rapid move, then its points one by one; close on a lead-in" },
+  { id: "multi", label: "Multipoint", icon: mvMulti, hint: "Click a rapid move, then its points one by one; close on a lead-in" },
   { id: "delete", label: "Delete point", icon: mvDelete, hint: "On: click a point to take it out of its rapid move" },
 ];
 
@@ -112,8 +112,8 @@ export function useMovement({ index, single, sheets, parts, origin, onCut }: {
             <button key={m.id} type="button" className={`rm-btn mv-btn${m.id === "delete" ? " is-del" : ""}${mode === m.id ? " is-on" : ""}`} aria-pressed={mode === m.id}
               disabled={!can} title={can ? m.hint : "Open a processed sheet (VIEW / EDIT)"} onClick={() => setMode(mode === m.id ? null : m.id)}>
               <img src={m.icon} alt="" draggable={false} />
-              {/* two centered rows: SINGLE / POINT */}
-              <span>{m.label.split(" ").map((w, i) => (i ? <span key={i}><br />{w}</span> : <span key={i}>{w}</span>))}</span>
+              {/* a word a row, centered: SINGLE / POINT, MULTIPOINT */}
+              <span>{m.label.split(" ").map((w, i) => <span key={i}>{w}</span>)}</span>
             </button>
           ))}
         </div>
@@ -148,7 +148,7 @@ export function useMovement({ index, single, sheets, parts, origin, onCut }: {
       hint: !can ? (single ? "Process the sheet first (Auto cut), then change its rapid moves here." : "Open a sheet to change its rapid moves.")
         : !mode ? "MOVEMENT: pick a mode on the right."
         : mode === "delete" ? "DELETE POINT: click a point of a rapid move."
-        : !sel ? `${mode === "single" ? "SINGLE" : "MULTI"} POINT: click a rapid move.`
+        : !sel ? `${mode === "single" ? "SINGLE POINT" : "MULTIPOINT"}: click a rapid move.`
         : mode === "single" ? "Click the point to go through, or a ringed lead-in (Esc: cancel)."
         : "Click points, then a ringed lead-in to close (Esc: cancel).",
     },

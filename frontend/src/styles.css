@@ -2303,4 +2303,4 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 
 /* Process -> Movement */
 .mv-btn.is-del.is-on { background: #fde8e8; border-color: var(--red); color: var(--red); box-shadow: 0 0 0 2px #fde8e8; }
-.mv-btn > span { display: block; width: 100%; text-align: center; line-height: 1.2; }
+.mv-btn > span { display: flex; flex-direction: column; justify-content: center; width: 100%; min-height: 2.4em; text-align: center; line-height: 1.2; }   /* one or two rows, the buttons the same height */
