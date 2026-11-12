@@ -3,9 +3,11 @@
 //
 // Main program :0100 sets the sheet and the technology, then places the parts:
 //   N50 M98P<tech>(TECH-MM)                      the Technology row's "Tech program" (e.g. 6050)
-//   N101 G980 S101 X5 Y5 R0 T1 D2                part's subprogram S at X Y (T2 when it has marking)
+//   N101 G980 S101 X5 Y5 R0 T1 D2                part's subprogram S at X Y (T2: its marking)
 // Each part is a subprogram (:0101, :0102, ...; parts cut the same way share one), coordinates from
-// the part's corner (its box, lower X and Y):
+// the part's corner (its box, lower X and Y). A part with marking gets two: its marking (T2) and its
+// cutting (T1); all marking is placed before the first cut (a T2 subprogram with cuts in it does not
+// run with pre-pierce on).
 //   N10 G0 X.. Y..            rapid to the pierce point (G0 G40 from the second contour on)
 //   M98P8036                  pierce
 //   IF[#516GT0]GOTO19         pre-pierce pass (#516 = the row's "Pre-pierce"): pierce only
@@ -50,11 +52,8 @@ function postprocess(p) {
     else units.push({ key, contours: [c], name: c.partNo !== undefined ? c.part : c.partNos ? "COMMON CUT" : c.part || "CUT" });
   }
 
-  const subs = new Map();   // body text -> { no, marking }
-  const placed = [];
-  let nextSub = 101;
+  // the unit's corner: the part's box, else the lowest X and Y of its contours
   for (const u of units) {
-    // the unit's corner: the part's box, else the lowest X and Y of its contours
     const b = u.key[0] === "p" ? box.get(u.contours[0].partNo) : undefined;
     let ox, oy;
     if (b) { ox = b.minX; oy = b.minY; }
@@ -66,24 +65,30 @@ function postprocess(p) {
         for (const q of pts) { ox = Math.min(ox, q.x); oy = Math.min(oy, q.y); }
       }
     }
-    ox = Math.round(ox * 1000) / 1000; oy = Math.round(oy * 1000) / 1000;
-    const X = (v) => num(v - ox), Y = (v) => num(v - oy);
+    u.ox = Math.round(ox * 1000) / 1000; u.oy = Math.round(oy * 1000) / 1000;
+  }
 
+  // A part's marking and its cutting are two subprograms: marking only (T2) and cutting only (T1),
+  // every marking placed before the first cut. A T2 subprogram with pierced cuts in it does not
+  // run with pre-pierce on (#516=1).
+  const subs = new Map();   // body text -> { no, marking, name, body }
+  const placed = [];
+  let nextSub = 101;
+  const place = (u, contours, marking) => {
+    if (!contours.length) return;
+    const X = (v) => num(v - u.ox), Y = (v) => num(v - u.oy);
     const body = [];
-    let marking = false;
-    u.contours.forEach((c, i) => {
+    contours.forEach((c, i) => {
       const n = (i + 1) * 10;
       const e = eOf(c);
       body.push(`N${n} G0 ${i ? "G40 " : ""}X${X(c.start.x)} Y${Y(c.start.y)}`);
-      if (c.kind === "trace") {
-        marking = true;
-        body.push(`IF[#516GT0]GOTO${n + 10}`, "M98P8033");
-      } else {
+      if (marking) body.push(`IF[#516GT0]GOTO${n + 10}`, "M98P8033");
+      else {
         body.push("M98P8036", `IF[#516GT0]GOTO${n + 9}`);
         if (c.kind !== "open") body.push("G41");
       }
       // N?5 marks the first move of the contour itself (after the lead-in)
-      const at5 = c.kind === "trace" ? -1 : Math.max(c.leadIn, 1);
+      const at5 = marking ? -1 : Math.max(c.leadIn, 1);
       let pos = c.start;
       c.segs.forEach((s, k) => {
         let line = s.k === "line"
@@ -96,19 +101,20 @@ function postprocess(p) {
       });
       body.push(`N${n + 9} G65P8041H#513`);
     });
-    // a marking last jumps past the end: the end gets its number
-    const lastN = u.contours.length * 10 + 10;
-    body.push(u.contours[u.contours.length - 1].kind === "trace" ? `N${lastN} M98P8045` : "M98P8045");
+    // the last marking jumps past the end: the end gets its number
+    body.push(marking ? `N${contours.length * 10 + 10} M98P8045` : "M98P8045");
 
     const k = body.join("\n");
     let sub = subs.get(k);
     if (!sub) {
-      if (nextSub > 5999) throw new Error("more than 5899 different parts on one sheet");
+      if (nextSub > 5999) throw new Error("more than 5899 different subprograms on one sheet");
       sub = { no: nextSub++, marking, name: text(u.name) || "PART", body };
       subs.set(k, sub);
     }
-    placed.push({ sub, x: ox, y: oy });
-  }
+    placed.push({ sub, x: u.ox, y: u.oy });
+  };
+  for (const u of units) place(u, u.contours.filter((c) => c.kind === "trace"), true);
+  for (const u of units) place(u, u.contours.filter((c) => c.kind !== "trace"), false);
   if (placed.length > 8998) throw new Error("more than 8998 parts on one sheet");
 
   const L = p.sheet.lengthMm, W = p.sheet.widthMm, th = p.sheet.thicknessMm;
