@@ -153,7 +153,10 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
     settings: remnantSettings, machine, onRemnant: (k, remnant) => sol && onEditSheet(sol.id, k, { remnant }),
   });
   const curIndex = Math.min(full ?? sheetNo, Math.max(0, sheets.length - 1));
-  const pdel = useProcessDel({ index: curIndex, sheets, onClear: (k, patch) => sol && onEditSheet(sol.id, k, patch) });
+  const pdel = useProcessDel({
+    index: curIndex, single: full !== null && process === "processDel", sheets, onClear: (k, patch) => sol && onEditSheet(sol.id, k, patch),
+    partName: (sh, i) => byId.get(sh.parts[i]?.partId ?? "")?.name,
+  });
   const post = usePostProcess({
     index: curIndex, sheets, machine, origin: sol?.origin ?? machine.origin, jobName, needsSave, onSave: onSaveJob ?? (async () => true),
     partName: (sh, i) => byId.get(sh.parts[i]?.partId ?? "")?.name,

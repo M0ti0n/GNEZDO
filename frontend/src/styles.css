@@ -2295,3 +2295,4 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .mc-name small { flex: none; margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
 .mc-del { justify-self: center; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1.5px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink-3); cursor: pointer; }
 .mc-del:hover { border-color: #f2c4c2; background: #fde8e8; color: var(--red); }
+.pp-btn.pd-sel.is-on { background: #fde8e8; border-color: var(--red); color: var(--red); box-shadow: 0 0 0 2px #fde8e8; }
