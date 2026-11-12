@@ -85,6 +85,16 @@ export function RulesPage({ rules, onChange, onClose }: { rules: ImportRules; on
 
         <section className="rule">
           <label className="rule-check">
+            <input type="checkbox" checked={rules.commonOnOutline} onChange={(e) => set({ commonOnOutline: e.target.checked })} />
+            <span><b>Common cut on every straight outline line</b>
+              <small>Each straight line of a part&apos;s outline becomes a common cut line, and Common cut is ticked in the import Properties,
+                so parts can share an edge with their neighbours without marking lines by hand. Holes are left out. Common cut is still chosen
+                job by job (Custom nest, or the snapping key in Manual nest). Lines can be unmarked per part with the Common cut tool.</small></span>
+          </label>
+        </section>
+
+        <section className="rule">
+          <label className="rule-check">
             <input type="checkbox" checked={rules.allLayersAsOne} onChange={(e) => set({ allLayersAsOne: e.target.checked })} />
             <span><b>Treat all layers as one layer</b>
               <small>Layer names are ignored. If a part is drawn on different layers, mark the tracing and open cut lines by hand.</small></span>

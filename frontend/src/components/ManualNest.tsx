@@ -73,7 +73,7 @@ function arrowsAlong(pts: [number, number][], every: number, minLen: number): [[
 export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool, commonCut = false, cut }: {
   cut?: CutMode;
   locked: boolean; onToggleLock: () => void;
-  /** Common cut (Manual nest toolbar): dragged parts snap to share their common cut lines; Arrange makes blocks */
+  /** Common cut (Manual nest toolbar): Arrange makes blocks (snapping: the Common cut snapping key held while dragging) */
   commonCut?: boolean;
   /** a Manual nest tool clicked on the toolbar (a new n each click) */
   tool?: { tool: string; n: number };
@@ -89,6 +89,18 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
 }) {
   const sheet = sheets[index];
   const keys = useMemo(loadKeys, []);
+  // keys held down now (the Common cut snapping key is held while dragging)
+  const held = useRef(new Set<string>());
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { held.current.add(e.code); };
+    const up = (e: KeyboardEvent) => { held.current.delete(e.code); };
+    const clear = () => held.current.clear();
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", clear);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", clear); };
+  }, []);
+  const commonHeld = () => keys.commonSnap.some((c) => !!c && held.current.has(c));
   const gap = sheet.partGapMm ?? 5;
   const usable = useMemo(() => usableBox(sheet, origin), [sheet, origin]);
   const outline = sheet.outline?.length ? (sheet.outline as Pt[][]) : undefined;
@@ -474,8 +486,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       if (!d.moved) setMoving(true);
       d.moved = true;
       let dx = x - d.start[0], dy = y - d.start[1];
-      // Common cut on: a marked line of the dragged parts snaps onto one of a still part (Alt: no snap)
-      if (commonCut && !e.altKey && edgesById.size && view) {
+      // the Common cut snapping key held: a marked line of the dragged parts snaps onto one of a still part
+      if (commonHeld() && edgesById.size && view) {
         const trial = moved(d.before, d.ids, dx, dy);
         const mine = [...d.ids].flatMap((i) => edgesOf(trial, i));
         if (mine.length) {
@@ -539,7 +551,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     if (d && !d.moved && itemsRef.current !== d.orig) { commit(itemsRef.current, d.orig); return; }
     if (!d || !d.moved) return;
     let next = itemsRef.current;
-    if (e.ctrlKey || e.metaKey) {
+    // Ctrl: the gap snap (not while common cut snapping is held: that one placed it already)
+    if ((e.ctrlKey || e.metaKey) && !commonHeld()) {
       const p = local(e);
       const [x, y] = toMm(p.x, p.y);
       // the part under the pointer that is not being dragged

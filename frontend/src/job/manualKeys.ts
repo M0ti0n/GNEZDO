@@ -1,7 +1,7 @@
 // Keys for manual nesting (GNEZDO menu -> Settings -> Manual nest): two keys per action, kept in
 // this browser. Keys are physical keys (KeyboardEvent.code), so numpad 5 is not the 5 above the letters.
 
-export type KeyAction = "up" | "down" | "left" | "right" | "rotCcw1" | "rotCcw45" | "rotCw1" | "rotCw45";
+export type KeyAction = "up" | "down" | "left" | "right" | "rotCcw1" | "rotCcw45" | "rotCw1" | "rotCw45" | "commonSnap";
 
 export const KEY_ACTIONS: { id: KeyAction; label: string }[] = [
   { id: "up", label: "Move up 1 mm" },
@@ -12,7 +12,14 @@ export const KEY_ACTIONS: { id: KeyAction; label: string }[] = [
   { id: "rotCcw45", label: "Rotate counter-clockwise 45°" },
   { id: "rotCw1", label: "Rotate clockwise 1°" },
   { id: "rotCw45", label: "Rotate clockwise 45°" },
+  { id: "commonSnap", label: "Common cut snapping (hold while dragging)" },
 ];
+
+/** Keys the other shortcuts use (Ctrl snaps, Ctrl+A / C / V / Y / Z, Delete, Esc...): not for an action. */
+export const RESERVED_KEYS = new Set(["ControlLeft", "ControlRight", "MetaLeft", "MetaRight", "KeyA", "KeyC", "KeyV", "KeyY", "KeyZ", "Delete", "Escape", "Tab", "Enter", "NumpadEnter"]);
+
+/** Keys held, not pressed: they change what a drag does. */
+export const HOLD_ACTIONS: KeyAction[] = ["commonSnap"];
 
 export type KeyMap = Record<KeyAction, [string, string]>;
 
@@ -26,6 +33,7 @@ export const DEFAULT_KEYS: KeyMap = {
   rotCcw45: ["Numpad7", ""],
   rotCw1: ["Numpad6", ""],
   rotCw45: ["Numpad9", ""],
+  commonSnap: ["ShiftLeft", "ShiftRight"],
 };
 
 const STORE = "gnezdo.manualKeys";
@@ -49,8 +57,9 @@ export function saveKeys(k: KeyMap) {
   try { localStorage.setItem(STORE, JSON.stringify(k)); } catch { /* this session only */ }
 }
 
+/** The move / turn action of a key (held keys are not actions of their own). */
 export const actionOf = (k: KeyMap, code: string): KeyAction | null =>
-  (KEY_ACTIONS.find((a) => k[a.id].includes(code))?.id) ?? null;
+  (KEY_ACTIONS.find((a) => !HOLD_ACTIONS.includes(a.id) && k[a.id].includes(code))?.id) ?? null;
 
 /** "Numpad5" -> "Num 5", "ArrowUp" -> "↑", "KeyQ" -> "Q". */
 export function keyLabel(code: string): string {
@@ -60,5 +69,7 @@ export function keyLabel(code: string): string {
   if (code.startsWith("Numpad")) return `Num ${code.slice(6).replace("Add", "+").replace("Subtract", "−").replace("Multiply", "×").replace("Divide", "÷").replace("Decimal", ".")}`;
   if (code.startsWith("Key")) return code.slice(3);
   if (code.startsWith("Digit")) return code.slice(5);
+  const mods: Record<string, string> = { ShiftLeft: "Left Shift", ShiftRight: "Right Shift", ControlLeft: "Left Ctrl", ControlRight: "Right Ctrl", AltLeft: "Left Alt", AltRight: "Right Alt", Space: "Space" };
+  if (mods[code]) return mods[code];
   return code;
 }

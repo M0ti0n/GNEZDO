@@ -34,6 +34,7 @@ import { buildRequest, commonCutNote, continuedSheets, countsOf, isFinished, mis
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type ProcessTool, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
+import { keyLabel, loadKeys } from "./job/manualKeys";
 import { gapsFor, loadLocalMachines, machineCan, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
 import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
 import { loadJobPrefix, suggestJobName } from "./job/jobName";
@@ -1038,7 +1039,7 @@ export function App() {
       if (!commonSnap[job.id] && !machineCan(jm, "commonCut")) { setToast(`${jm.name} does not do common cut (Settings > Machines)`); return; }
       const on = !commonSnap[job.id];
       setCommonSnap((m) => ({ ...m, [job.id]: on }));
-      setToast(on ? "Common cut on: marked lines snap together (Alt: place without snapping); Arrange makes blocks" : "Common cut off");
+      setToast(on ? `Common cut on: Arrange makes blocks (hold ${keyLabel(loadKeys().commonSnap.find(Boolean) ?? "")} while dragging to snap marked lines; Settings → Manual nest)` : "Common cut off");
       return;
     }
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
@@ -1290,7 +1291,7 @@ export function App() {
             {active.kind === "rules" && <RulesPage rules={rules} onClose={() => showView("home")} onChange={(r) => {
               setRules(r);
               // a list that has not been touched yet follows the new defaults
-              if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller }));
+              if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller, commonCut: r.commonOnOutline }));
             }} />}
             {active.kind === "settings" && <SettingsPage onClose={() => showView("home")} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "remnants" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}

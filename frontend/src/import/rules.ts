@@ -1,4 +1,4 @@
-import { dropBadCommon, type Entity, type Role } from "./geometry";
+import { dropBadCommon, markOutlineCommon, type Entity, type Role } from "./geometry";
 
 // Settings -> Rules -> Import rules.
 // Kept in this browser for now; they move to the server with user settings.
@@ -15,6 +15,8 @@ export interface ImportRules {
   defaultRotations: Rotation[];
   /** New import lists start with Filler ticked. */
   defaultFiller: boolean;
+  /** Common cut: every straight line of a part's outline is a common cut line, and Common cut is ticked for new imports. */
+  commonOnOutline: boolean;
   /** One layer: every line starts as cutting; tracing and open cut are marked by hand. */
   allLayersAsOne: boolean;
   /** Layer names (parts of names) that mean tracing / open cut, when layers are used. */
@@ -74,6 +76,7 @@ export const DEFAULT_RULES: ImportRules = {
   mirrorWithoutOpenCut: true,
   defaultRotations: [90],
   defaultFiller: false,
+  commonOnOutline: false,
   allLayersAsOne: false,
   traceLayers: "MARK, ENGRAV, GRAV, TRACE, SIGN",
   openCutLayers: "OPEN, SLIT",
@@ -262,12 +265,14 @@ export function roleFromRules(e: Entity, rules: ImportRules): ColourList {
 }
 
 /** Roles from the rules; a common cut color marks only straight lines of closed cutting contours (the rest cut). */
-export const applyRules = (entities: Entity[], rules: ImportRules): Entity[] =>
-  dropBadCommon(entities.map((e) => {
+export const applyRules = (entities: Entity[], rules: ImportRules): Entity[] => {
+  const roled = entities.map((e) => {
     const list = roleFromRules(e, rules);
     const role: Role = list === "common" ? "cut" : list;
     return { ...e, role, fileRole: role, common: list === "common" ? true : undefined };
-  }));
+  });
+  return dropBadCommon(rules.commonOnOutline ? markOutlineCommon(roled) : roled);
+};
 
 /** The DXF color as #rrggbb for the light canvas (white shows black; very light colors a little darker). */
 export function colourHex(e: { color?: number; rgb?: number }): string {
