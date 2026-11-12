@@ -21,11 +21,17 @@ interface Props {
   /** Offer to save a typed value that is not in the list, e.g. "Save new project". */
   onCreate?: (value: string) => Promise<void>;
   createLabel?: string;
+  /** Only the listed values: leaving the field takes the list's spelling of what was typed, or puts the
+   *  value back as it was (`strictNote`: what to say about a value not in the list). */
+  strict?: boolean;
+  strictNote?: string;
 }
 
 // Drop-down list that can also be typed in: typing narrows the choices, the arrow
-// shows them all, a value that is not in the list is accepted as a new one.
-export function Combobox({ value, onChange, options, placeholder, ariaLabel, suffix, numeric, className, readOnly, newHint = "new", onCreate, createLabel = "Save new" }: Props) {
+// shows them all, a value that is not in the list is accepted as a new one (strict: not; only the list's).
+export function Combobox({ value, onChange, options, placeholder, ariaLabel, suffix, numeric, className, readOnly, newHint = "new", onCreate, createLabel = "Save new", strict = false, strictNote = "not in the list" }: Props) {
+  /** strict: the value when the field was entered, put back when something not in the list is left there */
+  const before = useRef(value);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -83,7 +89,17 @@ export function Combobox({ value, onChange, options, placeholder, ariaLabel, suf
         inputMode={numeric ? "decimal" : undefined} autoComplete="off"
         onChange={(e) => { onChange(e.target.value); setTyped(true); setOpen(true); }}
         onClick={() => !readOnly && setOpen(true)}
-        onBlur={() => { setOpen(false); setTyped(false); }}
+        onFocus={() => { before.current = value; }}
+        onBlur={() => {
+          setOpen(false); setTyped(false);
+          if (!strict || readOnly) return;
+          const v = value.trim();
+          if (!v) return;
+          const same = (o: ComboOption) => (numeric ? Math.abs(Number(o.value) - Number(v.replace(",", "."))) < 1e-6 : o.value.toLowerCase() === v.toLowerCase());
+          const hit = options.find(same);
+          if (hit) { if (hit.value !== value) onChange(hit.value); }
+          else onChange(options.some((o) => o.value === before.current) ? before.current : "");
+        }}
         onKeyDown={onKey} />
       {suffix && <span className="combo-suffix">{suffix}</span>}
       <button type="button" className="combo-arrow" tabIndex={-1} aria-label={`Show ${ariaLabel.toLowerCase()} list`} disabled={readOnly}
@@ -109,7 +125,7 @@ export function Combobox({ value, onChange, options, placeholder, ariaLabel, suf
             </li>
           )}
           {shown.length === 0 && !canCreate && (
-            <li className="combo-empty">{value.trim() && !exact ? <>“{value.trim()}” is not in the list: it will be {newHint}</> : "Nothing to choose yet"}</li>
+            <li className="combo-empty">{value.trim() && !exact ? (strict ? <>“{value.trim()}”: {strictNote}</> : <>“{value.trim()}” is not in the list: it will be {newHint}</>) : "Nothing to choose yet"}</li>
           )}
         </ul>
       )}

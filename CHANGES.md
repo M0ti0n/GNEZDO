@@ -5,6 +5,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 ## Next build
 
 **New**
+- Import, part properties and sheets: **material and thickness only from the Technology tables**. The material list is the material tags of the machines' Technology tables (Settings → Machines → Technology), the thickness list the rows the tables have for that material (a table without tags takes any material, so the plasma's rows count for every material). Something typed that is not there is put back when the field is left. A part's or sheet's old material that is not in the tables stays until it is changed. With no material tags anywhere yet, anything can still be typed
 - Process → Process del: **Delete selected** (on / off): while on, click parts on the open sheet to take their cut path away (they are not processed any more; a common cut block goes whole). UNDO DELETE now goes back one delete at a time
 - Process → **Manual cut**: on a processed sheet, SELECT, then click contours in the order to cut them (a picked contour clicked again, SELECT on or off, or × on its row: out of the list, the ones after it move up). The list holds them in that order (drag, or Up / Down, to change it), each as its part's ID in the job part list and which copy of it on the sheet (12_3: part 12, third copy; the name on hover); the picked contours glow on the sheet, the one chosen in the list glows stronger (orange). PROCESS (at the top, as in Auto cut) puts them in the cut path in that order, in the places they had (the rest stays where it is; pick every contour to set the whole order). A part's outline cannot come before its own holes, marking or open cuts
 - Process → **Simulation**: plays the open sheet's cut back. The parts keep their colors until they are cut out, then turn see-through; the path and the rapids show as far as the head (a red crosshair) has come. PLAY / PAUSE, STOP (back to the start), a playback bar to drag through it, a contour back / on, the speed 1× to 100×, and what is being cut now (part, contour, parts cut). Times from the Technology row's speeds and pierce time and 20 m/min rapids (an estimate). The Process tools are a little narrower so all eleven fit
@@ -19,6 +20,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Import **DWG** drawings (parts, stock sheets, remnants): the GNEZDO server converts them to DXF with the ODA File Converter (free, installed on that PC) or LibreDWG's dwg2dxf (in a "tools" folder next to "program"), found by itself or set in config.json (INSTALL.txt). Without a converter the import list says so
 
 **Changed**
+- Weights: "MS" counts as mild steel (7.85 kg/dm³), not brass
 - Post process: arcs and circles go out as arcs (G02 / G03, at most 180° each) instead of short lines, found again from the drawing's points, and straight lines as one move each. This applies to the HACO plasma too (its postprocessor already writes arcs)
 
 ## Build 12 Nov 2026, third (`aed34e0`)

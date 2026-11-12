@@ -76,7 +76,8 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
   }, [drawing]);
 
   const projectMissing = lists.projectsLoaded && !lists.projectKnown(v.project);
-  const missing = [!v.name.trim() && "name", !v.material.trim() && "material", !(Number(v.thicknessMm) > 0) && "thickness",
+  const missing = [!v.name.trim() && "name", !v.material.trim() ? "material" : !lists.materialOk(v.material) && "a material of the Technology tables",
+    !(Number(v.thicknessMm) > 0) ? "thickness" : !lists.thicknessOk(v.thicknessMm) && "a thickness its Technology table has",
     projectMissing && "a saved project (save it from the project list)"].filter(Boolean);
   const canSave = missing.length === 0 && !saving && exists.state !== "checking";
 
@@ -134,10 +135,12 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
               <div className="filter-pair">
                 <Combobox value={v.material}
                   // a new material empties the thickness, so both are always chosen together
-                  onChange={(material) => set({ material, thicknessMm: material === v.material ? v.thicknessMm : "" })} options={lists.materials}
+                  onChange={(material) => set({ material, thicknessMm: material === v.material ? v.thicknessMm : "" })}
+                  options={lists.strict ? lists.techMaterials : lists.materials} strict={lists.strict} strictNote="not in the Technology tables (Settings → Machines → Technology: material tags)"
                   placeholder="Material" ariaLabel="Material" newHint="a new material" />
                 <Combobox value={v.thicknessMm} onChange={(t) => set({ thicknessMm: t.replace(",", ".").replace(/[^\d.]/g, "") })}
-                  options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
+                  options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict} strictNote="no Technology row for this thickness (Settings → Machines → Technology)"
+                  placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
               </div>
             </div>
 
