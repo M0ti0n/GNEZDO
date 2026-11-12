@@ -1045,11 +1045,11 @@ export function App() {
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (section === "report" && (tool === "nestReport" || tool === "costReport")) { setJobScreen((m) => ({ ...m, [job.id]: tool })); return; }
     if (section === "process") {
-      if (tool === "autoCut" || tool === "remnant" || tool === "processDel" || tool === "postProcess") {
+      if (tool === "autoCut" || tool === "remnant" || tool === "processDel" || tool === "postProcess" || tool === "leadInOut") {
         lastProcess.current[job.id] = tool;
         setProcessOn((m) => ({ ...m, [job.id]: tool }));
         setJobScreen((m) => ({ ...m, [job.id]: "nest" }));
-      } else setToast("Not built yet: Auto cut, Remnant, Process del and Post process work so far");
+      } else setToast("Not built yet: Auto cut, Lead in / out, Remnant, Process del and Post process work so far");
       return;
     }
     if (tool === "fastNest") void startNest(job.id, "fast");
