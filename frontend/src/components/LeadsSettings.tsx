@@ -1,6 +1,6 @@
 import { NumInput } from "./NumInput";
 import { LeadIcon } from "./LeadIcon";
-import { DEFAULT_LEAD_RULES, LEAD_TYPES, leadRulesOf, type LeadCorner, type LeadRules, type LeadType } from "../job/leads";
+import { DEFAULT_LEAD_RULES, LEAD_TYPES, REMNANT_LEADS, leadRulesOf, type LeadCorner, type LeadRules, type LeadType } from "../job/leads";
 import type { Machine } from "../job/machine";
 
 const CORNERS: { id: LeadCorner; label: string }[] = [
@@ -71,6 +71,20 @@ export function LeadsSettings({ machine, onChange }: { machine: Machine; onChang
             A lead-in longer than the hole's radius is cut to the radius (starts at the center)</label>
           <label className="chk"><input type="checkbox" checked={r.slotMiddle} onChange={(e) => set({ slotMiddle: e.target.checked })} />
             Slots narrower than 2 × the lead-in: in the middle of the end arc / short edge</label>
+        </section>
+        <section className="lead-sec">
+          <h3>Remnant cut <small>open cuts of Process → Remnant · from the scrap side</small></h3>
+          <div className="lead-pick" role="radiogroup" aria-label="Remnant cut">
+            {REMNANT_LEADS.map((t) => (
+              <button key={t.id} type="button" role="radio" aria-checked={r.remnant === t.id}
+                className={`lead-card${r.remnant === t.id ? " is-on" : ""}`} onClick={() => set({ remnant: t.id })} title={t.settings}>
+                <LeadIcon type={t.id} />
+                <b>{t.label}</b>
+                <small>{t.settings}</small>
+              </button>
+            ))}
+          </div>
+          <p className="rule-help">Lengths (0 = no lead), the gap in / out from the sheet edge and the distance to the parts: Technology → Remnant cut.</p>
         </section>
       </div>
 

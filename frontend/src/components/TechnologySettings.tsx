@@ -162,7 +162,7 @@ export function TechnologySettings({ techs, onChange, machineName }: {
       </>)}
 
       {msg && <p className={`tech-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
-      <p className="rule-help">Click a value to change it; Tab goes to the next one. A new thickness starts as a copy of the next thicker row. Gap: + cuts past the start, − leaves a tab. Angles left empty: 90° (corner at an angle), 45° (angled with gap).
+      <p className="rule-help">Click a value to change it; Tab goes to the next one. A new thickness starts as a copy of the next thicker row. Gap: + cuts past the start, − leaves a tab. Angles left empty: 90° (corner at an angle), 45° (angled with gap). Remnant cut: Gap in / Gap out from a sheet edge the cut runs to, + inside the sheet (an uncut bridge), − beyond the edge; To parts left empty: Settings → Stock → Remnants; the lead type: Leads &amp; cutting.
         A job's sheet uses the technology tagged with its material whose thickness range has the sheet's thickness.</p>
 
       {ask?.kind === "delete" && tech && (

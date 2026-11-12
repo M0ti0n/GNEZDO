@@ -294,7 +294,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
           <h3>Remnants</h3>
           <p className="rule-help">How Process → <b>Remnant</b> works a sheet's remnant out (TRIM, RECTANGULAR, SKELET).</p>
           <div className="mc-row">
-            <label className="mc-field"><span>Minimum distance to parts (mm)</span>
+            <label className="mc-field" title="Used when the machine's Technology row has no Remnant cut · To parts"><span>Minimum distance to parts (mm)</span>
               <NumInput value={stock.remnant.minDistMm} min={0} aria-label="Minimum distance to parts (mm)" onCommit={(n) => setRem({ minDistMm: n })} /></label>
             <label className="mc-field"><span>Smallest edge (mm)</span>
               <NumInput value={stock.remnant.minEdgeMm} min={1} aria-label="Smallest remnant edge (mm)" onCommit={(n) => setRem({ minEdgeMm: n })} /></label>

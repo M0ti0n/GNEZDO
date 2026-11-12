@@ -7,7 +7,7 @@ import { liveContours, originMirrors, originPoint, type CutContour } from "./cut
 import type { Machine, Origin } from "./machine";
 import type { NestedSheet } from "./nest";
 import type { NcContour, NcProgram, NcPt } from "./postprocessor";
-import { remnantValid } from "./remnant";
+import { remnantCutPaths } from "./remnantCut";
 import { techRowFor } from "./technology";
 
 type Pt = [number, number];
@@ -38,25 +38,12 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
 
   const contours: NcContour[] = [];
   for (const c of live) { const k = contour(c, partName(c.part)); if (k) contours.push(k); }
-  // the remnant's cuts last, as open cuts (from the end nearer the head)
-  if (sheet.remnant && remnantValid(sheet)) {
-    const lines: Pt[][] = [...sheet.remnant.lines, ...sheet.remnant.cuts.map((c): Pt[] => (c.axis === "v" ? [[c.at, c.from], [c.at, c.to]] : [[c.from, c.at], [c.to, c.at]]))];
-    const lastC = live[live.length - 1];
-    let at: Pt = lastC.leadOut[lastC.leadOut.length - 1] ?? lastC.pts[lastC.pts.length - 1];
-    const left = lines.filter((l) => l.length > 1);
-    while (left.length) {
-      let k = 0, rev = false, best = Infinity;
-      left.forEach((l, j) => {
-        const a = Math.hypot(l[0][0] - at[0], l[0][1] - at[1]), b = Math.hypot(l[l.length - 1][0] - at[0], l[l.length - 1][1] - at[1]);
-        if (a < best) { best = a; k = j; rev = false; }
-        if (b < best) { best = b; k = j; rev = true; }
-      });
-      const l = left.splice(k, 1)[0];
-      const pts = rev ? l.slice().reverse() : l;
-      const c = contour({ kind: "open", pts, leadIn: [], leadOut: [] }, "Remnant");
-      if (c) contours.push(c);
-      at = pts[pts.length - 1];
-    }
+  // the remnant's cuts last, as open cuts (from the end nearer the head; gaps and leads: remnantCut.ts)
+  const lastC = live[live.length - 1];
+  const at: Pt = lastC.leadOut[lastC.leadOut.length - 1] ?? lastC.pts[lastC.pts.length - 1];
+  for (const r of remnantCutPaths(sheet, machine, at)) {
+    const c = contour({ kind: "open", ...r }, "Remnant");
+    if (c) contours.push(c);
   }
   return {
     name,

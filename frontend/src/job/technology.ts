@@ -29,6 +29,15 @@ export interface TechRow {
   leadOutAngle?: number;
   partGapMm: number;
   borderMm: number;
+  /** Remnant cuts: where the cut starts / ends from a sheet edge it runs to [mm]: + inside the sheet (an
+   *  uncut bridge), − beyond the edge (off the plate) */
+  remGapInMm?: number;
+  remGapOutMm?: number;
+  /** Remnant cuts: distance kept from the parts [mm]; 0 = Settings → Stock → Remnants */
+  remMinDistMm?: number;
+  /** Remnant cuts: lead-in / lead-out [mm] (the type: Leads & cutting) */
+  remLeadInMm?: number;
+  remLeadOutMm?: number;
   /** Other values of an imported table, kept as they came (by their name there) */
   extra?: Record<string, number>;
 }
@@ -75,12 +84,20 @@ export const TECH_COLUMNS: { group: string; cols: { key: RowKey; label: string; 
     { key: "partGapMm", label: "Parts", unit: "mm" },
     { key: "borderMm", label: "Border", unit: "mm" },
   ] },
+  { group: "Remnant cut", cols: [
+    { key: "remGapInMm", label: "Gap in", unit: "mm", min: -1000 },
+    { key: "remGapOutMm", label: "Gap out", unit: "mm", min: -1000 },
+    { key: "remMinDistMm", label: "To parts", unit: "mm" },
+    { key: "remLeadInMm", label: "Lead-in", unit: "mm" },
+    { key: "remLeadOutMm", label: "Lead-out", unit: "mm" },
+  ] },
 ];
 
 export const emptyRow = (thicknessMm: number): TechRow => ({
   thicknessMm, kerfMm: 0, speed: 0, smallHoleSpeed: 0, smallHoleMm: 0, pierceS: 0,
   holeLeadInMm: 0, holeLeadOutMm: 0, holeGapMm: 0, holeLeadRadiusMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outGapMm: 0, outLeadRadiusMm: 0,
   leadInAngle: 0, leadOutAngle: 0, partGapMm: 0, borderMm: 0,
+  remGapInMm: 0, remGapOutMm: 0, remMinDistMm: 0, remLeadInMm: 0, remLeadOutMm: 0,
 });
 
 export const newTechnology = (name = "New technology"): TechSet => ({
