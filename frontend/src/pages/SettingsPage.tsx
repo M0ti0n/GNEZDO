@@ -133,7 +133,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
         </div>
         {mPage === "nc" && <NcOutputSettings key={machine.id} machine={machine} onChange={(pp) => setM({ postprocessor: pp })} />}
         {mPage === "leads" && <LeadsSettings machine={machine} onChange={(r) => setM({ leads: r })} />}
-        {mPage === "tech" && <TechnologySettings key={machine.id} techs={machine.technologies ?? []} machineName={machine.name} onChange={(t) => setM({ technologies: t })} />}
+        {mPage === "tech" && <TechnologySettings key={machine.id} techs={machine.technologies ?? []} machineName={machine.name} technology={machine.technology} onChange={(t) => setM({ technologies: t })} />}
         {mPage === "machine" && (<>
 
         <section className="rule">

@@ -2,6 +2,8 @@
 // thickness. A technology (e.g. "ST37 80 A O2/Air") is used for the materials tagged on it and the
 // thicknesses in its range; its rows hold kerf, speeds, pierce time, lead lengths and gaps.
 
+import type { Technology } from "./machine";
+
 export interface TechRow {
   thicknessMm: number;
   kerfMm: number;
@@ -38,6 +40,14 @@ export interface TechRow {
   /** Remnant cuts: lead-in / lead-out [mm] (the type: Leads & cutting) */
   remLeadInMm?: number;
   remLeadOutMm?: number;
+  /** Laser: a contour up to this size (its longer side) is cut as a middle / little one (LVD E002 / E003);
+   *  0 = not used */
+  midSizeMm?: number;
+  littleSizeMm?: number;
+  /** Laser: pierce every contour first, then cut them (LVD #516): 1 = on, 0 = off */
+  prePierce?: number;
+  /** Laser: the machine's technology program for this row (LVD M98P..., e.g. 6050 = mild steel 5 mm); 0 = not set */
+  techProgram?: number;
   /** Other values of an imported table, kept as they came (by their name there) */
   extra?: Record<string, number>;
 }
@@ -56,7 +66,7 @@ export interface TechSet {
 export type RowKey = Exclude<keyof TechRow, "extra">;
 
 /** The table's columns, in groups, as shown and exported. */
-export const TECH_COLUMNS: { group: string; cols: { key: RowKey; label: string; unit: string; min?: number; max?: number }[] }[] = [
+export const TECH_COLUMNS: { group: string; only?: Technology[]; cols: { key: RowKey; label: string; unit: string; min?: number; max?: number }[] }[] = [
   { group: "Cutting", cols: [
     { key: "kerfMm", label: "Kerf", unit: "mm" },
     { key: "speed", label: "Speed", unit: "mm/min" },
@@ -91,13 +101,23 @@ export const TECH_COLUMNS: { group: string; cols: { key: RowKey; label: string; 
     { key: "remLeadInMm", label: "Lead-in", unit: "mm" },
     { key: "remLeadOutMm", label: "Lead-out", unit: "mm" },
   ] },
+  { group: "Laser", only: ["laser"], cols: [
+    { key: "midSizeMm", label: "Middle up to", unit: "mm" },
+    { key: "littleSizeMm", label: "Little up to", unit: "mm" },
+    { key: "prePierce", label: "Pre-pierce", unit: "1 = on", max: 1 },
+    { key: "techProgram", label: "Tech program", unit: "no.", max: 99999 },
+  ] },
 ];
+
+/** The column groups shown for a machine's technology (all when not known). */
+export const techColumnsFor = (technology?: Technology) => TECH_COLUMNS.filter((g) => !g.only || !technology || g.only.includes(technology));
 
 export const emptyRow = (thicknessMm: number): TechRow => ({
   thicknessMm, kerfMm: 0, speed: 0, smallHoleSpeed: 0, smallHoleMm: 0, pierceS: 0,
   holeLeadInMm: 0, holeLeadOutMm: 0, holeGapMm: 0, holeLeadRadiusMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outGapMm: 0, outLeadRadiusMm: 0,
   leadInAngle: 0, leadOutAngle: 0, partGapMm: 0, borderMm: 0,
   remGapInMm: 0, remGapOutMm: 0, remMinDistMm: 0, remLeadInMm: 0, remLeadOutMm: 0,
+  midSizeMm: 0, littleSizeMm: 0, prePierce: 0, techProgram: 0,
 });
 
 export const newTechnology = (name = "New technology"): TechSet => ({
@@ -202,11 +222,12 @@ export function technologiesFromDbf(buf: ArrayBuffer): TechSet[] {
 
 // ---------------------------------------------------------------- export: CSV
 
-export function technologiesCsv(techs: TechSet[]): string {
-  const cols = TECH_COLUMNS.flatMap((g) => g.cols);
+export function technologiesCsv(techs: TechSet[], technology?: Technology): string {
+  const groups = techColumnsFor(technology);
+  const cols = groups.flatMap((g) => g.cols);
   const q = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
   const head = ["Technology", "Materials", "Used from mm", "Used to mm", "Thickness mm", ...cols.map((c) => `${g(c.key)} ${c.label} ${c.unit}`)];
-  function g(k: RowKey) { return TECH_COLUMNS.find((x) => x.cols.some((c) => c.key === k))!.group.replace(" · leads", ""); }
+  function g(k: RowKey) { return groups.find((x) => x.cols.some((c) => c.key === k))!.group.replace(" · leads", ""); }
   const lines = [head.map(q).join(";")];
   for (const t of techs) for (const r of t.rows)
     lines.push([t.name, t.materials.join(", "), String(t.minMm), String(t.maxMm), String(r.thicknessMm), ...cols.map((c) => String(r[c.key] ?? 0))].map(q).join(";"));
