@@ -38,7 +38,7 @@ const ICON: Record<Verdict, string> = {
 const TITLE: Record<Verdict, string> = {
   reading: "Reading the file",
   failed: "Could not be read",
-  dwg: "DWG files are read on the server (not built yet)",
+  dwg: "DWG: converted on the server",
   unchecked: "Not checked yet: press Check lines",
   attention: "Needs attention: mark open lines as tracing or open cut",
   duplicate: "Already in the database (same project and name): open it and press Process to replace it",
@@ -134,7 +134,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           </button>
         </div>
 
-        <input ref={input} type="file" hidden multiple accept=".dxf,.dwg"
+        <input ref={input} type="file" hidden multiple accept=".dxf,.dwg,.svg"
           onChange={(e) => { take([...(e.target.files ?? [])], false); e.target.value = ""; }} />
         <input ref={folderInput} type="file" hidden multiple {...{ webkitdirectory: "", directory: "" }}
           onChange={(e) => { take([...(e.target.files ?? [])], true); e.target.value = ""; }} />

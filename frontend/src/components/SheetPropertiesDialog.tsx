@@ -163,8 +163,8 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
                 <button type="button" className={`btn btn-plain${s.source === "remnant" ? " is-on" : ""}`} onClick={fromRemnant}
                   title="A remnant: one piece; fill in its size (or turn it so its straight edges are at 0,0)">ADD FROM REMNANT</button>
                 <button type="button" className={`btn btn-plain${s.source === "dxf" ? " is-on" : ""}`} onClick={() => file.current?.click()}
-                  title="A sheet or remnant drawn in a DXF file: its size and shape">ADD FROM DXF</button>
-                <input ref={file} type="file" accept=".dxf" hidden
+                  title="A sheet or remnant drawn in a DXF, DWG or SVG file: its size and shape">ADD FROM DXF</button>
+                <input ref={file} type="file" accept=".dxf,.dwg,.svg" hidden
                   onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void fromDxf(f); }} />
                 {fromNote && <p className={fromNote.bad ? "sp-warn" : "sp-hint"} role="status">{fromNote.text}</p>}
               </div>

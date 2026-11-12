@@ -47,7 +47,7 @@ export function HomePage({ onAction }: { onAction: (a: HomeAction) => void }) {
     <div className="home">
       <section className="tiles" aria-label="Shortcuts">
         <Tile tone="blue" icon={<IconImport size={30} />} title="Import" onClick={() => onAction({ kind: "import" })}
-          description="Add DXF or DWG drawings to the parts library" />
+          description="Add DXF, DWG or SVG drawings to the parts library" />
         <Tile tone="green" icon={<IconNewJob size={30} />} title="New job" onClick={() => onAction({ kind: "newJob" })}
           description="Pick parts and stock sheets, then nest" />
       </section>

@@ -389,6 +389,21 @@ export const api = {
   /** Is an NC program of this name in the machine's NC folder already? (false without a folder) */
   ncExists: async (machineId: string, name: string): Promise<boolean> =>
     useApi ? (await get<{ exists: boolean }>(`/api/machines/${encodeURIComponent(machineId)}/nc/exists?name=${encodeURIComponent(name)}`)).exists : false,
+  /** A DWG drawing as DXF text, converted by the server (its DWG converter); not in the demo. */
+  dwgToDxf: async (file: File): Promise<string> => {
+    if (!useApi) throw new Error("DWG needs the GNEZDO server (it converts DWG to DXF); in the demo save it as DXF");
+    let res: Response;
+    try { res = await fetch("/api/import/dwg", { method: "POST", headers: { "Content-Type": "application/octet-stream", ...diagHeaders() }, body: file }); }
+    catch (e) { diag("error", "Server not reached: POST /api/import/dwg"); throw e; }
+    if (res.status === 401) { window.dispatchEvent(new Event("gnezdo:signin-needed")); throw new Error("Sign in first."); }
+    if (!res.ok) {
+      let msg = "";
+      try { msg = ((await res.json()) as { message?: string }).message ?? ""; } catch { /* not JSON */ }
+      diag("api", `POST /api/import/dwg: ${res.status} ${msg}`);
+      throw new Error(msg || `The DWG could not be converted (${res.status})`);
+    }
+    return res.text();
+  },
   /** Saved remnants (Process -> Remnant -> SAVE); in the demo: this browser. */
   remnants: (): Promise<SavedRemnant[]> => (useApi ? get<SavedRemnant[]>("/api/remnants") : delay(localRemnants())),
   /** Saves remnants (one of the same name is replaced). */
