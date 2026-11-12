@@ -48,6 +48,18 @@ export function LeadIcon({ type, size = 1 }: { type: LeadType; size?: number }) 
         {dot(...xy(60, 40, 38, -25), IN)}
       </>);
       break;
+    case "cornerGap":
+      // in line at the corner (as Corner, in line); the cut stops the gap short, on the edge it comes
+      // down, and leaves at 90° from it to the scrap side
+      body = (<>
+        <rect x={8} y={6} width={52} height={34} fill={PART} />
+        {wedge(60, 22, arcOf(60, 22, 13, 0, 90), AOUT)}
+        {line("M8 40H60V6", EDGE, 3)}
+        {line("M60 22V40", GAP, 5)}
+        {line("M60 40H100", IN)}{line("M60 22H94", OUT)}
+        {dot(100, 40, IN)}
+      </>);
+      break;
     case "perp":
       body = (<>
         <rect x={6} y={48} width={100} height={20} fill={PART} />

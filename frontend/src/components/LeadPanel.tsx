@@ -69,7 +69,7 @@ export function useLeadInOut({ index, single, sheets, parts, machine, onCut }: {
     const k = contourAt(sheet.cut, live, [x, y], 25);
     const c = k >= 0 ? sheet.cut.contours[k] : undefined;
     if (!c) { setSel(null); setArmed(false); setMsg({ text: "Click a lead, or the outline or hole it is on", bad: true }); return; }
-    if (!editable(c)) { setMsg({ text: "A common cut block's leads are not changed here", bad: true }); return; }
+    if (!editable(c)) { setMsg({ text: c.bc ? "This outline has break cuts: change its leads in Break cut" : "A common cut block's leads are not changed here", bad: true }); return; }
     setSel(k); setArmed(move); setMsg(null);
   };
 
@@ -153,7 +153,12 @@ export function useLeadInOut({ index, single, sheets, parts, machine, onCut }: {
 }
 
 /** The lead types to pick from (OK / Cancel). */
-function TypeDialog({ value, onOk, onCancel }: { value: LeadType; onOk: (t: LeadType) => void; onCancel: () => void }) {
+export function TypeDialog({ value, onOk, onCancel, types, icon = toolLeadInOut }: {
+  value: LeadType; onOk: (t: LeadType) => void; onCancel: () => void;
+  /** only these (Break cut: the types with a gap) */
+  types?: LeadType[];
+  icon?: string;
+}) {
   const [t, setT] = useState(value);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
@@ -164,11 +169,11 @@ function TypeDialog({ value, onOk, onCancel }: { value: LeadType; onOk: (t: Lead
     <div className="dlg-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
       <div className="dlg li-dlg" role="dialog" aria-modal="true" aria-labelledby="li-dlg-title">
         <header className="dlg-head">
-          <span className="dlg-icon" aria-hidden="true"><img src={toolLeadInOut} alt="" width={30} height={30} /></span>
+          <span className="dlg-icon" aria-hidden="true"><img src={icon} alt="" width={30} height={30} /></span>
           <div className="dlg-title"><h2 id="li-dlg-title">Lead in / out type</h2><p>Lead-in green, lead-out red, gap blue, angles orange (in) and purple (out)</p></div>
         </header>
         <div className="li-dlg-body lead-pick" role="radiogroup" aria-label="Lead in / out type">
-          {LEAD_TYPES.map((x) => (
+          {LEAD_TYPES.filter((x) => !types || types.includes(x.id)).map((x) => (
             <button key={x.id} type="button" role="radio" aria-checked={t === x.id} className={`lead-card${t === x.id ? " is-on" : ""}`}
               onClick={() => setT(x.id)} onDoubleClick={() => onOk(x.id)} title={x.cornerOnly ? `${x.settings} · sharp corners only` : x.settings}>
               <LeadIcon type={x.id} />
@@ -209,7 +214,11 @@ function Wedge({ c, a0, a1, r, color }: { c: V; a0: number; a1: number; r: numbe
  * The lead type drawn big, with its values in boxes on it (lead-in, lead-out, angles, gap, radius: as
  * the type uses them). Not to scale: the lines show the directions, the boxes the sizes.
  */
-function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; onChange: (s: LeadSpec) => void }) {
+export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
+  type: LeadType; spec: LeadSpec; onChange: (s: LeadSpec) => void;
+  /** the gap is set another way (Break cut: by its balloons): its box grayed out */
+  gapLocked?: boolean;
+}) {
   const set = (k: keyof LeadSpec, v: number) => onChange({ ...spec, [k]: v });
   const ln = (a: V, b: V, color: string, w = 4) => <path d={`M${a[0]} ${a[1]}L${b[0]} ${b[1]}`} stroke={color} strokeWidth={w} strokeLinecap="round" fill="none" />;
   const dot = (p: V, color: string) => <circle cx={p[0]} cy={p[1]} r={6} fill="#fff" stroke={color} strokeWidth={3} />;
@@ -217,8 +226,10 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
   const box = (k: keyof LeadSpec, p: V, color: string, unit: string, label: string, min = 0, max = 999) => {
     const x = Math.max(40, Math.min(W - 40, p[0])), y = Math.max(16, Math.min(H - 16, p[1]));
     return (
-      <label key={k} className="li-val" style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, borderColor: color }} title={label}>
-        <NumInput value={spec[k]} min={min} placeholder="0" aria-label={label} className="li-num"
+      // a negative gap (the cut stops short: a bridge is left) shows light red
+      <label key={k} className={`li-val${k === "gap" && spec.gap < 0 ? " is-neg" : ""}${k === "gap" && gapLocked ? " is-locked" : ""}`}
+        style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, borderColor: color }} title={k === "gap" && gapLocked ? "Gap: set by the balloons 1 and 2" : label}>
+        <NumInput value={spec[k]} min={min} placeholder="0" aria-label={label} className="li-num" disabled={k === "gap" && gapLocked}
           onCommit={(n) => set(k, Math.min(max, n))} />
         <span>{unit}</span>
       </label>
@@ -228,7 +239,33 @@ function LeadEditor({ type, spec, onChange }: { type: LeadType; spec: LeadSpec; 
   const LIN = 80, LOUT = 62;
   let drawing: ReactNode, boxes: ReactNode[] = [];
 
-  if (type === "corner" || type === "cornerAngle") {
+  if (type === "cornerGap") {
+    // the part up left, its corner C: in line from the right (as Corner, in line); the cut came down the
+    // right edge and stops the gap short of C (or runs on past it), then leaves at its angle to the scrap
+    const C: V = [150, 122], G = 34;
+    const aOut = clampA(spec.aOut);
+    const stop = spec.gap <= 0;
+    const E: V = stop ? [C[0], C[1] - G] : [C[0] - G, C[1]];
+    const tDeg = stop ? 90 : 180;                       // the way the cut goes at E (screen)
+    const oDeg = stop ? 90 - aOut : 180 - aOut;         // turned towards the scrap
+    const dIn: V = [1, 0], dOut = dirOf(oDeg);
+    const PI = at(C, dIn, spec.lin > 0 ? LIN : 0), PO = at(E, dOut, spec.lout > 0 ? LOUT : 0);
+    drawing = (<>
+      <rect x={14} y={18} width={C[0] - 14} height={C[1] - 18} fill="rgba(27,42,48,.09)" />
+      <Wedge c={E} a0={oDeg} a1={tDeg} r={34} color={AOUT} />
+      <path d={`M14 ${C[1]}H${C[0]}V18`} stroke="var(--ink, #1b2a30)" strokeWidth={5} fill="none" />
+      <path d={`M${C[0]} ${C[1]}L${E[0]} ${E[1]}`} stroke={GAP} strokeWidth={6} strokeLinecap="round" opacity={stop ? 0.55 : 1} strokeDasharray={stop ? "5 5" : undefined} />
+      {spec.lout > 0 && ln(E, PO, OUT)}
+      {spec.lin > 0 && ln(PI, C, IN)}
+      {dot(PI, IN)}
+    </>);
+    boxes = [
+      box("lin", [C[0] + 70, C[1] + 26], IN, "mm", "Lead-in (mm)"),
+      box("lout", at(E, dOut, 102), OUT, "mm", "Lead-out (mm)"),
+      box("gap", stop ? [C[0] - 44, C[1] - G / 2] : [C[0] - G / 2, C[1] + 28], GAP, "mm", "Gap (mm): + runs past the start, − stops short", -999),
+      box("aOut", at(E, dirOf((oDeg + tDeg) / 2), 62), AOUT, "°", "Lead-out angle from the edge (°)", 1, 179),
+    ];
+  } else if (type === "corner" || type === "cornerAngle") {
     // the part up left, its corner C; lead-in from the right / at its angle from the edge going up,
     // lead-out down / at its angle from the edge going left
     const C: V = [150, 122];

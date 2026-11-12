@@ -4,7 +4,7 @@
 
 import type { Machine } from "./machine";
 
-export type LeadType = "corner" | "perp" | "perpGap" | "arc" | "cornerAngle" | "angled";
+export type LeadType = "corner" | "perp" | "perpGap" | "arc" | "cornerAngle" | "angled" | "cornerGap";
 
 export const LEAD_TYPES: { id: LeadType; label: string; settings: string; cornerOnly?: boolean }[] = [
   { id: "corner", label: "Corner, in line", settings: "Lead-in · lead-out", cornerOnly: true },
@@ -13,10 +13,14 @@ export const LEAD_TYPES: { id: LeadType; label: string; settings: string; corner
   { id: "arc", label: "Arc", settings: "Radius · gap" },
   { id: "cornerAngle", label: "Corner, at an angle", settings: "Lead-in · lead-out · angles", cornerOnly: true },
   { id: "angled", label: "Angled with gap", settings: "Lead-in · lead-out · angles · gap" },
+  { id: "cornerGap", label: "Corner in, gap out", settings: "Lead-in in line · gap · lead-out at an angle", cornerOnly: true },
 ];
 
+/** The lead types with a gap (Break cut uses only these). */
+export const GAP_TYPES: LeadType[] = ["perpGap", "arc", "angled", "cornerGap"];
+
 /** Default angle of the angled types when the table leaves it empty [°] */
-export const DEFAULT_ANGLE: Partial<Record<LeadType, number>> = { cornerAngle: 90, angled: 45 };
+export const DEFAULT_ANGLE: Partial<Record<LeadType, number>> = { cornerAngle: 90, angled: 45, cornerGap: 90 };
 
 export type LeadCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 

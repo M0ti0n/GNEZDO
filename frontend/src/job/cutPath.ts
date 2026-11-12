@@ -57,7 +57,14 @@ export interface CutContour {
   /** Process → Movement: the rapid to this contour goes through these points; only while the contour
    *  before it is still `after` (contourKey; "origin": it is the first), else they are dropped */
   via?: { pts: Pt[]; after: string };
+  /** Process → Break cut: the outline is cut in pieces, one per start of the plan (this is piece `piece`) */
+  bc?: { plan: BreakPlan; piece: number };
 }
+
+/** Where an outline starts (one piece each), in cut order along it: the original lead, or a break cut
+ *  (BC: dropped there, the gap behind it; manual: from balloon 1 (`p1`, where the cut stops) to `at`). */
+export interface BreakStart { at: Pt; type: LeadType; spec: LeadSpec; tag: "orig" | "bc" | "manual"; p1?: Pt }
+export interface BreakPlan { id: string; starts: BreakStart[] }
 
 /** A contour's name that stays when its leads change: the part, the kind and the box of its line. */
 export function contourKey(c: CutContour): string {
@@ -246,7 +253,7 @@ export function leadValues(kind: "outer" | "inner", row: TechRow | null, type: L
   const outer = kind === "outer";
   const lin = row ? (outer ? row.outLeadInMm : row.holeLeadInMm) || 0 : outer ? 5 : 3;
   const lout = row ? (outer ? row.outLeadOutMm : row.holeLeadOutMm) || 0 : outer ? 2 : 1;
-  const usesGap = type === "perpGap" || type === "angled" || type === "arc";
+  const usesGap = type === "perpGap" || type === "angled" || type === "arc" || type === "cornerGap";
   const gap = usesGap && row ? (outer ? row.outGapMm : row.holeGapMm) ?? 0 : 0;
   const def = DEFAULT_ANGLE[type] ?? 90;
   return {
@@ -362,6 +369,14 @@ export function leadsAt(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row
       dOut = towards(mul(e2, -1), e1, v.aOut);
     }
     const li = limit(P, dIn, v.lin), lo = limit(P, dOut, v.lout);
+    if (li > 0) leadIn = [add(P, mul(dIn, li)), P];
+    if (lo > 0) leadOut = [end, add(end, mul(dOut, lo))];
+  } else if (type === "cornerGap") {
+    // in line at the corner (as Corner, in line); out after the gap, at the angle from the edge, to the scrap side
+    const dIn = mul(start.t, -1);
+    const rad = (d: number) => (d * Math.PI) / 180;
+    const dOut = unit(add(mul(tEnd, Math.cos(rad(v.aOut))), mul(scrapN(tEnd, side), Math.sin(rad(v.aOut)))));
+    const li = limit(P, dIn, v.lin), lo = limit(end, dOut, v.lout);
     if (li > 0) leadIn = [add(P, mul(dIn, li)), P];
     if (lo > 0) leadOut = [end, add(end, mul(dOut, lo))];
   } else if (type === "arc") {
