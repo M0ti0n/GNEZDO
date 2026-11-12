@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 12 Nov 2026, third (`aed34e0`)
+
 **New**
 - Process: small, thin direction arrows in the middle of each rapid move (same color as its dashed line) and along the cut contours (cutting direction); Settings → Personal → Cut path turns each on or off
 - Process → Remnant: **Cut along X / Cut along Y** under the modes picks RECTANGULAR's first cut (the whole length or the whole width, the second one up to it) and works the remnant out at once; Settings → Stock → Remnants holds the one to start with
