@@ -5,6 +5,7 @@
 // block. Scrap the members close in (a ring of parts) is cut before the shared lines, as a hole.
 
 import { sharedLines, type CommonEdge } from "./commonCut";
+import type { CommonLead } from "./leads";
 import { pointIn, type Box, type Pt } from "./manualGeom";
 
 export interface CommonBlock {
@@ -166,22 +167,30 @@ export function commonBlocks(parts: { i: number; outer: Pt[]; box: Box; edges: C
 }
 
 /**
- * A shared line as it is cut: from the end that reaches the block's edge (pierced outside, coming
- * in along the line `ext` mm), out past the other end when that one reaches the edge too.
+ * A shared line as it is cut: from the end that reaches the block's edge, out past the other end when
+ * that one reaches the edge too. Leads (`type`): in line or at an angle (`angIn` / `angOut` degrees
+ * from the line), pierced outside the block `ext` mm away; "none": pierced on the line's end.
  * `inside(p)`: p is in a member (not scrap). The end nearer `near` first when both reach the edge.
  */
-export function sharedLineCut(l: [Pt, Pt], inside: (p: Pt) => boolean, near: Pt, ext: number, extOut: number, kerf: number):
-  { pts: Pt[]; leadIn: Pt[]; leadOut: Pt[] } {
+export function sharedLineCut(l: [Pt, Pt], inside: (p: Pt) => boolean, near: Pt, ext: number, extOut: number, kerf: number,
+  type: CommonLead = "inline", angIn = 45, angOut = 45): { pts: Pt[]; leadIn: Pt[]; leadOut: Pt[] } {
   const [a, b] = l;
   const d = sub(b, a), L = len(d) || 1, e: Pt = [d[0] / L, d[1] / L];
   const beyond = kerf / 2 + 0.6;
   const openA = !inside(add(a, mul(e, -beyond))), openB = !inside(add(b, mul(e, beyond)));
   let s = a, t = b, u = e, so = openA, to = openB;
   if ((openB && !openA) || (openA === openB && len(sub(b, near)) < len(sub(a, near)))) { s = b; t = a; u = mul(e, -1); so = openB; to = openA; }
+  if (type === "none") return { pts: [s, t], leadIn: [], leadOut: [] };
+  // at an angle: to the side where the pierce is not in a part (left of the line when both are free)
+  const n: Pt = [-u[1], u[0]];
+  const ai = (Math.min(85, Math.max(5, angIn)) * Math.PI) / 180, ao = (Math.min(85, Math.max(5, angOut)) * Math.PI) / 180;
+  const dirIn = (side: number): Pt => type === "angled" ? add(mul(u, -Math.cos(ai)), mul(n, side * Math.sin(ai))) : mul(u, -1);
+  const dirOut = (side: number): Pt => type === "angled" ? add(mul(u, Math.cos(ao)), mul(n, side * Math.sin(ao))) : u;
+  const sideIn = !inside(add(s, mul(dirIn(1), ext))) ? 1 : -1, sideOut = !inside(add(t, mul(dirOut(1), extOut))) ? 1 : -1;
   return {
     pts: [s, t],
-    leadIn: so && ext > 0 ? [add(s, mul(u, -ext)), s] : [],
-    leadOut: to && extOut > 0 ? [t, add(t, mul(u, extOut))] : [],
+    leadIn: so && ext > 0 ? [add(s, mul(dirIn(sideIn), ext)), s] : [],
+    leadOut: to && extOut > 0 ? [t, add(t, mul(dirOut(sideOut), extOut))] : [],
   };
 }
 

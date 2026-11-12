@@ -1,6 +1,6 @@
 import { NumInput } from "./NumInput";
 import { LeadIcon } from "./LeadIcon";
-import { DEFAULT_LEAD_RULES, LEAD_TYPES, REMNANT_LEADS, leadRulesOf, type LeadCorner, type LeadRules, type LeadType } from "../job/leads";
+import { COMMON_LEADS, DEFAULT_LEAD_RULES, LEAD_TYPES, REMNANT_LEADS, leadRulesOf, type CommonLead, type LeadCorner, type LeadRules, type LeadType } from "../job/leads";
 import type { Machine } from "../job/machine";
 
 const CORNERS: { id: LeadCorner; label: string }[] = [
@@ -85,6 +85,20 @@ export function LeadsSettings({ machine, onChange }: { machine: Machine; onChang
           </div>
           <p className="rule-help">Lengths (0 = no lead), the gap in / out from the sheet edge and the distance to the parts: Technology → Remnant cut.</p>
         </section>
+        <section className="lead-sec">
+          <h3>Common cut <small>the shared line of two parts, cut once without kerf compensation</small></h3>
+          <div className="lead-pick" role="radiogroup" aria-label="Common cut">
+            {COMMON_LEADS.map((t) => (
+              <button key={t.id} type="button" role="radio" aria-checked={r.common === t.id}
+                className={`lead-card${r.common === t.id ? " is-on" : ""}`} onClick={() => set({ common: t.id })} title={t.settings}>
+                <CommonLeadIcon type={t.id} />
+                <b>{t.label}</b>
+                <small>{t.settings}</small>
+              </button>
+            ))}
+          </div>
+          <p className="rule-help">From outside: pierced in the scrap beyond the block's edge, so no part gets a pierce mark. Lengths: the outline lead-in / lead-out of the Technology row, never longer than the room to the next part; angles: Angled leads (45° when empty). No lead: pierced right where the shared line meets the block's edge.</p>
+        </section>
       </div>
 
       <div className="lead-foot">
@@ -94,5 +108,22 @@ export function LeadsSettings({ machine, onChange }: { machine: Machine; onChang
         <button type="button" className="btn btn-plain" disabled={isDefault} onClick={() => onChange({ ...DEFAULT_LEAD_RULES })}>Back to the defaults</button>
       </div>
     </div>
+  );
+}
+
+/** A shared common cut line between two parts and how it starts (green) and ends (red). */
+function CommonLeadIcon({ type }: { type: CommonLead }) {
+  const IN = "#22a046", OUT = "#e0352b", LINE = "#1e8db5", PART = "rgba(27,42,48,.09)", EDGE = "var(--ink, #1b2a30)";
+  const st = { fill: "none", strokeLinecap: "round" as const, strokeWidth: 3.4 };
+  const dot = (x: number, y: number, c: string) => <circle cx={x} cy={y} r={3.6} fill="#fff" stroke={c} strokeWidth={2.4} />;
+  return (
+    <svg width={112} height={72} viewBox="0 0 112 72" aria-hidden="true">
+      <rect x={14} y={12} width={38} height={46} fill={PART} /><rect x={60} y={12} width={38} height={46} fill={PART} />
+      <path d="M52 12V58M60 12V58M14 12H52M60 12H98M14 58H52M60 58H98" stroke={EDGE} strokeWidth={1.6} opacity={0.5} fill="none" />
+      <path d="M56 58V12" stroke={LINE} {...st} />
+      {type === "inline" && <><path d="M56 67V58" stroke={IN} {...st} /><path d="M56 12V4" stroke={OUT} {...st} />{dot(56, 67, IN)}</>}
+      {type === "angled" && <><path d="M46 67L56 58" stroke={IN} {...st} /><path d="M56 12L65 4" stroke={OUT} {...st} />{dot(46, 67, IN)}</>}
+      {type === "none" && <>{dot(56, 58, IN)}{dot(56, 12, OUT)}</>}
+    </svg>
   );
 }

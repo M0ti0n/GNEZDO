@@ -35,7 +35,18 @@ export interface LeadRules {
   slotMiddle: boolean;
   /** Remnant cuts (open lines): in line with the cut, at 90° or at an angle, from the scrap side */
   remnant: LeadType;
+  /** Common cut, the shared lines: pierced outside the block coming in line or at an angle, or on the line's end */
+  common: CommonLead;
 }
+
+export type CommonLead = "inline" | "angled" | "none";
+
+/** How a shared common cut line starts and ends (lengths: the outline's lead-in / lead-out, angles: Angled leads). */
+export const COMMON_LEADS: { id: CommonLead; label: string; settings: string }[] = [
+  { id: "inline", label: "In line, from outside", settings: "Outline lead-in · lead-out" },
+  { id: "angled", label: "At an angle, from outside", settings: "Outline lead-in · lead-out · angles" },
+  { id: "none", label: "No lead, pierce on the line", settings: "Pierced at the line's end" },
+];
 
 /** The lead types a remnant cut can have (an open line: no corner of its own). */
 export const REMNANT_LEADS: { id: LeadType; label: string; settings: string }[] = [
@@ -47,7 +58,7 @@ export const REMNANT_LEADS: { id: LeadType; label: string; settings: string }[] 
 export const DEFAULT_LEAD_RULES: LeadRules = {
   place: "bottom-right", sharpMaxDeg: 160,
   outCorner: "corner", outOther: "perp", holeCorner: "corner", holeOther: "perp",
-  holeShorten: true, slotMiddle: true, remnant: "perp",
+  holeShorten: true, slotMiddle: true, remnant: "perp", common: "inline",
 };
 
 export const leadRulesOf = (m: Machine | undefined): LeadRules => {
@@ -57,5 +68,6 @@ export const leadRulesOf = (m: Machine | undefined): LeadRules => {
   return {
     ...r, outOther: ok(r.outOther, "perp"), holeOther: ok(r.holeOther, "perp"),
     remnant: REMNANT_LEADS.some((x) => x.id === r.remnant) ? r.remnant : "perp",
+    common: COMMON_LEADS.some((x) => x.id === r.common) ? r.common : "inline",
   };
 };
