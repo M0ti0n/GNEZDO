@@ -2,6 +2,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../api/api";
 import type { JobPart } from "../api/types";
 import { diag } from "../job/diag";
+import type { Machine } from "../job/machine";
+import { techRowFor } from "../job/technology";
+import { ConfirmDialog } from "./ConfirmDialog";
 import type { NestedSheet } from "../job/nest";
 import { computeRemnant, cutAt, cutNear, remnantRecord, remnantValid, type RemnantMode, type RemnantSettings, type SheetRemnant } from "../job/remnant";
 import type { CutMode } from "./ManualNest";
@@ -28,7 +31,7 @@ const MODES: { id: RemnantMode; label: string; icon: string; hint: string }[] = 
 const TOOLS: { id: Tool; label: string; icon: string; hint: string }[] = [
   { id: "cutV", label: "Cut V", icon: remCutV, hint: "Click in a remnant: a vertical open cut there, edge to edge" },
   { id: "cutH", label: "Cut H", icon: remCutH, hint: "Click in a remnant: a horizontal open cut there, edge to edge" },
-  { id: "delete", label: "Delete cut", icon: remDelete, hint: "Click on an open cut (magenta) to take it away" },
+  { id: "delete", label: "Delete cut", icon: remDelete, hint: "Click on an open cut (magenta) to take it away, or on the remnant's own cut (red) to delete the whole remnant" },
 ];
 
 type PartRef = { path: string };
@@ -40,7 +43,21 @@ const DiscardIcon = () => (
   <svg viewBox="0 0 20 20" width="18" height="18" aria-label="Discarded"><path d="M4 4l12 12M16 4L4 16" stroke="#d62828" strokeWidth="3" strokeLinecap="round" /></svg>
 );
 
-export function useRemnant({ index, single, sheets, parts, jobParts = [], jobName, settings, onRemnant }: {
+/** Distance from p to the polyline [mm]. */
+function distTo(l: [number, number][], x: number, y: number) {
+  let best = Infinity;
+  for (let i = 1; i < l.length; i++) {
+    const [ax, ay] = l[i - 1], [bx, by] = l[i];
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    const t = L2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L2)) : 0;
+    best = Math.min(best, Math.hypot(ax + t * dx - x, ay + t * dy - y));
+  }
+  return best;
+}
+
+export function useRemnant({ index, single, sheets, parts, jobParts = [], jobName, settings: base, machine, onRemnant }: {
+  /** the sheet's machine: its Technology row's Remnant cut · To parts, when set, is the distance kept from the parts */
+  machine?: Machine;
   /** the job's parts (the projects a saved remnant came from) */
   jobParts?: JobPart[];
   /** the sheet shown or selected */
@@ -54,7 +71,10 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
   onRemnant: (index: number, rem: SheetRemnant | undefined) => void;
 }): { panel: ReactNode; cut: CutMode } {
   const sheet = sheets[index] as NestedSheet | undefined;
+  const techDist = sheet && machine ? techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row.remMinDistMm ?? 0 : 0;
+  const settings: RemnantSettings = techDist > 0 ? { ...base, minDistMm: techDist } : base;
   const rem = sheet && remnantValid(sheet) ? sheet.remnant! : undefined;
+  const [askAll, setAskAll] = useState(false);
   const stale = !!sheet?.remnant && !rem;
   const [tool, setTool] = useState<Tool | null>(null);
   const [off, setOff] = useState<Set<string>>(new Set());
@@ -79,7 +99,13 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
     if (!sheet || !rem || !tool) return;
     if (tool === "delete") {
       const k = cutNear(rem, x, y, 15);
-      if (k < 0) { setMsg({ text: "Click on an open cut (magenta line) to delete it", bad: true }); return; }
+      if (k < 0) {
+        // the remnant's own contour (its cut lines or a piece's outline): the whole remnant goes
+        const onOwn = rem.lines.some((l) => distTo(l, x, y) <= 15) || rem.pieces.some((p) => !p.window && distTo([...p.outline, p.outline[0]], x, y) <= 15);
+        if (onOwn) setAskAll(true);
+        else setMsg({ text: "Click on an open cut (magenta) or on the remnant's cut (red)", bad: true });
+        return;
+      }
       const cuts = rem.cuts.filter((_, i) => i !== k);
       onRemnant(index, computeRemnant({ sheet, sheetNo: index + 1, paths, jobName, mode: rem.mode, settings: rem.settings, cuts, before: rem.pieces }));
       setMsg(null);
@@ -135,7 +161,7 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
         <div className="rm-tools" role="group" aria-label="Remnant tools">
           {TOOLS.map((t) => (
             <button key={t.id} type="button" className={`rm-btn${tool === t.id ? " is-on" : ""}`} aria-pressed={tool === t.id}
-              disabled={!single || !rem || (t.id === "delete" && !rem.cuts.length)}
+              disabled={!single || !rem}
               title={!single ? "Open a sheet (VIEW / EDIT) to cut its remnant" : !rem ? "Pick a remnant mode first" : t.hint}
               onClick={() => { setTool(tool === t.id ? null : t.id); setMsg(null); }}>
               <img src={t.icon} alt="" draggable={false} /><span>{t.label}</span>
@@ -160,9 +186,20 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
           <button type="button" className="btn btn-plain" disabled={!picked.length || busy} onClick={() => void mark("saved")} title="Keep the ticked remnants in the remnant store">Save</button>
           <button type="button" className="btn btn-plain ac-clear" disabled={!picked.length || busy} onClick={() => void mark("discarded")} title="The ticked remnants are scrap">Discard</button>
         </div>
-        <p className="rule-help ac-help">Minimum distance to parts {settings.minDistMm} mm, edge {settings.minEdgeMm} mm, area {settings.minAreaPct} % of the sheet (Settings → Stock).</p>
+        <p className="rule-help ac-help">Minimum distance to parts {settings.minDistMm} mm{techDist > 0 ? " (Technology → Remnant cut)" : ""}, edge {settings.minEdgeMm} mm, area {settings.minAreaPct} % of the sheet (Settings → Stock).</p>
         {msg && <p className={`tech-msg ac-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
       </div>
+      {askAll && rem && (
+        <ConfirmDialog title="Delete the remnant?" confirmLabel="Delete" onCancel={() => setAskAll(false)}
+          onConfirm={() => {
+            setAskAll(false); setTool(null);
+            onRemnant(index, undefined);
+            diag("process", `Remnant deleted on sheet ${index + 1}`, { pieces: rem.pieces.length });
+            setMsg({ text: `Sheet ${index + 1}: remnant deleted` });
+          }}>
+          Sheet {index + 1}: the whole remnant goes ({rem.pieces.length} {rem.pieces.length === 1 ? "piece" : "pieces"}, its cuts and the open cuts){rem.pieces.some((p) => p.status === "saved") ? ". Remnants saved already stay in the remnant store." : "."}
+        </ConfirmDialog>
+      )}
     </aside>
   );
 
@@ -171,7 +208,7 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
     cut: {
       picking: false, picked: [], onPick: () => { /* parts are not picked here */ }, panel,
       ...(tool ? { onPoint: point, cursor: "crosshair" } : {}),
-      hint: tool === "delete" ? "Click on an open cut (magenta) to delete it." : tool ? `Click inside a remnant: a ${tool === "cutV" ? "vertical" : "horizontal"} open cut there.`
+      hint: tool === "delete" ? "Click on an open cut (magenta) to delete it, or on the remnant's cut (red) to delete the whole remnant." : tool ? `Click inside a remnant: a ${tool === "cutV" ? "vertical" : "horizontal"} open cut there.`
         : rem ? "Remnant worked out. Cut it further with CUT V / CUT H, then SAVE the ones to keep." : "Pick a remnant mode on the right.",
     },
   };

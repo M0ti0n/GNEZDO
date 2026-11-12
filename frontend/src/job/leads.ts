@@ -33,17 +33,29 @@ export interface LeadRules {
   holeShorten: boolean;
   /** Slots narrower than 2 × the lead-in: the leads go in the middle of the end arc / short edge */
   slotMiddle: boolean;
+  /** Remnant cuts (open lines): in line with the cut, at 90° or at an angle, from the scrap side */
+  remnant: LeadType;
 }
+
+/** The lead types a remnant cut can have (an open line: no corner of its own). */
+export const REMNANT_LEADS: { id: LeadType; label: string; settings: string }[] = [
+  { id: "corner", label: "In line", settings: "Lead-in · lead-out" },
+  { id: "perp", label: "Perpendicular (90°)", settings: "Lead-in · lead-out" },
+  { id: "angled", label: "At an angle", settings: "Lead-in · lead-out · angles" },
+];
 
 export const DEFAULT_LEAD_RULES: LeadRules = {
   place: "bottom-right", sharpMaxDeg: 160,
   outCorner: "corner", outOther: "perp", holeCorner: "corner", holeOther: "perp",
-  holeShorten: true, slotMiddle: true,
+  holeShorten: true, slotMiddle: true, remnant: "perp",
 };
 
 export const leadRulesOf = (m: Machine | undefined): LeadRules => {
   const r = { ...DEFAULT_LEAD_RULES, ...(m?.leads ?? {}) };
   // a corner-only type cannot be used away from corners
   const ok = (t: LeadType, d: LeadType) => (LEAD_TYPES.find((x) => x.id === t)?.cornerOnly ? d : t);
-  return { ...r, outOther: ok(r.outOther, "perp"), holeOther: ok(r.holeOther, "perp") };
+  return {
+    ...r, outOther: ok(r.outOther, "perp"), holeOther: ok(r.holeOther, "perp"),
+    remnant: REMNANT_LEADS.some((x) => x.id === r.remnant) ? r.remnant : "perp",
+  };
 };
