@@ -31,11 +31,13 @@ export interface CutMode {
   panel: ReactNode;
   hint: string;
   /** a tool that clicks on the sheet (Remnant: CUT V / CUT H / DELETE CUT): the point in mm */
-  onPoint?: (x: number, y: number) => void;
+  onPoint?: (x: number, y: number, scale: number) => void;
   /** the pointer over the sheet while that tool is on */
   cursor?: string;
   /** contours shown picked (Lead in / out) */
   highlight?: Set<CutContour>;
+  /** contours with a glow (Manual cut: the picked ones), `strong` with a stronger one (chosen in the list) */
+  glow?: { all: Set<CutContour>; strong?: CutContour };
   /** Simulation: the path as far as the head has come, the parts cut out so far, the head */
   sim?: { shown: CutContour[]; current?: CutContour; rapids: [Pt, Pt][]; done: Set<number>; head: Pt };
 }
@@ -450,7 +452,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     if (e.button === 1 || e.button === 2) { pan.current = { x: e.clientX, y: e.clientY, from: { x: e.clientX, y: e.clientY }, button: e.button }; return; }
     if (e.button !== 0) return;
     if (cut) {
-      if (cut.onPoint) { const [cx, cy] = toMm(p.x, p.y); cut.onPoint(cx, cy); }
+      if (cut.onPoint) { const [cx, cy] = toMm(p.x, p.y); cut.onPoint(cx, cy, view?.s ?? 1); }
       else if (cut.picking) { const [cx, cy] = toMm(p.x, p.y); const i = hit(cx, cy); if (i >= 0) cut.onPick(i); }
       return;
     }
@@ -981,9 +983,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                       const now = c === cut?.sim?.current;
                       const end = c.leadOut.length || now ? undefined : c.pts[c.pts.length - 1];
                       const hl = cut?.highlight?.has(c);
+                      const gl = cut?.glow?.strong === c ? 2 : cut?.glow?.all.has(c) ? 1 : 0;
                       return (
                         <g key={k}>
                           {hl && <path className="cut-hl" d={line([...c.leadIn, ...c.pts, ...c.leadOut])} style={{ strokeWidth: 7 / v.s }} />}
+                          {gl > 0 && <path className={`cut-glow${gl === 2 ? " is-strong" : ""}`} d={line([...c.leadIn, ...c.pts, ...c.leadOut])} style={{ strokeWidth: (gl === 2 ? 9 : 6) / v.s }} />}
                           <path className={`cut-${c.kind}${c.common ? " cut-common" : ""}${now ? " cut-now" : ""}`} d={line(c.pts)} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
                           {c.leadIn.length > 1 && <path className="cut-in" d={line(c.leadIn)} style={{ strokeWidth: 1.6 / v.s }} />}
                           {c.leadOut.length > 1 && <path className="cut-out" d={line(c.leadOut)} style={{ strokeWidth: 1.6 / v.s }} />}

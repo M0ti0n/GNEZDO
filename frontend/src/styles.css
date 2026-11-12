@@ -2084,6 +2084,8 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .sim-head { fill: rgba(227, 38, 43, .16); stroke: #e3262b; }
 .sim-head .sim-head-dot { fill: #e3262b; stroke: none; }
 .sim-head path { fill: none; }
+.cut-glow { fill: none; stroke: #ffc21a; stroke-opacity: .5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 3px rgba(255, 176, 0, .85)); }
+.cut-glow.is-strong { stroke: #ff8a00; stroke-opacity: .8; filter: drop-shadow(0 0 4px #ff8a00) drop-shadow(0 0 9px rgba(255, 120, 0, .9)); }
 .cut-hl { fill: none; stroke: #f5b800; stroke-opacity: .55; stroke-linecap: round; stroke-linejoin: round; }
 .cut-end { fill: #e3262b; }
 .cut-path .cut-common { stroke: var(--ln-common); }
@@ -2286,3 +2288,9 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 /* eleven Process tools: a little narrower so the row fits */
 .jsec-process .jtool { min-width: 72px; }
 .jsec-process .jtool .itool-label { font-size: 12px; }
+
+/* Process -> Manual cut */
+.mc-name { display: flex; align-items: baseline; gap: 6px; cursor: grab; }
+.mc-part { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-name small { flex: none; margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
+.ac-pickbar .btn.mc-apply.is-on { background: var(--green); color: #fff; border-color: var(--green); }
