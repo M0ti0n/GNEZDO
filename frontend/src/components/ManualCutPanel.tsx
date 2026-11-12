@@ -4,11 +4,12 @@ import { diag } from "../job/diag";
 import { contourKind, pickContour, reorderCut } from "../job/manualCut";
 import { partColor, type NestedSheet } from "../job/nest";
 import type { CutMode } from "./ManualNest";
+import { GEAR_BIG, GEAR_SMALL } from "./CutView";
 import toolManualCut from "../shell/jobtools/tool-manualCut.png";
 
 // Process -> Manual cut (after Auto cut's Selected parts): SELECT, then click contours of the processed
 // sheet in the order to cut them; the list holds them in that order (drag, or Up / Down, to change it).
-// Picked contours glow on the sheet, the one chosen in the list glows stronger. APPLY puts them in the
+// Picked contours glow on the sheet, the one chosen in the list glows stronger. PROCESS puts them in the
 // cut path in that order, in the places they had (the rest stays where it is). A part shows as its ID in
 // the job part list and its copy on the sheet (12_3: part 12, its third copy), the name on hover.
 
@@ -80,6 +81,14 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
     <aside className="mn-parts ac" aria-label="Manual cut">
       <header className="sol-head ac-head"><span className="itool-box ac-icon-sm" aria-hidden="true"><img src={toolManualCut} alt="" draggable={false} /></span><h2>Manual cut</h2></header>
       <div className="ac-body">
+        <button type="button" className="btn btn-primary ac-process" disabled={!picked.length} onClick={apply}
+          title="Put the picked contours in the cut path in this order, in the places they had (the rest stays where it is)">
+          <svg viewBox="0 0 40 32" width="30" height="24" aria-hidden="true">
+            <path d={GEAR_BIG} fill="currentColor" fillRule="evenodd" />
+            <path d={GEAR_SMALL} fill="currentColor" fillRule="evenodd" />
+          </svg>
+          Process
+        </button>
         <div className="ac-pickbar">
           <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} disabled={!can} onClick={() => setPicking((v) => !v)}
             title={can ? "On: click contours on the sheet in the order to cut them, click one again to take it out" : "Open a processed sheet (VIEW / EDIT) to pick its contours"}>Select</button>
@@ -119,10 +128,6 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
           <button type="button" className="btn btn-plain" disabled={sel <= 0} onClick={() => move(sel, sel - 1)} title="The contour chosen in the list one place earlier">▲ Up</button>
           <button type="button" className="btn btn-plain" disabled={sel < 0 || sel === picked.length - 1} onClick={() => move(sel, sel + 1)} title="The contour chosen in the list one place later">▼ Down</button>
         </div>
-        <div className="ac-pickbar">
-          <button type="button" className={`btn btn-plain mc-apply${picked.length ? " is-on" : ""}`} disabled={!picked.length} onClick={apply}
-            title="Put the picked contours in the cut path in this order, in the places they had (the rest stays where it is)">Apply</button>
-        </div>
         <p className="rule-help ac-help">The picked contours swap places among themselves in the cut path; pick every contour to set the whole order. A part&apos;s holes, marking and open cuts must stay before its outline.</p>
         {msg && <p className={`tech-msg ac-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
       </div>
@@ -138,8 +143,8 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
       ...(can && (picking || picked.length) ? { onPoint: point, ...(picking ? { cursor: "pointer" } : {}) } : {}),
       ...(glowAll.size ? { glow: { all: glowAll, ...(strong ? { strong } : {}) } } : {}),
       hint: !can ? (single ? "Process the sheet first (Auto cut), then set its order here." : "Open a sheet to set its cut order.")
-        : picking ? "Click contours in the order to cut them (click again: out). Drag them in the list to change the order, then APPLY."
-        : picked.length ? "Choose a contour in the list to see it, × or a click on it takes it out; APPLY puts them in this order." : "Press SELECT on the right, then click the contours.",
+        : picking ? "Click contours in the order to cut them (click again: out). Drag them in the list to change the order, then PROCESS."
+        : picked.length ? "Choose a contour in the list to see it, × or a click on it takes it out; PROCESS puts them in this order." : "Press SELECT on the right, then click the contours.",
     },
   };
 }

@@ -40,8 +40,8 @@ function gear(cx: number, cy: number, r: number, teeth: number, phase: number, h
   const h = `M${cx + hole} ${cy}a${hole} ${hole} 0 1 0 ${-2 * hole} 0a${hole} ${hole} 0 1 0 ${2 * hole} 0Z`;
   return `M${pts.join("L")}Z${h}`;
 }
-const GEAR_BIG = gear(14, 18, 12.5, 10, 0, 4);
-const GEAR_SMALL = gear(30.5, 9.5, 8.5, 7, Math.PI / 7, 2.8);
+export const GEAR_BIG = gear(14, 18, 12.5, 10, 0, 4);
+export const GEAR_SMALL = gear(30.5, 9.5, 8.5, 7, Math.PI / 7, 2.8);
 
 /**
  * The AUTO CUT panel and what it does: shown beside the sheets (several sheets: the shown one is the
