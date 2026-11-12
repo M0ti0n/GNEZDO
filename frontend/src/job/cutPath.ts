@@ -656,7 +656,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
       while (left.length) {
         let k = 0, best = Infinity;
         left.forEach((l, j) => { const d = Math.min(len(sub(l[0], at)), len(sub(l[1], at))); if (d < best) { best = d; k = j; } });
-        const c = sharedLineCut(left.splice(k, 1)[0], inside, at, ext, extOut, kerf);
+        const c = sharedLineCut(left.splice(k, 1)[0], inside, at, ext, extOut, kerf, rules.common, row?.leadInAngle || 45, row?.leadOutAngle || 45);
         const cc = { pts: c.pts.map(r2), leadIn: c.leadIn.map(r2), leadOut: c.leadOut.map(r2) };
         fresh.push({ part: i, kind: "open", common: true, parts: members, ...cc });
         at = endOf(cc);
