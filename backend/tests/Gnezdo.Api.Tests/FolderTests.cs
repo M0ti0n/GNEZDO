@@ -49,6 +49,8 @@ public sealed class FolderTests(ApiFixture api) : IClassFixture<ApiFixture>, IDi
         var written = Assert.Single(Directory.GetFiles(nc));
         Assert.Equal("%1\nM30\n", await File.ReadAllTextAsync(written));
         Assert.Empty(Directory.GetFiles(_dir));   // nothing outside the folder
+        Assert.True((await api.Client.GetFromJsonAsync<JsonObject>("/api/machines/p1/nc/exists?name=..%5CSHEET%201.NCP"))!["exists"]!.GetValue<bool>());
+        Assert.False((await api.Client.GetFromJsonAsync<JsonObject>("/api/machines/p1/nc/exists?name=OTHER.NCP"))!["exists"]!.GetValue<bool>());
 
         var part = (await api.Client.GetFromJsonAsync<List<PartDto>>("/api/parts"))![0];
         var saved = await (await api.Client.PostAsJsonAsync("/api/jobs", new

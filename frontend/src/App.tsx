@@ -36,6 +36,7 @@ import { NestPage, type ProcessTool, type NestSelection } from "./components/Nes
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
 import { loadLocalMachines, machineCan, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
 import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
+import { loadJobPrefix, suggestJobName } from "./job/jobName";
 import { setMachineLimit } from "./job/stock";
 import { exportSolutionDxf } from "./job/exportNest";
 import { loadStockSettings, newSheet, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
@@ -191,9 +192,14 @@ export function App() {
   }, [toast]);
 
   // New job: a pop-up asks for its name and machine first
+  const openTitles = useRef<string[]>([]);
+  openTitles.current = state.tabs.map((t) => t.title);
   const newJob = useCallback(() => {
     const n = newJobCount.current + 1;
-    setNewJobOpen(n === 1 ? "New job" : `New job ${n}`);
+    const plain = n === 1 ? "New job" : `New job ${n}`;
+    // Settings -> Personal: the next number of the person's own job names
+    if (!loadJobPrefix()) { setNewJobOpen(plain); return; }
+    void suggestJobName(openTitles.current).then((name) => setNewJobOpen(name || plain));
   }, []);
   const createJob = (name: string, machineId: string) => {
     newJobCount.current += 1;
@@ -1036,11 +1042,11 @@ export function App() {
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (section === "report" && (tool === "nestReport" || tool === "costReport")) { setJobScreen((m) => ({ ...m, [job.id]: tool })); return; }
     if (section === "process") {
-      if (tool === "autoCut" || tool === "remnant") {
+      if (tool === "autoCut" || tool === "remnant" || tool === "processDel" || tool === "postProcess") {
         lastProcess.current[job.id] = tool;
         setProcessOn((m) => ({ ...m, [job.id]: tool }));
         setJobScreen((m) => ({ ...m, [job.id]: "nest" }));
-      } else setToast("Not built yet: Auto cut and Remnant work so far");
+      } else setToast("Not built yet: Auto cut, Remnant, Process del and Post process work so far");
       return;
     }
     if (tool === "fastNest") void startNest(job.id, "fast");

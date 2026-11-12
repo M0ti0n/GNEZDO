@@ -81,8 +81,8 @@ const SECTIONS: Section[] = [
       { id: "leadInOut", label: "Lead in / out", icon: toolLeadInOut, hint: "Lead in / out: where and how the cut starts and ends on a contour" },
       { id: "movement", label: "Movement", icon: toolMovement, hint: "Movement: the head's travel between contours" },
       { id: "remnant", label: "Remnant", icon: toolRemnant, ready: true, hint: "Remnant: what is left of the sheet, worked out, named and saved for later" },
-      { id: "processDel", label: "Process del", icon: toolProcessDel, hint: "Process del: take the cut path off the sheet or the parts" },
-      { id: "postProcess", label: "Post process", icon: toolPostProcess, hint: "Post process: the NC program for the machine, written to its NC folder" },
+      { id: "processDel", label: "Process del", icon: toolProcessDel, ready: true, hint: "Process del: delete the remnant, the cut path, or both" },
+      { id: "postProcess", label: "Post process", icon: toolPostProcess, ready: true, hint: "Post process: the NC program for the machine, written to its NC folder" },
     ],
   },
   {

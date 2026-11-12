@@ -79,6 +79,14 @@ public static class MachineFolders
             }
         });
 
+        // is there an NC program of this name in the machine's NC folder already? (POST PROCESS asks before replacing it)
+        app.MapGet("/api/machines/{id}/nc/exists", async (string id, string? name, GnezdoDb db, CancellationToken ct) =>
+        {
+            var f = await FindAsync(db, id, ct);
+            if (f is null || f.Nc.Length == 0 || Problem(f.Nc) is not null) return Results.Ok(new { exists = false });
+            return Results.Ok(new { exists = File.Exists(Path.Combine(f.Nc, SafeName(name, "program.nc"))) });
+        });
+
         // an NC program into the machine's NC folder (409: no folder set, the app may download it instead)
         app.MapPost("/api/machines/{id}/nc", async (string id, NcWriteRequest r, GnezdoDb db, CancellationToken ct) =>
         {
