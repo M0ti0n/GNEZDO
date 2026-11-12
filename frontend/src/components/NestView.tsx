@@ -13,10 +13,11 @@ import { useRemnant } from "./RemnantPanel";
 import { usePostProcess, useProcessDel } from "./ProcessPanels";
 import { useLeadInOut } from "./LeadPanel";
 import { useSimulation } from "./SimPanel";
+import { useManualCut } from "./ManualCutPanel";
 import { RemnantOverlay } from "./RemnantOverlay";
 import { DEFAULT_REMNANT_SETTINGS, type RemnantSettings } from "../job/remnant";
 
-export type ProcessTool = "autoCut" | "remnant" | "processDel" | "postProcess" | "leadInOut" | "simulation";
+export type ProcessTool = "autoCut" | "manualCut" | "remnant" | "processDel" | "postProcess" | "leadInOut" | "simulation";
 import { liveContours, processedParts } from "../job/cutPath";
 import { SheetPropertiesDialog } from "./SheetPropertiesDialog";
 import { strategyLabel } from "./CustomNestDialog";
@@ -161,9 +162,13 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
     index: curIndex, single: full !== null, sheets, parts: byId, machine,
     onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
   });
+  const mc = useManualCut({
+    index: curIndex, single: full !== null && process === "manualCut", sheets, parts: byId,
+    onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
+  });
   const sim = useSimulation({ index: curIndex, single: full !== null && process === "simulation", sheets, parts: byId, machine, origin: sol?.origin ?? machine.origin });
   const cutOn = !!process && !!sol && !!finished && sheets.length > 0;
-  const tool = process === "remnant" ? rm : process === "processDel" ? pdel : process === "postProcess" ? post : process === "leadInOut" ? lio : process === "simulation" ? sim : ac;
+  const tool = process === "remnant" ? rm : process === "processDel" ? pdel : process === "postProcess" ? post : process === "leadInOut" ? lio : process === "simulation" ? sim : process === "manualCut" ? mc : ac;
   /** EDIT / VIEW on a sheet card: the one-sheet view (Manual nest's, or Process's) */
   const openSheet = (i: number) => (cutOn ? setFullState(i) : setFull(i));
 
