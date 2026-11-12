@@ -1,14 +1,14 @@
-﻿Technology;Materials;Used from mm;Used to mm;Thickness mm;Cutting Kerf mm;Cutting Speed mm/min;Cutting Small holes mm/min;Cutting Small hole up to mm;Cutting Pierce s;Holes Lead-in mm;Holes Lead-out mm;Holes Gap mm;Holes Arc radius mm;Outline Lead-in mm;Outline Lead-out mm;Outline Gap mm;Outline Arc radius mm;Angled leads In angle °;Angled leads Out angle °;Gaps Parts mm;Gaps Border mm;Remnant cut Gap in mm;Remnant cut Gap out mm;Remnant cut To parts mm;Remnant cut Lead-in mm;Remnant cut Lead-out mm
-80 A O2/Air;;2;10;2;1.25;9810;4905;4;0.1;4;3;0;0;4;3;0;0;0;0;8;8;4;4;7;0;0
-80 A O2/Air;;2;10;3;1.3;6140;3070;6;0.2;4;3;0;0;4;3;0;0;0;0;8;8;4;4;7;0;0
-80 A O2/Air;;2;10;4;1.5;4300;2150;8;0.2;4;3;0;0;5;3;0;0;0;0;9;9;4;4;8;0;0
-80 A O2/Air;;2;10;5;1.7;3040;1520;12;0.3;5;3;0;0;6;3;0;0;0;0;10;10;4;4;9;0;0
-80 A O2/Air;;2;10;6;1.7;3040;1520;12;0.3;5;3;0;0;6;3;0;0;0;0;10;10;4;4;9;0;0
-80 A O2/Air;;2;10;8;1.8;1810;905;20;0.5;8;4;0;0;8;5;0;0;0;0;12;8;4;4;11;0;0
-80 A O2/Air;;2;10;10;1.8;1810;905;20;0.5;8;4;0;0;8;5;0;0;0;0;12;8;4;4;11;0;0
-130 A O2/Air;;12;35;12;2.1;2200;1100;24;0.5;10;6;0;0;10;6;0;6;0;0;17;6;4;4;13;0;0
-130 A O2/Air;;12;35;15;2.3;1650;825;30;0.7;13;7;0;0;13;8;0;8;0;0;20;8;4;4;16;0;0
-130 A O2/Air;;12;35;20;2.6;1045;525;40;1;17;9;0;0;18;20;0;10;0;0;20;10;4;4;23;0;0
-130 A O2/Air;;12;35;25;3.4;550;275;50;1.8;23;10;0;0;23;12;0;10;0;0;20;12;4;4;28;0;0
-130 A O2/Air;;12;35;30;4;380;190;64;4;30;10;0;0;30;15;0;12;0;0;20;12;4;4;35;0;0
-130 A O2/Air;;12;35;35;4.5;250;125;86;7;40;12;0;0;38;15;0;10;0;0;20;12;4;4;43;0;0
+﻿Technology;Materials;Used from mm;Used to mm;Thickness mm;Cutting Kerf mm;Cutting Speed mm/min;Cutting Small holes mm/min;Cutting Small hole up to mm;Cutting Pierce s;Holes Lead-in mm;Holes Lead-out mm;Holes Gap mm;Holes Arc radius mm;Outline Lead-in mm;Outline Lead-out mm;Outline Gap mm;Outline Arc radius mm;Angled leads In angle °;Angled leads Out angle °;Gaps Parts mm;Gaps Sheet trim mm;Remnant cut Gap in mm;Remnant cut Gap out mm;Remnant cut To parts mm;Remnant cut Lead-in mm;Remnant cut Lead-out mm
+80 A O2/Air;;2;10;2;1.25;9810;4905;4;0.1;4;3;0;0;4;3;0;0;0;0;7;5;4;4;7;0;0
+80 A O2/Air;;2;10;3;1.3;6140;3070;6;0.2;4;3;0;0;4;3;0;0;0;0;7;5;4;4;7;0;0
+80 A O2/Air;;2;10;4;1.5;4300;2150;8;0.2;4;3;0;0;5;3;0;0;0;0;8;5;4;4;8;0;0
+80 A O2/Air;;2;10;5;1.7;3040;1520;12;0.3;5;3;0;0;6;3;0;0;0;0;9;5;4;4;9;0;0
+80 A O2/Air;;2;10;6;1.7;3040;1520;12;0.3;5;3;0;0;6;3;0;0;0;0;9;5;4;4;9;0;0
+80 A O2/Air;;2;10;8;1.8;1810;905;20;0.5;8;4;0;0;8;5;0;0;0;0;11;7;4;4;11;0;0
+80 A O2/Air;;2;10;10;1.8;1810;905;20;0.5;8;4;0;0;8;5;0;0;0;0;11;7;4;4;11;0;0
+130 A O2/Air;;12;35;12;2.1;2200;1100;24;0.5;10;6;0;0;10;6;0;6;0;0;13;8;4;4;13;0;0
+130 A O2/Air;;12;35;15;2.3;1650;825;30;0.7;13;7;0;0;13;8;0;8;0;0;16;10;4;4;16;0;0
+130 A O2/Air;;12;35;20;2.6;1045;525;40;1;17;9;0;0;18;20;0;10;0;0;21;22;4;4;23;0;0
+130 A O2/Air;;12;35;25;3.4;550;275;50;1.8;23;10;0;0;23;12;0;10;0;0;26;14;4;4;28;0;0
+130 A O2/Air;;12;35;30;4;380;190;64;4;30;10;0;0;30;15;0;12;0;0;35;17;4;4;35;0;0
+130 A O2/Air;;12;35;35;4.5;250;125;86;7;40;12;0;0;38;15;0;10;0;0;43;17;4;4;43;0;0

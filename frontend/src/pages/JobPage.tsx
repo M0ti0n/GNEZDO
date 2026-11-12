@@ -10,7 +10,7 @@ import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PARTS_MIME } from "../shell/Drawer";
 import { sheetFromDxf } from "../job/dxfSheet";
 import { SheetPropertiesDialog } from "../components/SheetPropertiesDialog";
-import type { Machine, MachineList } from "../job/machine";
+import { gapsFor, withGaps, type Machine, type MachineList } from "../job/machine";
 import { partColor } from "../job/nest";
 import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
 
@@ -332,8 +332,8 @@ const optionLabel = (id: StockSource, label: string, st: StockSettings) => {
 function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
   parts: JobPart[]; stock: StockSheet[]; settings: StockSettings; onStock: (s: StockSheet[]) => void; onNotice: (t: string) => void; machine: Machine;
 }) {
-  // a new sheet starts with the job's machine's gaps
-  const gaps = { trims: { ...machine.trims }, partGapMm: machine.partGapMm, kerfMm: machine.kerfMm || undefined };
+  // a new sheet starts with the job's machine's gaps for its material and thickness (Technology row)
+  const gaps = (p: { material: string; thicknessMm: number }) => ({ ...gapsFor(machine, p.material, p.thicknessMm), ...p });
   const [props, setProps] = useState<number | null>(null);   // sheet shown in Sheet properties
   const [from, setFrom] = useState<StockSource>("parts");
   const file = useRef<HTMLInputElement>(null);
@@ -358,13 +358,13 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
       if (!missing.length) { onNotice("Every material and thickness of the part list has a sheet already"); return; }
       // one sheet per material and thickness of the list, at the global sheet size (Settings -> Stock)
       const l = settings.globalLengthMm, w = settings.globalWidthMm;
-      onStock([...stock, ...missing.map((p) => newSheet({ ...gaps, source: "parts", ...p, lengthMm: l, widthMm: w, qty: 1, unlimited: true }))]);
+      onStock([...stock, ...missing.map((p) => newSheet({ ...gaps(p), source: "parts", lengthMm: l, widthMm: w, qty: 1, unlimited: true }))]);
       return;
     }
     if (from === "dxf") { file.current?.click(); return; }
     if (from === "remnant") {
       // until the remnant store exists: a sheet to fill in, one piece
-      onStock([...stock, newSheet({ ...gaps, source: "remnant", ...nextPair(), lengthMm: 0, widthMm: 0, qty: 1, unlimited: false })]);
+      onStock([...stock, newSheet({ ...gaps(nextPair()), source: "remnant", lengthMm: 0, widthMm: 0, qty: 1, unlimited: false })]);
       return;
     }
     // a default slot: its size and material; the thickness from the part list (first one of that
@@ -377,17 +377,18 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
       const t = (same.find((p) => !covered.has(sheetKey(p.material, p.thicknessMm))) ?? same[0])?.thicknessMm ?? 0;
       pair = { material: slot.material.trim(), thicknessMm: t };
     }
-    onStock([...stock, newSheet({ ...gaps, source: from, ...pair, lengthMm: slot.lengthMm, widthMm: slot.widthMm, qty: 1, unlimited: true })]);
+    onStock([...stock, newSheet({ ...gaps(pair), source: from, lengthMm: slot.lengthMm, widthMm: slot.widthMm, qty: 1, unlimited: true })]);
   };
 
   const fromDxf = async (f: File) => {
-    const r = await sheetFromDxf(f, newSheet({ ...gaps, source: "dxf", ...nextPair(), lengthMm: 0, widthMm: 0, qty: 1, unlimited: false }));
+    const r = await sheetFromDxf(f, newSheet({ ...gaps(nextPair()), source: "dxf", lengthMm: 0, widthMm: 0, qty: 1, unlimited: false }));
     if (!r.ok) { if (r.tooBig) setTooBig({ file: f.name, ...r.tooBig }); else onNotice(r.message); return; }
     if (r.turned) onNotice(`${f.name}: turned 90° to fit the machine (${MACHINE_LIMIT.join(" × ")} mm)`);
     onStock([...stock, r.sheet]);
   };
 
-  const set = (id: string, patch: Partial<StockSheet>) => onStock(stock.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  // another material / thickness: the gaps follow its Technology row (unless changed by hand)
+  const set = (id: string, patch: Partial<StockSheet>) => onStock(stock.map((s) => (s.id === id ? { ...s, ...withGaps(machine, s, patch) } : s)));
 
 
   return (

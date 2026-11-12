@@ -2,7 +2,7 @@
 // in the browser). A job is nested for one machine: its 0,0 corner, cutting area and gaps.
 
 /** The sheet corner where the machine's 0,0 is; nesting packs the parts towards it. */
-import type { TechSet } from "./technology";
+import { techRowFor, type TechSet } from "./technology";
 import type { LeadRules } from "./leads";
 import type { Postprocessor } from "./postprocessor";
 
@@ -144,3 +144,31 @@ export function saveLocalMachines(m: MachineList) {
 
 export const machineOf = (m: MachineList, id: string | undefined): Machine =>
   m.list.find((x) => x.id === id) ?? m.list.find((x) => x.id === m.defaultId) ?? m.list[0];
+
+/** A new sheet's gaps: from the machine's Technology row for the material and thickness (Gaps · Parts,
+ *  Gaps · Sheet trim on all four edges, Cutting · Kerf as the cut diameter); what the row leaves empty,
+ *  or a thickness without a row, from the machine's own values (Settings → Machines → Machine). */
+export function gapsFor(m: Machine, material: string, thicknessMm: number): { trims: Machine["trims"]; partGapMm: number; kerfMm?: number } {
+  const row = techRowFor(m.technologies, material, thicknessMm)?.row;
+  const b = row && row.borderMm > 0 ? row.borderMm : null;
+  const kerf = row && row.kerfMm > 0 ? row.kerfMm : m.kerfMm;
+  return {
+    trims: b !== null ? { xMinus: b, xPlus: b, yMinus: b, yPlus: b } : { ...m.trims },
+    partGapMm: row && row.partGapMm > 0 ? row.partGapMm : m.partGapMm,
+    ...(kerf > 0 ? { kerfMm: kerf } : {}),
+  };
+}
+
+type Gapped = { material: string; thicknessMm: number; trims?: Machine["trims"]; partGapMm?: number; kerfMm?: number };
+
+/** A change of a sheet's material or thickness: its gaps follow the Technology row when they were the
+ *  old row's (gaps changed by hand stay). Returns the patch with the gaps added. */
+export function withGaps<T extends Gapped>(m: Machine, sheet: T, patch: Partial<T>): Partial<T> {
+  const material = patch.material ?? sheet.material, thicknessMm = patch.thicknessMm ?? sheet.thicknessMm;
+  if (material === sheet.material && thicknessMm === sheet.thicknessMm) return patch;
+  const was = gapsFor(m, sheet.material, sheet.thicknessMm);
+  const same = JSON.stringify(sheet.trims ?? was.trims) === JSON.stringify(was.trims) && (sheet.partGapMm ?? was.partGapMm) === was.partGapMm && (sheet.kerfMm ?? was.kerfMm) === was.kerfMm;
+  if (!same) return patch;
+  const now = gapsFor(m, material, thicknessMm);
+  return { ...patch, trims: now.trims, partGapMm: now.partGapMm, kerfMm: now.kerfMm } as Partial<T>;
+}

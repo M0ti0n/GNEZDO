@@ -8,7 +8,7 @@ import {
   fitsMachine, mirrorSheet, rotateSheet, sheetLoops, MACHINE_LIMIT,
   type StockSheet, type Trims,
 } from "../job/stock";
-import type { Machine, Origin } from "../job/machine";
+import { gapsFor, withGaps, type Machine, type Origin } from "../job/machine";
 import { sheetFromDxf } from "../job/dxfSheet";
 
 const SOURCE: Record<string, string> = {
@@ -29,12 +29,16 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
   onDelete?: (() => void) | string;
 }) {
   const origin = machine.origin;
-  // the machine's gaps are the defaults (RESET, and for a sheet that has none of its own)
-  const defaultTrims = () => ({ ...machine.trims });
-  const DEFAULT_PART_GAP_MM = machine.partGapMm;
-  const [s, setS] = useState<StockSheet>(() => ({ ...sheet, trims: sheet.trims ?? defaultTrims(), partGapMm: sheet.partGapMm ?? DEFAULT_PART_GAP_MM }));
+  // the machine's gaps for the sheet's material and thickness (Technology row) are the defaults
+  // (RESET, and for a sheet that has none of its own)
+  const first = gapsFor(machine, sheet.material, sheet.thicknessMm);
+  const [s, setS] = useState<StockSheet>(() => ({ ...sheet, trims: sheet.trims ?? first.trims, partGapMm: sheet.partGapMm ?? first.partGapMm }));
+  const now = gapsFor(machine, s.material, s.thicknessMm);
+  const defaultTrims = () => ({ ...now.trims });
+  const DEFAULT_PART_GAP_MM = now.partGapMm;
   const lists = usePickLists(s.material);
-  const set = (patch: Partial<StockSheet>) => setS((x) => ({ ...x, ...patch }));
+  // another material / thickness: the gaps follow its Technology row (unless changed by hand)
+  const set = (patch: Partial<StockSheet>) => setS((x) => ({ ...x, ...withGaps(machine, x, patch) }));
   // Add sheet: ADD FROM REMNANT (one piece, its size to fill in) / ADD FROM DXF (size and shape from the file)
   const file = useRef<HTMLInputElement>(null);
   const [fromNote, setFromNote] = useState<{ bad: boolean; text: string } | null>(null);
@@ -64,11 +68,11 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
   /** RESET: size and shape as added, default trims and gap, no cut diameter. */
   const reset = () => setS((x) => ({
     ...x, lengthMm: x.original?.lengthMm ?? x.lengthMm, widthMm: x.original?.widthMm ?? x.widthMm, outline: x.original?.outline,
-    trims: defaultTrims(), partGapMm: DEFAULT_PART_GAP_MM, kerfMm: machine.kerfMm || undefined,
+    trims: defaultTrims(), partGapMm: DEFAULT_PART_GAP_MM, kerfMm: now.kerfMm,
   }));
 
   const tooBig = s.lengthMm > 0 && s.widthMm > 0 && !fitsMachine(s.lengthMm, s.widthMm);
-  const changed = JSON.stringify(s) !== JSON.stringify({ ...sheet, trims: sheet.trims ?? defaultTrims(), partGapMm: sheet.partGapMm ?? DEFAULT_PART_GAP_MM });
+  const changed = JSON.stringify(s) !== JSON.stringify({ ...sheet, trims: sheet.trims ?? first.trims, partGapMm: sheet.partGapMm ?? first.partGapMm });
   const save = () => { onSave(s); onClose(); };
 
   // on the page itself, not inside the STOCK panel (whose styles would reach it)
