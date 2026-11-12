@@ -82,7 +82,7 @@ export const TECH_COLUMNS: { group: string; cols: { key: RowKey; label: string; 
   ] },
   { group: "Gaps", cols: [
     { key: "partGapMm", label: "Parts", unit: "mm" },
-    { key: "borderMm", label: "Border", unit: "mm" },
+    { key: "borderMm", label: "Sheet trim", unit: "mm" },
   ] },
   { group: "Remnant cut", cols: [
     { key: "remGapInMm", label: "Gap in", unit: "mm", min: -1000 },

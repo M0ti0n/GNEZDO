@@ -34,7 +34,7 @@ import { buildRequest, commonCutNote, continuedSheets, countsOf, isFinished, mis
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type ProcessTool, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
-import { loadLocalMachines, machineCan, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
+import { gapsFor, loadLocalMachines, machineCan, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
 import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
 import { loadJobPrefix, suggestJobName } from "./job/jobName";
 import { setMachineLimit } from "./job/stock";
@@ -818,12 +818,12 @@ export function App() {
         req.sheets = [];
         req.fixedSheets = [{
           index: 0, id: sh.sheetId, material: sh.material, thicknessMm: sh.thicknessMm, lengthMm: sh.lengthMm, widthMm: sh.widthMm,
-          outline: sh.outline, trims: sh.trims ?? { ...m.trims }, partGapMm: sh.partGapMm ?? m.partGapMm, kerfMm: sh.kerfMm,
+          outline: sh.outline, trims: sh.trims ?? gapsFor(m, sh.material, sh.thicknessMm).trims, partGapMm: sh.partGapMm ?? gapsFor(m, sh.material, sh.thicknessMm).partGapMm, kerfMm: sh.kerfMm,
           parts: pinned.flatMap((p) => { const path = pathOf.get(p.partId); return path ? [{ path, x: p.x, y: p.y, angle: p.angle, mirror: p.mirror }] : []; }),
         }];
       } else {
         req.sheets = [{ id: sh.sheetId, material: sh.material, thicknessMm: sh.thicknessMm, lengthMm: sh.lengthMm, widthMm: sh.widthMm,
-          qty: 1, source: "nested", trims: sh.trims ?? { ...m.trims }, partGapMm: sh.partGapMm ?? m.partGapMm, kerfMm: sh.kerfMm, outline: sh.outline }];
+          qty: 1, source: "nested", trims: sh.trims ?? gapsFor(m, sh.material, sh.thicknessMm).trims, partGapMm: sh.partGapMm ?? gapsFor(m, sh.material, sh.thicknessMm).partGapMm, kerfMm: sh.kerfMm, outline: sh.outline }];
       }
       let run = await nestApi.start(req);
       while (!isFinished(run)) { await new Promise((r) => setTimeout(r, 1000)); run = await nestApi.get(run.id); }
@@ -909,7 +909,9 @@ export function App() {
     setAddSheetFor({ jobId, sheet: newSheet({
       source: "manual", material: cur?.material ?? first?.material ?? "", thicknessMm: cur?.thicknessMm ?? first?.thicknessMm ?? 0,
       lengthMm: cur && !cur.outline ? cur.lengthMm : stockSettings.globalLengthMm, widthMm: cur && !cur.outline ? cur.widthMm : stockSettings.globalWidthMm,
-      qty: 1, unlimited: false, trims: { ...(cur?.trims ?? m.trims) }, partGapMm: cur?.partGapMm ?? m.partGapMm, kerfMm: cur?.kerfMm ?? (m.kerfMm || undefined),
+      qty: 1, unlimited: false,
+      ...(cur ? { trims: { ...(cur.trims ?? gapsFor(m, cur.material, cur.thicknessMm).trims) }, partGapMm: cur.partGapMm ?? gapsFor(m, cur.material, cur.thicknessMm).partGapMm, kerfMm: cur.kerfMm }
+        : gapsFor(m, first?.material ?? "", first?.thicknessMm ?? 0)),
     }) });
   };
 

@@ -5,7 +5,7 @@ import {
   NEST_MODE_LABEL, bestFoundAt, countsOf, hms, isFinished, partColor, sheetProblems, sheetStats,
   type NestMode, type NestedSheet, type Solution,
 } from "../job/nest";
-import type { Machine, Origin } from "../job/machine";
+import { gapsFor, type Machine, type Origin } from "../job/machine";
 import type { StockSheet } from "../job/stock";
 import { ManualNest } from "./ManualNest";
 import { useAutoCut } from "./CutView";
@@ -535,7 +535,7 @@ function nestedAsStock(sh: NestedSheet, from: StockSheet | undefined, m: Machine
   return {
     id: sh.sheetId, source: from?.source ?? "parts", material: sh.material, thicknessMm: sh.thicknessMm,
     lengthMm: sh.lengthMm, widthMm: sh.widthMm, qty: sh.cutNumber ?? 1, unlimited: false,
-    trims: sh.trims ?? from?.trims ?? { ...m.trims }, partGapMm: sh.partGapMm ?? from?.partGapMm ?? m.partGapMm,
+    trims: sh.trims ?? from?.trims ?? gapsFor(m, sh.material, sh.thicknessMm).trims, partGapMm: sh.partGapMm ?? from?.partGapMm ?? gapsFor(m, sh.material, sh.thicknessMm).partGapMm,
     kerfMm: sh.kerfMm ?? from?.kerfMm, outline: sh.outline, fileName: from?.fileName,
     original: { lengthMm: from?.lengthMm ?? sh.lengthMm, widthMm: from?.widthMm ?? sh.widthMm, outline: from?.outline ?? sh.outline },
   };

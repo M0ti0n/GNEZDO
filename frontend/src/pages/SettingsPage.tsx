@@ -234,7 +234,8 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
 
         <section className="rule">
           <h3>Gaps of a new sheet</h3>
-          <p className="rule-help">What a sheet added to a job for this machine starts with (Sheet properties can change them per sheet). Trims are by the machine's axes: X− and Y− are the edges at its 0,0.</p>
+          <p className="rule-help">They come from the Technology table, by the sheet's material and thickness: Gaps · Parts, Gaps · Sheet trim (all four edges) and Cutting · Kerf (the cut diameter). Sheet properties can change them per sheet.</p>
+          <p className="rule-help"><b>A thickness without a Technology row</b> (or a value left empty there) uses these. Trims are by the machine's axes: X− and Y− are the edges at its 0,0.</p>
           <div className="mc-gaps">
             <label className="sp-field"><span>X−</span><NumInput value={machine.trims.xMinus} min={0} aria-label="Trim X- (mm)" onCommit={(n) => setTrim("xMinus", n)} /></label>
             <label className="sp-field"><span>X+</span><NumInput value={machine.trims.xPlus} min={0} aria-label="Trim X+ (mm)" onCommit={(n) => setTrim("xPlus", n)} /></label>
