@@ -66,9 +66,9 @@ const SECTIONS: Section[] = [
       { id: "stackH", label: "Stack H", icon: toolStackH, ready: true, hint: "Stack H: copies of the selection along X until the edge or the next part" },
       { id: "stackGrid", label: "Stack grid", icon: toolStackGrid, ready: true, hint: "Stack grid: rows and columns of copies of the selection until the edges or other parts" },
       { id: "alignEdge", label: "Align edge", icon: toolAlignEdge, ready: true, hint: "Align edge: click the edge that stays (a part's or the sheet's), then an edge of the part to turn: it turns until the two are parallel" },
-      // the importer's Common cut icon; a switch: on, marked lines snap together and Arrange makes blocks
+      // the importer's Common cut icon; a switch: on, Arrange makes blocks (snapping: a key held while dragging)
       { id: "commonCut", label: "Common cut", icon: "", svg: IMPORT_TOOLS.find((t) => t.id === "commonCut")?.icon, ready: true,
-        hint: "Common cut (on / off): parts with the Common cut rule snap together on their marked lines, cut once (Alt: place without snapping); Arrange makes blocks of them" },
+        hint: "Common cut (on / off): Arrange makes blocks of the parts with the Common cut rule. Snapping their marked lines together: hold the Common cut snapping key (Settings → Manual nest; Shift unless changed) while dragging, in either state" },
     ],
   },
   {

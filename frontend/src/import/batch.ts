@@ -46,7 +46,7 @@ export const propertiesFrom = (rules: ImportRules): BatchProperties => ({
   rotations: [...rules.defaultRotations],
   mirror: rules.mirrorWithoutOpenCut,
   filler: rules.defaultFiller,
-  commonCut: false,
+  commonCut: rules.commonOnOutline,
 });
 
 const PROPS_KEY = "gnezdo.importProperties";

@@ -16,7 +16,7 @@ import { MachineFoldersSettings } from "../components/MachineFoldersSettings";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
 import { DEFAULT_CUT_ORDER, LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, cutOrderOf, machineCan, newMachine, type Machine, type MachineList } from "../job/machine";
-import { DEFAULT_KEYS, KEY_ACTIONS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
+import { DEFAULT_KEYS, KEY_ACTIONS, RESERVED_KEYS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
 type Section = "stock" | "machine" | "keys" | "personal" | "data" | "log";
@@ -363,6 +363,7 @@ function PersonalSettings() {
 function KeysSettings() {
   const [keys, setKeysState] = useState<KeyMap>(loadKeys);
   const [wait, setWait] = useState<{ a: KeyAction; k: 0 | 1 } | null>(null);
+  const [taken, setTaken] = useState<string | null>(null);
   const setKeys = (k: KeyMap) => { setKeysState(k); saveKeys(k); };
   const [view, setViewState] = useState<ManualView>(loadManualView);
   const setView = (v: ManualView) => { setViewState(v); saveManualView(v); };
@@ -372,6 +373,9 @@ function KeysSettings() {
     e.stopPropagation();
     if (e.key === "Escape") { setWait(null); return; }
     const code = e.key === "Backspace" ? "" : e.code;
+    // Ctrl and the keys of the other shortcuts stay theirs
+    if (RESERVED_KEYS.has(code)) { setTaken(`${keyLabel(code)} is taken by another shortcut (Ctrl snapping, Ctrl+A / C / V / Y / Z, Delete, Esc): pick another key`); return; }
+    setTaken(null);
     const next = { ...keys } as KeyMap;
     // a key does one thing: taken from another action first
     if (code) for (const a of KEY_ACTIONS) next[a.id] = next[a.id].map((c) => (c === code ? "" : c)) as [string, string];
@@ -408,6 +412,9 @@ function KeysSettings() {
             </div>
           ))}
         </div>
+        {taken && <p className="tech-msg is-bad" role="status">{taken}</p>}
+        <p className="rule-help"><b>Snapping:</b> Ctrl held when a dragged part is let go puts it the part gap from the part under it (or the nearest).
+          The <b>Common cut snapping</b> key held while dragging snaps a marked common cut line onto another part&apos;s, a kerf apart (parts with the Common cut rule).</p>
         <p className="rule-help">Delete removes the selected parts, Ctrl+A selects all, Ctrl+C / Ctrl+V copy and paste them (the copy follows the pointer
           until a click puts it down; not over a part's required or max number), Ctrl+Z / Ctrl+Y undo and redo, Esc clears the selection.
           Numpad keys work with Num Lock on or off.</p>

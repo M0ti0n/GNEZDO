@@ -669,6 +669,16 @@ export function commonCutOk(entities: Entity[]): Set<string> {
   return ok;
 }
 
+/** Every straight line of the part's outline (its largest closed cutting contour) marked common cut. */
+export function markOutlineCommon(entities: Entity[]): Entity[] {
+  const closed = buildContours(entities.filter((e) => roleOf(e) === "cut")).filter((c) => c.closed);
+  if (!closed.length) return entities;
+  const size = (c: Contour) => (c.box.maxX - c.box.minX) * (c.box.maxY - c.box.minY);
+  const outer = closed.reduce((b, c) => (size(c) > size(b) ? c : b));
+  const ids = new Set(outer.entityIds);
+  return entities.map((e) => (ids.has(e.id) && e.kind === "line" ? { ...e, common: true } : e));
+}
+
 /** Lines marked common cut that can't be (not straight, not cutting, not on a closed contour) lose the mark. */
 export function dropBadCommon(entities: Entity[]): Entity[] {
   if (!entities.some((e) => e.common)) return entities;
