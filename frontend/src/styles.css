@@ -2090,6 +2090,13 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .cut-via.is-draft { fill: #8e44ad; }
 .cut-target { fill: none; stroke: #8e44ad; }
 .cut-draft { fill: none; stroke: #8e44ad; stroke-linecap: round; }
+.bc-balloon line { stroke: #1b2a30; }
+.bc-balloon circle { fill: #fff; stroke: #1b2a30; }
+.bc-balloon .bc-dot { fill: #1b2a30; stroke: none; }
+.bc-balloon.is-neg circle:not(.bc-dot) { fill: #fde3e3; stroke: #c2412d; }
+.bc-balloon.is-sel circle:not(.bc-dot) { stroke: #ff8a00; filter: drop-shadow(0 0 3px #ff8a00); }
+.bc-balloon.is-float { opacity: .85; pointer-events: none; }
+.bc-balloon text { fill: #1b2a30; font-weight: 700; text-anchor: middle; dominant-baseline: central; font-family: var(--font, sans-serif); }
 .cut-hl { fill: none; stroke: #f5b800; stroke-opacity: .55; stroke-linecap: round; stroke-linejoin: round; }
 .cut-end { fill: #e3262b; }
 .cut-path .cut-common { stroke: var(--ln-common); }
@@ -2252,6 +2259,9 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .li-val .li-num { width: 34px; height: 24px; border: 0; padding: 0 2px 0 5px; font: inherit; font-size: 14px; font-weight: 600; text-align: right; background: transparent; outline: none; }
 .li-val span { font-size: 12px; color: var(--ink-3); }
 .li-val:focus-within { box-shadow: 0 0 0 3px var(--green-tint); }
+.li-val.is-neg { background: #fde3e3; }   /* a negative gap: the cut stops short, a bridge is left */
+.li-val.is-locked { background: #eef1f1; border-color: #b7c0c2 !important; opacity: .75; }
+.li-val.is-locked .li-num { color: var(--ink-3); }
 .li-bar .btn { height: 36px; }
 .li-reset { border-color: #1e8db5 !important; }
 .li-reset:hover:not(:disabled) { background: #e3f2f8 !important; }
@@ -2304,3 +2314,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 /* Process -> Movement */
 .mv-btn.is-del.is-on { background: #fde8e8; border-color: var(--red); color: var(--red); box-shadow: 0 0 0 2px #fde8e8; }
 .mv-btn > span { display: flex; flex-direction: column; justify-content: center; width: 100%; min-height: 2.4em; text-align: center; line-height: 1.2; }   /* one or two rows, the buttons the same height */
+
+/* Process -> Break cut */
+.bc-modes button { text-transform: uppercase; font-size: 13px; letter-spacing: .03em; }
+.chk.is-off { opacity: .5; }

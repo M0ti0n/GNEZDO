@@ -42,6 +42,8 @@ export interface CutMode {
   glow?: { all: Set<CutContour>; strong?: CutContour };
   /** Movement: the rapid picked (glow) and the way being drawn (points so far, then the pointer) */
   move?: { sel?: Pt[]; draft?: Pt[]; targets?: Pt[] };
+  /** Break cut: its balloons (BC, 1, 2) at the leads they mark; `float`: following the pointer, still to be placed */
+  balloons?: { at: Pt; label: string; neg: boolean; sel?: boolean; float?: boolean; side?: number }[];
   /** Simulation: the path as far as the head has come, the parts cut out so far, the head */
   sim?: { shown: CutContour[]; current?: CutContour; rapids: [Pt, Pt][]; done: Set<number>; head: Pt };
 }
@@ -1015,6 +1017,19 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                       <path className="cut-draft" d={line(cut.move.draft)} style={{ strokeWidth: 1.6 / v.s, strokeDasharray: `${5 / v.s} ${3 / v.s}` }} />
                       {cut.move.draft.slice(1).map((q, j) => <circle key={`d${j}`} className="cut-via is-draft" cx={q[0]} cy={q[1]} r={3 / v.s} style={{ strokeWidth: 1 / v.s }} />)}
                     </>)}
+                    {cut?.balloons?.map((b, j) => {
+                      // a balloon up and right of its point, on a short leader
+                      // (side -1: up and left, so a pair 1 / 2 does not overlap)
+                      const r = 10 / v.s, dx = 16 / v.s, cx = b.at[0] + (b.side ?? 1) * dx, cy = b.at[1] - dx;
+                      return (
+                        <g key={`b${j}`} className={`bc-balloon${b.neg ? " is-neg" : ""}${b.sel ? " is-sel" : ""}${b.float ? " is-float" : ""}`}>
+                          <line x1={b.at[0]} y1={b.at[1]} x2={cx} y2={cy} style={{ strokeWidth: 1.2 / v.s }} />
+                          <circle cx={b.at[0]} cy={b.at[1]} r={1.8 / v.s} className="bc-dot" />
+                          <circle cx={cx} cy={cy} r={r} style={{ strokeWidth: 1.5 / v.s }} />
+                          <text x={cx} y={cy} style={{ fontSize: (b.label.length > 1 ? 7.5 : 9.5) / v.s }}>{b.label}</text>
+                        </g>
+                      );
+                    })}
                     {cut?.sim && (() => {
                       // the head: a crosshair
                       const [hx, hy] = cut.sim.head, r = 9 / v.s, g = 5 / v.s, e = 15 / v.s;

@@ -33,7 +33,7 @@ const len = (a: Pt) => Math.hypot(a[0], a[1]);
 const unit = (a: Pt): Pt => { const l = len(a) || 1; return [a[0] / l, a[1] / l]; };
 
 /** The nearest point of a closed loop: its edge, how far along it (0..1) and the distance. */
-function nearestOn(lp: Pt[], p: Pt): { edge: number; t: number; at: Pt; d: number } {
+export function nearestOn(lp: Pt[], p: Pt): { edge: number; t: number; at: Pt; d: number } {
   let best = { edge: 0, t: 0, at: lp[0], d: Infinity };
   for (let i = 0; i < lp.length; i++) {
     const a = lp[i], b = lp[(i + 1) % lp.length], e = sub(b, a), L2 = dot(e, e);
@@ -55,7 +55,7 @@ const distPoly = (pts: Pt[], p: Pt) => {
 };
 
 /** A contour this tool works on: an outline or a hole of one part (not a common cut block's). */
-export const editable = (c: CutContour) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common;
+export const editable = (c: CutContour) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.bc;
 
 /** The contour nearest the point (its leads count most: they are what is clicked), within `reach` mm. */
 export function contourAt(cut: SheetCut, live: Set<CutContour>, p: Pt, reach: number): number {
@@ -74,7 +74,7 @@ export function contourAt(cut: SheetCut, live: Set<CutContour>, p: Pt, reach: nu
 }
 
 /** The part's loop a contour runs along: sheet frame, in the contour's sense, and unoriented (as drawn). */
-function loopOf(ctx: LeadCtx, c: CutContour, mirrored: boolean): { lp: Pt[]; raw: Pt[]; k: number } | null {
+export function loopOf(ctx: LeadCtx, c: CutContour, mirrored: boolean): { lp: Pt[]; raw: Pt[]; k: number } | null {
   const p = ctx.sheet.parts[c.part];
   if (!p) return null;
   const f = transform(p);
@@ -91,7 +91,7 @@ function loopOf(ctx: LeadCtx, c: CutContour, mirrored: boolean): { lp: Pt[]; raw
 }
 
 /** The lead type the automatic cut gives a contour started at this point. */
-function autoType(ctx: LeadCtx, kind: "outer" | "inner", lp: Pt[], s: LeadStart, side: 1 | -1): LeadType {
+export function autoType(ctx: LeadCtx, kind: "outer" | "inner", lp: Pt[], s: LeadStart, side: 1 | -1): LeadType {
   const cType = kind === "outer" ? ctx.rules.outCorner : ctx.rules.holeCorner;
   let oType = kind === "outer" ? ctx.rules.outOther : ctx.rules.holeOther;
   if (cornerOnly(oType)) oType = "perp";
@@ -107,7 +107,7 @@ export function leadOf(ctx: LeadCtx, c: CutContour): { type: LeadType; spec: Lea
 }
 
 /** Where on the loop a contour starts when it is started near p (corner types: a sharp corner within `snap` mm). */
-function startNear(ctx: LeadCtx, lp: Pt[], p: Pt, type: LeadType | null, side: 1 | -1, snap: number): LeadStart | string {
+export function startNear(ctx: LeadCtx, lp: Pt[], p: Pt, type: LeadType | null, side: 1 | -1, snap: number): LeadStart | string {
   const n = lp.length;
   const next = (i: number) => lp[(i + 1) % n], prev = (i: number) => lp[(i - 1 + n) % n];
   const sharp = (i: number) => len(sub(lp[i], prev(i))) >= 0.5 && len(sub(next(i), lp[i])) >= 0.5 && cornerAngle(lp, i, side) <= ctx.rules.sharpMaxDeg;
