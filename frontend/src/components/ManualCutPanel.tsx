@@ -9,7 +9,8 @@ import toolManualCut from "../shell/jobtools/tool-manualCut.png";
 // Process -> Manual cut (after Auto cut's Selected parts): SELECT, then click contours of the processed
 // sheet in the order to cut them; the list holds them in that order (drag, or Up / Down, to change it).
 // Picked contours glow on the sheet, the one chosen in the list glows stronger. APPLY puts them in the
-// cut path in that order, in the places they had (the rest stays where it is).
+// cut path in that order, in the places they had (the rest stays where it is). A part shows as its ID in
+// the job part list and its copy on the sheet (12_3: part 12, its third copy), the name on hover.
 
 type PartRef = { path: string; name?: string; no?: number };
 
@@ -36,7 +37,14 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
   const cutPath = sheet?.cut;
   const can = single && !!cutPath && live.size > 0;
   const nameOf = (part: number) => { const p = sheet?.parts[part]; return (p && parts.get(p.partId)?.name) ?? `Part ${part + 1}`; };
-  const labelOf = (c: CutContour) => (c.parts ? "Common cut block" : nameOf(c.part));
+  // a part as its ID in the job part list and which copy of it on the sheet it is: 12_3
+  const copyNo = useMemo(() => {
+    const seen = new Map<string, number>();
+    return (sheet?.parts ?? []).map((p) => { const n = (seen.get(p.partId) ?? 0) + 1; seen.set(p.partId, n); return n; });
+  }, [sheet?.parts]);
+  const idOf = (part: number) => { const p = sheet?.parts[part]; const no = p ? parts.get(p.partId)?.no : undefined; return `${no ?? "?"}_${copyNo[part] ?? 1}`; };
+  const labelOf = (c: CutContour) => (c.parts ? `Block ${c.parts.map(idOf).join(", ")}` : idOf(c.part));
+  const fullOf = (c: CutContour) => (c.parts ? c.parts.map((i) => `${idOf(i)} ${nameOf(i)}`).join(", ") : `${idOf(c.part)} ${nameOf(c.part)}`);
 
   const point = (x: number, y: number, scale: number) => {
     if (!cutPath || !picking) return;
@@ -55,7 +63,7 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
   });
   const apply = () => {
     if (!sheet || !cutPath || !picked.length) return;
-    const r = reorderCut(cutPath, picked, nameOf);
+    const r = reorderCut(cutPath, picked, (i) => `${idOf(i)} (${nameOf(i)})`);
     if (typeof r === "string") { setMsg({ text: r, bad: true }); return; }
     onCut(index, r);
     diag("process", `Manual cut on sheet ${index + 1}`, { contours: picked.length });
@@ -86,7 +94,7 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
                 <div key={k} className="ac-row">
                   {/* the place in the cut order: stays where it is when the rows are dragged */}
                   <span className="ac-no" style={col ? { color: col.stroke, borderColor: col.stroke } : undefined}>{j + 1}</span>
-                  <span className={`ac-name mc-name${rowSel === k ? " is-sel" : ""}${dragFrom === j ? " is-drag" : ""}`} draggable title={`${labelOf(c)} · ${contourKind(c)}`}
+                  <span className={`ac-name mc-name${rowSel === k ? " is-sel" : ""}${dragFrom === j ? " is-drag" : ""}`} draggable title={`${fullOf(c)} · ${contourKind(c)}`}
                     onClick={() => setRowSel(rowSel === k ? null : k)}
                     onDragStart={(e) => { setDragFrom(j); setRowSel(k); e.dataTransfer.effectAllowed = "move"; }}
                     onDragOver={(e) => { e.preventDefault(); if (dragFrom !== null && dragFrom !== j) { move(dragFrom, j); setDragFrom(j); } }}
