@@ -365,7 +365,7 @@ export function densityOf(material: string): number {
   if (/\bALU|ALMG|\bAL\b|ALUMIN/.test(m)) return 2.7;
   if (/INOX|1\.43|1\.44|1\.45|STAINLESS|AISI/.test(m)) return 7.9;
   if (/\bCU\b|COPPER/.test(m)) return 8.96;
-  if (/BRASS|\bMS\b|MESSING/.test(m)) return 8.5;
+  if (/BRASS|MESSING/.test(m)) return 8.5;   // not MS: mild steel in the laser tables
   return 7.85;
 }
 

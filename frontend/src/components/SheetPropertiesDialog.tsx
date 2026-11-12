@@ -73,12 +73,15 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
 
   const tooBig = s.lengthMm > 0 && s.widthMm > 0 && !fitsMachine(s.lengthMm, s.widthMm);
   const changed = JSON.stringify(s) !== JSON.stringify({ ...sheet, trims: sheet.trims ?? first.trims, partGapMm: sheet.partGapMm ?? first.partGapMm });
+  // a new sheet, or a material / thickness changed: one the Technology tables have
+  const badTech = !nested && (!!adding || s.material !== sheet.material || s.thicknessMm !== sheet.thicknessMm)
+    && !!s.material.trim() && !!s.thicknessMm && (!lists.materialOk(s.material) || !lists.thicknessOk(s.thicknessMm));
   const save = () => { onSave(s); onClose(); };
 
   // on the page itself, not inside the STOCK panel (whose styles would reach it)
   return createPortal(
     <div className="dlg-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <form className="dlg proc pp-dlg sp-dlg" role="dialog" aria-modal="true" aria-labelledby="sp-title" onSubmit={(e) => { e.preventDefault(); if (!tooBig) save(); }}>
+      <form className="dlg proc pp-dlg sp-dlg" role="dialog" aria-modal="true" aria-labelledby="sp-title" onSubmit={(e) => { e.preventDefault(); if (!tooBig && !badTech) save(); }}>
         <header className="dlg-head">
           <span className="dlg-icon sp-icon" aria-hidden="true">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
@@ -122,9 +125,11 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
             <div className="proc-group">
               <span className="proc-label">Material and thickness</span>
               <div className="filter-pair">
-                <Combobox value={s.material} onChange={(material) => set({ material })} options={lists.materials} placeholder="Material" ariaLabel="Material" newHint="a new material" readOnly={nested} />
+                <Combobox value={s.material} onChange={(material) => set({ material })} options={lists.strict ? lists.techMaterials : lists.materials}
+                  strict={lists.strict && !nested} strictNote="not in the Technology tables (Settings → Machines → Technology: material tags)" placeholder="Material" ariaLabel="Material" newHint="a new material" readOnly={nested} />
                 <Combobox value={s.thicknessMm ? String(s.thicknessMm) : ""} onChange={(t) => set({ thicknessMm: Number(t.replace(",", ".").replace(/[^\d.]/g, "")) || 0 })}
-                  options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" readOnly={nested} />
+                  options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict && !nested} strictNote="no Technology row for this thickness (Settings → Machines → Technology)"
+                  placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" readOnly={nested} />
               </div>
             </div>
 
@@ -179,12 +184,12 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
               title={typeof onDelete === "string" ? onDelete : "Take this sheet out of the solution; its parts go back to the work part list"}
               onClick={() => { if (typeof onDelete === "function") { onClose(); onDelete(); } }}>Delete sheet</button>
           )}
-          <span className="proc-missing">{!adding && tooBig && changed ? "Outside the cutting area: not saved like this." : adding ? (!s.material.trim() || !s.thicknessMm ? "Material and thickness first." : !(s.lengthMm > 0 && s.widthMm > 0) ? "Size first." : tooBig ? "Too big for the machine." : "")
+          <span className="proc-missing">{badTech ? "Material and thickness: one of the Technology tables." : !adding && tooBig && changed ? "Outside the cutting area: not saved like this." : adding ? (!s.material.trim() || !s.thicknessMm ? "Material and thickness first." : !(s.lengthMm > 0 && s.widthMm > 0) ? "Size first." : tooBig ? "Too big for the machine." : "")
             : changed ? (nested ? "Only this sheet changes." : "Every sheet nested from this stock gets it.") : ""}</span>
           <button type="button" className="btn btn-plain" onClick={onClose}>Cancel</button>
           {adding
-            ? <button type="submit" className="btn btn-save" disabled={!s.material.trim() || !s.thicknessMm || !(s.lengthMm > 0 && s.widthMm > 0) || tooBig}>ADD SHEET</button>
-            : <button type="submit" className="btn btn-save" disabled={!changed || tooBig}>Save</button>}
+            ? <button type="submit" className="btn btn-save" disabled={!s.material.trim() || !s.thicknessMm || !(s.lengthMm > 0 && s.widthMm > 0) || tooBig || badTech}>ADD SHEET</button>
+            : <button type="submit" className="btn btn-save" disabled={!changed || tooBig || badTech}>Save</button>}
         </footer>
       </form>
     </div>,

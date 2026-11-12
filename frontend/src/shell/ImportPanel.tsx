@@ -86,7 +86,8 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
   const unchecked = count("unchecked");
   const attention = count("attention");
   const toProcess = count("ok");
-  const propsSet = p.properties.material.trim() !== "" && Number(p.properties.thicknessMm) > 0;
+  const propsSet = p.properties.material.trim() !== "" && Number(p.properties.thicknessMm) > 0
+    && lists.materialOk(p.properties.material) && lists.thicknessOk(p.properties.thicknessMm);
   const duplicates = count("duplicate");
   const toCheck = attention + duplicates;
   const canProcess = toProcess > 0 && !p.busy;
@@ -169,10 +170,12 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                   value={p.properties.material}
                   // a new material empties the thickness, so both are always chosen together
                   onChange={(material) => setProp({ material, thicknessMm: material === p.properties.material ? p.properties.thicknessMm : "" })}
-                  options={lists.materials} placeholder="Material" ariaLabel="Material" newHint="a new material" />
+                  options={lists.strict ? lists.techMaterials : lists.materials} strict={lists.strict} strictNote="not in the Technology tables (Settings → Machines → Technology: material tags)"
+                  placeholder="Material" ariaLabel="Material" newHint="a new material" />
                 <Combobox className={needProps && p.properties.thicknessMm === "" ? "is-required" : undefined}
                   value={p.properties.thicknessMm} onChange={(t) => setProp({ thicknessMm: t.replace(",", ".").replace(/[^\d.]/g, "") })}
-                  options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
+                  options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict} strictNote="no Technology row for this thickness (Settings → Machines → Technology)"
+                  placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
               </div>
               {p.properties.material.trim() !== "" && p.properties.thicknessMm === "" && (
                 <p className="imp-props-warn">Choose the thickness for {p.properties.material.trim()}.</p>

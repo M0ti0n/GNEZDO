@@ -138,6 +138,28 @@ export function addThickness(t: TechSet, thicknessMm: number): TechSet {
 /** Is this row used (its thickness in the technology's range)? A range of 0-0 means all. */
 export const inRange = (t: TechSet, mm: number) => (!t.minMm && !t.maxMm) || (mm >= t.minMm - 1e-6 && mm <= (t.maxMm || Infinity) + 1e-6);
 
+/** The materials the machines have a technology for: every material tag of their Technology tables
+ *  (a table without tags takes any material, so it names none). One spelling each, A to Z. */
+export function techMaterials(techSets: (TechSet[] | undefined)[]): string[] {
+  const by = new Map<string, string>();
+  for (const techs of techSets) for (const t of techs ?? []) for (const m of t.materials) {
+    const k = m.trim().toLowerCase();
+    if (k && !by.has(k)) by.set(k, m.trim());
+  }
+  return [...by.values()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+/** The thicknesses the machines have a Technology row for with this material (any material: all). */
+export function techThicknesses(techSets: (TechSet[] | undefined)[], material: string): number[] {
+  const m = material.trim().toLowerCase();
+  const out = new Set<number>();
+  for (const techs of techSets) for (const t of techs ?? []) {
+    if (m && t.materials.length && !t.materials.some((x) => x.trim().toLowerCase() === m)) continue;
+    for (const r of t.rows) if (r.thicknessMm > 0 && inRange(t, r.thicknessMm)) out.add(r.thicknessMm);
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
 /** The row for a material and thickness: from the first technology tagged with that material whose range has it. */
 export function techRowFor(techs: TechSet[] | undefined, material: string, thicknessMm: number): { tech: TechSet; row: TechRow } | null {
   const m = material.trim().toLowerCase();

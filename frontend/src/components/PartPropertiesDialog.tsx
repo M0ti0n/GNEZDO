@@ -66,7 +66,10 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
     f.material.trim() !== detail.part.material || Number(f.thicknessMm) !== detail.part.thicknessMm || f.mirror !== detail.mirror || f.filler !== detail.filler || f.commonCut !== !!detail.commonCut ||
     f.rotations.join() !== ROTATIONS.filter((r) => detail.rotations.includes(r)).join());
   const projectMissing = !!f && lists.projectsLoaded && !lists.projectKnown(f.project);
-  const missing = f ? [!f.name.trim() && "name", !f.material.trim() && "material", !(Number(f.thicknessMm) > 0) && "thickness",
+  // a material or thickness changed must be one of the Technology tables (an old one left as it is stays)
+  const reMat = !!(f && detail) && (f.material.trim() !== detail.part.material || Number(f.thicknessMm) !== detail.part.thicknessMm);
+  const missing = f ? [!f.name.trim() && "name", !f.material.trim() ? "material" : reMat && !lists.materialOk(f.material) && "a material of the Technology tables",
+    !(Number(f.thicknessMm) > 0) ? "thickness" : reMat && !lists.thicknessOk(f.thicknessMm) && "a thickness its Technology table has",
     projectMissing && "a saved project"].filter(Boolean) : [];
 
   const save = async () => {
@@ -145,9 +148,11 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
                   <Combobox value={f.material}
                     // a new material empties the thickness, so both are always chosen together
                     onChange={(material) => set({ material, thicknessMm: material === f.material ? f.thicknessMm : "" })}
-                    options={lists.materials} placeholder="Material" ariaLabel="Material" newHint="a new material" />
+                    options={lists.strict ? lists.techMaterials : lists.materials} strict={lists.strict} strictNote="not in the Technology tables (Settings → Machines → Technology: material tags)"
+                    placeholder="Material" ariaLabel="Material" newHint="a new material" />
                   <Combobox value={f.thicknessMm} onChange={(t) => set({ thicknessMm: t.replace(",", ".").replace(/[^\d.]/g, "") })}
-                    options={lists.thicknesses} placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
+                    options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict} strictNote="no Technology row for this thickness (Settings → Machines → Technology)"
+                    placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
                 </div>
               </div>
               <div className="proc-group">
