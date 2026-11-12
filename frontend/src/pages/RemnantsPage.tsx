@@ -18,9 +18,14 @@ function RemnantPicture({ r }: { r: SavedRemnant }) {
 }
 
 /** Edit a saved remnant, or name a new one (Import remnant). */
-export function RemnantDialog({ title = "Edit remnant", r, names, onSave, onCancel }: { title?: string; r: SavedRemnant; names: Set<string>; onSave: (r: SavedRemnant) => void; onCancel: () => void }) {
+export function RemnantDialog({ title = "Edit remnant", r, names, fresh = false, onSave, onCancel }: {
+  title?: string; r: SavedRemnant; names: Set<string>;
+  /** a new remnant (Import): no saved remnant may have its name, not even the one it came with */
+  fresh?: boolean;
+  onSave: (r: SavedRemnant) => void; onCancel: () => void;
+}) {
   const [x, setX] = useState(r);
-  const clash = x.name.trim() !== r.name && names.has(x.name.trim());
+  const clash = (fresh || x.name.trim() !== r.name) && names.has(x.name.trim());
   const ok = x.name.trim() !== "" && !clash && x.material.trim() !== "" && x.thicknessMm > 0;
   return (
     <div className="dlg-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>

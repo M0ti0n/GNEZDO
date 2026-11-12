@@ -38,7 +38,8 @@ export async function suggestJobName(taken: string[] = []): Promise<string> {
   const p = loadJobPrefix();
   if (!p) return "";
   try {
-    const jobs = await api.searchJobs({ name: p });
+    // the newest made first (the list stops at 500)
+    const jobs = await api.searchJobs({ name: p }, { key: "created", dir: "desc" });
     return nextJobName(p, jobs, taken);
   } catch {
     return nextJobName(p, [], taken);

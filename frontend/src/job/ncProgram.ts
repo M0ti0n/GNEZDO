@@ -1,9 +1,9 @@
 // A sheet's cut path as the program a postprocessor gets (job/postprocessor.ts): the contours in
 // cutting order with their leads, then the remnant's cuts; machine coordinates from the machine's 0,0
-// corner. Outlines run clockwise and holes counter-clockwise as the machine sees them (G41: the kerf on
-// the scrap side): with a 0,0 corner that mirrors the sheet as drawn, the contours are turned round.
+// corner. Auto cut already runs outlines clockwise and holes counter-clockwise as the machine sees them
+// (G41: the kerf on the scrap side), for the 0,0 corner it was made for.
 
-import { liveContours, originPoint, type CutContour } from "./cutPath";
+import { liveContours, originMirrors, originPoint, type CutContour } from "./cutPath";
 import type { Machine, Origin } from "./machine";
 import type { NestedSheet } from "./nest";
 import type { NcContour, NcProgram, NcPt } from "./postprocessor";
@@ -15,17 +15,14 @@ type Pt = [number, number];
 export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origin, name: string, partName: (i: number) => string | undefined): NcProgram | { error: string } {
   const live = liveContours(sheet);
   if (!live.length) return { error: "no cut path (Process → Auto cut first)" };
+  if (!!sheet.cut?.mirrored !== originMirrors(origin)) return { error: "the machine's 0,0 corner changed since Auto cut: run Auto cut again" };
+  const tech = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm);
+  if (!tech) return { error: `no Technology row for ${sheet.material} ${sheet.thicknessMm} mm (Settings → Machines → Technology)` };
   const [ox, oy] = originPoint(sheet, origin);
   const map = ([x, y]: Pt): NcPt => ({ x: Math.round(Math.abs(x - ox) * 1000) / 1000, y: Math.round(Math.abs(y - oy) * 1000) / 1000 });
-  // the sheet as drawn has y down; machine Y up: one axis flipped keeps the turning sense, none or two mirror it
-  const mirrored = (ox > 0) === (oy > 0);
 
   const contour = (c: Pick<CutContour, "kind" | "pts" | "leadIn" | "leadOut" | "small">, part?: string): NcContour | null => {
-    let leadIn = c.leadIn, pts = c.pts, leadOut = c.leadOut;
-    if (mirrored && (c.kind === "outer" || c.kind === "inner")) {
-      // turned round: the lead-out (backwards) leads in, the lead-in (backwards) leads out
-      [leadIn, pts, leadOut] = [leadOut.slice().reverse(), pts.slice().reverse(), leadIn.slice().reverse()];
-    }
+    const { leadIn, pts, leadOut } = c;
     const path: Pt[] = [...(leadIn.length ? leadIn : [pts[0]]), ...pts.slice(1), ...leadOut.slice(1)];
     const all = path.map(map).filter((p, i, a) => !i || Math.hypot(p.x - a[i - 1].x, p.y - a[i - 1].y) > 0.001);
     if (all.length < 2) return null;
@@ -61,11 +58,10 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
       at = pts[pts.length - 1];
     }
   }
-  const tech = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm);
   return {
     name,
     sheet: { lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, thicknessMm: sheet.thicknessMm, material: sheet.material },
-    tech: { ...(tech?.row ?? {}), name: tech?.tech.name },
+    tech: { ...tech.row, name: tech.tech.name },
     contours,
   };
 }

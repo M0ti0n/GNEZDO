@@ -28,10 +28,13 @@ export function useProcessDel({ index, sheets, onClear }: {
   const sheet = sheets[index] as NestedSheet | undefined;
   const [ask, setAsk] = useState<null | "remnant" | "cut" | "all">(null);
   const [msg, setMsg] = useState<string | null>(null);
+  /** what the last delete took, for UNDO */
+  const [last, setLast] = useState<{ index: number; patch: Partial<Pick<NestedSheet, "cut" | "remnant">> } | null>(null);
   useEffect(() => setMsg(null), [index]);
   const has = { remnant: !!sheet?.remnant, cut: !!sheet?.cut?.contours.length };
   const what = { remnant: "the remnant", cut: "the cut path", all: "the cut path and the remnant" };
   const go = (k: "remnant" | "cut" | "all") => {
+    setLast({ index, patch: k === "remnant" ? { remnant: sheet?.remnant } : k === "cut" ? { cut: sheet?.cut } : { cut: sheet?.cut, remnant: sheet?.remnant } });
     onClear(index, k === "remnant" ? { remnant: undefined } : k === "cut" ? { cut: undefined } : { cut: undefined, remnant: undefined });
     diag("process", `Process del: ${k}`, { sheet: index + 1 });
     setMsg(`Sheet ${index + 1}: ${what[k]} deleted`);
@@ -49,10 +52,14 @@ export function useProcessDel({ index, sheets, onClear }: {
         </div>
         <p className="rule-help ac-help">Delete process: the cut path and the remnant both. Works on the sheet that is open, or the sheet selected among all sheets.</p>
         {msg && <p className="tech-msg ac-msg" role="status">{msg}</p>}
+        {last && (
+          <button type="button" className="btn btn-plain pp-btn" title={`Sheet ${last.index + 1}: bring back what was deleted`}
+            onClick={() => { onClear(last.index, last.patch); diag("process", "Process del: undone", { sheet: last.index + 1 }); setMsg(`Sheet ${last.index + 1}: brought back`); setLast(null); }}>Undo delete</button>
+        )}
       </div>
       {ask && (
         <ConfirmDialog title="Delete?" confirmLabel="Delete" onCancel={() => setAsk(null)} onConfirm={() => go(ask)}>
-          Sheet {index + 1}: {what[ask]} goes. Undo (Ctrl+Z) brings it back.
+          Sheet {index + 1}: {what[ask]} goes. UNDO DELETE in this panel brings it back.
         </ConfirmDialog>
       )}
     </aside>

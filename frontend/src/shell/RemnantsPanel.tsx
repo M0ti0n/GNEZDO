@@ -180,7 +180,7 @@ export function RemnantsPanel({ onSearch, onClose, selected, onChanged }: {
       ) : (
         <p className="panel-hint"><b>Size X / Y</b> is the remnant's box; a remnant turned round matches too.<br />Click a remnant to see its details here.</p>
       )}
-      {importing && <RemnantDialog title="Import remnant" r={importing} names={names} onCancel={() => setImporting(null)} onSave={(r) => void saveImported(r)} />}
+      {importing && <RemnantDialog title="Import remnant" fresh r={importing} names={names} onCancel={() => setImporting(null)} onSave={(r) => void saveImported(r)} />}
     </>
   );
 }

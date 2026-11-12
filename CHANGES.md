@@ -19,6 +19,13 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - AUTO CUT panel: the tool icon (half size) beside the AUTO CUT title; Select mode and PROCESS under it at full width
 - Settings → Machines → Machine → **Folders**: per machine, the NC folder (required; or tick to download NC programs in the browser instead) and the job folder with "Also write every saved job as a file" (off: jobs only in the database). The server writes there; Check tests a folder. NC output → Try it: Save to the NC folder
 
+**Fixed**
+- Post process: with the machine's 0,0 at the top left (or bottom right) the pierce was on the short lead-out and the program left by the lead-in; Auto cut now makes the path in the machine's own direction (outlines clockwise, holes counter-clockwise as the machine sees them, as in the plasma's old programs), so the screen, the leads and the NC program agree. A cut path made before a change of the 0,0 corner asks for Auto cut again
+- Post process: a sheet whose material and thickness have no Technology row is not written (it had no speeds); the message names the missing row
+- Process del: UNDO DELETE in the panel brings back what was deleted (Ctrl+Z did not)
+- Import remnant: a remnant of the same name as a saved one no longer replaces it silently
+- Job name suggestion: worked out from the newest made jobs (with many jobs it could miss the latest numbers)
+
 **Changed**
 - The Windows server package is now called `gnezdo-server-windows.zip` (was `gnezdo-windows.zip`)
 - Machine → Cut order: holes first and parts inside other parts first are always applied (no longer checkboxes); only Big parts last stays, and it outranks the order picked under Auto cut. The directions (bottom to top, left to right, shortest travel) move to Auto cut

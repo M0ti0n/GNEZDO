@@ -55,14 +55,14 @@ export function LeadsSettings({ machine, onChange }: { machine: Machine; onChang
 
       <div className="lead-grid">
         <section className="lead-sec">
-          <h3>Outline <small>outer contour · cut clockwise</small></h3>
+          <h3>Outline <small>outer contour · cut clockwise (as the machine sees it)</small></h3>
           <div className="lead-sub">On sharp corners</div>
           {picker("outCorner", false, "Outline, sharp corners")}
           <div className="lead-sub">Elsewhere <small>arcs, radii, round contours</small></div>
           {picker("outOther", true, "Outline, elsewhere")}
         </section>
         <section className="lead-sec">
-          <h3>Holes <small>inner contours · cut counter-clockwise</small></h3>
+          <h3>Holes <small>inner contours · cut counter-clockwise (as the machine sees it)</small></h3>
           <div className="lead-sub">On sharp corners <small>where the hole's edges meet inward</small></div>
           {picker("holeCorner", false, "Holes, sharp corners")}
           <div className="lead-sub">Elsewhere <small>arcs, radii, round holes, plain windows</small></div>
