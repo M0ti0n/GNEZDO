@@ -1,4 +1,4 @@
-// Process -> Movement: a rapid move rerouted by hand through points (SINGLE POINT: one, MULTI POINT:
+// Process -> Movement: a rapid move rerouted by hand through points (SINGLE POINT: one, MULTIPOINT:
 // several, closed on a lead-in), or sent to another contour, which changes the cut order:
 //  - from a part's outline: to any contour of another part (that part, whole, is cut next; the rapid
 //    goes to its first contour);
