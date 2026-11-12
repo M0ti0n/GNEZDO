@@ -5,8 +5,9 @@
 //
 // Always: tracing first, then open cuts, holes, the outline last; a part lying in another part's hole
 // before that part. Then the machine's Big parts last (within the big part's bounding box), then the
-// order picked under AUTO CUT. Outlines are cut clockwise, holes counter-clockwise (as seen on the
-// sheet): the scrap is on the left, where the kerf goes (G41).
+// order picked under AUTO CUT. Outlines are cut clockwise, holes counter-clockwise, as the machine
+// sees them (its X / Y from its 0,0 corner): the scrap is on the left, where the kerf goes (G41). With a
+// 0,0 corner that mirrors the sheet as drawn (top-left, bottom-right) that is the other way round on screen.
 
 import { api } from "../api/api";
 import { checkGeometry, pointsAlong, roleOf } from "../import/geometry";
@@ -49,6 +50,8 @@ export interface SheetCut {
   contours: CutContour[];
   /** per part index: where the part was when it was processed (moved since: not processed any more) */
   keys: Record<number, string>;
+  /** made for a 0,0 corner that mirrors the sheet as drawn (outlines counter-clockwise on screen); missing = not */
+  mirrored?: boolean;
 }
 
 /** What PROCESS does with the parts it gets. */
@@ -77,6 +80,10 @@ export const liveContours = (sheet: NestedSheet): CutContour[] => {
 /** The machine's 0,0 on the sheet (sheet frame). */
 export const originPoint = (sheet: Pick<NestedSheet, "lengthMm" | "widthMm">, origin: Origin): Pt =>
   [origin.endsWith("right") ? sheet.lengthMm : 0, origin.startsWith("bottom") ? sheet.widthMm : 0];
+
+/** The sheet as drawn has y down, the machine Y up: a 0,0 corner flipping one axis keeps the turning
+ *  sense, none (top-left) or both (bottom-right) mirror it. */
+export const originMirrors = (origin: Origin) => origin.startsWith("top") === origin.endsWith("left");
 
 // ------------------------------------------------------------------ tracing and open cut lines of a part
 
@@ -142,8 +149,8 @@ const dot = (a: Pt, b: Pt) => a[0] * b[0] + a[1] * b[1];
 const len = (a: Pt) => Math.hypot(a[0], a[1]);
 const unit = (a: Pt): Pt => { const l = len(a) || 1; return [a[0] / l, a[1] / l]; };
 const rot = (v: Pt, deg: number): Pt => { const r = (deg * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r); return [v[0] * c - v[1] * s, v[0] * s + v[1] * c]; };
-/** The scrap side of a cut going along d (left of it as seen on the sheet). */
-const scrapN = (d: Pt): Pt => [d[1], -d[0]];
+/** The scrap side of a cut going along d: left of it as the machine sees it (side -1: mirrored on screen). */
+const scrapN = (d: Pt, side: 1 | -1): Pt => [side * d[1], -side * d[0]];
 const r2 = (p: Pt): Pt => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
 /** Shoelace in the sheet frame: > 0 clockwise as seen on the sheet (y down). */
 const signedArea = (lp: Pt[]) => lp.reduce((s, p, i) => { const q = lp[(i + 1) % lp.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2;
@@ -228,7 +235,7 @@ const targetOf = (b: Box, rules: LeadRules): Pt => [rules.place.endsWith("right"
  * A closed contour with its leads: started at a sharp corner nearest the target with the corner type,
  * else at the point of a straight stretch nearest it with the other type.
  */
-function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row: TechRow | null, target: Pt): Omit<CutContour, "part" | "kind"> {
+function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row: TechRow | null, target: Pt, side: 1 | -1): Omit<CutContour, "part" | "kind"> {
   const n = lp.length;
   const prev = (i: number) => lp[(i - 1 + n) % n], next = (i: number) => lp[(i + 1) % n];
   const cType = kind === "outer" ? rules.outCorner : rules.holeCorner;
@@ -241,7 +248,7 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
     const phi = (Math.acos(Math.max(-1, Math.min(1, dot(u, e2)))) * 180) / Math.PI;
     const b = add(u, e2);
     if (len(b) < 1e-9) return 180;
-    const matN: Pt = [-e2[1], e2[0]];
+    const matN: Pt = [-side * e2[1], side * e2[0]];
     return dot(b, matN) > 0 ? phi : 360 - phi;
   };
 
@@ -314,7 +321,7 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
     if (li > 0) leadIn = [add(P, mul(dIn, li)), P];
     if (lo > 0) leadOut = [end, add(end, mul(dOut, lo))];
   } else if (type === "arc") {
-    const nP = scrapN(start.t), nE = scrapN(tEnd);
+    const nP = scrapN(start.t, side), nE = scrapN(tEnd, side);
     const R = Math.min(v.radius, limit(P, nP, v.radius * 2) / 2 || v.radius);
     const c = add(P, mul(nP, R));
     const s1 = add(c, rot(mul(nP, -R), 90)), s2 = add(c, rot(mul(nP, -R), -90));
@@ -327,8 +334,8 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
     // perpendicular (90°) or at an angle to the edge, from the scrap side
     const aIn = type === "angled" ? v.aIn : 90, aOut = type === "angled" ? v.aOut : 90;
     const rad = (d: number) => (d * Math.PI) / 180;
-    const dIn = unit(add(mul(start.t, -Math.cos(rad(aIn))), mul(scrapN(start.t), Math.sin(rad(aIn)))));
-    const dOut = unit(add(mul(tEnd, Math.cos(rad(aOut))), mul(scrapN(tEnd), Math.sin(rad(aOut)))));
+    const dIn = unit(add(mul(start.t, -Math.cos(rad(aIn))), mul(scrapN(start.t, side), Math.sin(rad(aIn)))));
+    const dOut = unit(add(mul(tEnd, Math.cos(rad(aOut))), mul(scrapN(tEnd, side), Math.sin(rad(aOut)))));
     const li = limit(P, dIn, v.lin), lo = limit(end, dOut, v.lout);
     if (li > 0) leadIn = [add(P, mul(dIn, li)), P];
     if (lo > 0) leadOut = [end, add(end, mul(dOut, lo))];
@@ -344,16 +351,16 @@ const totalLen = (pts: Pt[]) => pts.reduce((s, p, i) => (i ? s + len(sub(p, pts[
 
 interface PartGeo { i: number; outer: Pt[]; holes: Pt[][]; trace: Pt[][]; open: Pt[][]; box: Box; area: number }
 
-async function partGeos(sheet: NestedSheet, paths: Map<string, string>, idx: number[], wantMarks: boolean): Promise<PartGeo[]> {
+async function partGeos(sheet: NestedSheet, paths: Map<string, string>, idx: number[], wantMarks: boolean, mirrored: boolean): Promise<PartGeo[]> {
   return Promise.all(idx.map(async (i) => {
     const p = sheet.parts[i];
     const path = paths.get(p.partId) ?? "";
     const f = transform(p);
     const loops = partLoops(path).map((lp) => lp.map(f));
     const marks = wantMarks ? await partMarks(p.partId) : { trace: [], open: [] };
-    const outer = loops[0] ? oriented(loops[0], true) : [];
+    const outer = loops[0] ? oriented(loops[0], !mirrored) : [];
     return {
-      i, outer, holes: loops.slice(1).map((lp) => oriented(lp, false)),
+      i, outer, holes: loops.slice(1).map((lp) => oriented(lp, mirrored)),
       trace: marks.trace.map((l) => l.map(f)), open: marks.open.map((l) => l.map(f)),
       box: boxOf(outer), area: Math.abs(signedArea(outer)),
     };
@@ -466,7 +473,9 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row ?? null;
   const rules = leadRulesOf(machine);
   const canTrace = machineCan(machine, "trace"), canOpen = machineCan(machine, "openCut");
-  const geos = await partGeos(sheet, q.paths, idx, q.what !== "internal" && (canTrace || canOpen));
+  const mirrored = originMirrors(q.origin);
+  const side = mirrored ? -1 : 1;
+  const geos = await partGeos(sheet, q.paths, idx, q.what !== "internal" && (canTrace || canOpen), mirrored);
   const from = originPoint(sheet, q.origin);
   const order = q.ordered ? idx : orderParts(geos, q.rule, machine, sheet, from);
   const by = new Map(geos.map((g) => [g.i, g]));
@@ -501,7 +510,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
       if (canOpen) openRuns(g.open, i, "open");
     }
     // the holes, the nearest next
-    const holes = g.holes.map((lp) => closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules)));
+    const holes = g.holes.map((lp) => closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules), side));
     while (holes.length) {
       let k = 0, best = Infinity;
       holes.forEach((h, j) => { const d = len(sub(startOf(h), at)); if (d < best) { best = d; k = j; } });
@@ -510,7 +519,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
       at = endOf(h);
     }
     if (q.what === "internal") continue;
-    const o = closedContour(g.outer, "outer", rules, row, target);
+    const o = closedContour(g.outer, "outer", rules, row, target, side);
     fresh.push({ part: i, kind: "outer", ...o });
     at = endOf(o);
   }
@@ -518,7 +527,8 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   const keys: Record<number, string> = {};
   // chosen parts: their old contours of this kind go, the rest of the sheet's path stays before them
   let kept: CutContour[] = [];
-  if (q.parts) {
+  // the rest of the sheet's path stays only if it was made for the same 0,0 corner sense
+  if (q.parts && !!sheet.cut?.mirrored === mirrored) {
     const good = processedParts(sheet);
     const chosen = new Set(idx);
     const drop = (c: CutContour) => chosen.has(c.part) && (q.what === "all" || (q.what === "trace" ? c.kind === "trace" : c.kind === "inner"));
@@ -526,7 +536,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     for (const c of kept) keys[c.part] = partKey(sheet.parts[c.part]);
   }
   for (const c of fresh) keys[c.part] = partKey(sheet.parts[c.part]);
-  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours: [...kept, ...fresh], keys };
+  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours: [...kept, ...fresh], keys, ...(mirrored ? { mirrored } : {}) };
 }
 
 /** Rapid moves of the path: from 0,0 to every pierce and back (sheet frame). */
