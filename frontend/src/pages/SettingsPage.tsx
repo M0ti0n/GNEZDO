@@ -307,7 +307,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
           </div>
           <p className="rule-help">No remnant edge, and no step of a TRIM outline, shorter than the smallest edge; a smaller piece is scrap and is not listed. SKELET keeps sharp corners: it follows a part's arc only from this radius up (a smaller rounded corner counts as sharp). TRIM and RECTANGULAR use straight lines only.</p>
           <div className="mc-row">
-            <span className="mc-sub">RECTANGULAR: first cut</span>
+            <span className="mc-sub" title="Process → Remnant: Cut along X / Cut along Y changes it per sheet">RECTANGULAR: first cut to start with</span>
             <label className="chk"><input type="radio" name="rem-dir" checked={stock.remnant.rectDir === "x"} onChange={() => setRem({ rectDir: "x" })} /> Along X (the whole length, then up to it)</label>
             <label className="chk"><input type="radio" name="rem-dir" checked={stock.remnant.rectDir === "y"} onChange={() => setRem({ rectDir: "y" })} /> Along Y (the whole width, then up to it)</label>
           </div>

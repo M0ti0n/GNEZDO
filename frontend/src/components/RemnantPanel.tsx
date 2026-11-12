@@ -72,8 +72,11 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
 }): { panel: ReactNode; cut: CutMode } {
   const sheet = sheets[index] as NestedSheet | undefined;
   const techDist = sheet && machine ? techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row.remMinDistMm ?? 0 : 0;
-  const settings: RemnantSettings = techDist > 0 ? { ...base, minDistMm: techDist } : base;
   const rem = sheet && remnantValid(sheet) ? sheet.remnant! : undefined;
+  // RECTANGULAR: the first cut along X or Y (picked here; Settings → Stock → Remnants is the default)
+  const [rectDir, setRectDir] = useState<"x" | "y">(base.rectDir);
+  useEffect(() => { if (rem?.mode === "rect") setRectDir(rem.settings.rectDir); }, [rem?.mode, rem?.settings.rectDir]);
+  const settings: RemnantSettings = { ...base, rectDir, ...(techDist > 0 ? { minDistMm: techDist } : {}) };
   const [askAll, setAskAll] = useState(false);
   const stale = !!sheet?.remnant && !rem;
   const [tool, setTool] = useState<Tool | null>(null);
@@ -84,11 +87,11 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
   useEffect(() => { if (!single || !rem) setTool(null); }, [single, rem]);
   const paths = new Map([...parts].map(([id, r]) => [id, r.path]));
 
-  const make = (mode: RemnantMode) => {
+  const make = (mode: RemnantMode, dir = rectDir) => {
     if (!sheet) return;
     const t = performance.now();
     const before = sheet.remnant?.pieces;
-    const r = computeRemnant({ sheet, sheetNo: index + 1, paths, jobName, mode, settings, before });
+    const r = computeRemnant({ sheet, sheetNo: index + 1, paths, jobName, mode, settings: { ...settings, rectDir: dir }, before });
     onRemnant(index, r);
     setOff(new Set());
     diag("process", `Remnant ${mode} on sheet ${index + 1}`, { pieces: r.pieces.length, ms: Math.round(performance.now() - t) });
@@ -155,6 +158,14 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
             <button key={m.id} type="button" className={`rm-btn${rem?.mode === m.id ? " is-on" : ""}`} title={m.hint} disabled={!sheet} onClick={() => make(m.id)}>
               <img src={m.icon} alt="" draggable={false} /><span>{m.label}</span>
             </button>
+          ))}
+        </div>
+        <div className="ac-field"><span>Rectangular</span></div>
+        <div className="seg rm-dir" role="radiogroup" aria-label="Rectangular: first cut">
+          {(["x", "y"] as const).map((d) => (
+            <button key={d} type="button" role="radio" aria-checked={rectDir === d} className={rectDir === d ? "is-on" : ""} disabled={!sheet}
+              title={d === "x" ? "First cut along X (the whole length), the second one up to it" : "First cut along Y (the whole width), the second one up to it"}
+              onClick={() => { setRectDir(d); make("rect", d); }}>Cut along {d.toUpperCase()}</button>
           ))}
         </div>
         <div className="ac-field"><span>Remnant tools</span></div>
