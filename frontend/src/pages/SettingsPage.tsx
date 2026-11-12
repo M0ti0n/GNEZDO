@@ -3,6 +3,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { machineFileName, machineZip, readMachineFile } from "../job/machineFile";
 import { NavClose } from "./NavClose";
 import { loadJobPrefix, saveJobPrefix, suggestJobName } from "../job/jobName";
+import { loadViewPrefs, saveViewPrefs, type ViewPrefs } from "../job/viewPrefs";
 import { flush, logDownloadUrl, logSettings, reportProblem, setLogEnabled, type LogSettings as LogSettingsData } from "../job/diag";
 import { Combobox } from "../components/Combobox";
 import { DatabaseForm } from "../components/DatabaseSetup";
@@ -326,6 +327,8 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
 function PersonalSettings() {
   const [prefix, setPrefix] = useState(loadJobPrefix);
   const [example, setExample] = useState("");
+  const [view, setViewState] = useState(loadViewPrefs);
+  const setView = (patch: Partial<ViewPrefs>) => { const n = { ...view, ...patch }; setViewState(n); saveViewPrefs(n); };
   useEffect(() => {
     const t = setTimeout(() => { saveJobPrefix(prefix); void suggestJobName().then(setExample); }, 300);
     return () => clearTimeout(t);
@@ -344,6 +347,14 @@ function PersonalSettings() {
             <input className="field" value={prefix} placeholder="e.g. JOHN" spellCheck={false} onChange={(e) => setPrefix(e.target.value)} /></label>
           {prefix.trim() && example && <span className="rule-help">Next suggested: <b>{example}</b></span>}
         </div>
+      </section>
+      <section className="rule">
+        <h3>Cut path</h3>
+        <p className="rule-help">How Process draws the cut path on the sheet.</p>
+        <label className="chk"><input type="checkbox" checked={view.rapidArrows} onChange={(e) => setView({ rapidArrows: e.target.checked })} />
+          Arrows on the rapid moves (the way the head travels)</label>
+        <label className="chk"><input type="checkbox" checked={view.cutArrows} onChange={(e) => setView({ cutArrows: e.target.checked })} />
+          Arrows on the cut contours (the cutting direction)</label>
       </section>
     </div>
   );

@@ -13,6 +13,7 @@ import { arrange, arrangeAgain, mirrorGroup, partRules, stack, type PartRules } 
 import { loadNestingRules } from "../job/nestRules";
 import { loadManualView } from "../job/manualView";
 import { liveContours, originPoint, processedParts, rapidsOf } from "../job/cutPath";
+import { useViewPrefs } from "../job/viewPrefs";
 import { RemnantOverlay } from "./RemnantOverlay";
 import { commonEdges, commonLayout, partCommonLines, placedEdges, sharedLines, snapMove, type CommonEdge, type CommonLayout } from "../job/commonCut";
 
@@ -39,6 +40,36 @@ export interface CutMode {
 // the mouse or the keys (Settings -> Manual nest), parts come from the JOB PARTS panel by drag and
 // drop, overlapping parts glow red. Every finished change goes to the solution at once; FINISH
 // goes back to the sheets.
+/** A small open arrowhead at p pointing along d (unit), `size` long (sheet mm): its path. */
+const arrowHead = (p: [number, number], d: [number, number], size: number) => {
+  const n: [number, number] = [-d[1], d[0]];
+  const tip: [number, number] = [p[0] + (d[0] * size) / 2, p[1] + (d[1] * size) / 2];
+  const w = (s: number): string => `${(tip[0] - d[0] * size + n[0] * size * 0.55 * s).toFixed(2)} ${(tip[1] - d[1] * size + n[1] * size * 0.55 * s).toFixed(2)}`;
+  return `M${w(1)}L${tip[0].toFixed(2)} ${tip[1].toFixed(2)}L${w(-1)}`;
+};
+
+/** Arrows along a cut contour, about one per `every` mm (at least one), as [point, direction]. */
+function arrowsAlong(pts: [number, number][], every: number, minLen: number): [[number, number], [number, number]][] {
+  const segs: number[] = [];
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) { const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); segs.push(l); total += l; }
+  if (total < minLen) return [];
+  const count = Math.max(1, Math.min(8, Math.floor(total / every)));
+  const out: [[number, number], [number, number]][] = [];
+  for (let k = 0; k < count; k++) {
+    let at = ((k + 0.5) / count) * total;
+    for (let i = 0; i < segs.length; i++) {
+      if (at <= segs[i] || i === segs.length - 1) {
+        const a = pts[i], b = pts[i + 1], l = segs[i] || 1, f = Math.min(1, at / l);
+        out.push([[a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], [(b[0] - a[0]) / l, (b[1] - a[1]) / l]]);
+        break;
+      }
+      at -= segs[i];
+    }
+  }
+  return out;
+}
+
 export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool, commonCut = false, cut }: {
   cut?: CutMode;
   locked: boolean; onToggleLock: () => void;
@@ -829,6 +860,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const cutDone = useMemo(() => processedParts(shownSheet), [shownSheet]);
   const cutLive = useMemo(() => liveContours(shownSheet), [shownSheet]);
   const cutRapids = useMemo(() => rapidsOf(cutLive, originPoint(sheet, origin)), [cutLive, sheet, origin]);
+  const viewPrefs = useViewPrefs();
   const pathOf = (lp: Pt[][]) => lp.map((l) => l.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(2)} ${y.toFixed(2)}`).join("") + "Z").join("");
   const v = view ?? { s: 1, tx: 0, ty: 0 };
   const right = origin.endsWith("right"), bottom = origin.startsWith("bottom");
@@ -921,14 +953,29 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 return (
                   <g className="cut-path">
                     {cutRapids.map(([a, b], k) => <line key={`r${k}`} className="cut-rapid" x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} style={{ strokeWidth: 0.8 / v.s, strokeDasharray: `${4 / v.s} ${3 / v.s}` }} />)}
-                    {cutLive.map((c, k) => (
-                      <g key={k}>
-                        <path className={`cut-${c.kind}`} d={line(c.pts)} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
-                        {c.leadIn.length > 1 && <path className="cut-in" d={line(c.leadIn)} style={{ strokeWidth: 1.6 / v.s }} />}
-                        {c.leadOut.length > 1 && <path className="cut-out" d={line(c.leadOut)} style={{ strokeWidth: 1.6 / v.s }} />}
-                        {(c.leadIn[0] ?? c.pts[0]) && <circle className="cut-pierce" cx={(c.leadIn[0] ?? c.pts[0])[0]} cy={(c.leadIn[0] ?? c.pts[0])[1]} r={1.8 / v.s} />}
-                      </g>
-                    ))}
+                    {viewPrefs.rapidArrows && cutRapids.map(([a, b], k) => {
+                      // the way the head travels: an arrow in the middle of the rapid move
+                      const l = Math.hypot(b[0] - a[0], b[1] - a[1]), size = 7 / v.s;
+                      if (l < 4 * size) return null;
+                      return <path key={`ra${k}`} className="cut-rapid cut-arrow" d={arrowHead([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], [(b[0] - a[0]) / l, (b[1] - a[1]) / l], size)} style={{ strokeWidth: 1 / v.s }} />;
+                    })}
+                    {cutLive.map((c, k) => {
+                      const pierce = c.leadIn[0] ?? c.pts[0];
+                      const end = c.leadOut.length ? undefined : c.pts[c.pts.length - 1];
+                      return (
+                        <g key={k}>
+                          <path className={`cut-${c.kind}`} d={line(c.pts)} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
+                          {c.leadIn.length > 1 && <path className="cut-in" d={line(c.leadIn)} style={{ strokeWidth: 1.6 / v.s }} />}
+                          {c.leadOut.length > 1 && <path className="cut-out" d={line(c.leadOut)} style={{ strokeWidth: 1.6 / v.s }} />}
+                          {viewPrefs.cutArrows && arrowsAlong(c.pts, 220 / v.s, 30 / v.s).map(([p, d], j) => (
+                            <path key={`a${j}`} className={`cut-${c.kind} cut-arrow`} d={arrowHead(p, d, 6 / v.s)} style={{ strokeWidth: 1.4 / v.s }} />
+                          ))}
+                          {/* where it pierces (green) and, with no lead-out, where it ends (red) */}
+                          {end && <circle className="cut-end" cx={end[0]} cy={end[1]} r={1.8 / v.s} />}
+                          {pierce && <circle className="cut-pierce" cx={pierce[0]} cy={pierce[1]} r={1.8 / v.s} />}
+                        </g>
+                      );
+                    })}
                     {cut?.picked.map((i, k) => {
                       const g = geo[i];
                       if (!g) return null;
