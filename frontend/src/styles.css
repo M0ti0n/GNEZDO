@@ -2245,8 +2245,9 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .li-bar .btn { height: 36px; }
 .li-reset { border-color: #1e8db5 !important; }
 .li-reset:hover:not(:disabled) { background: #e3f2f8 !important; }
-.li-apply.is-on { background: var(--green); color: #fff; border-color: var(--green); }
-.li-del { border-color: #9b59b6 !important; }
+.ac-pickbar .btn.li-apply.is-on, .ac-pickbar .btn.li-apply.is-on:hover:not(:disabled) { background: var(--green); color: #fff; border-color: var(--green); }
+.li-del { border-color: var(--red, #d62828) !important; color: var(--red, #d62828); }
+.li-del:hover:not(:disabled) { background: #fde8e8 !important; }
 .li-spacer { flex: 1; }
 .li-dlg { width: min(560px, 100%); }
 .li-dlg-body { padding: 16px 20px; }
