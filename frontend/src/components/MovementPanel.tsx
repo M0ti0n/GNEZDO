@@ -8,6 +8,9 @@ import type { NestedSheet } from "../job/nest";
 import { ConfirmDialog } from "./ConfirmDialog";
 import type { CutMode } from "./ManualNest";
 import toolMovement from "../shell/jobtools/tool-movement.png";
+import mvSingle from "../shell/jobtools/mv-single.svg";
+import mvMulti from "../shell/jobtools/mv-multi.svg";
+import mvDelete from "../shell/jobtools/mv-delete.svg";
 
 // Process -> Movement (after Fab's drawing): SINGLE POINT: click a rapid move, then the point it
 // should go through (done). MULTI POINT: click a rapid move, then its points one by one, and close on
@@ -18,10 +21,10 @@ import toolMovement from "../shell/jobtools/tool-movement.png";
 type Mode = "single" | "multi" | "delete";
 type PartRef = { path: string; name?: string };
 
-const MODES: { id: Mode; label: string; hint: string }[] = [
-  { id: "single", label: "Single point", hint: "Click a rapid move, then the point it should go through" },
-  { id: "multi", label: "Multi point", hint: "Click a rapid move, then its points one by one; close on a lead-in" },
-  { id: "delete", label: "Delete point", hint: "On: click a point to take it out of its rapid move" },
+const MODES: { id: Mode; label: string; icon: string; hint: string }[] = [
+  { id: "single", label: "Single point", icon: mvSingle, hint: "Click a rapid move, then the point it should go through" },
+  { id: "multi", label: "Multi point", icon: mvMulti, hint: "Click a rapid move, then its points one by one; close on a lead-in" },
+  { id: "delete", label: "Delete point", icon: mvDelete, hint: "On: click a point to take it out of its rapid move" },
 ];
 
 export function useMovement({ index, single, sheets, parts, origin, onCut }: {
@@ -104,11 +107,11 @@ export function useMovement({ index, single, sheets, parts, origin, onCut }: {
       <header className="sol-head ac-head"><span className="itool-box ac-icon-sm" aria-hidden="true"><img src={toolMovement} alt="" draggable={false} /></span><h2>Movement</h2></header>
       <div className="ac-body">
         <div className="ac-field"><span>Mode</span></div>
-        <div className="mv-modes" role="group" aria-label="Movement mode">
+        <div className="rm-tools mv-modes" role="group" aria-label="Movement mode">
           {MODES.map((m) => (
-            <button key={m.id} type="button" className={`btn btn-plain mv-btn${m.id === "delete" ? " is-del" : ""}${mode === m.id ? " is-on" : ""}`} aria-pressed={mode === m.id}
+            <button key={m.id} type="button" className={`rm-btn mv-btn${m.id === "delete" ? " is-del" : ""}${mode === m.id ? " is-on" : ""}`} aria-pressed={mode === m.id}
               disabled={!can} title={can ? m.hint : "Open a processed sheet (VIEW / EDIT)"} onClick={() => setMode(mode === m.id ? null : m.id)}>
-              {m.label}
+              <img src={m.icon} alt="" draggable={false} /><span>{m.label}</span>
             </button>
           ))}
         </div>
