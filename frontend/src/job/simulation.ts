@@ -4,7 +4,7 @@
 // counts as cut out when its outline is done (a common cut block's parts: when the block's outline is).
 // The times are an estimate (no acceleration).
 
-import type { CutContour } from "./cutPath";
+import { viaOf, type CutContour } from "./cutPath";
 import type { Pt } from "./manualGeom";
 import { RAPID_MM_MIN } from "./report";
 import type { TechRow } from "./technology";
@@ -53,8 +53,10 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
     start.push(t);
     if (!path.length) { end.push(t); return; }
     const p0 = path[0];
-    const d = lenOf(at, p0);
-    if (d > 0.01) { const dt = (d / RAPID_MM_MIN) * 60; legs.push({ k, phase: "rapid", t0: t, t1: t + dt, pts: [at, p0], acc: [0, d] }); t += dt; }
+    // the rapid, through Movement's points
+    const rp: Pt[] = [at, ...viaOf(c, contours[k - 1]), p0];
+    const racc = accOf(rp), d = racc[racc.length - 1];
+    if (d > 0.01) { const dt = (d / RAPID_MM_MIN) * 60; legs.push({ k, phase: "rapid", t0: t, t1: t + dt, pts: rp, acc: racc }); t += dt; }
     if (c.kind !== "trace") {
       const dt = row?.pierceS || 0;
       if (dt > 0) { legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt; }
@@ -108,7 +110,7 @@ export function simAt(tl: SimTimeline, t: number, from: Pt): SimState {
   let head = from, k = tl.contours.length, phase: SimState["phase"] = "done", current: CutContour | undefined;
   for (const leg of tl.legs) {
     if (leg.t1 <= t) {
-      if (leg.phase === "rapid") rapids.push([leg.pts[0], leg.pts[1]]);
+      if (leg.phase === "rapid") for (let i = 1; i < leg.pts.length; i++) rapids.push([leg.pts[i - 1], leg.pts[i]]);
       if (leg.phase === "cut") shown.push(tl.contours[leg.k]);
       head = leg.pts[leg.pts.length - 1];
       continue;
@@ -118,9 +120,9 @@ export function simAt(tl: SimTimeline, t: number, from: Pt): SimState {
     const f = leg.t1 > leg.t0 ? (t - leg.t0) / (leg.t1 - leg.t0) : 1;
     const d = f * leg.acc[leg.acc.length - 1];
     if (leg.phase === "rapid") {
-      const [a, b] = leg.pts;
-      head = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
-      rapids.push([a, head]);
+      const part = cutTo(leg.pts, leg.acc, d);
+      head = part[part.length - 1];
+      for (let i = 1; i < part.length; i++) rapids.push([part[i - 1], part[i]]);
     } else if (leg.phase === "pierce") head = leg.pts[0];
     else {
       const part = cutTo(leg.pts, leg.acc, d);

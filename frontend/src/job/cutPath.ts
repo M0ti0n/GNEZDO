@@ -54,7 +54,22 @@ export interface CutContour {
   parts?: number[];
   /** a shared common cut line (cut once for two parts, along the middle of the kerf gap) */
   common?: boolean;
+  /** Process → Movement: the rapid to this contour goes through these points; only while the contour
+   *  before it is still `after` (contourKey; "origin": it is the first), else they are dropped */
+  via?: { pts: Pt[]; after: string };
 }
+
+/** A contour's name that stays when its leads change: the part, the kind and the box of its line. */
+export function contourKey(c: CutContour): string {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of c.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const r = (v: number) => (Math.round(v * 10) / 10).toFixed(1);
+  return `${c.parts ? `b${c.parts.join(".")}` : c.part}:${c.kind}${c.common ? "c" : ""}:${r(x0)},${r(y0)},${r(x1)},${r(y1)}`;
+}
+
+/** The points the rapid to `c` goes through (none when the contour before it is no longer the one they were made for). */
+export const viaOf = (c: CutContour, prev: CutContour | undefined): Pt[] =>
+  c.via && c.via.pts.length && c.via.after === (prev ? contourKey(prev) : "origin") ? c.via.pts : [];
 
 export interface SheetCut {
   at: string;
@@ -706,14 +721,23 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours: [...kept, ...fresh], keys, ...(mirrored ? { mirrored } : {}) };
 }
 
-/** Rapid moves of the path: from 0,0 to every pierce and back (sheet frame). */
+/** The rapid to each contour (index in `contours`): from where the head is, through its points, to the pierce. */
+export function rapidPaths(contours: CutContour[], from: Pt): { k: number; pts: Pt[] }[] {
+  const out: { k: number; pts: Pt[] }[] = [];
+  let at = from;
+  contours.forEach((c, k) => {
+    const s = c.leadIn[0] ?? c.pts[0];
+    if (!s) return;
+    const via = viaOf(c, contours[k - 1]);
+    if (via.length || len(sub(s, at)) > 0.01) out.push({ k, pts: [at, ...via, s] });
+    at = c.leadOut[c.leadOut.length - 1] ?? c.pts[c.pts.length - 1] ?? at;
+  });
+  return out;
+}
+
+/** Rapid moves of the path: from 0,0 to every pierce, through Movement's points (sheet frame). */
 export function rapidsOf(contours: CutContour[], from: Pt): [Pt, Pt][] {
   const out: [Pt, Pt][] = [];
-  let at = from;
-  for (const c of contours) {
-    const s = c.leadIn[0] ?? c.pts[0];
-    if (s && len(sub(s, at)) > 0.01) out.push([at, s]);
-    at = c.leadOut[c.leadOut.length - 1] ?? c.pts[c.pts.length - 1] ?? at;
-  }
+  for (const r of rapidPaths(contours, from)) for (let i = 1; i < r.pts.length; i++) out.push([r.pts[i - 1], r.pts[i]]);
   return out;
 }

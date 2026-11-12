@@ -4,7 +4,7 @@
 // (G41: the kerf on the scrap side), for the 0,0 corner it was made for. Arcs are found again from the
 // points (job/ncArcs.ts); each contour says which part it is (a subprogram per part, e.g. LVD G980).
 
-import { liveContours, originMirrors, originPoint, type CutContour } from "./cutPath";
+import { liveContours, originMirrors, originPoint, viaOf, type CutContour } from "./cutPath";
 import type { Machine, Origin } from "./machine";
 import type { NestedSheet } from "./nest";
 import { fitMoves } from "./ncArcs";
@@ -50,15 +50,18 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
 
   const contours: NcContour[] = [];
   const boxes = new Map<number, NcPart["box"]>();
-  for (const c of live) {
+  live.forEach((c, i) => {
     const k = contour(c, c.parts?.length ? undefined : partName(c.part));
-    if (!k) continue;
+    if (!k) return;
+    // Process → Movement: the rapid to it through these points
+    const via = mapped(viaOf(c, live[i - 1]));
+    if (via.length) k.via = via;
     contours.push(k);
-    if (c.parts?.length) continue;
+    if (c.parts?.length) return;
     const b = boxes.get(c.part) ?? { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
     for (const q of mapped(c.pts)) { b.minX = Math.min(b.minX, q.x); b.minY = Math.min(b.minY, q.y); b.maxX = Math.max(b.maxX, q.x); b.maxY = Math.max(b.maxY, q.y); }
     boxes.set(c.part, b);
-  }
+  });
   // the remnant's cuts last, as open cuts (from the end nearer the head; gaps and leads: remnantCut.ts)
   const lastC = live[live.length - 1];
   const at: Pt = lastC.leadOut[lastC.leadOut.length - 1] ?? lastC.pts[lastC.pts.length - 1];

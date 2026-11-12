@@ -42,6 +42,13 @@ export function reorderCut(cut: SheetCut, picked: number[], nameOf: (part: numbe
   const slots = picked.slice().sort((a, b) => a - b);
   const out = cut.contours.slice();
   slots.forEach((s, j) => { out[s] = cut.contours[picked[j]]; });
+  const bad = orderProblem(out, nameOf);
+  if (bad) return `${bad} Pick it before the outline.`;
+  return { ...cut, contours: out, rule: "manual", at: new Date().toISOString() };
+}
+
+/** A part's outline before something of its own (the part would fall out first): what, in words; null: fine. */
+export function orderProblem(out: CutContour[], nameOf: (part: number) => string): string | null {
   for (let i = 0; i < out.length; i++) {
     const c = out[i];
     if (c.kind !== "outer") continue;
@@ -50,9 +57,9 @@ export function reorderCut(cut: SheetCut, picked: number[], nameOf: (part: numbe
       const d = out[j];
       if (d.kind === "outer") continue;
       if ((d.parts ?? [d.part]).some((x) => own.has(x))) {
-        return `${c.parts ? "A common cut block" : nameOf(c.part)}: its outline would be cut before its ${contourKind(d).toLowerCase()} (the part would fall out first). Pick the ${contourKind(d).toLowerCase()} before the outline.`;
+        return `${c.parts ? "A common cut block" : nameOf(c.part)}: its outline would be cut before its ${contourKind(d).toLowerCase()} (the part would fall out first).`;
       }
     }
   }
-  return { ...cut, contours: out, rule: "manual", at: new Date().toISOString() };
+  return null;
 }
