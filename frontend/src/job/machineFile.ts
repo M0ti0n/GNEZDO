@@ -93,7 +93,7 @@ export function machineZip(m: Machine): Uint8Array {
   const enc = new TextEncoder();
   const files = [{ name: "machine.json", data: enc.encode(JSON.stringify(file, null, 2)) }];
   if (pp) files.push({ name: "postprocessor.js", data: enc.encode(pp.source) });
-  if (m.technologies?.length) files.push({ name: "technology.csv", data: enc.encode("﻿" + technologiesCsv(m.technologies)) });
+  if (m.technologies?.length) files.push({ name: "technology.csv", data: enc.encode("﻿" + technologiesCsv(m.technologies, m.technology)) });
   return zip(files);
 }
 

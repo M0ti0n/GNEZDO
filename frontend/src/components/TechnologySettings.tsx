@@ -2,15 +2,18 @@ import { useRef, useState } from "react";
 import { NumInput } from "./NumInput";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
-  TECH_COLUMNS, addThickness, inRange, newTechnology, technologiesCsv, technologiesFromDbf,
+  addThickness, inRange, newTechnology, techColumnsFor, technologiesCsv, technologiesFromDbf,
   type RowKey, type TechSet,
 } from "../job/technology";
+import type { Technology } from "../job/machine";
 
 /** Settings -> Machines -> Technology: the machine's technologies and their values per thickness. */
-export function TechnologySettings({ techs, onChange, machineName }: {
+export function TechnologySettings({ techs, onChange, machineName, technology }: {
   techs: TechSet[];
   onChange: (t: TechSet[]) => void;
   machineName: string;
+  /** the machine's: laser columns only for a laser */
+  technology?: Technology;
 }) {
   const [selId, setSelId] = useState<string | null>(techs[0]?.id ?? null);
   const tech = techs.find((t) => t.id === selId) ?? techs[0] ?? null;
@@ -72,13 +75,14 @@ export function TechnologySettings({ techs, onChange, machineName }: {
     setMsg({ text: `Imported ${found.length} technologies (${found.reduce((n, t) => n + t.rows.length, 0)} rows). Tag the materials and set the thickness range of each one you use.` });
   };
   const exportCsv = () => {
-    const url = URL.createObjectURL(new Blob(["﻿" + technologiesCsv(techs)], { type: "text/csv;charset=utf-8" }));
+    const url = URL.createObjectURL(new Blob(["﻿" + technologiesCsv(techs, technology)], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url; a.download = `${machineName || "machine"} technology.csv`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  const cols = TECH_COLUMNS.flatMap((g) => g.cols);
+  const groups = techColumnsFor(technology);
+  const cols = groups.flatMap((g) => g.cols);
   return (
     <div className="tech">
       <div className="tech-bar">
@@ -121,7 +125,7 @@ export function TechnologySettings({ techs, onChange, machineName }: {
             <thead>
               <tr>
                 <th />
-                {TECH_COLUMNS.map((g) => <th key={g.group} colSpan={g.cols.length} className="tech-group">{g.group}</th>)}
+                {groups.map((g) => <th key={g.group} colSpan={g.cols.length} className="tech-group">{g.group}</th>)}
               </tr>
               <tr>
                 <th className="tech-th">Thickness</th>
@@ -163,6 +167,7 @@ export function TechnologySettings({ techs, onChange, machineName }: {
 
       {msg && <p className={`tech-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
       <p className="rule-help">Click a value to change it; Tab goes to the next one. A new thickness starts as a copy of the next thicker row. Gap: + cuts past the start, − leaves a tab. Angles left empty: 90° (corner at an angle), 45° (angled with gap). Remnant cut: Gap in / Gap out from a sheet edge the cut runs to, + inside the sheet (an uncut bridge), − beyond the edge; To parts left empty: Settings → Stock → Remnants; the lead type: Leads &amp; cutting.
+        {technology === "laser" && <> Laser: a contour whose longer side is up to Middle / Little is cut with the machine's middle / little values (0: not used); Pre-pierce 1 pierces every contour first, then cuts them; Tech program: the machine's technology program number for the row.</>}
         A job's sheet uses the technology tagged with its material whose thickness range has the sheet's thickness.</p>
 
       {ask?.kind === "delete" && tech && (

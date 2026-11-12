@@ -5,7 +5,8 @@
 //
 // and gets the sheet's cutting path as below (coordinates in mm, from the sheet's 0,0 corner as the
 // machine has it, X along the sheet's length). Contours come in cut order; each starts at its pierce
-// point and its segments include the lead-in (first) and lead-out (last).
+// point and its segments include the lead-in (first) and lead-out (last). Segments are lines and arcs
+// (arcs found again from the drawing's points, at most 180° each: job/ncArcs.ts).
 
 import type { TechRow } from "./technology";
 
@@ -30,6 +31,17 @@ export interface NcContour {
   small?: boolean;
   /** Which part it belongs to (its name), for comments */
   part?: string;
+  /** The part's number on the sheet (program.parts); a common cut block's shared lines and outline: every member in `partNos` */
+  partNo?: number;
+  partNos?: number[];
+}
+
+export interface NcPart {
+  /** as in NcContour.partNo */
+  no: number;
+  name?: string;
+  /** The box around the part's contours (machine coordinates, without leads) */
+  box: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
 export interface NcProgram {
@@ -39,6 +51,8 @@ export interface NcProgram {
   /** The Technology row for the sheet (speeds, pierce time, ...; `extra` holds an imported table's other columns) */
   tech: Partial<TechRow> & { name?: string };
   contours: NcContour[];
+  /** The sheet's parts that have contours (by partNo) */
+  parts?: NcPart[];
 }
 
 export interface Postprocessor {
@@ -90,7 +104,8 @@ export function sampleProgram(tech: NcProgram["tech"], thicknessMm = 10): NcProg
   };
   return {
     name: "SAMPLE", sheet: { lengthMm: 300, widthMm: 200, thicknessMm, material: "S235" }, tech,
-    contours: [hole, slot, outline].map((c) => ({ ...c, part: "Sample plate" })),
+    contours: [hole, slot, outline].map((c) => ({ ...c, part: "Sample plate", partNo: 0 })),
+    parts: [{ no: 0, name: "Sample plate", box: { minX: 0, minY: 0, maxX: 200, maxY: 100 } }],
   };
 }
 
