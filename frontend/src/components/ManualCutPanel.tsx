@@ -46,13 +46,17 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
   const labelOf = (c: CutContour) => (c.parts ? `Block ${c.parts.map(idOf).join(", ")}` : idOf(c.part));
   const fullOf = (c: CutContour) => (c.parts ? c.parts.map((i) => `${idOf(i)} ${nameOf(i)}`).join(", ") : `${idOf(c.part)} ${nameOf(c.part)}`);
 
+  /** a contour out of the list (the ones after it move up a place) */
+  const drop = (k: number) => { setPicked((l) => l.filter((x) => x !== k)); setRowSel((r) => (r === k ? null : r)); };
   const point = (x: number, y: number, scale: number) => {
-    if (!cutPath || !picking) return;
+    if (!cutPath) return;
     const k = pickContour(cutPath, live, [x, y], Math.max(2, 12 / scale));
+    // a picked contour clicked again: out (SELECT on or off); a new one: in (SELECT on)
+    if (k >= 0 && picked.includes(k)) { setMsg(null); drop(k); return; }
+    if (!picking) return;
     if (k < 0) { setMsg({ text: "Click on a contour (its line or its leads)", bad: true }); return; }
     setMsg(null);
-    setPicked((l) => (l.includes(k) ? l.filter((x) => x !== k) : [...l, k]));
-    setRowSel((r) => (r === k ? null : r));
+    setPicked((l) => [...l, k]);
   };
   const move = (from: number, to: number) => setPicked((l) => {
     if (to < 0 || to >= l.length || from === to) return l;
@@ -83,7 +87,7 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
         </div>
         <div className="ac-list pane-scroll">
           <div className="ac-table">
-            <div className="ac-headrow"><span /><span>Contour</span></div>
+            <div className="ac-headrow has-trace"><span /><span>Contour</span><span /></div>
             {picked.map((k, j) => {
               const c = cutPath?.contours[k];
               if (!c) return null;
@@ -91,7 +95,7 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
               const no = p ? parts.get(p.partId)?.no : undefined;
               const col = no !== undefined && !c.parts ? partColor(no) : null;
               return (
-                <div key={k} className="ac-row">
+                <div key={k} className="ac-row has-trace">
                   {/* the place in the cut order: stays where it is when the rows are dragged */}
                   <span className="ac-no" style={col ? { color: col.stroke, borderColor: col.stroke } : undefined}>{j + 1}</span>
                   <span className={`ac-name mc-name${rowSel === k ? " is-sel" : ""}${dragFrom === j ? " is-drag" : ""}`} draggable title={`${fullOf(c)} · ${contourKind(c)}`}
@@ -101,6 +105,9 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
                     onDragEnd={() => setDragFrom(null)}>
                     <span className="mc-part">{labelOf(c)}</span><small>{contourKind(c)}</small>
                   </span>
+                  <button type="button" className="mc-del" onClick={() => drop(k)} aria-label={`Take ${labelOf(c)} ${contourKind(c)} out of the list`} title="Take it out of the list">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
+                  </button>
                 </div>
               );
             })}
@@ -128,11 +135,11 @@ export function useManualCut({ index, single, sheets, parts, onCut }: {
     panel,
     cut: {
       picking: false, picked: [], onPick: () => { /* contours are picked here, not parts */ }, panel,
-      ...(can && picking ? { onPoint: point, cursor: "pointer" } : {}),
+      ...(can && (picking || picked.length) ? { onPoint: point, ...(picking ? { cursor: "pointer" } : {}) } : {}),
       ...(glowAll.size ? { glow: { all: glowAll, ...(strong ? { strong } : {}) } } : {}),
       hint: !can ? (single ? "Process the sheet first (Auto cut), then set its order here." : "Open a sheet to set its cut order.")
         : picking ? "Click contours in the order to cut them (click again: out). Drag them in the list to change the order, then APPLY."
-        : picked.length ? "Choose a contour in the list to see it; APPLY puts them in this order." : "Press SELECT on the right, then click the contours.",
+        : picked.length ? "Choose a contour in the list to see it, × or a click on it takes it out; APPLY puts them in this order." : "Press SELECT on the right, then click the contours.",
     },
   };
 }
