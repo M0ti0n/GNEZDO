@@ -113,7 +113,8 @@ export interface Solid { faces: Face[]; unitMm: number; name: string; problems: 
 
 const SEG = 0.4;   // max mm between sampled points along a curve
 
-export function readSolid(text: string): Solid {
+/** Every body of a STEP file (an assembly: each part, with its quantity). */
+export function readStep(text: string): StepModel {
   const E = parseStep(text);
   const get = (r: Val | undefined): Entity => {
     if (!r || !isRef(r)) throw new Error("STEP: a reference is missing");
@@ -229,56 +230,144 @@ export function readSolid(text: string): Solid {
     return { kind: "plane", o, n, x: unit3(len3(su) > 1e-9 ? su : sv) };
   };
 
-  const problems: string[] = [];
-  // the solid: the first MANIFOLD_SOLID_BREP (or BREP_WITH_VOIDS), its outer shell
-  let shell: Entity | null = null, name = "";
-  for (const e of E.values()) {
-    if (e.type === "MANIFOLD_SOLID_BREP" || e.type === "BREP_WITH_VOIDS") { shell = get(e.args[1]); break; }
-  }
-  if (!shell) for (const e of E.values()) if (e.type === "CLOSED_SHELL" || e.type === "OPEN_SHELL") { shell = e; break; }
-  if (!shell) throw new Error("No solid in this STEP file");
-  for (const e of E.values()) if (e.type === "PRODUCT") { name = String(e.args[0] || e.args[1] || ""); break; }
-  let solids = 0;
-  for (const e of E.values()) if (e.type === "MANIFOLD_SOLID_BREP" || e.type === "BREP_WITH_VOIDS") solids++;
-  if (solids > 1) problems.push(`${solids} solids in the file: the first is used`);
-
-  const faces: Face[] = [];
-  for (const fr of shell.args[1] as Val[]) {
-    if (!isRef(fr)) continue;
-    const f = get(fr);
-    if (f.type !== "ADVANCED_FACE" && f.type !== "FACE_SURFACE") continue;
-    const se = get(f.args[2]);
-    let surf: Surf;
-    if (se.type === "PLANE") { const ax = axis2(se.args[1]); surf = { kind: "plane", o: ax.o, n: ax.z, x: ax.x }; }
-    else if (se.type === "CYLINDRICAL_SURFACE") { const ax = axis2(se.args[1]); surf = { kind: "cyl", a: ax.o, d: ax.z, x: ax.x, r: (se.args[2] as number) * unitMm }; }
-    else surf = flatSpline(se) ?? { kind: "other", type: se.type === "COMPLEX" ? (se.parts?.map((p) => p.type).join("+") ?? "COMPLEX") : se.type };
-    const sense = (f.args[3] as Enum)?.enum !== "F";
-    const loops: Face["loops"] = [];
-    for (const br of f.args[1] as Val[]) {
-      const b = get(br);
-      const loop = get(b.args[1]);
-      if (loop.type !== "EDGE_LOOP") continue;
-      const bsense = (b.args[2] as Enum)?.enum !== "F";
-      let edges: Edge[] = [];
-      for (const oer of loop.args[1] as Val[]) {
-        const oe = get(oer);
-        const ec = get(oe.args[3]);
-        const ori = (oe.args[4] as Enum)?.enum !== "F";
-        const v0 = P(get(ec.args[1]).args[1]), v1 = P(get(ec.args[2]).args[1]);
-        const same = (ec.args[4] as Enum)?.enum !== "F";
-        const cp = curvePts(ec.args[3], v0, v1, same);
-        let pts = cp.pts;
-        let arc = cp.arc;
-        if (!ori) { pts = pts.slice().reverse(); if (arc) arc = { ...arc, z: mul3(arc.z, -1) }; }
-        edges.push({ id: (oe.args[3] as Ref).ref, pts, ...(arc ? { arc } : {}), ...(cp.line ? { line: true } : {}) });
+  // the faces of shells (a solid's outer shell, or a surface body's shells)
+  const facesOf = (shells: Val[]): Face[] => {
+    const faces: Face[] = [];
+    for (const sr of shells) {
+      if (!isRef(sr)) continue;
+      const shell = get(sr);
+      for (const fr of shell.args[1] as Val[]) {
+        if (!isRef(fr)) continue;
+        const f = get(fr);
+        if (f.type !== "ADVANCED_FACE" && f.type !== "FACE_SURFACE") continue;
+        const se = get(f.args[2]);
+        let surf: Surf;
+        if (se.type === "PLANE") { const ax = axis2(se.args[1]); surf = { kind: "plane", o: ax.o, n: ax.z, x: ax.x }; }
+        else if (se.type === "CYLINDRICAL_SURFACE") { const ax = axis2(se.args[1]); surf = { kind: "cyl", a: ax.o, d: ax.z, x: ax.x, r: (se.args[2] as number) * unitMm }; }
+        else surf = flatSpline(se) ?? { kind: "other", type: se.type === "COMPLEX" ? (se.parts?.map((p) => p.type).join("+") ?? "COMPLEX") : se.type };
+        const sense = (f.args[3] as Enum)?.enum !== "F";
+        const loops: Face["loops"] = [];
+        for (const br of f.args[1] as Val[]) {
+          const b = get(br);
+          const loop = get(b.args[1]);
+          if (loop.type !== "EDGE_LOOP") continue;
+          const bsense = (b.args[2] as Enum)?.enum !== "F";
+          let edges: Edge[] = [];
+          for (const oer of loop.args[1] as Val[]) {
+            const oe = get(oer);
+            const ec = get(oe.args[3]);
+            const ori = (oe.args[4] as Enum)?.enum !== "F";
+            const v0 = P(get(ec.args[1]).args[1]), v1 = P(get(ec.args[2]).args[1]);
+            const same = (ec.args[4] as Enum)?.enum !== "F";
+            const cp = curvePts(ec.args[3], v0, v1, same);
+            let pts = cp.pts;
+            let arc = cp.arc;
+            if (!ori) { pts = pts.slice().reverse(); if (arc) arc = { ...arc, z: mul3(arc.z, -1) }; }
+            edges.push({ id: (oe.args[3] as Ref).ref, pts, ...(arc ? { arc } : {}), ...(cp.line ? { line: true } : {}) });
+          }
+          if (!bsense) edges = edges.reverse().map((e) => ({ ...e, pts: e.pts.slice().reverse(), ...(e.arc ? { arc: { ...e.arc, z: mul3(e.arc.z, -1) } } : {}) }));
+          loops.push({ outer: b.type === "FACE_OUTER_BOUND", edges });
+        }
+        faces.push({ id: (fr as Ref).ref, surf, sense, loops });
       }
-      if (!bsense) edges = edges.reverse().map((e) => ({ ...e, pts: e.pts.slice().reverse(), ...(e.arc ? { arc: { ...e.arc, z: mul3(e.arc.z, -1) } } : {}) }));
-      loops.push({ outer: b.type === "FACE_OUTER_BOUND", edges });
     }
-    faces.push({ id: (fr as Ref).ref, surf, sense, loops });
+    // no FACE_OUTER_BOUND: the biggest loop is the outer one (decided by the unfolder for planes)
+    return faces;
+  };
+
+  // the bodies: solids (MANIFOLD_SOLID_BREP, BREP_WITH_VOIDS: the outer shell) and surface bodies
+  const raw: { id: number; name: string; kind: "solid" | "surface"; shells: Val[] }[] = [];
+  for (const [id, e] of E) {
+    if (e.type === "MANIFOLD_SOLID_BREP" || e.type === "BREP_WITH_VOIDS") raw.push({ id, name: String(e.args[0] ?? ""), kind: "solid", shells: [e.args[1]] });
+    else if (e.type === "SHELL_BASED_SURFACE_MODEL") raw.push({ id, name: String(e.args[0] ?? ""), kind: "surface", shells: e.args[1] as Val[] });
   }
-  // no FACE_OUTER_BOUND: the biggest loop is the outer one (decided by the unfolder for planes)
-  return { faces, unitMm, name, problems };
+  if (!raw.length) for (const [id, e] of E) if (e.type === "CLOSED_SHELL" || e.type === "OPEN_SHELL") raw.push({ id, name: String(e.args[0] ?? ""), kind: e.type === "CLOSED_SHELL" ? "solid" : "surface", shells: [{ ref: id }] });
+  if (!raw.length) throw new Error("No solid or surface in this STEP file");
+
+  // the product structure: which product (part) each body belongs to, how many of it the assembly has
+  const pdName = new Map<number, string>();
+  for (const [id, e] of E) {
+    if (e.type !== "PRODUCT_DEFINITION" && e.type !== "PRODUCT_DEFINITION_WITH_ASSOCIATED_DOCUMENTS") continue;
+    try {
+      const form = get(e.args[2]);
+      const prod = get(form.args[2]);
+      // Fusion names an unsaved design "(Unsaved)": no name
+      pdName.set(id, String(prod.args[1] || prod.args[0] || "").replace(/^\(unsaved\)$/i, "").trim());
+    } catch { /* not a part's definition */ }
+  }
+  const parents = new Map<number, number[]>();
+  for (const e of E.values()) if (e.type === "NEXT_ASSEMBLY_USAGE_OCCURRENCE" && isRef(e.args[3]) && isRef(e.args[4])) {
+    const l = parents.get(e.args[4].ref) ?? [];
+    l.push(e.args[3].ref);
+    parents.set(e.args[4].ref, l);
+  }
+  const qtyMemo = new Map<number, number>();
+  const qtyOf = (pd: number, depth = 0): number => {
+    if (qtyMemo.has(pd)) return qtyMemo.get(pd)!;
+    const ps = parents.get(pd);
+    const q = !ps || depth > 50 ? 1 : ps.reduce((n, p) => n + qtyOf(p, depth + 1), 0);
+    qtyMemo.set(pd, q);
+    return q;
+  };
+  const repPD = new Map<number, number>();
+  for (const e of E.values()) if (e.type === "SHAPE_DEFINITION_REPRESENTATION" && isRef(e.args[0]) && isRef(e.args[1])) {
+    const pds = E.get(e.args[0].ref);
+    if (pds && isRef(pds.args[2]) && pdName.has(pds.args[2].ref)) repPD.set(e.args[1].ref, pds.args[2].ref);
+  }
+  // plain links between representations (a part's shape -> its B-rep); the ones with a placement are assembly links
+  const links = new Map<number, number[]>();
+  const link = (a: number, b: number) => { links.set(a, [...(links.get(a) ?? []), b]); links.set(b, [...(links.get(b) ?? []), a]); };
+  for (const e of E.values()) if (e.type === "SHAPE_REPRESENTATION_RELATIONSHIP" && isRef(e.args[2]) && isRef(e.args[3])) link(e.args[2].ref, e.args[3].ref);
+  const itemRep = new Map<number, number>();
+  for (const [id, e] of E) if (e.type.endsWith("REPRESENTATION") && Array.isArray(e.args[1])) for (const v of e.args[1] as Val[]) if (isRef(v)) itemRep.set(v.ref, id);
+  const pdOfBody = (b: number): number | null => {
+    const r0 = itemRep.get(b);
+    if (r0 === undefined) return null;
+    const seen = new Set([r0]);
+    const q = [r0];
+    while (q.length) {
+      const r = q.shift()!;
+      if (repPD.has(r)) return repPD.get(r)!;
+      for (const n of links.get(r) ?? []) if (!seen.has(n)) { seen.add(n); q.push(n); }
+    }
+    return null;
+  };
+  const perPD = new Map<number, number>();
+  const withPD = raw.map((b) => { const pd = pdOfBody(b.id); if (pd !== null) perPD.set(pd, (perPD.get(pd) ?? 0) + 1); return { ...b, pd }; });
+  const nth = new Map<number, number>();
+  const bodies: StepBody[] = withPD.map((b, i) => {
+    let name: string;
+    if (b.pd !== null) {
+      const pn = pdName.get(b.pd) ?? "";
+      const n = (nth.get(b.pd) ?? 0) + 1; nth.set(b.pd, n);
+      name = perPD.get(b.pd)! > 1 ? `${pn || "Part"} ${b.name && b.name !== pn ? b.name : n}` : pn || b.name || `Body ${i + 1}`;
+    } else name = b.name || `Body ${i + 1}`;
+    let solid: Solid | null = null;
+    return {
+      id: b.id, name: name.trim(), kind: b.kind, qty: b.pd !== null ? qtyOf(b.pd) : 1,
+      get solid() {
+        if (!solid) {
+          const problems: string[] = [];
+          let faces: Face[] = [];
+          try { faces = facesOf(b.shells); } catch (e) { problems.push((e as Error).message); }
+          solid = { faces, unitMm, name: name.trim(), problems };
+        }
+        return solid;
+      },
+    };
+  });
+  return { bodies, unitMm };
+}
+
+/** One body of a STEP file: a solid or a surface body, with its part's name and how many the assembly has. */
+export interface StepBody { id: number; name: string; kind: "solid" | "surface"; qty: number; readonly solid: Solid }
+export interface StepModel { bodies: StepBody[]; unitMm: number }
+
+/** The first body of a STEP file (one part). */
+export function readSolid(text: string): Solid {
+  const m = readStep(text);
+  const s = m.bodies[0].solid;
+  return m.bodies.length > 1 ? { ...s, problems: [...s.problems, `${m.bodies.length} bodies in the file: the first is used`] } : s;
 }
 
 /** The face's outward normal at a point on it (null: a surface not handled). */

@@ -16,8 +16,9 @@ import { Combobox } from "../components/Combobox";
 import { usePickLists } from "../components/pickLists";
 import { editPart, exportPart } from "../import/partFile";
 import { ImportPanel, type ImportPanelProps } from "./ImportPanel";
+import { ExtractPanel, type ExtractPanelProps } from "./ExtractPanel";
 
-export type DrawerMode = "parts" | "jobs" | "remnants" | "import";
+export type DrawerMode = "parts" | "jobs" | "remnants" | "import" | "extract";
 
 /** MIME type used when dragging parts from the drawer into a job. */
 export const PARTS_MIME = "application/x-gnezdo-parts";
@@ -38,13 +39,15 @@ interface Props {
   /** New job: its pop-up (name and machine) */
   onNewJob: () => void;
   importPanel: ImportPanelProps;
+  extractPanel: ExtractPanelProps;
   /** Show the number of pieces from the file name (import rule). */
   showQty: boolean;
 }
 
 // Left side: a rail that opens a docked panel for finding imported parts
 // (to drag into a job), searching jobs, or importing new drawings.
-export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRemnantSearch, remnant, homeActive, onHome, onNewJob, importPanel, showQty, machines }: Props) {
+export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRemnantSearch, remnant, homeActive, onHome, onNewJob, importPanel, extractPanel, showQty, machines }: Props) {
+  const waiting = importPanel.items.filter((i) => !i.processed).length;
   const toggle = (m: DrawerMode) => onMode(mode === m ? null : m);
   return (
     <aside className={`drawer${mode ? " is-open" : ""}`}>
@@ -54,9 +57,14 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRem
           <IconHome /><span>Home</span>
         </button>
         <button role="tab" aria-selected={mode === "import"} className={`rail-btn${mode === "import" ? " is-on" : ""}`}
-          onClick={() => toggle("import")} title="Import parts: DXF, DWG or SVG drawings into the parts library">
-          <IconImport /><span>Import</span>
-          {importPanel.items.length > 0 && <span className="rail-count">{importPanel.items.length}</span>}
+          onClick={() => toggle("import")} title="Import 2D: DXF, DWG or SVG drawings (and flat patterns from the 3D Extractor) into the parts library">
+          <IconImport /><span>Import 2D</span>
+          {waiting > 0 && <span className="rail-count" title={`${waiting} waiting to be processed`}>{waiting}</span>}
+        </button>
+        <button role="tab" aria-selected={mode === "extract"} className={`rail-btn${mode === "extract" ? " is-on" : ""}`}
+          onClick={() => toggle("extract")} title="3D Extractor: flat patterns out of STEP parts and assemblies, sent to Import 2D">
+          <Icon3d /><span>3D Extractor</span>
+          {extractPanel.parts.length > 0 && <span className="rail-count is-3d">{extractPanel.parts.filter((x) => x.kind !== "hardware").length}</span>}
         </button>
         <button className="rail-btn" onClick={onNewJob} title="New job">
           <IconNewJob /><span>New job</span>
@@ -81,11 +89,19 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRem
           {mode === "jobs" && <JobsPanel onSearch={onJobSearch} onClose={() => onMode(null)} machines={machines} />}
           {mode === "remnants" && <RemnantsPanel onSearch={onRemnantSearch} onClose={() => onMode(null)} selected={remnant?.selected ?? null} onChanged={remnant?.onChanged ?? (() => {})} />}
           {mode === "import" && <ImportPanel {...importPanel} onClose={() => onMode(null)} />}
+          {mode === "extract" && <ExtractPanel {...extractPanel} onClose={() => onMode(null)} />}
         </div>
       )}
     </aside>
   );
 }
+
+/** A sheet metal part in 3D with an arrow out of it (3D Extractor). */
+const Icon3d = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
+    <path d="M2.5 14.5l6-3 9.5 3.2-6 3.1z" /><path d="M8.5 11.5V5.5l9.5 3.2v6" /><path d="M14 21h7.5M19 18.5l2.5 2.5-2.5 2.5" />
+  </svg>
+);
 
 /* ------------------------------------------------------------------ */
 

@@ -32,7 +32,7 @@ export const VIEW_TITLE: Record<ViewKind, string> = {
   home: "Home",
   jobSearch: "Job search",
   remnants: "Remnants",
-  import: "Import",
+  import: "Import 2D",
   projects: "Projects",
   settings: "Settings",
   rules: "Rules",

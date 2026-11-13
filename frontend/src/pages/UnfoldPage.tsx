@@ -2,61 +2,66 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { NumInput } from "../components/NumInput";
 import { normalAt, type Solid, type V3 } from "../import/step/step";
 import {
-  flatDrawing, infoOf, kFor, loadProfiles, marksOf, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
+  infoOf, kFor, loadProfiles, marksOf, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
   DEFAULT_PROFILE, type Grain, type MarkAs, type StepPart, type StepSettings, type UnfoldProfile,
 } from "../import/step/stepPart";
+import { KIND_LABEL, type BodyKind } from "../import/step/extract";
 import { flatDxf, type Unfolded, type V2 } from "../import/step/unfold";
-import type { Drawing } from "../import/geometry";
 
-// Import -> a STEP part (3D): the part and its flat pattern side by side, the Unfold panel on the right.
-// The flat pattern lies top side up (the side up on the machine): foil / finish on it when marked; bend
-// marks are traced on the bends coming up from it. Every change unfolds the part again and gives the
-// import list its new flat pattern (EDIT AS 2D: the drawing, for the usual tools; changing anything
-// here after that makes the flat pattern again).
+// 3D EXTRACTOR -> a part: the part and its flat pattern side by side, the Unfold panel on the right.
+// Sheet metal is unfolded across its bends; STITCH lays picked flat faces flat across their shared edges
+// (a surface model, or a part drawn with sharp corners). The flat pattern lies top side up (the side up
+// on the machine): foil / finish on it when marked; bend marks are traced on the bends coming up from it.
+// SEND TO IMPORT 2D puts the flat pattern into the import list (sent again: replaced there).
 
-type Pick = "base" | "top" | "measure" | null;
+type Pick = "base" | "top" | "stitch" | "measure" | null;
 
-const K = "#1b1b1b", G = "#1d9641", R = "#e3262b";
+const K = "#1b1b1b", G = "#1d9641", R = "#e3262b", B = "#1d7fd0";
 const Ico = ({ children }: { children: ReactNode }) => (
   <svg viewBox="0 0 48 48" width={48} height={48} fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 );
 const ICONS: Record<string, ReactNode> = {
   base: <Ico><path d="M6 32l16-8 20 8-16 8z" fill="#cfe3d4" stroke={K} strokeWidth="2.2" /><path d="M24 6v20" stroke={R} strokeWidth="2.6" /><circle cx="24" cy="7" r="3.5" fill={R} /></Ico>,
   top: <Ico><path d="M6 30l16-8 20 8-16 8z" fill="#fff" stroke={K} strokeWidth="2.2" /><path d="M6 24l16-8 20 8-16 8z" fill="#bfe3c8" stroke={G} strokeWidth="2.2" /><path d="M24 4v10M19 9l5-5 5 5" stroke={G} strokeWidth="2.4" /></Ico>,
+  stitch: <Ico><path d="M4 30l12-6v-16l-12 6z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><path d="M16 24l14 6 14-6-14-6z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><path d="M16 8v16" stroke={B} strokeWidth="3" /><path d="M9 14l3 2M9 20l3 2" stroke={B} strokeWidth="2.2" /></Ico>,
   measure: <Ico><path d="M6 26h36M6 18v16M42 18v16" stroke={K} strokeWidth="2.2" /><path d="M11 26l6-3.5v7zM37 26l-6-3.5v7z" fill={R} /></Ico>,
-  fit: <Ico><path d="M6 16V6h10M32 6h10v10M42 32v10H32M16 42H6V32" stroke={K} strokeWidth="2.4" /><rect x="15" y="15" width="18" height="18" stroke={G} strokeWidth="2.4" /></Ico>,
-  edit2d: <Ico><rect x="5" y="8" width="30" height="30" stroke={K} strokeWidth="2.2" /><path d="M5 23h30" stroke={G} strokeWidth="2.6" strokeDasharray="5 4" /><path d="M30 40l12-12 4 4-12 12h-4z" fill="#fff" stroke={K} strokeWidth="2" /></Ico>,
+  send: <Ico><rect x="4" y="10" width="26" height="28" stroke={K} strokeWidth="2.2" /><path d="M4 24h26" stroke={G} strokeWidth="2.4" strokeDasharray="5 4" /><path d="M28 24h16M38 18l6 6-6 6" stroke={G} strokeWidth="3" /></Ico>,
   dxf: <Ico><path d="M10 4h18l10 10v30H10z" stroke={K} strokeWidth="2.2" /><path d="M24 18v16M18 28l6 6 6-6" stroke={G} strokeWidth="2.6" /></Ico>,
 };
 
-export function UnfoldPage({ name, step, material, onChange, onEdit2d }: {
+export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, onSend }: {
   name: string;
+  kind: BodyKind;
+  qty: number;
+  /** its flat pattern is in Import 2D */
+  sent: boolean;
   step: StepPart;
-  /** the import list's material (the profile's K-factor by material and thickness) */
+  /** the Import 2D material (the profile's K-factor by material and thickness) */
   material: string;
-  /** new settings: the part unfolded again, its flat pattern */
-  onChange: (step: StepPart, drawing: Drawing) => void;
-  onEdit2d: () => void;
+  /** new settings: the part unfolded again */
+  onChange: (step: StepPart) => void;
+  onSend: () => void;
 }) {
   const st = step.settings;
-  const solid = useMemo(() => solidOf(step.text), [step.text]);
-  const u = useMemo(() => unfoldPart(step.text, st), [step.text, st]);
-  const [pick, setPick] = useState<Pick>(null);
+  const stitchMode = st.mode === "stitch";
+  const solid = useMemo(() => solidOf(step.text, step.body), [step.text, step.body]);
+  const u = useMemo(() => unfoldPart(step.text, st, step.body), [step.text, st, step.body]);
+  const [pick, setPick] = useState<Pick>(stitchMode && !st.stitch.length ? "stitch" : null);
   const [profiles, setProfiles] = useState<UnfoldProfile[]>(loadProfiles);
   const [editProfiles, setEditProfiles] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   const set = (patch: Partial<StepSettings>) => {
     const next = { ...st, ...patch };
-    const nu = unfoldPart(step.text, next);
-    if (!nu.outline.length) { setMsg(nu.problems[0] ?? "Not unfolded with this face"); return; }
+    const nu = unfoldPart(step.text, next, step.body);
+    if (next.mode === "sheet" && !nu.outline.length) { setMsg(nu.problems[0] ?? "Not unfolded with this face"); return; }
     setMsg(null);
-    onChange({ ...step, settings: next, info: infoOf(nu) }, flatDrawing("", name, nu, next));
+    onChange({ ...step, settings: next, info: infoOf(nu) });
   };
   const useProfile = (n: string) => {
     const p = profiles.find((x) => x.name === n) ?? DEFAULT_PROFILE;
     setCurrentProfile(p.name);
-    set({ profile: p.name, kFactor: kFor(p, material, u.thickness), markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate, foil: p.foil });
+    set({ profile: p.name, kFactor: kFor(p, material, stitchMode ? (st.comp.t || null) : u.thickness), markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate, foil: p.foil });
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPick(null); };
@@ -64,7 +69,7 @@ export function UnfoldPage({ name, step, material, onChange, onEdit2d }: {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const flip = st.top !== undefined ? !u.skinFaces.includes(st.top) : u.bends.filter((b) => !b.inner).length > u.bends.filter((b) => b.inner).length;
+  const flip = stitchMode ? false : st.top !== undefined ? !u.skinFaces.includes(st.top) : u.bends.filter((b) => !b.inner).length > u.bends.filter((b) => b.inner).length;
   const ups = u.bends.filter((b) => b.up).length;
   const download = () => {
     const url = URL.createObjectURL(new Blob([flatDxf(u, { marks: marksOf(u, st) })], { type: "application/dxf" }));
@@ -72,42 +77,68 @@ export function UnfoldPage({ name, step, material, onChange, onEdit2d }: {
     a.href = url; a.download = `${name}_flat.dxf`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   };
+  const toggleStitch = () => {
+    if (stitchMode) { set({ mode: "sheet" }); setPick(null); return; }
+    set({ mode: "stitch" });
+    setPick("stitch");
+  };
 
   const tool = (id: string, label: string, on: boolean, act: () => void, title: string, disabled = false) => (
     <button type="button" className={`itool${on ? " is-on" : ""}`} aria-pressed={on} aria-disabled={disabled} title={title} onClick={() => !disabled && act()}>
       <span className="itool-box">{ICONS[id]}</span><span className="itool-label">{label}</span>
     </button>
   );
+  const hint = pick === "base" ? "click a flat face to unfold from" : pick === "top" ? "click a face on the top side"
+    : pick === "stitch" ? "click flat faces one next to the other (again: out)" : "drag: turn · wheel: zoom";
 
   return (
     <div className="import uf">
       <div className="itools">
-        {tool("base", "Fixed face", pick === "base", () => setPick(pick === "base" ? null : "base"), "Click a flat face of the part: the flat pattern is unfolded from it (else from the biggest)")}
-        {tool("top", "Top side", pick === "top", () => setPick(pick === "top" ? null : "top"), "Click a face on the side that lies up on the machine (the foil / finish side, or the inside of the bends to trace)")}
+        {tool("stitch", "Stitch", stitchMode, toggleStitch, "Stitch faces (manual): click flat faces one next to the other; they are laid flat across the edges they share (a surface, or a part with sharp corners). Off: unfolded as sheet metal")}
+        {tool("base", "Fixed face", pick === "base", () => setPick(pick === "base" ? null : "base"), "Click a flat face of the part: the flat pattern is unfolded from it (else from the biggest)", stitchMode)}
+        {tool("top", "Top side", stitchMode ? st.flip !== undefined : pick === "top", () => (stitchMode ? set({ flip: !(st.flip ?? isFlippedAuto(step)) }) : setPick(pick === "top" ? null : "top")),
+          stitchMode ? "Turn the flat pattern over: the faces' other side up" : "Click a face on the side that lies up on the machine (the foil / finish side, or the inside of the bends to trace)")}
         {tool("measure", "Distance", pick === "measure", () => setPick(pick === "measure" ? null : "measure"), "Click two points of the flat pattern (corners and hole centers snap)")}
         <span className="uf-sep" />
-        {tool("edit2d", "Edit as 2D", false, onEdit2d, "The flat pattern as a drawing, with the usual import tools (changing anything in 3D afterwards makes it again)")}
-        {tool("dxf", "Flat DXF", false, download, "Download the flat pattern as DXF (with the whole bend lines on layer BEND)")}
+        {tool("send", sent ? "Send again" : "Send to Import 2D", false, onSend, step.info.ok
+          ? `Put the flat pattern into Import 2D (×${qty}) to be processed there${sent ? "; it replaces the one sent before" : ""}`
+          : "The flat pattern is not ready (not unfolded, or the outline is open)", !step.info.ok)}
+        {tool("dxf", "Flat DXF", false, download, "Download the flat pattern as DXF (with the whole bend lines on layer BEND)", !u.outline.length)}
       </div>
       <div className="uf-panes">
         <section className="uf-pane uf-3d">
-          <h3>Part <em>{pick === "base" ? "click a flat face to unfold from" : pick === "top" ? "click a face on the top side" : "drag: turn · wheel: zoom"}</em></h3>
-          <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick === "base" || pick === "top" ? pick : null}
-            onPick={(f, kind) => {
-              if (pick === "base") { if (kind !== "plane") { setMsg("The fixed face must be flat"); return; } set({ base: f }); setPick(null); }
+          <h3>Part <em>{hint}</em></h3>
+          <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick === "base" || pick === "top" || pick === "stitch" ? pick : null}
+            onPick={(f, k) => {
+              if (pick === "base") { if (k !== "plane") { setMsg("The fixed face must be flat"); return; } set({ base: f }); setPick(null); }
               else if (pick === "top") { set({ top: f }); setPick(null); }
+              else if (pick === "stitch") {
+                if (k !== "plane") { setMsg("Only flat faces can be stitched"); return; }
+                set({ stitch: st.stitch.includes(f) ? st.stitch.filter((x) => x !== f) : [...st.stitch, f] });
+              }
             }} />
-          <div className="uf-leg"><span><i className="is-skin" />unfolded side</span><span><i className="is-other" />other faces</span><span><i className="is-base" />fixed face</span><span><i className="is-bad" />not unfolded</span></div>
+          <div className="uf-leg">{stitchMode
+            ? <><span><i className="is-stitch" />stitched</span><span><i className="is-base" />first face (stays)</span><span><i className="is-other" />other faces</span></>
+            : <><span><i className="is-skin" />unfolded side</span><span><i className="is-other" />other faces</span><span><i className="is-base" />fixed face</span><span><i className="is-bad" />not unfolded</span></>}</div>
         </section>
         <section className="uf-pane uf-flat">
-          <h3>Flat pattern <em>{fmt(u.box.x1)} × {fmt(u.box.y1)} mm · K {st.kFactor} · top side up{st.foil ? " (foil / finish)" : ""}</em></h3>
-          <FlatView u={u} st={st} measure={pick === "measure"} />
+          <h3>Flat pattern <em>{u.outline.length ? `${fmt(u.box.x1)} × ${fmt(u.box.y1)} mm · ` : ""}{stitchMode && st.comp.side === "none" ? "faces as they are" : `K ${st.kFactor}`} · top side up{st.foil ? " (foil / finish)" : ""}</em></h3>
+          {u.outline.length ? <FlatView u={u} st={st} measure={pick === "measure"} />
+            : <div className="uf-empty">{stitchMode ? "Click the faces to stitch on the part: the first one stays, each next one must share an edge with one picked before." : "Not unfolded."}</div>}
           <div className="uf-leg"><span><i className="is-mark" />bend marks ({st.marks === "none" ? "off" : st.marks === "trace" ? "traced" : "open cut"}, up bends)</span><span><i className="is-bend" />bend line (not cut)</span><span className="uf-up">UP</span><span className="uf-down">DOWN</span></div>
         </section>
       </div>
       <aside className="uf-panel" aria-label="Unfold">
-        <header><h2>Unfold</h2><span className={`uf-pill${step.info.ok ? " is-ok" : " is-warn"}`}>{step.info.ok ? "Unfolded" : "Check it"}</span></header>
+        <header><h2>{KIND_LABEL[kind] === "Other parts" ? "Part" : KIND_LABEL[kind].replace(/s$/, "")} <small>×{qty}</small></h2>
+          <span className={`uf-pill${step.info.ok ? " is-ok" : " is-warn"}`}>{sent ? "Sent" : step.info.ok ? (stitchMode ? "Stitched" : "Unfolded") : stitchMode ? "Pick faces" : "Check it"}</span></header>
         <div className="uf-body">
+          <div className="uf-row">
+            <span>Mode</span>
+            <span className="cols-toggle uf-seg" role="radiogroup" aria-label="How it is laid flat">
+              <button type="button" role="radio" aria-checked={!stitchMode} className={!stitchMode ? "is-on" : ""} onClick={() => stitchMode && toggleStitch()}>Sheet metal</button>
+              <button type="button" role="radio" aria-checked={stitchMode} className={stitchMode ? "is-on" : ""} onClick={() => !stitchMode && toggleStitch()}>Stitch faces</button>
+            </span>
+          </div>
           <div className="uf-row">
             <label htmlFor="uf-prof">Profile</label>
             <select id="uf-prof" className="field" value={st.profile} onChange={(e) => useProfile(e.target.value)}>
@@ -116,20 +147,43 @@ export function UnfoldPage({ name, step, material, onChange, onEdit2d }: {
             <button type="button" className="btn btn-plain uf-mini" onClick={() => setEditProfiles(true)}>Edit…</button>
           </div>
           <dl className="uf-facts">
-            <dt>Thickness</dt><dd>{u.thickness !== null ? `${fmt(u.thickness)} mm` : "not found"}</dd>
-            <dt>Material</dt><dd>{material || <em>Properties</em>}</dd>
+            <dt>Thickness</dt><dd>{u.thickness !== null ? `${fmt(u.thickness)} mm` : stitchMode ? <em>Import 2D properties</em> : "not found"}</dd>
+            <dt>Material</dt><dd>{material || <em>Import 2D properties</em>}</dd>
             <dt>Bends</dt><dd>{u.bends.length}{u.bends.length ? ` · ${ups} up, ${u.bends.length - ups} down` : ""}</dd>
-            <dt>Flat size</dt><dd>{fmt(u.box.x1)} × {fmt(u.box.y1)}</dd>
+            <dt>Flat size</dt><dd>{u.outline.length ? `${fmt(u.box.x1)} × ${fmt(u.box.y1)}` : "–"}</dd>
           </dl>
-          <div className="uf-row">
-            <label>K-factor <small>inner R + K × t</small></label>
-            <NumInput className="field uf-num" value={st.kFactor} min={0} aria-label="K-factor" onCommit={(n) => set({ kFactor: Math.min(1, n) })} />
-          </div>
-          <div className="uf-lbl">Faces</div>
-          <div className="uf-row"><span>Fixed face</span><span className="uf-val">{st.base !== undefined ? "picked" : "the biggest"}</span>
-            {st.base !== undefined && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ base: undefined })}>Biggest</button>}</div>
-          <div className="uf-row"><span>Top side</span><span className="uf-val">{st.top !== undefined ? "picked" : "inside of most bends"}</span>
-            {st.top !== undefined && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ top: undefined })}>Auto</button>}</div>
+          {stitchMode ? (<>
+            <div className="uf-lbl">Stitched faces</div>
+            <div className="uf-row"><span>Faces</span><span className="uf-val">{st.stitch.length}</span>
+              <button type="button" className={`btn btn-plain uf-mini${pick === "stitch" ? " is-on" : ""}`} onClick={() => setPick(pick === "stitch" ? null : "stitch")}>{pick === "stitch" ? "Picking…" : "Pick"}</button>
+              {st.stitch.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ stitch: [] })}>Clear</button>}</div>
+            <div className="uf-row"><span>Top side</span><span className="uf-val">{st.flip === undefined ? "inside of most bends" : "turned by hand"}</span>
+              <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ flip: !(st.flip ?? isFlippedAuto(step)) })}>Turn over</button>
+              {st.flip !== undefined && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ flip: undefined })}>Auto</button>}</div>
+            <div className="uf-row"><span>Compensate</span>
+              <span className="cols-toggle uf-seg" role="radiogroup" aria-label="Bend compensation">
+                {(["none", "top", "bottom"] as const).map((c) => (
+                  <button key={c} type="button" role="radio" aria-checked={st.comp.side === c} className={st.comp.side === c ? "is-on" : ""}
+                    title={c === "none" ? "The faces laid flat as they are (fine for thin sheet)" : `The faces are the sheet's ${c} side: each bend gets its allowance less the setbacks (thickness, inner radius, K-factor below)`}
+                    onClick={() => set({ comp: { ...st.comp, side: c, t: st.comp.t || 2, r: st.comp.r || st.comp.t || 2 } })}>{c === "none" ? "No" : c === "top" ? "Top side" : "Bottom side"}</button>
+                ))}
+              </span></div>
+            {st.comp.side !== "none" && (<>
+              <div className="uf-row"><span>Thickness</span><NumInput className="field uf-num" value={st.comp.t} min={0} aria-label="Sheet thickness (mm)" onCommit={(n) => set({ comp: { ...st.comp, t: n } })} />
+                <span>inner R</span><NumInput className="field uf-num" value={st.comp.r} min={0} aria-label="Inner bend radius (mm)" onCommit={(n) => set({ comp: { ...st.comp, r: n } })} /><small>mm</small></div>
+              <div className="uf-row"><label>K-factor</label><NumInput className="field uf-num" value={st.kFactor} min={0} aria-label="K-factor" onCommit={(n) => set({ kFactor: Math.min(1, n) })} /></div>
+            </>)}
+          </>) : (<>
+            <div className="uf-row">
+              <label>K-factor <small>inner R + K × t</small></label>
+              <NumInput className="field uf-num" value={st.kFactor} min={0} aria-label="K-factor" onCommit={(n) => set({ kFactor: Math.min(1, n) })} />
+            </div>
+            <div className="uf-lbl">Faces</div>
+            <div className="uf-row"><span>Fixed face</span><span className="uf-val">{st.base !== undefined ? "picked" : "the biggest"}</span>
+              {st.base !== undefined && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ base: undefined })}>Biggest</button>}</div>
+            <div className="uf-row"><span>Top side</span><span className="uf-val">{st.top !== undefined ? "picked" : "inside of most bends"}</span>
+              {st.top !== undefined && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ top: undefined })}>Auto</button>}</div>
+          </>)}
           <label className="chk" title="The top side has a protective foil or a finish: it stays up on the machine, so the part is never mirrored when nesting">
             <input type="checkbox" checked={st.foil} onChange={(e) => set({ foil: e.target.checked })} /> Foil / finish on the top side</label>
           <div className="uf-row"><span>Grain</span>
@@ -158,18 +212,18 @@ export function UnfoldPage({ name, step, material, onChange, onEdit2d }: {
                 <tr key={i}><td>{i + 1}</td><td>{fmt(b.angleDeg, 1)}°</td><td><span className={b.up ? "uf-up" : "uf-down"}>{b.up ? "UP" : "DOWN"}</span></td><td>{fmt(b.innerR)}</td><td>{fmt(b.length)}</td></tr>
               ))}</tbody>
             </table>
-            {!u.bends.length && <p className="uf-note">No bends: a flat part.</p>}
+            {!u.bends.length && <p className="uf-note">{u.outline.length ? "No bends: a flat part." : "No flat pattern yet."}</p>}
           </div>
           {(() => {
             // faces of reliefs and corners are not unfolded on purpose: a note, not a problem
-            const minor = (p: string) => p.includes("are fine");
+            const minor = (p: string) => p.includes("are fine") || p.startsWith("Click the faces");
             const bad = [...(msg ? [msg] : []), ...u.problems.filter((p) => !minor(p))];
             return (<>
               {bad.length > 0 && <ul className="uf-problems">{bad.map((p, i) => <li key={i}>{p}</li>)}</ul>}
               {u.problems.filter(minor).map((p, i) => <p key={`n${i}`} className="uf-note">{p}.</p>)}
             </>);
           })()}
-          <p className="uf-note">The flat pattern is in the import list already (properties, Check lines, Process all as usual). Foil / finish: never mirrored; grain: turned only 180°.</p>
+          <p className="uf-note">Send to Import 2D: the flat pattern goes to the import list with its quantity, to be processed there. Foil / finish: never mirrored; grain: turned only 180°.</p>
         </div>
       </aside>
       {editProfiles && <ProfilesDialog profiles={profiles} onClose={() => setEditProfiles(false)}
@@ -178,12 +232,19 @@ export function UnfoldPage({ name, step, material, onChange, onEdit2d }: {
   );
 }
 
+/** Stitched with the top side chosen automatically: is it turned over? */
+function isFlippedAuto(step: StepPart): boolean {
+  const st = step.settings;
+  const a = unfoldPart(step.text, { ...st, flip: false }, step.body), b = unfoldPart(step.text, { ...st, flip: undefined }, step.body);
+  return a.box.x1 !== b.box.x1 || a.bends.some((x, i) => x.up !== b.bends[i]?.up);
+}
+
 const fmt = (v: number, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString("en-US", { maximumFractionDigits: d });
 
 // ------------------------------------------------------------------ the part in 3D (shaded, faces picked)
 
 function Part3d({ solid, u, st, flip, pick, onPick }: {
-  solid: Solid; u: Unfolded; st: StepSettings; flip: boolean; pick: "base" | "top" | null;
+  solid: Solid; u: Unfolded; st: StepSettings; flip: boolean; pick: "base" | "top" | "stitch" | null;
   onPick: (face: number, kind: string) => void;
 }) {
   const cv = useRef<HTMLCanvasElement>(null);
@@ -193,7 +254,9 @@ function Part3d({ solid, u, st, flip, pick, onPick }: {
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const skin = useMemo(() => new Set(u.skinFaces), [u]);
   // the fixed face: picked, else the biggest flat face of the unfolded side
-  const base = st.base ?? u.skinFaces[0];
+  const stitchMode = st.mode === "stitch";
+  const base = stitchMode ? st.stitch[0] : st.base ?? u.skinFaces[0];
+  const picked = useMemo(() => new Set(stitchMode ? st.stitch : []), [stitchMode, st.stitch]);
 
   useEffect(() => {
     const c = cv.current;
@@ -234,8 +297,8 @@ function Part3d({ solid, u, st, flip, pick, onPick }: {
       }).sort((a, b) => b.depth - a.depth);
       const out: { i: number; path: Path2D }[] = [];
       for (const it of items) {
-        const k = solid.faces[it.i].surf.kind === "other" ? "bad" : it.i === base ? "base" : skin.has(it.i) ? "skin" : "side";
-        const rgb = k === "bad" ? [214, 90, 70] : k === "base" ? [120, 196, 140] : k === "skin" ? [200, 228, 208] : [178, 192, 196];
+        const k = it.i === base ? "base" : stitchMode ? (picked.has(it.i) ? "stitch" : "side") : solid.faces[it.i].surf.kind === "other" ? "bad" : skin.has(it.i) ? "skin" : "side";
+        const rgb = k === "bad" ? [214, 90, 70] : k === "base" ? [120, 196, 140] : k === "skin" ? [200, 228, 208] : k === "stitch" ? [150, 196, 238] : [178, 192, 196];
         const c2 = rgb.map((v) => Math.round(v * it.lit));
         const path = new Path2D();
         for (const l of it.f.loops) {
@@ -245,8 +308,8 @@ function Part3d({ solid, u, st, flip, pick, onPick }: {
         }
         g.fillStyle = hover === it.i && pick ? "rgba(242,183,5,0.9)" : `rgba(${c2[0]},${c2[1]},${c2[2]},0.94)`;
         g.fill(path, "evenodd");
-        g.strokeStyle = k === "skin" || k === "base" ? "#1d9641" : k === "bad" ? "#c2412d" : "#7f9296";
-        g.lineWidth = k === "skin" || k === "base" ? 1.2 : 0.9;
+        g.strokeStyle = k === "skin" || k === "base" ? "#1d9641" : k === "stitch" ? "#1d7fd0" : k === "bad" ? "#c2412d" : "#7f9296";
+        g.lineWidth = k === "side" ? 0.9 : 1.2;
         g.beginPath();
         for (const l of it.f.loops) for (const e of l.edges) e.pts.forEach((p, j) => { const q = pr(p); if (j) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); });
         g.stroke();
@@ -258,14 +321,15 @@ function Part3d({ solid, u, st, flip, pick, onPick }: {
     const ro = new ResizeObserver(draw);
     ro.observe(c);
     return () => ro.disconnect();
-  }, [solid, cam, skin, base, hover, pick]);
+  }, [solid, cam, skin, base, hover, pick, picked, stitchMode]);
 
   const faceAt = (x: number, y: number) => {
     const g = cv.current?.getContext("2d");
     if (!g) return null;
     const dpr = window.devicePixelRatio || 1;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return shapes.current.find((s) => g.isPointInPath(s.path, x, y, "evenodd"))?.i ?? null;
+    // the point in the canvas's own pixels (the paths are drawn scaled by the screen's pixel ratio)
+    return shapes.current.find((s) => g.isPointInPath(s.path, x * dpr, y * dpr, "evenodd"))?.i ?? null;
   };
   const local = (e: React.PointerEvent) => { const r = cv.current!.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] as const; };
   return (
@@ -289,9 +353,10 @@ function Part3d({ solid, u, st, flip, pick, onPick }: {
           const f = faceAt(x, y);
           if (f !== null) onPick(f, solid.faces[f].surf.kind);
         }}
+        onPointerLeave={() => setHover(null)}
         onWheel={(e) => setCam((c) => ({ ...c, zoom: Math.max(0.2, Math.min(10, c.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12))) }))}
       />
-      <span className="uf-top">{flip ? "Top side: the other side (grey)" : "Top side: the green side"}</span>
+      {!stitchMode && <span className="uf-top">{flip ? "Top side: the other side (grey)" : "Top side: the green side"}</span>}
     </div>
   );
 }

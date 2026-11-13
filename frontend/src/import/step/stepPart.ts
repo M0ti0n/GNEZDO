@@ -7,8 +7,8 @@
 import { readDxf } from "../dxf";
 import { fixMarkRules, type Drawing, type Role } from "../geometry";
 import type { Rotation } from "../rules";
-import { readSolid, type Solid } from "./step";
-import { bendMarks, flatDxf, unfold, type Unfolded, type V2 } from "./unfold";
+import { readStep, type Solid, type StepModel } from "./step";
+import { bendMarks, flatDxf, stitch, unfold, type Unfolded, type V2 } from "./unfold";
 
 export const STEP_ACCEPT = ".step,.stp";
 export const isStepName = (name: string) => /\.(step|stp)$/i.test(name);
@@ -32,16 +32,24 @@ export interface StepSettings {
   marks: MarkAs;
   /** angle and UP / DOWN shown beside the bends (on the drawing, not engraved) */
   annotate: boolean;
+  /** sheet: unfolded across its bends; stitch: the faces picked laid flat across their shared edges */
+  mode: "sheet" | "stitch";
+  /** stitch: the faces picked (indexes in the solid's faces), the first one stays */
+  stitch: number[];
+  /** stitch: the top side is the faces' other side (missing: the inside of most bends) */
+  flip?: boolean;
+  /** stitch: bend compensation; the faces are the sheet's top or bottom side (none: as they are) */
+  comp: { side: "none" | "top" | "bottom"; t: number; r: number };
 }
 
 export interface StepPart {
   /** the file's text (read again when the settings change) */
   text: string;
+  /** which body of the file (an assembly has many) */
+  body: number;
   settings: StepSettings;
   /** what the unfolding found, for the list and the panel */
   info: { thickness: number | null; bends: number; w: number; h: number; ok: boolean; problems: string[] };
-  /** shown in 3D (the unfold view) or as its 2D drawing */
-  view: "3d" | "2d";
 }
 
 // ------------------------------------------------------------------ customer profiles
@@ -84,26 +92,35 @@ export function kFor(p: UnfoldProfile, material: string, thicknessMm: number | n
 }
 
 export function settingsFrom(p: UnfoldProfile): StepSettings {
-  return { profile: p.name, kFactor: p.kFactor, foil: p.foil, grain: "none", markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate };
+  return { profile: p.name, kFactor: p.kFactor, foil: p.foil, grain: "none", markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate, mode: "sheet", stitch: [], comp: { side: "none", t: 0, r: 0 } };
 }
 
 // ------------------------------------------------------------------ unfolding
 
-const solids = new Map<string, Solid>();
-/** The solid of a STEP text (read once). */
-export function solidOf(text: string): Solid {
-  let s = solids.get(text);
-  if (!s) {
-    s = readSolid(text);
-    if (solids.size > 20) solids.delete(solids.keys().next().value!);
-    solids.set(text, s);
+const models = new Map<string, StepModel>();
+/** A STEP text's bodies (read once). */
+export function modelOf(text: string): StepModel {
+  let m = models.get(text);
+  if (!m) {
+    m = readStep(text);
+    if (models.size > 20) models.delete(models.keys().next().value!);
+    models.set(text, m);
   }
-  return s;
+  return m;
 }
+/** One body's faces. */
+export const solidOf = (text: string, body = 0): Solid => modelOf(text).bodies[body]?.solid ?? { faces: [], unitMm: 1, name: "", problems: ["This body is not in the file"] };
 
 /** The part unfolded with its settings: the top side picked, or the inside of most bends. */
-export function unfoldPart(text: string, st: StepSettings): Unfolded {
-  const s = solidOf(text);
+export function unfoldPart(text: string, st: StepSettings, body = 0): Unfolded {
+  const s = solidOf(text, body);
+  if (st.mode === "stitch") {
+    const comp = { ...st.comp, k: st.kFactor };
+    let u = stitch(s, st.stitch, { flip: !!st.flip, comp });
+    // no side picked: the inside of most bends up (as for sheet metal)
+    if (st.flip === undefined && u.bends.filter((b) => !b.up).length > u.bends.filter((b) => b.up).length) u = stitch(s, st.stitch, { flip: true, comp });
+    return st.grain === "y" && u.outline.length ? turn90(u) : u;
+  }
   const first = unfold(s, { kFactor: st.kFactor, base: st.base });
   let flip: boolean;
   if (st.top !== undefined) flip = !first.skinFaces.includes(st.top);
@@ -137,20 +154,23 @@ export function flatDrawing(id: string, name: string, u: Unfolded, st: StepSetti
   return { ...r.drawing, id, fileName: name, entities: fixMarkRules(entities).entities };
 }
 
-/** Read a STEP file into a part: unfolded with the profile's values. */
-export function newStepPart(text: string, profile: UnfoldProfile, material: string): { part: StepPart; u: Unfolded } {
+/** A body of a STEP file as a part: unfolded with the profile's values (a surface body: faces to stitch). */
+export function newStepPart(text: string, body: number, profile: UnfoldProfile, material: string, stitchMode = false): { part: StepPart; u: Unfolded } {
   const st = settingsFrom(profile);
-  const s = solidOf(text);
-  // the K-factor by the part's thickness (read first)
-  const t0 = unfold(s, { kFactor: st.kFactor }).thickness;
-  st.kFactor = kFor(profile, material, t0);
-  const u = unfoldPart(text, st);
-  return { part: { text, settings: st, info: infoOf(u), view: "3d" }, u };
+  const s = solidOf(text, body);
+  if (stitchMode) st.mode = "stitch";
+  else {
+    // the K-factor by the part's thickness (read first)
+    const t0 = unfold(s, { kFactor: st.kFactor }).thickness;
+    st.kFactor = kFor(profile, material, t0);
+  }
+  const u = unfoldPart(text, st, body);
+  return { part: { text, body, settings: st, info: infoOf(u) }, u };
 }
 
 export const infoOf = (u: Unfolded): StepPart["info"] => ({
   thickness: u.thickness, bends: u.bends.length, w: u.box.x1, h: u.box.y1,
-  ok: u.thickness !== null && u.outline.length > 0 && u.stats.openEnds === 0, problems: u.problems,
+  ok: u.outline.length > 0 && u.stats.openEnds === 0 && (u.thickness !== null || !!u.stitched), problems: u.problems,
 });
 
 /** What nesting may do with the part: foil / finish up never mirrors; grain only turns 180°. */
