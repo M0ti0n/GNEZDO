@@ -62,6 +62,7 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
   live.forEach((c, i) => {
     const k = contour(c, c.parts?.length ? undefined : partName(c.part));
     if (!k) return;
+    k.cutNo = i;
     // Process → Common pierce: an outline starting in a hole pierced already starts with a quick pierce
     if (reusesPierce(live, i)) k.restart = "quick";
     // Process → Movement: the rapid to it through these points
