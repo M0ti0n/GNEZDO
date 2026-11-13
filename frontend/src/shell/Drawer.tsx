@@ -300,14 +300,13 @@ function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "ta
                 <button className={`part-card${on ? " is-selected" : ""}`} {...common}>
                   <PartThumb part={p} size={58} />
                   <span className="part-name">{p.name}</span>
-                  {p.revision > 1 && <VersionBadge part={p} onOpen={setHistory} />}
                   <span className="part-meta">{sizeLabel(p)}{showQty && <b>{p.qty}×</b>}</span>
                 </button>
               ) : (
                 <button className={`part-row${on ? " is-selected" : ""}`} {...common}>
                   <PartThumb part={p} size={34} />
                   <span className="pr-name">{p.name}</span>
-                  <span className="pr-qty">{p.revision > 1 && <VersionBadge part={p} onOpen={setHistory} />}{showQty && `${p.qty}×`}</span>
+                  <span className="pr-qty">{showQty && `${p.qty}×`}</span>
                   <span className="pr-meta">
                     <span>{p.project}</span>
                     <span>{materialKey(p.material, p.thicknessMm)}</span>
@@ -352,17 +351,6 @@ function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "ta
   );
 }
 
-/** "v3" on a part that has been replaced; opens its versions (inside the card, so not a nested button). */
-function VersionBadge({ part, onOpen }: { part: PartSummary; onOpen: (p: PartSummary) => void }) {
-  const open = (e: React.SyntheticEvent) => { e.stopPropagation(); e.preventDefault(); onOpen(part); };
-  return (
-    <span className="ver-badge" role="button" tabIndex={0} title={`Version ${part.revision}: show earlier versions`}
-      onClick={open} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") open(e); }}
-      onMouseDown={(e) => e.stopPropagation()} draggable={false}>
-      v{part.revision}
-    </span>
-  );
-}
 
 /** Right-click menu on a part in the search results. */
 function PartMenu({ x, y, part, onClose, onProperties, onVersions }: {

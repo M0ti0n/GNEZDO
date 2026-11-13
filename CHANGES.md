@@ -38,6 +38,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Process → Post process: **Pre-pierce** check box for the selected sheet (laser machines). It shows what the sheet's Technology row says (Pre-pierce column) and can be turned on or off for this sheet alone (kept with the sheet, written into its NC program: #516); set back to the table's value, it follows the table again
 
 **Changed**
+- Parts list (side panel): no more version bubble (v2, v3 …) on the parts; a part's version is in its **Part properties** (with "see versions"), and the right-click menu still has Versions…
 - The **GNEZDO button opens Settings** directly (no menu). Settings: Stock is now **Stock and remnants**, Manual nest is **Shortcuts**, a **Projects** section (not built yet), and **Import rules** (opens the import rules page; Close there goes back to Settings). The menu's Technology table (it is under Settings → Machines) and its placeholder pages are gone
 - **Export solution to DXF** moved from the GNEZDO menu to the **Solution info** tab of the Solutions panel (a button under the table; when the nest has finished)
 - **Side rail**: Import and New job are back on it, under Home (Import shows how many files wait, as before); the tool strip above the home page with them is gone. Import has a new icon (a part with an arrow down into it). The rail's icons are 60% bigger (the buttons the same size)
