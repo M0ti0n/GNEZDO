@@ -15,6 +15,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { partGeometry } from "./import/toPart";
 import type { SavePart } from "./api/api";
 import { forgetPartMarks, shiftSheet } from "./job/cutPath";
+import { loadDefaultProject } from "./job/defaultProject";
 import { applyRules, loadRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
 import { RulesPage } from "./pages/RulesPage";
 import { quantityFromName } from "./import/geometry";
@@ -294,6 +295,8 @@ export function App() {
   const closeTabs = (ids: string[]) => ids.forEach((id) => { history.forget(id); dispatch({ type: "close", id: `drawing:${id}` }); });
 
   const [saving, setSaving] = useState(false);
+  /** Process all with the project box empty: save them under the default project? */
+  const [askDefault, setAskDefault] = useState<{ project: string; n: number } | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);   // part shown in the Process pop-up
 
   /** Saved parts leave the import list and their tabs close. */
@@ -326,15 +329,24 @@ export function App() {
     busy: saving,
     // Saves the green parts with the Properties; parts already in the database are not
     // replaced but marked, to be processed one by one.
-    onProcessAll: async () => {
+    onProcessAll: async (project?: string) => {
       const green = imports.filter((i) => statusOf(i).verdict === "ok" && i.drawing);
       if (!green.length) return;
+      // every part is in a project: an empty project box offers the default project (Settings -> Projects and parts)
+      const props = project ? { ...importProps, project } : importProps;
+      const noProject = green.filter((i) => !i.source && !props.project.trim()).length;
+      if (noProject) {
+        const def = loadDefaultProject();
+        if (def) setAskDefault({ project: def, n: noProject });
+        else setToast("Set the project in Properties first (or a default project in Settings → Projects and parts)");
+        return;
+      }
       setSaving(true);
       try {
         const res = await api.saveParts(green.map((i) => {
           // a part opened from the database (EDIT) is saved back over itself, with its own values
           if (i.source) return toSave(i, { ...i.source, rotations: [...i.source.rotations] }, true);
-          return toSave(i, { ...importProps, name: i.name, mirror: mirrorFor(i, importProps, rules) }, false);
+          return toSave(i, { ...props, name: i.name, mirror: mirrorFor(i, props, rules) }, false);
         }), "Import list");
         forgetPartMarks();   // drawings saved over: their marks are read again
         const saved = green.filter((_, k) => res[k]?.status !== "exists").map((i) => i.id);
@@ -1262,6 +1274,12 @@ export function App() {
               <SaveAsDialog name={saveAsFor.name} onCancel={() => setSaveAsFor(null)}
                 onSave={(name) => { const j = saveAsFor.jobId; setSaveAsFor(null); void saveJob(j, name, true); }} />
             )}
+            {askDefault && (
+              <ConfirmDialog title="No project set" confirmLabel={`Save under ${askDefault.project}`} onCancel={() => setAskDefault(null)}
+                onConfirm={() => { const p = askDefault.project; setAskDefault(null); void importPanel.onProcessAll(p); }}>
+                {askDefault.n} {askDefault.n === 1 ? "part has" : "parts have"} no project (the Properties' project box is empty). Every part is saved in a project: save {askDefault.n === 1 ? "it" : "them"} under the default project <b>{askDefault.project}</b>?
+              </ConfirmDialog>
+            )}
             {newJobOpen && <NewJobDialog defaultName={newJobOpen} machines={machines} onCreate={createJob} onCancel={() => setNewJobOpen(null)}
               suggest={hasJobNames() ? async (machineId) => (await suggestJobName(machineId, openTitles.current)) || newJobPlain.current : undefined} />}
             {customFor && (
@@ -1308,7 +1326,7 @@ export function App() {
               // a list that has not been touched yet follows the new defaults
               if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller, commonCut: r.commonOnOutline }));
             }} />}
-            {active.kind === "settings" && <SettingsPage onClose={() => showView("home")} onRules={() => showView("rules")} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
+            {active.kind === "settings" && <SettingsPage onClose={() => showView("home")} onRules={() => showView("rules")} onOpenJob={(id, name) => open(jobTab(id, name))} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "remnants" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
           </main>
         </div>

@@ -179,6 +179,40 @@ public sealed class PartSaveTests(ApiFixture api)
     }
 
     [Fact]
+    public async Task Projects_and_parts_browse_move_replace_and_delete()
+    {
+        var a = Assert.Single(await Save(Part("PRJ_A_bracket", "N26-0950"))).Id!;
+        var b = Assert.Single(await Save(Part("PRJ_A_bracket", "N26-0951"))).Id!;
+        await EnsureProject("N26-0952");
+
+        // by part name: the projects that have it
+        var withIt = (await api.Client.GetFromJsonAsync<List<ProjectRowDto>>("/api/projects/browse?part=prj_a_brack"))!;
+        Assert.Equal(new[] { "N26-0950", "N26-0951" }, withIt.Select(p => p.Code).Order().ToArray());
+        var all = (await api.Client.GetFromJsonAsync<List<ProjectRowDto>>("/api/projects/browse"))!;
+        Assert.Equal(0, all.Single(p => p.Code == "N26-0952").PartCount);
+        Assert.Equal(1, all.Single(p => p.Code == "N26-0950").PartCount);
+        var parts = (await api.Client.GetFromJsonAsync<List<ProjectPartDto>>("/api/projects/parts?code=N26-0950"))!;
+        Assert.Equal(a, Assert.Single(parts).Part.Id);
+
+        // a part is always in a project
+        var none = await api.Client.PutAsJsonAsync($"/api/parts/{a}", new PartUpdateRequest("PRJ_A_bracket", "", "", "S355", 6, [90], false, false));
+        Assert.Equal(HttpStatusCode.BadRequest, none.StatusCode);
+        // moved to a project that has a part of that name: asked, then replaced
+        var clash = await api.Client.PutAsJsonAsync($"/api/parts/{a}", new PartUpdateRequest("PRJ_A_bracket", "N26-0951", "", "S355", 6, [90], false, false));
+        Assert.Equal(HttpStatusCode.Conflict, clash.StatusCode);
+        (await api.Client.PutAsJsonAsync($"/api/parts/{a}", new PartUpdateRequest("PRJ_A_bracket", "N26-0951", "", "S355", 6, [90], false, false, Replace: true))).EnsureSuccessStatusCode();
+        var moved = (await api.Client.GetFromJsonAsync<List<ProjectPartDto>>("/api/projects/parts?code=N26-0951"))!;
+        Assert.Equal(a, Assert.Single(moved).Part.Id);
+        Assert.Equal(HttpStatusCode.NotFound, (await api.Client.GetAsync($"/api/parts/{b}")).StatusCode);
+
+        // only a project without parts can be deleted
+        Assert.Equal(HttpStatusCode.Conflict, (await api.Client.DeleteAsync("/api/projects?code=N26-0951")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await api.Client.DeleteAsync("/api/projects?code=N26-0950")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await api.Client.DeleteAsync("/api/projects?code=N26-0952")).StatusCode);
+        Assert.DoesNotContain((await api.Client.GetFromJsonAsync<List<ProjectRowDto>>("/api/projects/browse"))!, p => p.Code is "N26-0950" or "N26-0952");
+    }
+
+    [Fact]
     public async Task A_deleted_part_does_not_block_a_new_one_with_its_name()
     {
         await EnsureProject("N26-0830");

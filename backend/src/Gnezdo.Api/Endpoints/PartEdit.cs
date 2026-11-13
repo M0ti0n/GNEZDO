@@ -9,7 +9,9 @@ public record PartDetailDto(PartDto Part, IReadOnlyList<int> Rotations, bool Mir
 /// <summary>Changed properties of a saved part (geometry stays as it is).</summary>
 public record PartUpdateRequest(
     string Name, string? Project, string? Description, string Material, decimal ThicknessMm,
-    IReadOnlyList<int>? Rotations, bool Mirror, bool Filler, bool CommonCut = false);
+    IReadOnlyList<int>? Rotations, bool Mirror, bool Filler, bool CommonCut = false,
+    /// <summary>Another part has this name in the project: it is replaced (taken out, kept for the jobs that use it).</summary>
+    bool Replace = false);
 
 public record ProjectCreateRequest(string Code, string? Name, string? Customer);
 
@@ -51,7 +53,9 @@ public static class PartEdit
         if (r.ThicknessMm <= 0) errors["thicknessMm"] = ["Thickness must be more than 0."];
         if (r.Rotations?.Any(x => !PartSave.AllowedRotations.Contains(x)) == true) errors["rotations"] = ["Rotations can be 90, 45, 30 or 5."];
         Project? project = null;
-        if (!string.IsNullOrWhiteSpace(r.Project))
+        // a part is always in a project
+        if (string.IsNullOrWhiteSpace(r.Project)) errors["project"] = ["Project is required."];
+        else
         {
             var code = r.Project.Trim();
             project = await db.Projects.FirstOrDefaultAsync(p => p.Code == code, ct);
@@ -61,11 +65,14 @@ public static class PartEdit
 
         // the same project and name may be used by one part only
         int? projectId = project?.Id;
-        var clash = await db.Parts.Live().AnyAsync(p => p.Id != id && p.Name == name && p.ProjectId == projectId, ct);
-        if (clash)
-            return Results.Conflict(new { message = $"Another part is already called {name} in {(project?.Code ?? "no project")}." });
+        var other = await db.Parts.Live().FirstOrDefaultAsync(p => p.Id != id && p.Name == name && p.ProjectId == projectId, ct);
+        if (other is not null && !r.Replace)
+            return Results.Conflict(new { message = $"Another part is already called {name} in {(project?.Code ?? "no project")}.", clash = true });
 
         var now = clock.GetUtcNow();
+        // replaced: the other part goes first (as a delete: jobs that use it keep it), so the name is free
+        await using var tx = other is null ? null : await db.Database.BeginTransactionAsync(ct);
+        if (other is not null) { other.DeletedAt = now; await db.SaveChangesAsync(ct); }
         await PartSave.KeepVersionAsync(db, part, now, ct);
         var material = r.Material.Trim();
         part.Name = name;
@@ -79,6 +86,7 @@ public static class PartEdit
         part.CommonCut = r.CommonCut;
         part.ModifiedAt = now;
         if (await PartSave.SaveOrClashAsync(db, ct) is { } refused) return refused;
+        if (tx is not null) await tx.CommitAsync(ct);
         return await GetAsync(id, db, ct);
     }
 
