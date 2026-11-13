@@ -142,6 +142,13 @@ export function readSvg(text: string, fileName: string): DxfResult {
     const tokens = d.match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) ?? [];
     let i = 0, cmd = "", x = 0, y = 0, sx0 = 0, sy0 = 0, qx = 0, qy = 0, cx2 = 0, cy2 = 0, last = "";
     const num = () => Number(tokens[i++]);
+    // an arc's flags are one digit each and may be written together with what follows ("a5 5 0 0110 10")
+    const flag = () => {
+      const t = tokens[i] ?? "0";
+      if (t.length > 1 && /^[01]/.test(t) && t[1] !== ".") { tokens[i] = t.slice(1); return Number(t[0]); }
+      i++;
+      return Number(t);
+    };
     const more = () => i < tokens.length && !/^[a-zA-Z]$/.test(tokens[i]);
     const P = (px: number, py: number) => ap(c.m, px, py);
     const bez = (pts: [number, number][]) => {
@@ -190,7 +197,7 @@ export function readSvg(text: string, fileName: string): DxfResult {
         qx = x1; qy = y1; x = nx; y = ny;
       } else if (C === "A") {
         let rx = Math.abs(num()), ry = Math.abs(num());
-        const phi = (num() * Math.PI) / 180, fa = num(), fs = num(), nx = ox + num(), ny = oy + num();
+        const phi = (num() * Math.PI) / 180, fa = flag(), fs = flag(), nx = ox + num(), ny = oy + num();
         if (rx < 1e-12 || ry < 1e-12) line(c, P(x, y), P(nx, ny));
         else if (nx !== x || ny !== y) {
           // endpoint -> centre parametrization (SVG 1.1, F.6.5)

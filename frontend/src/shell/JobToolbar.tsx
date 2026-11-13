@@ -70,7 +70,7 @@ const SECTIONS: Section[] = [
       { id: "alignEdge", label: "Align edge", icon: toolAlignEdge, ready: true, hint: "Align edge: click the edge that stays (a part's or the sheet's), then an edge of the part to turn: it turns until the two are parallel" },
       // the importer's Common cut icon; a switch: on, Arrange makes blocks (snapping: a key held while dragging)
       { id: "commonCut", label: "Common cut", icon: "", svg: IMPORT_TOOLS.find((t) => t.id === "commonCut")?.icon, ready: true,
-        hint: "Common cut (on / off): Arrange makes blocks of the parts with the Common cut rule. Snapping their marked lines together: hold the Common cut snapping key (Settings → Manual nest; Shift unless changed) while dragging, in either state" },
+        hint: "Common cut (on / off): Arrange makes blocks of the parts with the Common cut rule. Snapping their marked lines together: hold the Common cut snapping key (Settings → Shortcuts; Shift unless changed) while dragging, in either state" },
     ],
   },
   {

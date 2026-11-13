@@ -108,6 +108,6 @@ public static class DwgEndpoints
             return dxf is null
                 ? Results.Json(new { message = error }, statusCode: StatusCodes.Status422UnprocessableEntity)
                 : Results.Text(dxf, "text/plain", Encoding.UTF8);
-        });
+        }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxBytes));   // the server's 30 MB default would refuse it first
     }
 }

@@ -1062,7 +1062,7 @@ export function App() {
       if (!commonSnap[job.id] && !machineCan(jm, "commonCut")) { setToast(`${jm.name} does not do common cut (Settings > Machines)`); return; }
       const on = !commonSnap[job.id];
       setCommonSnap((m) => ({ ...m, [job.id]: on }));
-      setToast(on ? `Common cut on: Arrange makes blocks (hold ${keyLabel(loadKeys().commonSnap.find(Boolean) ?? "")} while dragging to snap marked lines; Settings → Manual nest)` : "Common cut off");
+      setToast(on ? `Common cut on: Arrange makes blocks (hold ${keyLabel(loadKeys().commonSnap.find(Boolean) ?? "")} while dragging to snap marked lines; Settings → Shortcuts)` : "Common cut off");
       return;
     }
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }

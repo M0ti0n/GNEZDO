@@ -209,7 +209,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                   {p.properties.mirror && p.rules.mirrorWithoutOpenCut && <span className="imp-rules-note">no mirror with open cut</span>}
                 </div>
               </div>
-              <p className="imp-props-foot">Used for every part in the list. Kept for the next import; defaults in Rules → Import rules.</p>
+              <p className="imp-props-foot">Used for every part in the list. Kept for the next import; defaults in Settings → Rules → Import rules.</p>
             </div>
           )}
         </section>

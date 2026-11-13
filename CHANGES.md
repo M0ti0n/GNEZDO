@@ -68,6 +68,12 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - A part's **tracing and open cut lines are shown before it is processed**: in Part properties (the picture), in the parts beside a sheet (Manual nesting) and on the sheets (tracing purple, open cut light blue). They were always saved with the part and cut when the sheet is processed, but these pictures drew only the closed contours, so the lines looked lost after saving or adding the part to a job
 - Parts saved over (importer, EDIT) show their new lines right away
 
+**Fixed** (bug check)
+- Sheet size changed with the 0,0 corner at the bottom or right: a break cut's remembered original lead now moves with the parts too (RESET put it back in the old place)
+- SVG import: arcs written with their flags run together ("a5 5 0 0110 10", as SVG optimizers write them) were read wrongly
+- Server in Docker: requests over 1 MB (a big job with its nest, a DWG) were refused by the web server in front of it; DWG files from 30 to 100 MB were refused by the GNEZDO server
+- Texts that still pointed to the old GNEZDO menu, Settings → Manual nest / Stock and the old Rules page now name Settings → Shortcuts, Stock and remnants and Rules
+
 ## Build 12 Nov 2026, third (`aed34e0`)
 
 **New**

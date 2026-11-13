@@ -73,7 +73,7 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
   const sheet = sheets[index] as NestedSheet | undefined;
   const techDist = sheet && machine ? techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row.remMinDistMm ?? 0 : 0;
   const rem = sheet && remnantValid(sheet) ? sheet.remnant! : undefined;
-  // RECTANGULAR: the first cut along X or Y (picked here; Settings → Stock → Remnants is the default)
+  // RECTANGULAR: the first cut along X or Y (picked here; Settings → Stock and remnants → Remnants is the default)
   const [rectDir, setRectDir] = useState<"x" | "y">(base.rectDir);
   useEffect(() => { if (rem?.mode === "rect") setRectDir(rem.settings.rectDir); }, [rem?.mode, rem?.settings.rectDir]);
   const settings: RemnantSettings = { ...base, rectDir, ...(techDist > 0 ? { minDistMm: techDist } : {}) };
@@ -95,7 +95,7 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
     onRemnant(index, r);
     setOff(new Set());
     diag("process", `Remnant ${mode} on sheet ${index + 1}`, { pieces: r.pieces.length, ms: Math.round(performance.now() - t) });
-    setMsg(r.pieces.length ? null : { text: "No remnant big enough on this sheet (Settings → Stock → Remnants)", bad: true });
+    setMsg(r.pieces.length ? null : { text: "No remnant big enough on this sheet (Settings → Stock and remnants → Remnants)", bad: true });
   };
 
   const point = (x: number, y: number) => {
@@ -197,7 +197,7 @@ export function useRemnant({ index, single, sheets, parts, jobParts = [], jobNam
           <button type="button" className="btn btn-plain" disabled={!picked.length || busy} onClick={() => void mark("saved")} title="Keep the ticked remnants in the remnant store">Save</button>
           <button type="button" className="btn btn-plain ac-clear" disabled={!picked.length || busy} onClick={() => void mark("discarded")} title="The ticked remnants are scrap">Discard</button>
         </div>
-        <p className="rule-help ac-help">Minimum distance to parts {settings.minDistMm} mm{techDist > 0 ? " (Technology → Remnant cut)" : ""}, edge {settings.minEdgeMm} mm, area {settings.minAreaPct} % of the sheet (Settings → Stock).</p>
+        <p className="rule-help ac-help">Minimum distance to parts {settings.minDistMm} mm{techDist > 0 ? " (Technology → Remnant cut)" : ""}, edge {settings.minEdgeMm} mm, area {settings.minAreaPct} % of the sheet (Settings → Stock and remnants).</p>
         {msg && <p className={`tech-msg ac-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
       </div>
       {askAll && rem && (
