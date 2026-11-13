@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 13 Nov 2026 (`bae6e3b`)
+
 - Laser Technology tables have a new column, **Laser · Trace shortest** (1 = on). It sets, per thickness, whether AUTO CUT traces first over the whole sheet in the order of the shortest rapids. A row with no value set is on from 4 mm up. On a laser, Settings → Machines → Cut order now points to this column instead of its checkbox; other machines keep the checkbox
 - Settings → Machines has a **Rapid speed** (mm/min) for the time estimates in the Nest report and the Simulation. Empty: 15,000 mm/min on a plasma (measured: 2 m in 8 s), 20,000 mm/min on the others (before this, 20,000 for every machine)
 - HACO plasma machine file: 25 mm pierce time 4 s (measured; it was 1.8 s), rapid speed 15,000 mm/min
