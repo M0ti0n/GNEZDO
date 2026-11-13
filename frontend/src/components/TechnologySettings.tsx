@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { NumInput } from "./NumInput";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
-  addThickness, cellValue, inRange, newTechnology, techColumnsFor, technologiesCsv, technologiesFromDbf,
+  addThickness, cellValue, inRange, rowForMaterial, newTechnology, techColumnsFor, technologiesCsv, technologiesFromDbf,
   type RowKey, type TechSet,
 } from "../job/technology";
 import type { Technology } from "../job/machine";
@@ -39,7 +39,19 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
   const [openCols, setOpenCols] = useState<Set<RowKey>>(new Set());
   const relock = () => { setOpenRows(new Set()); setOpenCols(new Set()); };
   const flip = <T,>(set: Set<T>, v: T) => { const n = new Set(set); if (n.has(v)) n.delete(v); else n.add(v); return n; };
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const relockAll = () => { relock(); setTagsOpen(false); };
   const canEdit = (thicknessMm: number, k: RowKey) => !locked || openRows.has(thicknessMm) || openCols.has(k);
+  const canTag = (thicknessMm: number) => !locked || openRows.has(thicknessMm) || tagsOpen;
+  // a thickness for a material or not (its tag on the row)
+  const toggleTag = (i: number, m: string) => tech && setTech({ rows: tech.rows.map((row, j) => {
+    if (j !== i) return row;
+    const on = rowForMaterial(row, m);
+    const skip = on ? [...(row.skip ?? []), m] : (row.skip ?? []).filter((x) => x.trim().toLowerCase() !== m.trim().toLowerCase());
+    const next = { ...row, skip };
+    if (!skip.length) delete next.skip;
+    return next;
+  }) });
   const LOCKED = "Locked: Unlock all first";
 
   const setTech = (patch: Partial<TechSet>) => tech && onChange(techs.map((t) => (t.id === tech.id ? { ...t, ...patch } : t)));
@@ -108,13 +120,13 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
       <div className="tech-bar">
         <span className="tech-lbl">Technology</span>
         {techs.map((t) => (
-          <button key={t.id} type="button" className={`tech-chip${tech?.id === t.id ? " is-on" : ""}`} title={t.materials.length ? `Used for ${t.materials.join(", ")}` : "Used for any material"} onClick={() => { setSelId(t.id); setRowSel(null); setMsg(null); relock(); }}>{t.name}</button>
+          <button key={t.id} type="button" className={`tech-chip${tech?.id === t.id ? " is-on" : ""}`} title={t.materials.length ? `Used for ${t.materials.join(", ")}` : "Used for any material"} onClick={() => { setSelId(t.id); setRowSel(null); setMsg(null); relockAll(); }}>{t.name}</button>
         ))}
         <button type="button" className="tech-chip is-add" disabled={locked} title={locked ? LOCKED : undefined} onClick={addNew}>+ New</button>
         <span className="tech-grow" />
         <button type="button" className={`btn btn-plain tech-lock${locked ? " is-locked" : ""}`} aria-pressed={!locked}
           title={locked ? "Every value can be changed (no password: only against changes by accident)" : "Nothing can be changed until it is unlocked again"}
-          onClick={() => { setLocked(!locked); relock(); }}>
+          onClick={() => { setLocked(!locked); relockAll(); }}>
           <LockIcon open={!locked} /> {locked ? "Unlock all" : "Lock all"}
         </button>
         <button type="button" className="btn btn-plain" disabled={locked} onClick={() => file.current?.click()} title={locked ? LOCKED : "A material table (.DBF), e.g. HACO S_MAT.DBF"}>Import table…</button>
@@ -130,7 +142,7 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
           <div className="tech-tags">
             <span>Used for materials</span>
             {tech.materials.map((m) => (
-              <span key={m} className="tech-tag">{m}{!locked && <button type="button" aria-label={`Remove ${m}`} onClick={() => setTech({ materials: tech.materials.filter((x) => x !== m) })}>×</button>}</span>
+              <span key={m} className="tech-tag">{m}{!locked && <button type="button" aria-label={`Remove ${m}`} onClick={() => setTech({ materials: tech.materials.filter((x) => x !== m), rows: tech.rows.map((row) => (row.skip?.includes(m) ? { ...row, skip: row.skip.filter((x) => x !== m) } : row)) })}>×</button>}</span>
             ))}
             {!locked && <input className="field tech-tag-in" value={tag} placeholder="+ tag" aria-label="Add a material tag"
               onChange={(e) => setTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} onBlur={addTag} />}
@@ -150,10 +162,21 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
             <thead>
               <tr>
                 <th />
+                {tech.materials.length > 0 && <th />}
                 {groups.map((g) => <th key={g.group} colSpan={g.cols.length} className="tech-group">{g.group}</th>)}
               </tr>
               <tr>
                 <th className="tech-th">Thickness</th>
+                {tech.materials.length > 0 && (
+                  <th className={`tech-for${locked && tagsOpen ? " is-open" : ""}`} title="The materials each thickness is for: untick a tag where that material is not stocked or not cut in this thickness; it is then left out of that material's thickness lists (import, part and sheet properties). The row still cuts a sheet of it.">
+                    For materials
+                    {locked && (
+                      <button type="button" className={`tech-lk${tagsOpen ? " is-open" : ""}`} aria-pressed={tagsOpen}
+                        title={tagsOpen ? "Lock this column" : "Unlock this column only"} aria-label={`${tagsOpen ? "Lock" : "Unlock"} the column For materials`}
+                        onClick={() => setTagsOpen(!tagsOpen)}><LockIcon open={tagsOpen} /></button>
+                    )}
+                  </th>
+                )}
                 {cols.map((c, i) => (
                   <th key={c.key + i} className={[gs(i), locked && openCols.has(c.key) ? "is-open" : ""].filter(Boolean).join(" ") || undefined}>
                     {c.label}<br /><small>{c.unit}</small>
@@ -179,6 +202,18 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
                       )}
                       {r.thicknessMm} mm{!used && <small> not used</small>}
                     </th>
+                    {tech.materials.length > 0 && (
+                      <td className={`tech-for${locked && canTag(r.thicknessMm) ? " is-open" : ""}`}>
+                        {tech.materials.map((m) => {
+                          const on = rowForMaterial(r, m);
+                          return (
+                            <button key={m} type="button" className={`tech-rtag${on ? " is-on" : ""}`} aria-pressed={on} disabled={!canTag(r.thicknessMm)} tabIndex={canTag(r.thicknessMm) ? undefined : -1}
+                              title={`${r.thicknessMm} mm ${on ? "is" : "is not"} in ${m}'s thickness lists${canTag(r.thicknessMm) ? " (click to change)" : ""}`}
+                              onClick={() => toggleTag(i, m)}>{m}</button>
+                          );
+                        })}
+                      </td>
+                    )}
                     {cols.map((c, ci) => {
                       const ok = canEdit(r.thicknessMm, c.key);
                       return (
@@ -209,7 +244,7 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
       </>)}
 
       {msg && <p className={`tech-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
-      <p className="rule-help">The table is locked when opened (against changes by accident): <b>Unlock all</b>, or the padlock of one row or one column to change only that one; Tab then goes only through the unlocked values. Click a value to change it; Tab goes to the next one. A new thickness starts as a copy of the next thicker row. Gap: + cuts past the start, − leaves a tab. Angles left empty: 90° (corner at an angle), 45° (angled with gap). Remnant cut: Gap in / Gap out from a sheet edge the cut runs to, + inside the sheet (an uncut bridge), − beyond the edge; To parts left empty: Settings → Stock and remnants → Remnants; the lead type: Leads &amp; cutting.
+      <p className="rule-help">The table is locked when opened (against changes by accident): <b>Unlock all</b>, or the padlock of one row or one column to change only that one; Tab then goes only through the unlocked values. Click a value to change it; Tab goes to the next one. For materials: untick a tag on a thickness that material is not stocked or not cut in, and the thickness is left out of its lists (import, part and sheet properties). A new thickness starts as a copy of the next thicker row. Gap: + cuts past the start, − leaves a tab. Angles left empty: 90° (corner at an angle), 45° (angled with gap). Remnant cut: Gap in / Gap out from a sheet edge the cut runs to, + inside the sheet (an uncut bridge), − beyond the edge; To parts left empty: Settings → Stock and remnants → Remnants; the lead type: Leads &amp; cutting.
         {technology === "laser" && <> Laser: a contour whose longer side is up to Middle / Little is cut with the machine's middle / little values (0: not used); Pre-pierce 1 pierces every contour first, then cuts them; Tech program: the machine's technology program number for the row.</>}
         A job's sheet uses the technology tagged with its material whose thickness range has the sheet's thickness.</p>
 
