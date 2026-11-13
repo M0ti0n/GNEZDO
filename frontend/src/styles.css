@@ -1959,6 +1959,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .tech-chip { height: 32px; padding: 0 12px; border: 1.5px solid var(--line); border-radius: 16px; background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 .tech-chip.is-on { border-color: var(--green); background: var(--green-tint); color: var(--green-ink); }
 .tech-chip.is-add { border-style: dashed; color: var(--green-ink); }
+.tech-chip:disabled { opacity: .45; cursor: default; }
 .tech-meta { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin: 12px 0 10px; font-size: 13.5px; color: var(--ink-2); }
 .tech-name { display: flex; align-items: center; gap: 6px; }
 .tech-name .field { width: 220px; height: 30px; }
@@ -1976,6 +1977,18 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .tech-table th.tech-group { text-align: center; border-bottom: 2px solid var(--line); color: var(--ink); font-size: 12.5px; }
 /* a line between the column groups, the color of the line under the group names */
 .tech-table th.tech-gs, .tech-table td.tech-gs { border-left: 2px solid var(--line); }
+/* locks: the whole table, or one row / one column unlocked */
+.tech-lock { display: inline-flex; align-items: center; gap: 6px; }
+.tech-lock.is-locked { color: var(--green-ink); }
+.tech-lk { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; margin: 2px auto 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ink-3); cursor: pointer; vertical-align: middle; }
+.tech-table thead .tech-lk { display: flex; margin: 3px 0 0 auto; }
+.tech-table .tech-th .tech-lk { margin: 0 4px 0 -4px; }
+.tech-lk:hover { border-color: var(--line); background: #fff; color: var(--ink); }
+.tech-lk.is-open { color: var(--green-ink); background: var(--green-tint); border-color: var(--green); }
+.tech-table.is-locked .tech-cell[readonly] { cursor: default; color: var(--ink-2); }
+.tech-table.is-locked .tech-cell[readonly]:hover { border-color: transparent; background: transparent; }
+.tech-table .tech-cell[readonly]:focus { border-color: var(--line); box-shadow: none; background: transparent; }
+.tech-table.is-locked td.is-open, .tech-table.is-locked th.is-open { background: var(--green-tint); }
 .tech-table .tech-th { text-align: left; padding-left: 8px; white-space: nowrap; font-family: var(--font); font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--ink); cursor: pointer; }
 .tech-table td { padding: 2px 2px; border-bottom: 1px solid #edf2f2; }
 .tech-cell { width: 100%; min-width: 56px; height: 30px; padding: 0 7px; text-align: right; border: 1px solid transparent; border-radius: 5px; background: transparent; font: inherit; font-variant-numeric: tabular-nums; }
