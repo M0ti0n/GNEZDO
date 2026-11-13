@@ -9,6 +9,7 @@ import { FILLER_TIP } from "./filler";
 import { COMMON_CUT_TIP } from "./commonCut";
 import { IMPORT_TOOLS } from "./ImportTools";
 import { loopPoints } from "./toPart";
+import { loadDefaultProject } from "../job/defaultProject";
 
 /** What the dialog saves. */
 export interface ProcessValues {
@@ -46,6 +47,7 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
   const set = (patch: Partial<ProcessValues>) => setV((x) => ({ ...x, ...patch }));
 
   const lists = usePickLists(v.material);
+  const defaultProject = loadDefaultProject();
 
   // Is this part (project + name) already in the database? Checked again as they are edited.
   useEffect(() => {
@@ -78,8 +80,10 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
   const projectMissing = lists.projectsLoaded && !lists.projectKnown(v.project);
   const missing = [!v.name.trim() && "name", !v.material.trim() ? "material" : !lists.materialOk(v.material) && "a material of the Technology tables",
     !(Number(v.thicknessMm) > 0) ? "thickness" : !lists.thicknessOk(v.thicknessMm) && "a thickness its Technology table has",
-    projectMissing && "a saved project (save it from the project list)"].filter(Boolean);
-  const canSave = missing.length === 0 && !saving && exists.state !== "checking";
+    // every part is in a project: an empty box offers the default project (Settings -> Projects and parts)
+    !v.project.trim() ? (defaultProject ? "" : "a project") : projectMissing && "a saved project (save it from the project list)"].filter(Boolean);
+  const noProject = !v.project.trim();
+  const canSave = missing.length === 0 && !noProject && !saving && exists.state !== "checking";
 
   const save = async () => {
     if (!canSave) return;
@@ -178,7 +182,8 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
         {error && <p className="proc-error" role="alert">Not saved: {error}</p>}
 
         <footer className="dlg-foot">
-          <span className="proc-missing">{missing.length > 0 && `Enter ${missing.join(", ")} to save.`}</span>
+          <span className="proc-missing">{missing.length > 0 ? `Enter ${missing.join(", ")} to save.`
+            : noProject && defaultProject ? <>No project set: every part is saved in one. <button type="button" className="link" onClick={() => set({ project: defaultProject })}>Use the default project {defaultProject}</button></> : null}</span>
           <button type="button" className="btn btn-plain" onClick={onCancel} disabled={saving}>Cancel</button>
           <button type="submit" className={`btn ${exists.state === "exists" ? "btn-replace" : "btn-save"}`} disabled={!canSave}>
             {saving ? "Saving…" : exists.state === "exists" ? "Replace" : "Save"}

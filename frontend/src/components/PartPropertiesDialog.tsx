@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { IconClose } from "./Icons";
-import { api, type PartDetail } from "../api/api";
+import { api, isNameClash, type PartDetail } from "../api/api";
 import type { PartSummary } from "../api/types";
 import { ROTATIONS, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
@@ -34,6 +34,8 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** the project it moves to has a part of this name: replace it? (closing the window applies nothing) */
+  const [clash, setClash] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   useEffect(() => {
     if (!exportOpen) return;
@@ -70,21 +72,23 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
   const reMat = !!(f && detail) && (f.material.trim() !== detail.part.material || Number(f.thicknessMm) !== detail.part.thicknessMm);
   const missing = f ? [!f.name.trim() && "name", !f.material.trim() ? "material" : reMat && !lists.materialOk(f.material) && "a material of the Technology tables",
     !(Number(f.thicknessMm) > 0) ? "thickness" : reMat && !lists.thicknessOk(f.thicknessMm) && "a thickness its Technology table has",
-    projectMissing && "a saved project"].filter(Boolean) : [];
+    !f.project.trim() ? "a project (every part is in one)" : projectMissing && "a saved project"].filter(Boolean) : [];
 
-  const save = async () => {
-    if (!f || !changed || missing.length || busy) return;
+  const save = async (replace = false) => {
+    if (!f || !changed || missing.length || (busy && !replace)) return;
     setBusy(true);
     setError(null);
+    setClash(null);
     try {
       const d = await api.updatePart(part.id, {
         name: f.name, project: f.project, description: f.description, material: f.material,
-        thicknessMm: Number(f.thicknessMm), rotations: f.rotations, mirror: f.mirror, filler: f.filler, commonCut: f.commonCut,
+        thicknessMm: Number(f.thicknessMm), rotations: f.rotations, mirror: f.mirror, filler: f.filler, commonCut: f.commonCut, replace,
       });
       onSaved(d.part);
       onClose();
     } catch (e) {
-      setError((e as Error).message);
+      if (isNameClash(e) && !replace) setClash(`${f.name.trim()} is already in project ${f.project.trim()}.`);
+      else setError((e as Error).message);
       setBusy(false);
     }
   };
@@ -186,7 +190,13 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
         {error && f && <p className="proc-error" role="alert">Not saved: {error}</p>}
 
         <footer className="dlg-foot">
-          {confirmDelete ? (
+          {clash ? (
+            <>
+              <span className="pp-confirm">{clash} Replace it with this part? (The one there goes; jobs that use it keep it.)</span>
+              <button type="button" className="btn btn-plain" onClick={() => setClash(null)} disabled={busy}>Back</button>
+              <button type="button" className="btn btn-replace" onClick={() => void save(true)} disabled={busy}>{busy ? "Replacing…" : "Replace"}</button>
+            </>
+          ) : confirmDelete ? (
             <>
               <span className="pp-confirm">Delete <b>{p.name}</b>? It disappears from searches; jobs that use it keep it.</span>
               <button type="button" className="btn btn-plain" onClick={() => setConfirmDelete(false)} disabled={busy}>Keep</button>

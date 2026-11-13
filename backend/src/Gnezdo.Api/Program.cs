@@ -133,6 +133,7 @@ app.MapAuthEndpoints();
 if (!demo)
 {
     app.MapPartEndpoints();
+    app.MapProjectEndpoints();
     app.MapHomeEndpoints();
     app.MapJobEndpoints();
     app.MapSettingsEndpoints();

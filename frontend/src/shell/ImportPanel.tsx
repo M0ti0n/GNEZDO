@@ -20,7 +20,7 @@ export interface ImportPanelProps {
   onFiles: (files: File[], openFirst: boolean) => void;
   onCheckLines: () => void;
   /** Saves the green parts; red ones stay in the list. */
-  onProcessAll: () => void;
+  onProcessAll: (project?: string) => void;
   busy: boolean;
   onOpen: (id: string) => void;
   onRemove: (id: string) => void;

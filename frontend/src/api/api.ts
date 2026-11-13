@@ -40,12 +40,14 @@ async function post<T>(url: string, body: unknown, method = "POST"): Promise<T> 
   if (!res.ok) {
     // validation problems come back as { errors: { field: [messages] } }
     let detail = "";
+    let data: Record<string, unknown> | undefined;
     try {
       const j = await res.json();
+      data = j;
       detail = j.message ?? Object.values(j.errors ?? {}).flat().join(" ");
     } catch { /* not JSON */ }
     diag(res.status >= 500 ? "error" : "api", `${method} ${url}: ${res.status} ${detail}`);
-    throw new Error(detail || `${res.status} ${res.statusText} (${url})`);
+    throw Object.assign(new Error(detail || `${res.status} ${res.statusText} (${url})`), { status: res.status, data });
   }
   return (await res.json()) as T;
 }
@@ -303,14 +305,26 @@ export interface PartDetail { part: PartSummary; rotations: number[]; mirror: bo
 export interface PartUpdate {
   name: string; project: string; description: string; material: string; thicknessMm: number;
   rotations: number[]; mirror: boolean; filler: boolean; commonCut: boolean;
+  /** another part has this name in the project: it is replaced */
+  replace?: boolean;
 }
+/** The error of a change refused because another part has the name in the project (it can replace it). */
+export const isNameClash = (e: unknown) => !!(e as { data?: { clash?: boolean } })?.data?.clash;
+
+/** Settings -> Projects and parts: a project with how many parts and jobs it has. */
+export interface ProjectRow { code: string; name: string; customer?: string | null; createdAt: string; partCount: number; jobCount: number }
+/** A part of a project and the jobs it is used in. */
+export interface ProjectPart { part: PartSummary; jobs: { id: string; name: string }[] }
 
 function mockUpdate(id: string, u: PartUpdate): PartDetail {
   const i = sampleParts.findIndex((p) => p.id === id);
   if (i < 0) throw new Error("Part not found");
+  if (!u.project.trim()) throw new Error("Project is required.");
   if (!knownProject(u.project)) throw new Error(`Project ${u.project.trim()} is not in the database. Save the project first.`);
-  if (sampleParts.some((p) => p.id !== id && p.name.toLowerCase() === u.name.trim().toLowerCase() && p.project.toLowerCase() === u.project.trim().toLowerCase()))
-    throw new Error(`Another part is already called ${u.name.trim()} in ${u.project.trim() || "no project"}.`);
+  const other = sampleParts.findIndex((p) => p.id !== id && p.name.toLowerCase() === u.name.trim().toLowerCase() && p.project.toLowerCase() === u.project.trim().toLowerCase());
+  if (other >= 0 && !u.replace)
+    throw Object.assign(new Error(`Another part is already called ${u.name.trim()} in ${u.project.trim()}.`), { status: 409, data: { clash: true } });
+  if (other >= 0) { sampleParts.splice(other, 1); return mockUpdate(id, { ...u, replace: false }); }
   const now = new Date().toISOString();
   const cur = sampleParts[i];
   mockHistory.set(id, [versionOf(cur, false, now), ...(mockHistory.get(id) ?? [])]);
@@ -318,6 +332,26 @@ function mockUpdate(id: string, u: PartUpdate): PartDetail {
     material: u.material.trim(), thicknessMm: u.thicknessMm, modifiedAt: now, revision: cur.revision + 1 };
   extra.set(id, { rotations: u.rotations, mirror: u.mirror, filler: u.filler, commonCut: u.commonCut, sourceFile: extra.get(id)?.sourceFile ?? "" });
   return detailOf(sampleParts[i]);
+}
+
+/** Sample mode: the projects (the sample ones and the codes parts have), with their counts. */
+function mockProjectRows(part: string): ProjectRow[] {
+  const codes = new Map<string, ProjectRow>();
+  for (const s of sampleProjects) codes.set(s.code.toLowerCase(), { code: s.code, name: s.name, customer: s.customer, createdAt: s.lastActivityAt, partCount: 0, jobCount: 0 });
+  for (const p of sampleParts) {
+    if (!p.project.trim()) continue;
+    const k = p.project.toLowerCase();
+    const row = codes.get(k) ?? { code: p.project, name: "", createdAt: p.createdAt, partCount: 0, jobCount: 0 };
+    row.partCount++;
+    codes.set(k, row);
+  }
+  for (const r of codes.values()) r.jobCount = sampleJobs.filter((j) => j.lines.some((l) => l.part.project.toLowerCase() === r.code.toLowerCase())).length;
+  const t = part.trim().toLowerCase();
+  return [...codes.values()].filter((r) => !t || sampleParts.some((p) => p.project.toLowerCase() === r.code.toLowerCase() && p.name.toLowerCase().includes(t)));
+}
+function mockProjectParts(code: string): ProjectPart[] {
+  return sampleParts.filter((p) => p.project.toLowerCase() === code.toLowerCase()).sort((a, b) => a.name.localeCompare(b.name))
+    .map((p) => ({ part: p, jobs: sampleJobs.filter((j) => j.lines.some((l) => l.part.id === p.id)).map((j) => ({ id: j.id, name: j.name })) }));
 }
 
 const detailOf = (p: PartSummary): PartDetail =>
@@ -481,6 +515,19 @@ export const api = {
   /** Makes an older version current again; the current one goes into the history. */
   restorePart: (id: string, revision: number): Promise<PartSummary> =>
     useApi ? post<PartSummary>(`/api/parts/${id}/restore`, { revision }) : delay(mockRestore(id, revision)),
+  /** Settings -> Projects and parts: every project (with `part`: the ones with a part whose name has that text). */
+  browseProjects: (part = ""): Promise<ProjectRow[]> =>
+    useApi ? get<ProjectRow[]>(`/api/projects/browse${part.trim() ? `?part=${encodeURIComponent(part.trim())}` : ""}`) : delay(mockProjectRows(part)),
+  /** A project's parts, each with the jobs it is used in. */
+  projectParts: (code: string): Promise<ProjectPart[]> =>
+    useApi ? get<ProjectPart[]>(`/api/projects/parts?code=${encodeURIComponent(code)}`) : delay(mockProjectParts(code)),
+  /** Deletes a project without parts (refused while it has any). */
+  deleteProject: (code: string): Promise<void> =>
+    useApi ? post<void>(`/api/projects?code=${encodeURIComponent(code)}`, undefined, "DELETE") : delay(0).then(() => {
+      if (sampleParts.some((p) => p.project.toLowerCase() === code.toLowerCase())) throw new Error(`Project ${code} still has parts: move them to another project or delete them first.`);
+      const i = sampleProjects.findIndex((p) => p.code.toLowerCase() === code.toLowerCase());
+      if (i >= 0) sampleProjects.splice(i, 1);
+    }),
   /** Every project code, newest first (sample mode: sample projects plus saved ones). */
   projectOptions: (): Promise<ProjectOption[]> =>
     useApi ? get<ProjectOption[]>("/api/projects") : delay([

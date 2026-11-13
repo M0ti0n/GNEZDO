@@ -5,6 +5,14 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 ## Next build
 
 **New**
+- Settings → **Projects and parts** (instead of the Projects placeholder): every saved project and its parts.
+  - Toolbar: Project search (code, name or customer), **Part name** search (lists the projects that have such a part; it also filters their parts), Created from / to, **Show projects without parts**, **Delete** (the ticked projects)
+  - **Default project**: what parts imported with the project box left empty are offered (kept in this browser)
+  - Left: the projects (check box, project with its name, the date on the right), sorted by name or date, up or down
+  - Right: the picked project's parts with created, modified and the jobs they are used in; a job clicked opens it. Material and Thickness filters, part name search, sorted by name, created or modified. Right click a part: Properties… / Versions… (double click: Properties)
+  - A project cannot be renamed; only a project **without parts** can be deleted (projects with parts cannot be ticked)
+- **Every part is in a project**: Part properties will not save a part without one. Changing its project moves it (it leaves the old one); the list suggests projects as you type, and a new one can be saved there. If the target project already has a part with that name: **Replace** it (the one there is taken out; jobs that use it keep it), or Back / close the window and nothing changes
+- Import: with the project box empty, Process offers the default project (Use the default project …), and Process all asks to save the parts under it; with no default project set, parts are not saved until a project is set
 - Process → **Micro joint**: short places left uncut along a contour (outlines and holes), with no lead-in or lead-out: the cut stops before the joint and starts again after it. The joint's length comes from the Technology table (new columns **Micro joint: Length**, default 1 mm, and **Restart**: 0 no pierce, 1 pierce, 2 quick pierce) and can be changed in the panel. This part / all copies and MOVE at the top, Keep the original lead in / out, then the modes (on / off each, Esc: off):
   - MANUAL: click a contour where a joint goes; each joint gets a balloon MJ1, MJ2 … (hover: its length)
   - CORNERS: joints on the sharp corners towards the sheet's four corners (a round corner: its point that way); SIDES: on the middles of the sides towards the sheet's four sides. 4, or 3 when the original lead is kept (the one nearest it goes)

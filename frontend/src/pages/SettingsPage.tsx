@@ -3,6 +3,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { machineFileName, machineZip, readMachineFile } from "../job/machineFile";
 import { NavClose } from "./NavClose";
 import { IconClose } from "../components/Icons";
+import { ProjectsSettings } from "../components/ProjectsSettings";
 import { loadJobNames, saveJobNames, suggestJobName, type JobNameRule } from "../job/jobName";
 import { loadViewPrefs, saveViewPrefs, type ViewPrefs } from "../job/viewPrefs";
 import { flush, logDownloadUrl, logSettings, reportProblem, setLogEnabled, type LogSettings as LogSettingsData } from "../job/diag";
@@ -25,14 +26,16 @@ const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock and remnants", ready: true },
   { id: "machine", label: "Machines", ready: true },
   { id: "keys", label: "Shortcuts", ready: true },
-  { id: "projects", label: "Projects", ready: false },
+  { id: "projects", label: "Projects and parts", ready: true },
   { id: "personal", label: "Personal", ready: true },
   { id: "data", label: "Data", ready: true },
   { id: "log", label: "Diagnostic log", ready: true },
 ];
 
 // The GNEZDO button -> Settings. Stock: the global sheet size and the three default sheet slots.
-export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, onRules }: {
+export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, onRules, onOpenJob }: {
+  /** Projects and parts: a job a part is used in, opened */
+  onOpenJob?: (id: string, name: string) => void;
   /** Close (bottom of the list): back to Home */
   onClose?: () => void;
   /** Import rules: their own page (layers, colors, names) */
@@ -111,6 +114,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
 
       {section === "keys" && <KeysSettings />}
       {section === "personal" && <PersonalSettings machines={machines} />}
+      {section === "projects" && <ProjectsSettings onOpenJob={onOpenJob} />}
       {section === "data" && <DataSettings />}
       {section === "log" && <LogSettings isAdmin={isAdmin} />}
 
