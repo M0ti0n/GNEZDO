@@ -1,5 +1,8 @@
 // A remnant's cuts as the machine cuts them (Process -> Remnant, then Post process): the mode's lines
-// and the hand cuts (CUT V / CUT H) as open cuts, each from the end nearer the head. Where a cut runs to
+// first, each from the end nearer the head, then the hand cuts (CUT V / CUT H), so a hand cut never cuts
+// into a piece that is still loose: a hand cut from a sheet edge to a remnant line starts at the sheet
+// edge (it ends on the line already cut); one between two remnant lines, or edge to edge, from the end
+// nearer the head. All as open cuts. Where a cut runs to
 // a sheet edge it starts / ends the Technology row's Gap in / Gap out from it (+ inside the sheet, an
 // uncut bridge; − beyond the edge); leads of the Leads & cutting type (Remnant cut), from the scrap side.
 
@@ -31,12 +34,14 @@ function cutStart(l: Pt[], d: number): Pt[] {
   return [l[l.length - 1]];
 }
 
-/** The remnant's cut lines (the mode's and the hand cuts), sheet frame. */
-export function remnantLines(sheet: NestedSheet): Pt[][] {
+/** The remnant's cut lines, sheet frame: the mode's and the hand cuts (hand: true). */
+export function remnantLines(sheet: NestedSheet): { pts: Pt[]; hand: boolean }[] {
   const rem = sheet.remnant;
   if (!rem || !remnantValid(sheet)) return [];
-  return [...rem.lines, ...rem.cuts.map((c): Pt[] => (c.axis === "v" ? [[c.at, c.from], [c.at, c.to]] : [[c.from, c.at], [c.to, c.at]]))]
-    .filter((l) => l.length > 1 && lineLen(l) > 0.01);
+  return [
+    ...rem.lines.map((pts) => ({ pts, hand: false })),
+    ...rem.cuts.map((c) => ({ pts: (c.axis === "v" ? [[c.at, c.from], [c.at, c.to]] : [[c.from, c.at], [c.to, c.at]]) as Pt[], hand: true })),
+  ].filter((l) => l.pts.length > 1 && lineLen(l.pts) > 0.01);
 }
 
 /** The remnant's cuts in cutting order from `from` (where the head is), with gaps and leads. */
@@ -56,13 +61,19 @@ export function remnantCutPaths(sheet: NestedSheet, machine: Machine, from: Pt):
   const out: RemnantCutPath[] = [];
   let at = from;
   while (left.length) {
+    // the mode's lines first, then the hand cuts
+    const hand = !left.some((l) => !l.hand);
     let k = 0, rev = false, best = Infinity;
     left.forEach((l, j) => {
-      const a = len(sub(l[0], at)), b = len(sub(l[l.length - 1], at));
-      if (a < best) { best = a; k = j; rev = false; }
-      if (b < best) { best = b; k = j; rev = true; }
+      if (l.hand !== hand) return;
+      const p = l.pts, e0 = onEdge(p[0]), e1 = onEdge(p[p.length - 1]);
+      // a hand cut from a sheet edge to a remnant line: from the sheet edge
+      const fwd = !hand || e0 || !e1, back = !hand || e1 || !e0;
+      const a = len(sub(p[0], at)), b = len(sub(p[p.length - 1], at));
+      if (fwd && a < best) { best = a; k = j; rev = false; }
+      if (back && b < best) { best = b; k = j; rev = true; }
     });
-    const l0 = left.splice(k, 1)[0];
+    const l0 = left.splice(k, 1)[0].pts;
     let pts = rev ? l0.slice().reverse() : l0.slice();
     const full = lineLen(pts);
     const gi = onEdge(pts[0]) ? gapIn : 0, go = onEdge(pts[pts.length - 1]) ? gapOut : 0;
