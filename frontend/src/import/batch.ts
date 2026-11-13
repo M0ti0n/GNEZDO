@@ -2,6 +2,7 @@ import { checkGeometry, fixMarkRules, quantityFromName, type Drawing } from "./g
 import { DxfError } from "./dxf";
 import { drawingBaseName, isDrawingName, readDrawingFile } from "./drawingFile";
 import { applyRules, type ImportRules, type Rotation } from "./rules";
+import { currentProfile, flatDrawing, isStepName, nestLimits, newStepPart, profileOf, type StepPart } from "./step/stepPart";
 
 /** One file in the import list. */
 export interface ImportItem {
@@ -23,6 +24,28 @@ export interface ImportItem {
     rotations: Rotation[]; mirror: boolean; filler: boolean; commonCut: boolean };
   /** Rotations and mirror the part got when it was processed. */
   applied?: { rotations: Rotation[]; mirror: boolean; filler: boolean; commonCut: boolean };
+  /** A STEP part (3D): unfolded; `drawing` is its flat pattern. */
+  step?: StepPart;
+  /** What the part itself asks of nesting and saving (a STEP part: its thickness, foil, grain). */
+  own?: { thicknessMm?: string; noMirror?: boolean; rotations?: Rotation[] };
+}
+
+/** The Properties for one part: the list's, with what the part itself asks (a STEP part's thickness, foil, grain). */
+export function itemProps(item: ImportItem, props: BatchProperties): BatchProperties {
+  const o = item.own;
+  if (!o) return props;
+  return {
+    ...props,
+    ...(o.thicknessMm ? { thicknessMm: o.thicknessMm } : {}),
+    ...(o.rotations ? { rotations: [...o.rotations] } : {}),
+    ...(o.noMirror ? { mirror: false } : {}),
+  };
+}
+
+/** A STEP part's own values from its settings (thickness found, foil, grain). */
+export function ownOf(step: StepPart): ImportItem["own"] {
+  const lim = nestLimits(step.settings);
+  return { ...(step.info.thickness ? { thicknessMm: String(step.info.thickness) } : {}), ...lim };
 }
 
 /** Properties (Import panel): used for every part in the list, kept for the next import. */
@@ -75,7 +98,7 @@ export function saveProperties(p: BatchProperties) {
  * lines is never mirrored; otherwise the Mirror tick decides alone.
  */
 export const mirrorFor = (item: ImportItem, props: BatchProperties, rules: ImportRules) =>
-  mirrorBlocked(item, rules) ? false : props.mirror;
+  mirrorBlocked(item, rules) || item.own?.noMirror ? false : props.mirror;
 
 /** Mirror is not allowed: the part has open cut lines and the rule says so. */
 export const mirrorBlocked = (item: ImportItem, rules: ImportRules) =>
@@ -133,8 +156,20 @@ export function newItem(file: File): ImportItem {
   };
 }
 
-export async function readItem(item: ImportItem, file: File, rules: ImportRules): Promise<ImportItem> {
+export async function readItem(item: ImportItem, file: File, rules: ImportRules, material = ""): Promise<ImportItem> {
   if (item.state === "dwg") return item;
+  if (isStepName(file.name)) {
+    // a 3D part: unfolded at once with the profile's values; the unfold view changes them
+    try {
+      const text = await file.text();
+      await new Promise((r) => setTimeout(r, 0));
+      const { part, u } = newStepPart(text, profileOf(currentProfile()), material);
+      if (!u.outline.length) return { ...item, state: "failed", error: u.problems[0] ?? "This STEP part could not be unfolded" };
+      return { ...item, state: "ready", step: part, own: ownOf(part), drawing: flatDrawing(item.id, item.name, u, part.settings) };
+    } catch (e) {
+      return { ...item, state: "failed", error: `Could not read the STEP file (${(e as Error).message})` };
+    }
+  }
   try {
     const { drawing, ignored, declaredUnits } = await readDrawingFile(file);
     // roles come from layers and colors; the outer contour is always plain cutting and a closed

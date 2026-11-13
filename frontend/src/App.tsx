@@ -5,8 +5,9 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api, demoMode } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
+import { UnfoldPage } from "./pages/UnfoldPage";
 import { sampleDrawings } from "./import/sampleDrawing";
-import { isDrawingFile, loadProperties, mirrorBlocked, mirrorFor, newItem, readItem, saveProperties, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
+import { isDrawingFile, itemProps, loadProperties, mirrorBlocked, mirrorFor, newItem, ownOf, readItem, saveProperties, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
 import { draggingFiles, droppedFiles, droppedFolder } from "./import/dropped";
 import { ProcessDialog, type ProcessValues } from "./import/ProcessDialog";
 import { CloseUnsavedDialog } from "./import/CloseUnsavedDialog";
@@ -268,7 +269,7 @@ export function App() {
       const folder = droppedFolder(dt);
       void droppedFiles(dt).then((all) => {
         const files = all.filter(isDrawingFile);
-        if (!files.length) { setToast("Only DXF and DWG files can be dropped into GNEZDO"); return; }
+        if (!files.length) { setToast("Only DXF, DWG, SVG and STEP files can be dropped into GNEZDO"); return; }
         setDrawer("import");
         addFilesRef.current(files, !folder && files.length === 1);
         diag("import", `${files.length} ${files.length === 1 ? "file" : "files"} dropped outside the import list: sent to the importer`);
@@ -282,7 +283,7 @@ export function App() {
   const addFiles = async (files: File[], openFirst: boolean) => {
     const fresh = files.map((f) => ({ file: f, item: newItem(f) }));
     setImports((list) => [...list, ...fresh.map((x) => x.item)]);
-    const read = await Promise.all(fresh.map((x) => readItem(x.item, x.file, rules)));
+    const read = await Promise.all(fresh.map((x) => readItem(x.item, x.file, rules, importProps.material)));
     setImports((list) => list.map((i) => read.find((r) => r.id === i.id) ?? i));
     if (openFirst && read[0]?.state === "ready") openItem(read[0]);
     const failed = read.filter((r) => r.state === "failed").length;
@@ -345,7 +346,8 @@ export function App() {
         const res = await api.saveParts(green.map((i) => {
           // a part opened from the database (EDIT) is saved back over itself, with its own values
           if (i.source) return toSave(i, { ...i.source, rotations: [...i.source.rotations] }, true);
-          return toSave(i, { ...props, name: i.name, mirror: mirrorFor(i, props, rules) }, false);
+          const own = itemProps(i, props);   // a STEP part: its own thickness, foil and grain
+          return toSave(i, { ...own, name: i.name, mirror: mirrorFor(i, own, rules) }, false);
         }), "Import list");
         forgetPartMarks();   // drawings saved over: their marks are read again
         const saved = green.filter((_, k) => res[k]?.status !== "exists").map((i) => i.id);
@@ -1299,12 +1301,25 @@ export function App() {
                 machines={machines}
                 onShowFilters={() => setDrawer("jobs")} />
             )}
-            {shownItem?.drawing && (
+            {shownItem?.drawing && shownItem.step?.view === "3d" && (
               <ErrorBoundary key={shownItem.id} what={shownItem.name}>
+              <UnfoldPage key={shownItem.id} name={shownItem.name} step={shownItem.step} material={importProps.material}
+                onChange={(step, drawing) => {
+                  // unfolded again: a new flat pattern (its 2D edits and their undo are gone)
+                  history.forget(shownItem.id);
+                  setHistoryTick((n) => n + 1);
+                  patchItem(shownItem.id, { step, own: ownOf(step), drawing, processed: false, applied: undefined });
+                }}
+                onEdit2d={() => patchItem(shownItem.id, { step: { ...shownItem.step!, view: "2d" } })} />
+              </ErrorBoundary>
+            )}
+            {shownItem?.drawing && shownItem.step?.view !== "3d" && (
+              <ErrorBoundary key={shownItem.id} what={shownItem.name}>
+              {shownItem.step && <button type="button" className="btn btn-plain uf-back" onClick={() => patchItem(shownItem.id, { step: { ...shownItem.step!, view: "3d" } })}>← Back to 3D unfold</button>}
               <ImportPage key={shownItem.id}
                 drawing={shownItem.drawing}
                 processed={shownItem.processed}
-                properties={shownItem.source ? { ...importProps, ...shownItem.source } : importProps}
+                properties={shownItem.source ? { ...importProps, ...shownItem.source } : itemProps(shownItem, importProps)}
                 nestRules={shownItem.source
                   ? { rotations: shownItem.source.rotations, mirror: shownItem.source.mirror, filler: shownItem.source.filler, commonCut: shownItem.source.commonCut }
                   : { rotations: importProps.rotations, mirror: importProps.mirror, filler: importProps.filler, commonCut: importProps.commonCut }}
@@ -1334,7 +1349,7 @@ export function App() {
         <ProcessDialog
           drawing={processingItem.drawing}
           initial={processingItem.source ? { ...processingItem.source, rotations: [...processingItem.source.rotations] } : {
-            ...importProps,
+            ...itemProps(processingItem, importProps),
             name: processingItem.name,
           }}
           mirrorBlocked={mirrorBlocked(processingItem, rules)}

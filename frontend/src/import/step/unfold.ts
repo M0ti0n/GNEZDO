@@ -20,7 +20,22 @@ export interface FlatEdge {
   arc?: { c: V2; r: number; a0: number; a1: number };
 }
 
-export interface Bend { innerR: number; angleDeg: number; length: number }
+export interface Bend {
+  innerR: number; angleDeg: number; length: number;
+  /** the unfolded side is the bend's inner side */
+  inner: boolean;
+  /** seen from the top side (the side up on the machine) the flange comes up towards the viewer */
+  up: boolean;
+}
+
+export interface UnfoldOptions {
+  /** inner radius + K × thickness is the bend's neutral radius */
+  kFactor: number;
+  /** the flat face it is unfolded from (index in the solid's faces); missing: the biggest */
+  base?: number;
+  /** the flat pattern seen from the other side (the side away from the unfolded faces is up) */
+  flip?: boolean;
+}
 
 export interface Unfolded {
   thickness: number | null;
@@ -135,7 +150,9 @@ const angleOn = (a: V3, d: V3, r0: V3, q: V3) => {
 interface CylMap { g: Rigid; a: V3; d: V3; r0: V3; sgn: number; rn: number; dir: V3; phi: number }
 
 /** Unfold a solid with this K-factor (inner radius + K × thickness is the bend's neutral radius). */
-export function unfold(s: Solid, kFactor = 0.44): Unfolded {
+export function unfold(s: Solid, opt: number | UnfoldOptions = 0.44): Unfolded {
+  const opts: UnfoldOptions = typeof opt === "number" ? { kFactor: opt } : opt;
+  const kFactor = opts.kFactor, flip = !!opts.flip;
   const problems = [...s.problems];
   const t = thicknessOf(s);
   if (t === null) problems.push("The thickness was not found (no two flat faces one behind the other)");
@@ -147,7 +164,7 @@ export function unfold(s: Solid, kFactor = 0.44): Unfolded {
   faces.forEach((f, i) => f.loops.forEach((l) => l.edges.forEach((e) => { const l2 = byEdge.get(e.id) ?? []; if (!l2.includes(i)) l2.push(i); byEdge.set(e.id, l2); })));
   // the base: the biggest flat face
   const areas = faces.map((f) => planeArea(f).area);
-  const base = areas.indexOf(Math.max(...areas));
+  const base = opts.base !== undefined && faces[opts.base]?.surf.kind === "plane" ? opts.base : areas.indexOf(Math.max(...areas));
   if (base < 0 || areas[base] <= 0) return { thickness: t, kFactor, bends: [], outline: [], bendLines: [], box: { x0: 0, y0: 0, x1: 0, y1: 0 }, stats, problems: [...problems, "No flat face to start from"], skinFaces: [] };
 
   // walk the skin across smooth edges
@@ -190,7 +207,8 @@ export function unfold(s: Solid, kFactor = 0.44): Unfolded {
           const m: CylMap = { g: flat.get(i)!, a, d, r0, sgn, rn, dir: mul3(unit3(cross3(d, r0)), sgn), phi };
           cyl.set(j, m);
           const ext = all.map((q) => dot3(sub3(q, a), d));
-          bends.push({ innerR: Math.round(innerR * 1000) / 1000, angleDeg: Math.round(((Math.abs(phi) * 180) / Math.PI) * 100) / 100, length: Math.round((Math.max(...ext) - Math.min(...ext)) * 100) / 100 });
+          const inner = dot3(n, r0) < 0;
+          bends.push({ innerR: Math.round(innerR * 1000) / 1000, angleDeg: Math.round(((Math.abs(phi) * 180) / Math.PI) * 100) / 100, length: Math.round((Math.max(...ext) - Math.min(...ext)) * 100) / 100, inner, up: inner !== flip });
           queue.push(j);
           continue;
         }
@@ -218,7 +236,8 @@ export function unfold(s: Solid, kFactor = 0.44): Unfolded {
 
   // the flat pattern's frame: the base face, its longest straight edge along X, seen from outside
   const B = faces[base];
-  const nb = normalAt(B, [0, 0, 0])!;
+  // seen from outside the unfolded side, or (flip) from the other side: the flat pattern mirrored
+  const nb = mul3(normalAt(B, [0, 0, 0])!, flip ? -1 : 1);
   let u: V3 = B.surf.kind === "plane" ? B.surf.x : [1, 0, 0], best = 0;
   for (const l of B.loops) for (const e of l.edges) if (e.line) { const v = sub3(e.pts[e.pts.length - 1], e.pts[0]); if (len3(v) > best) { best = len3(v); u = unit3(v); } }
   const v = cross3(nb, u);
@@ -291,8 +310,27 @@ function simplify(pts: V2[]): V2[] {
   return out;
 }
 
-/** The flat pattern as DXF (R12): outline on layer 0 (lines, arcs, circles), bend lines on BEND. */
-export function flatDxf(u: Unfolded): string {
+/**
+ * Bend marks: short lines on each bend line, `len` long from `inset` in from both ends (a short bend:
+ * one line between the insets). Only the bends coming up (traced on the top side), unless `all`.
+ */
+export function bendMarks(u: Unfolded, len = 20, inset = 2, all = false): [V2, V2][] {
+  const out: [V2, V2][] = [];
+  u.bendLines.forEach(([a, b], i) => {
+    if (!all && !u.bends[i]?.up) return;
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (L <= 2 * inset + 0.1) return;
+    const d: V2 = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+    const at = (t: number): V2 => [a[0] + d[0] * t, a[1] + d[1] * t];
+    if (L <= 2 * (inset + len)) { out.push([at(inset), at(L - inset)]); return; }
+    out.push([at(inset), at(inset + len)], [at(L - inset - len), at(L - inset)]);
+  });
+  return out;
+}
+
+/** The flat pattern as DXF (R12): outline on layer 0 (lines, arcs, circles); bend marks on BEND_MARK
+ *  (traced); the bends' whole lines on BEND (for a drawing, not for cutting) unless left out. */
+export function flatDxf(u: Unfolded, o: { marks?: [V2, V2][]; bendLines?: boolean } = {}): string {
   const out: string[] = ["0", "SECTION", "2", "ENTITIES"];
   const n = (v: number) => (Math.round(v * 1e6) / 1e6).toString();
   const line = (a: V2, b: V2, layer: string) => out.push("0", "LINE", "8", layer, "10", n(a[0]), "20", n(a[1]), "30", "0", "11", n(b[0]), "21", n(b[1]), "31", "0");
@@ -305,7 +343,8 @@ export function flatDxf(u: Unfolded): string {
     }
     for (let i = 1; i < e.pts.length; i++) line(e.pts[i - 1], e.pts[i], "0");
   }
-  for (const [a, b] of u.bendLines) line(a, b, "BEND");
+  for (const [a, b] of o.marks ?? []) line(a, b, "BEND_MARK");
+  if (o.bendLines !== false) for (const [a, b] of u.bendLines) line(a, b, "BEND");
   out.push("0", "ENDSEC", "0", "EOF");
   return out.join("\r\n") + "\r\n";
 }
