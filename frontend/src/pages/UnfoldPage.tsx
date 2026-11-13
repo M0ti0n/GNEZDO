@@ -97,6 +97,9 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, on
     : pick === "stitch" ? "click flat faces one next to the other (again: out)" : pick === "one" ? "click the flat face to send as it is"
     : pick === "measure3d" ? "click a face, an edge, a hole's edge or a corner; then a second one" : "drag: turn · wheel: zoom";
   const [meas, setMeas] = useState<MPick[]>([]);
+  // the part and the flat pattern side by side, or one of them folded away to the side (kept for next time)
+  const [panes, setPanesState] = useState<Panes>(loadPanes);
+  const setPanes = (v: Panes) => { setPanesState(v); try { localStorage.setItem(PANES_KEY, v); } catch { /* this session */ } };
   const measured = meas.length === 2 ? relate(meas[0], meas[1]) : [];
 
   return (
@@ -115,9 +118,12 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, on
           : "The flat pattern is not ready (not unfolded, or the outline is open)", !step.info.ok)}
         {tool("dxf", "Flat DXF", false, download, "Download the flat pattern as DXF (with the whole bend lines on layer BEND)", !u.outline.length)}
       </div>
-      <div className="uf-panes">
-        <section className="uf-pane uf-3d">
-          <h3>Part <em>{hint}</em></h3>
+      <div className={`uf-panes is-${panes}`}>
+        <section className={`uf-pane uf-3d${panes === "flat" ? " is-shut" : ""}`}>
+          <button type="button" className="uf-strip" onClick={() => setPanes("both")} title="Show the part (3D) again">
+            <PaneIcon dir="right" /><span>Part (3D)</span></button>
+          <h3>Part <em>{hint}</em>
+            <PaneButtons side="3d" panes={panes} onPanes={setPanes} /></h3>
           <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick === "measure" ? null : pick}
             measure={pick === "measure3d" ? meas : []} onMeasure={(m) => setMeas((l) => (l.length >= 2 ? [m] : [...l, m]))}
             onPick={(f, k) => {
@@ -147,8 +153,11 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, on
             ? <><span><i className="is-stitch" />stitched</span><span><i className="is-base" />first face (stays)</span><span><i className="is-other" />other faces</span></>
             : <><span><i className="is-skin" />unfolded side</span><span><i className="is-other" />other faces</span><span><i className="is-base" />fixed face</span><span><i className="is-bad" />not unfolded</span></>}</div>
         </section>
-        <section className="uf-pane uf-flat">
-          <h3>Flat pattern <em>{u.outline.length ? `${fmt(u.box.x1)} × ${fmt(u.box.y1)} mm · ` : ""}{stitchMode && st.comp.side === "none" ? "faces as they are" : `K ${st.kFactor}`} · top side up{st.foil ? " (foil / finish)" : ""}</em></h3>
+        <section className={`uf-pane uf-flat${panes === "3d" ? " is-shut" : ""}`}>
+          <button type="button" className="uf-strip" onClick={() => setPanes("both")} title="Show the flat pattern again">
+            <PaneIcon dir="left" /><span>Flat pattern</span></button>
+          <h3>Flat pattern <em>{u.outline.length ? `${fmt(u.box.x1)} × ${fmt(u.box.y1)} mm · ` : ""}{stitchMode && st.comp.side === "none" ? "faces as they are" : `K ${st.kFactor}`} · top side up{st.foil ? " (foil / finish)" : ""}</em>
+            <PaneButtons side="flat" panes={panes} onPanes={setPanes} /></h3>
           {u.outline.length ? <FlatView u={u} st={st} measure={pick === "measure"} />
             : <div className="uf-empty">{stitchMode ? "Click the faces to stitch on the part: the first one stays, each next one must share an edge with one picked before." : "Not unfolded."}</div>}
           <div className="uf-leg"><span><i className="is-mark" />bend marks ({st.marks === "none" ? "off" : st.marks === "trace" ? "traced" : "open cut"}, up bends)</span><span><i className="is-bend" />bend line (not cut)</span><span className="uf-up">UP</span><span className="uf-down">DOWN</span></div>
@@ -261,6 +270,37 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, on
       {editProfiles && <ProfilesDialog profiles={profiles} onClose={() => setEditProfiles(false)}
         onSave={(l) => { saveProfiles(l); setProfiles(l); setEditProfiles(false); if (!l.some((p) => p.name === st.profile)) useProfile(l[0].name); }} />}
     </div>
+  );
+}
+
+type Panes = "both" | "3d" | "flat";
+const PANES_KEY = "gnezdo.unfoldPanes";
+const loadPanes = (): Panes => { try { const v = localStorage.getItem(PANES_KEY); return v === "3d" || v === "flat" ? v : "both"; } catch { return "both"; } };
+
+const PaneIcon = ({ dir }: { dir: "left" | "right" }) => (
+  <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {dir === "left" ? <path d="M10 3.5L5.5 8l4.5 4.5" /> : <path d="M6 3.5L10.5 8 6 12.5" />}
+  </svg>
+);
+
+/** In a pane's title: fold it away to its side (the other one takes the room), or give it the whole room. */
+function PaneButtons({ side, panes, onPanes }: { side: "3d" | "flat"; panes: Panes; onPanes: (p: Panes) => void }) {
+  const other = side === "3d" ? "flat" : "3d";
+  const alone = panes === side;
+  return (
+    <span className="uf-pane-btns">
+      <button type="button" className="icon-btn" onClick={() => onPanes(alone ? "both" : side)}
+        title={alone ? "Side by side again" : `Only this one (the ${other === "3d" ? "part" : "flat pattern"} folds away)`}>
+        <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
+          {alone ? <><rect x="2" y="3" width="5" height="10" rx="1" /><rect x="9" y="3" width="5" height="10" rx="1" /></> : <rect x="2" y="3" width="12" height="10" rx="1" />}
+        </svg>
+      </button>
+      {!alone && (
+        <button type="button" className="icon-btn" onClick={() => onPanes(other)} title="Fold this one away to the side">
+          <PaneIcon dir={side === "3d" ? "left" : "right"} />
+        </button>
+      )}
+    </span>
   );
 }
 
