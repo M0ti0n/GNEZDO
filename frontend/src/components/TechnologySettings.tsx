@@ -83,6 +83,9 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
 
   const groups = techColumnsFor(technology);
   const cols = groups.flatMap((g) => g.cols);
+  // the first column of each group after the first: a line between the groups
+  const groupStart = new Set(groups.slice(0, -1).map((_, i) => groups.slice(0, i + 1).reduce((n, g) => n + g.cols.length, 0)));
+  const gs = (i: number) => (groupStart.has(i) ? "tech-gs" : undefined);
   return (
     <div className="tech">
       <div className="tech-bar">
@@ -129,7 +132,7 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
               </tr>
               <tr>
                 <th className="tech-th">Thickness</th>
-                {cols.map((c, i) => <th key={c.key + i}>{c.label}<br /><small>{c.unit}</small></th>)}
+                {cols.map((c, i) => <th key={c.key + i} className={gs(i)}>{c.label}<br /><small>{c.unit}</small></th>)}
               </tr>
             </thead>
             <tbody>
@@ -140,8 +143,8 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
                     <th className="tech-th" onClick={() => setRowSel(rowSel === i ? null : i)} title={used ? "Click to select the row" : "Outside the thickness range: not used"}>
                       {r.thicknessMm} mm{!used && <small> not used</small>}
                     </th>
-                    {cols.map((c) => (
-                      <td key={c.key}>
+                    {cols.map((c, ci) => (
+                      <td key={c.key} className={gs(ci)}>
                         <NumInput className="tech-cell" value={cellValue(r, c)} min={c.min ?? 0} aria-label={`${r.thicknessMm} mm ${c.label} (${c.unit})`}
                           onFocusCapture={() => setRowSel(i)} onCommit={(n) => setCell(i, c.key, c.max !== undefined ? Math.min(c.max, n) : n)} />
                       </td>
