@@ -104,10 +104,10 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 .tabs { display: flex; align-items: flex-end; gap: 4px; overflow-x: auto; min-width: 0; flex: 1; scrollbar-width: none; }
 .tab {
   display: flex; align-items: center; height: 36px; flex-shrink: 0; max-width: 230px;
-  background: rgba(255, 255, 255, .16); color: #fff;
+  background: var(--chrome-dark); color: #fff;   /* the GNEZDO button's darker green: stands out from the bar */
   border-radius: 7px 7px 0 0; border-top: 3px solid transparent;
 }
-.tab:hover { background: rgba(255, 255, 255, .26); }
+.tab:hover { background: #0f6529; }
 .tab.is-active { background: var(--plate); color: var(--ink); border-top-color: var(--yellow); }
 .tab-label {
   display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 12px 0 10px;
