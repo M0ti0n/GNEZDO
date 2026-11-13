@@ -7,6 +7,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Laser Technology tables have a new column, **Laser · Trace shortest** (1 = on). It sets, per thickness, whether AUTO CUT traces first over the whole sheet in the order of the shortest rapids. A row with no value set is on from 4 mm up. On a laser, Settings → Machines → Cut order now points to this column instead of its checkbox; other machines keep the checkbox
 - Settings → Machines has a **Rapid speed** (mm/min) for the time estimates in the Nest report and the Simulation. Empty: 15,000 mm/min on a plasma (measured: 2 m in 8 s), 20,000 mm/min on the others (before this, 20,000 for every machine)
 - HACO plasma machine file: 25 mm pierce time 4 s (measured; it was 1.8 s), rapid speed 15,000 mm/min
+- Settings → Machines → NC output: **Program name**, the NC file's name and the name inside the program. `{jobname}` is the job's name, `{#}` the sheet's number; empty = {jobname}_{#} as before. **Letters and digits only** leaves out spaces, _, - and other characters, for controls that refuse them. The HACO plasma machine file uses {jobname}P{#} with letters and digits only: job MIHA2280, sheet 1 → MIHA2280P1.NCP
 - Technology table: light green vertical lines between the column groups (Cutting, Holes · leads, Outline · leads, ...), the color of the line under the group names
 - Technology CSV export: a micro joint Length or Restart that was never set is written as 1 (what the app uses), not 0
 

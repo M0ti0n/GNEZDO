@@ -64,6 +64,22 @@ export interface Postprocessor {
   /** NC file extension, e.g. ".nc" */
   extension: string;
   source: string;
+  /** The NC program's name (the file's, and the one in the program): {jobname} the job's name, {#} the
+   *  sheet's number; missing = "{jobname}_{#}" */
+  fileName?: string;
+  /** Only letters and digits in the program's name (the rest left out): for controls that refuse others */
+  plainName?: boolean;
+}
+
+export const DEFAULT_NC_NAME = "{jobname}_{#}";
+
+/** The NC program's name for a sheet (sheetNo from 1), without the extension. */
+export function ncNameOf(pp: Pick<Postprocessor, "fileName" | "plainName"> | undefined, jobName: string, sheetNo: number): string {
+  const t = pp?.fileName?.trim() || DEFAULT_NC_NAME;
+  let name = t.replace(/\{jobname\}/gi, jobName.trim()).replace(/\{#\}/g, String(sheetNo));
+  if (pp?.plainName) name = name.replace(/[^A-Za-z0-9]+/g, "");
+  name = name.replace(/[\\/:*?"<>|]+/g, "_").trim();   // never a character a file name cannot have
+  return name || `${sheetNo}`;
 }
 
 /** Runs a postprocessor's source on a program: the NC text, or why it failed. */

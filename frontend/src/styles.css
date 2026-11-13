@@ -2031,6 +2031,10 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .ncout-name { font-weight: 600; font-size: 15px; }
 .ncout-ext { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13.5px; color: var(--ink-2); }
 .ncout-ext .field { width: 90px; height: 30px; }
+.ncout-names { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+.ncout-names .ncout-ext .field.ncout-tpl { width: 200px; }
+.ncout-names .chk { margin-top: 10px; }
+.ncout-names .rule-help { flex-basis: 100%; }
 .ncout-pre { margin: 8px 0 0; max-height: 360px; overflow: auto; padding: 10px 12px; background: #1b2a30; color: #e6f0ee; border-radius: 8px;
   font: 12.5px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre; }
 .ncout-pre.is-src { max-height: 480px; }
