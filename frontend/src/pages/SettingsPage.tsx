@@ -20,20 +20,23 @@ import { DEFAULT_CUT_ORDER, LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, cutOrderOf
 import { DEFAULT_KEYS, KEY_ACTIONS, RESERVED_KEYS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
-type Section = "stock" | "machine" | "keys" | "personal" | "data" | "log";
+type Section = "stock" | "machine" | "keys" | "projects" | "personal" | "data" | "log";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
-  { id: "stock", label: "Stock", ready: true },
+  { id: "stock", label: "Stock and remnants", ready: true },
   { id: "machine", label: "Machines", ready: true },
-  { id: "keys", label: "Manual nest", ready: true },
+  { id: "keys", label: "Shortcuts", ready: true },
+  { id: "projects", label: "Projects", ready: false },
   { id: "personal", label: "Personal", ready: true },
   { id: "data", label: "Data", ready: true },
   { id: "log", label: "Diagnostic log", ready: true },
 ];
 
-// GNEZDO menu -> Settings. Stock: the global sheet size and the three default sheet slots.
-export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose }: {
+// The GNEZDO button -> Settings. Stock: the global sheet size and the three default sheet slots.
+export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, onRules }: {
   /** Close (bottom of the list): back to Home */
   onClose?: () => void;
+  /** Import rules: their own page (layers, colors, names) */
+  onRules?: () => void;
   stock: StockSettings; onStock: (s: StockSettings) => void;
   machines: MachineList; onMachines: (m: MachineList) => void;
   /** Machines are kept on the server (false: in this browser, the demo). */
@@ -102,6 +105,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
             {s.label}
           </button>
         ))}
+        {onRules && <button className="settings-link" onClick={onRules} title="How drawings are read: layers, colors, file names (its own page)">Import rules</button>}
         {onClose && <NavClose onClose={onClose} />}
       </nav>
 
@@ -256,7 +260,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
       {section === "stock" && (
       <div className="settings-main">
         <header className="settings-head">
-          <h2>Stock</h2>
+          <h2>Stock and remnants</h2>
           <p>Sheet sizes the STOCK panel of a job adds. Sizes are length × width in millimeters.</p>
         </header>
 
@@ -414,7 +418,7 @@ function KeysSettings() {
   return (
     <div className="settings-main">
       <header className="settings-head">
-        <h2>Manual nest</h2>
+        <h2>Shortcuts</h2>
         <p>Keys that move and turn the selected parts in manual nesting: a press moves 1 mm or turns 1°, held down 10 steps a second.
           A move stops at the sheet edge (the trims); parts may be moved over each other. Ctrl + a move key slides the parts up to the next part
           or the edge (keeping the gaps). Kept in this browser.</p>
