@@ -2116,6 +2116,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .bc-balloon line { stroke: #1b2a30; }
 .bc-balloon circle { fill: #fff; stroke: #1b2a30; }
 .bc-balloon .bc-dot { fill: #1b2a30; stroke: none; }
+.bc-balloon.is-mj circle:not(.bc-dot) { fill: #dff1fb; stroke: #1565c0; }
 .bc-balloon.is-neg circle:not(.bc-dot) { fill: #fde3e3; stroke: #c2412d; }
 .bc-balloon.is-sel circle:not(.bc-dot) { stroke: #ff8a00; filter: drop-shadow(0 0 3px #ff8a00); }
 .bc-balloon.is-float { opacity: .85; pointer-events: none; }
@@ -2299,6 +2300,15 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .li-reset:hover:not(:disabled) { background: #e3f2f8 !important; }
 .ac-pickbar .btn.li-apply.is-on, .ac-pickbar .btn.li-apply.is-on:hover:not(:disabled) { background: var(--green); color: #fff; border-color: var(--green); }
 .li-del { border-color: var(--red, #d62828) !important; color: var(--red, #d62828); }
+.ac-pickbar .btn.li-reset.is-on, .ac-pickbar .btn.li-reset.is-on:hover:not(:disabled) { background: #1e8db5 !important; color: #fff; }
+/* Micro joint: the length, the modes (on / off each) */
+.mj-len { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; font-weight: 600; }
+.mj-val { position: static; transform: none; border-color: #1565c0; }
+.mj-val .li-num { width: 52px; }
+.mj-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mj-mode { height: 36px; padding: 0 6px; font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
+.mj-mode.is-wide { grid-column: 1 / -1; }
+.mj-mode.is-on, .mj-mode.is-on:hover:not(:disabled) { background: #1565c0; border-color: #1565c0; color: #fff; }
 .li-del:hover:not(:disabled) { background: #fde8e8 !important; }
 .li-spacer { flex: 1; }
 .li-dlg { width: min(560px, 100%); }

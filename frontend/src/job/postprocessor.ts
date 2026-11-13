@@ -29,6 +29,8 @@ export interface NcContour {
   heightMm: number;
   /** Cut at the small-hole speed (marked as a hole in the importer, or set by hand); missing = by size */
   small?: boolean;
+  /** Starts again right after a micro joint (no lead-in): pierce as the Technology row's MJ restart says */
+  restart?: "pierce" | "quick" | "none";
   /** Process → Movement: the rapid to `start` goes through these points first (in order) */
   via?: NcPt[];
   /** Which part it belongs to (its name), for comments */

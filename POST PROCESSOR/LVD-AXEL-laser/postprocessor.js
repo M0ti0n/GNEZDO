@@ -11,7 +11,8 @@
 //   N10 G0 X.. Y..            rapid to the pierce point (G0 G40 from the second contour on); Process →
 //                             Movement's points first, one G0 each (the part then has a subprogram
 //                             of its own: the moves between parts are the machine's, made at G980)
-//   M98P8036                  pierce
+//   M98P8036                  pierce (after a micro joint: M98P8037 quick pierce when the row's MJ
+//                             restart says quick or none)
 //   IF[#516GT0]GOTO19         pre-pierce pass (#516 = the row's "Pre-pierce"): pierce only
 //   G41                       kerf compensation (outlines and holes; not on open cuts)
 //   G1 X.. Y.. E001           the first move (the lead-in) with the contour's size class:
@@ -89,7 +90,9 @@ function postprocess(p) {
       to.forEach((q, j) => body.push(j ? `G0 X${X(q.x)} Y${Y(q.y)}` : `N${n} G0 ${i ? "G40 " : ""}X${X(q.x)} Y${Y(q.y)}`));
       if (marking) body.push(`IF[#516GT0]GOTO${n + 10}`, "M98P8033");
       else {
-        body.push("M98P8036", `IF[#516GT0]GOTO${n + 9}`);
+        // after a micro joint (no lead-in): the row's MJ restart; quick pierce (M98P8037) also stands
+        // for "no pierce" until the controller's own way of starting without one is known
+        body.push(c.restart === "quick" || c.restart === "none" ? "M98P8037" : "M98P8036", `IF[#516GT0]GOTO${n + 9}`);
         if (c.kind !== "open") body.push("G41");
       }
       // N?5 marks the first move of the contour itself (after the lead-in)

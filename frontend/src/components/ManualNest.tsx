@@ -44,7 +44,7 @@ export interface CutMode {
   /** Movement: the rapid picked (glow) and the way being drawn (points so far, then the pointer) */
   move?: { sel?: Pt[]; draft?: Pt[]; targets?: Pt[] };
   /** Break cut: its balloons (BC, 1, 2) at the leads they mark; `float`: following the pointer, still to be placed */
-  balloons?: { at: Pt; label: string; neg: boolean; sel?: boolean; float?: boolean; side?: number }[];
+  balloons?: { at: Pt; label: string; neg: boolean; sel?: boolean; float?: boolean; side?: number; mj?: boolean; title?: string }[];
   /** Simulation: the path as far as the head has come, the parts cut out so far, the head */
   sim?: { shown: CutContour[]; current?: CutContour; rapids: [Pt, Pt][]; done: Set<number>; head: Pt };
 }
@@ -1026,11 +1026,12 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                       // (side -1: up and left, so a pair 1 / 2 does not overlap)
                       const r = 5 / v.s, dx = 8 / v.s, cx = b.at[0] + (b.side ?? 1) * dx, cy = b.at[1] - dx;
                       return (
-                        <g key={`b${j}`} className={`bc-balloon${b.neg ? " is-neg" : ""}${b.sel ? " is-sel" : ""}${b.float ? " is-float" : ""}`}>
+                        <g key={`b${j}`} className={`bc-balloon${b.neg ? " is-neg" : ""}${b.mj ? " is-mj" : ""}${b.sel ? " is-sel" : ""}${b.float ? " is-float" : ""}`}>
+                          {b.title && <title>{b.title}</title>}
                           <line x1={b.at[0]} y1={b.at[1]} x2={cx} y2={cy} style={{ strokeWidth: 0.8 / v.s }} />
                           <circle cx={b.at[0]} cy={b.at[1]} r={1.2 / v.s} className="bc-dot" />
                           <circle cx={cx} cy={cy} r={r} style={{ strokeWidth: 1 / v.s }} />
-                          <text x={cx} y={cy} style={{ fontSize: (b.label.length > 1 ? 4.2 : 5.5) / v.s }}>{b.label}</text>
+                          <text x={cx} y={cy} style={{ fontSize: (b.label.length > 3 ? 2.7 : b.label.length > 2 ? 3.2 : b.label.length > 1 ? 4.2 : 5.5) / v.s }}>{b.label}</text>
                         </g>
                       );
                     })}

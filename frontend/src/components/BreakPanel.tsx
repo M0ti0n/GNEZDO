@@ -6,6 +6,7 @@ import { leadCtx } from "../job/leadEdit";
 import { GAP_TYPES, LEAD_TYPES, type LeadType } from "../job/leads";
 import type { Machine } from "../job/machine";
 import { pickContour } from "../job/manualCut";
+import { resetPart } from "../job/microJoint";
 import type { Pt } from "../job/manualGeom";
 import type { NestedSheet } from "../job/nest";
 import { LeadEditor, TypeDialog } from "./LeadPanel";
@@ -54,15 +55,19 @@ export function useBreakCut({ index, single, sheets, parts, machine, onCut }: {
   /** MOVE: the balloon picked, placed by the next click */
   const [moving, setMoving] = useState<null | { k: number; si: number; which: "at" | "p1" }>(null);
   const [hover, setHover] = useState<Pt | null>(null);
+  /** RESET (on / off): the next part clicked loses its breaks and micro joints, its leads the automatic cut's */
+  const [resetOn, setResetOn] = useState(false);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   useEffect(() => { setSel(null); setArmed(null); setMoving(null); setMsg(null); }, [index]);
   useEffect(() => { setArmed(null); setMoving(null); }, [mode, move, manual]);
+  useEffect(() => { if (resetOn) { setArmed(null); setMoving(null); setMove(false); } }, [resetOn]);
+  useEffect(() => { if (armed || move) setResetOn(false); }, [armed, move]);
   useEffect(() => {
-    if (!armed && !moving) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setArmed(null); setMoving(null); setMsg({ text: "Nothing placed" }); } };
+    if (!armed && !moving && !resetOn) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setArmed(null); setMoving(null); setResetOn(false); setMsg({ text: resetOn ? "Reset off" : "Nothing placed" }); } };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [armed, moving]);
+  }, [armed, moving, resetOn]);
 
   const cutPath = sheet?.cut;
   const can = single && !!cutPath && outlines.size > 0;
@@ -94,6 +99,18 @@ export function useBreakCut({ index, single, sheets, parts, machine, onCut }: {
     if (!cutPath || !ctx) return;
     const p: Pt = [x, y];
     const reach = Math.max(1, 12 / scale);
+    if (resetOn) {
+      const parts = new Set([...live].filter((c) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common));
+      const k = pickContour(cutPath, parts, p, reach);
+      if (k < 0) { setMsg({ text: "RESET: click a part", bad: true }); return; }
+      const r = resetPart(ctx, k, all, live);
+      if (typeof r === "string") { setMsg({ text: r, bad: true }); return; }
+      onCut(index, r.cut);
+      diag("process", `Break cut reset on sheet ${index + 1}`, { parts: r.n, all });
+      setMsg({ text: `Part reset${r.n > 1 ? ` (${r.n} parts)` : ""}` });
+      setSel(null);
+      return;
+    }
     if (moving) {
       if (run(moving.k, { op: "move", si: moving.si, which: moving.which, to: p }, "Balloon moved")) { setMoving(null); setSel(null); }
       return;
@@ -146,7 +163,7 @@ export function useBreakCut({ index, single, sheets, parts, machine, onCut }: {
     const mate = all0.find((x) => x !== b && x.k === b.k && x.si === b.si);
     return mate ? (b.at[0] >= mate.at[0] ? 1 : -1) : 1;
   };
-  const balloons = all0.map((b) => ({ at: b.at, label: b.label, neg: b.neg, side: sideOf(b), sel: !!sel && sel.k === b.k && sel.si === b.si }));
+  const balloons = all0.map((b) => ({ at: b.at, label: b.label, neg: b.neg, title: b.title, side: sideOf(b), sel: !!sel && sel.k === b.k && sel.si === b.si }));
   const neg = manual || draft.spec.gap < 0;
   const floating = armed?.what === "add" && hover
     ? (manual ? (armed.p1 ? [{ at: armed.p1, label: "1", neg, side: armed.p1[0] >= hover[0] ? 1 : -1 }, { at: hover, label: "2", neg, float: true, side: armed.p1[0] >= hover[0] ? -1 : 1 }]
@@ -192,8 +209,9 @@ export function useBreakCut({ index, single, sheets, parts, machine, onCut }: {
         <label className="chk" title="On: the gap is set by two balloons (1: where the cut stops, 2: where it starts again); the gap box is not used">
           <input type="checkbox" checked={manual} onChange={(e) => setManual(e.target.checked)} /> Manual gap distance selection</label>
         <div className="ac-pickbar li-bar">
-          <button type="button" className="btn btn-plain li-reset" disabled={!sel} title="The Technology row's values (the lead stays where it is)"
-            onClick={() => sel && run(sel.k, { op: "reset", si: sel.si }, "Lead reset")}>Reset</button>
+          <button type="button" className={`btn btn-plain li-reset${resetOn ? " is-on" : ""}`} aria-pressed={resetOn} disabled={!can}
+            title="On: click a part: its break cuts and micro joints out, its leads the automatic cut's (this part or all copies)"
+            onClick={() => { setResetOn(!resetOn); setMsg(null); }}>Reset</button>
           <button type="button" className={`btn btn-plain li-apply${armed ? " is-on" : ""}`} disabled={!can}
             title={mode === "add" ? "A balloon on the pointer: click an outline to drop it" : sel ? "Put this type and these values on the picked lead" : "Then click the lead or balloon to change"}
             onClick={apply}>Apply</button>
@@ -223,11 +241,12 @@ export function useBreakCut({ index, single, sheets, parts, machine, onCut }: {
     panel,
     cut: {
       picking: false, picked: [], onPick: () => { /* leads are picked here */ }, panel,
-      ...(can ? { onPoint: point, cursor: armed || moving ? "crosshair" : "pointer" } : {}),
+      ...(can ? { onPoint: point, cursor: armed || moving || resetOn ? "crosshair" : "pointer" } : {}),
       ...(can && (armed || moving) ? { onHover: (x: number, y: number) => setHover([x, y]) } : {}),
       ...(balloons.length || floating.length ? { balloons: [...balloons, ...floating] } : {}),
       ...(sel && cutPath ? { glow: { all: new Set(piecesOf(cutPath, sel.k).map((i) => cutPath.contours[i])) } } : {}),
       hint: !can ? (single ? "Process the sheet first (Auto cut), then add break cuts here." : "Open a sheet to add break cuts.")
+        : resetOn ? "RESET: click a part: its breaks and micro joints out, its leads the automatic cut's (Esc: off)."
         : moving ? "MOVE: click where the balloon goes on its outline (Esc: leave it)."
         : move ? "MOVE: click a balloon."
         : armed?.what === "add" ? (manual ? (armed.p1 ? "Click where the cut starts again (balloon 2), after balloon 1 in the cut direction." : "Click where the cut stops (balloon 1) on an outline.") : "Click an outline to drop the break (BC) there (Esc: cancel).")

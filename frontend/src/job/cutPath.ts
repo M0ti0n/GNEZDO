@@ -59,12 +59,15 @@ export interface CutContour {
   via?: { pts: Pt[]; after: string };
   /** Process → Break cut: the outline is cut in pieces, one per start of the plan (this is piece `piece`) */
   bc?: { plan: BreakPlan; piece: number };
+  /** this piece starts again right after a micro joint (no lead-in; the Technology row's MJ restart) */
+  restart?: boolean;
 }
 
 /** Where an outline starts (one piece each), in cut order along it: the original lead, or a break cut
  *  (BC: dropped there, the gap behind it; manual: from balloon 1 (`p1`, where the cut stops) to `at`). */
-export interface BreakStart { at: Pt; type: LeadType; spec: LeadSpec; tag: "orig" | "bc" | "manual"; p1?: Pt }
-export interface BreakPlan { id: string; starts: BreakStart[] }
+export interface BreakStart { at: Pt; type: LeadType; spec: LeadSpec; tag: "orig" | "bc" | "manual" | "mj"; p1?: Pt }
+/** `orig`: the contour's own lead after a break or joint took its place (kept to bring it back) */
+export interface BreakPlan { id: string; starts: BreakStart[]; orig?: BreakStart }
 
 /** A contour's name that stays when its leads change: the part, the kind and the box of its line. */
 export function contourKey(c: CutContour): string {

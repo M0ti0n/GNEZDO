@@ -25,7 +25,8 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
 
   const mapped = (pts: Pt[]): NcPt[] => pts.map(map).filter((p, i, a) => !i || Math.hypot(p.x - a[i - 1].x, p.y - a[i - 1].y) > 0.001);
 
-  const contour = (c: Pick<CutContour, "kind" | "pts" | "leadIn" | "leadOut" | "small"> & { part?: number; parts?: number[] }, part?: string): NcContour | null => {
+  const restart = (["none", "pierce", "quick"] as const)[tech.row.mjPierce ?? 1] ?? "pierce";
+  const contour = (c: Pick<CutContour, "kind" | "pts" | "leadIn" | "leadOut" | "small" | "restart"> & { part?: number; parts?: number[] }, part?: string): NcContour | null => {
     const { leadIn, pts, leadOut } = c;
     // lead-in, contour and lead-out each as lines and arcs (job/ncArcs.ts)
     const body = mapped(pts);
@@ -43,7 +44,7 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
       kind: c.kind, start, segs,
       leadIn: segIn.length, leadOut: segOut.length,
       widthMm: Math.round((Math.max(...xs) - Math.min(...xs)) * 10) / 10, heightMm: Math.round((Math.max(...ys) - Math.min(...ys)) * 10) / 10,
-      ...(c.small ? { small: true } : {}), ...(part ? { part } : {}),
+      ...(c.small ? { small: true } : {}), ...(part ? { part } : {}), ...(c.restart ? { restart } : {}),
       ...(c.parts?.length ? { partNos: [...c.parts] } : c.part !== undefined ? { partNo: c.part } : {}),
     };
   };
