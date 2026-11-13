@@ -387,6 +387,9 @@ export const api = {
   writeNc: (machineId: string, name: string, content: string): Promise<{ path: string }> =>
     useApi ? post(`/api/machines/${encodeURIComponent(machineId)}/nc`, { name, content }) : Promise.reject(new Error("The demo has no server to write files.")),
   /** Is an NC program of this name in the machine's NC folder already? (false without a folder) */
+  /** File names (no extension) starting with `prefix` in the machine's NC and job folders, newest first; none in the demo. */
+  machineFiles: async (machineId: string, prefix: string): Promise<{ name: string; at: string }[]> =>
+    useApi ? get<{ name: string; at: string }[]>(`/api/machines/${encodeURIComponent(machineId)}/files?prefix=${encodeURIComponent(prefix)}`) : [],
   ncExists: async (machineId: string, name: string): Promise<boolean> =>
     useApi ? (await get<{ exists: boolean }>(`/api/machines/${encodeURIComponent(machineId)}/nc/exists?name=${encodeURIComponent(name)}`)).exists : false,
   /** A DWG drawing as DXF text, converted by the server (its DWG converter); not in the demo. */

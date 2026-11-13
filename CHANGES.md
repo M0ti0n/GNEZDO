@@ -24,6 +24,8 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Import **SVG** drawings (parts, stock sheets, remnants): paths with lines, arcs and curves, rectangles (rounded too), circles, ellipses, polygons, groups and transforms; stroke colors go through the color rules, Inkscape layers count as layers. Size from the document's width / height (mm, cm, in, pt, px); with no unit a user unit is a millimeter (the list says so)
 - Import **DWG** drawings (parts, stock sheets, remnants): the GNEZDO server converts them to DXF with the ODA File Converter (free, installed on that PC) or LibreDWG's dwg2dxf (in a "tools" folder next to "program"), found by itself or set in config.json (INSTALL.txt). Without a converter the import list says so
 
+- Settings → Personal → **Job names per machine**: + Add job name gives a job name its own machine (the first one stays for all machines, i.e. the machines without one of their own). New job suggests the picked machine's name, and picking another machine in New job switches to its name (unless the name was typed over). For a machine's own name, the next number also counts the files in that machine's NC and job folders (MIHA2804_1.NCP there: MIHA2804 is taken), so it goes on from programs written before GNEZDO or by another program too
+
 **Changed**
 - Lead in / out and Break cut drawing: a **static picture** with the value boxes **beside the lines, never on them**. The angles are drawn at 45° (Corner in, gap out: 90°) whatever is typed, so neither the lines nor the boxes move while values change; only a gap turning negative redraws it (the cut stops short, the leads drawn further apart so they no longer cross)
 - Break cut balloons (BC, 1, 2) on the sheet are **half the size**

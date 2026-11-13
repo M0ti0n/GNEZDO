@@ -1,13 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconClose } from "./Icons";
 import { TECHNOLOGIES, type MachineList } from "../job/machine";
 
 // New job: its name and the machine it is nested for (gaps, 0,0 and cutting area come from it).
-export function NewJobDialog({ defaultName, machines, onCreate, onCancel }: {
+export function NewJobDialog({ defaultName, machines, onCreate, onCancel, suggest }: {
   defaultName: string; machines: MachineList; onCreate: (name: string, machineId: string) => void; onCancel: () => void;
+  /** The name suggested for a machine (Settings -> Personal -> Job names): another machine picked, its own name */
+  suggest?: (machineId: string) => Promise<string>;
 }) {
   const [name, setName] = useState(defaultName);
   const [machine, setMachine] = useState(machines.defaultId);
+  // the name last suggested: while it is not typed over, picking a machine suggests that machine's
+  const offered = useRef(defaultName);
+  const typed = useRef(name);
+  typed.current = name;
+  const pick = (id: string) => {
+    setMachine(id);
+    if (!suggest) return;
+    void suggest(id).then((n) => {
+      if (!n || typed.current !== offered.current) return;
+      offered.current = n;
+      setName(n);
+    });
+  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
     window.addEventListener("keydown", onKey);
@@ -35,7 +50,7 @@ export function NewJobDialog({ defaultName, machines, onCreate, onCancel }: {
             <div className="nj-machines" role="radiogroup" aria-label="Machine">
               {machines.list.map((m) => (
                 <button key={m.id} type="button" role="radio" aria-checked={machine === m.id}
-                  className={`nj-machine${machine === m.id ? " is-on" : ""}`} onClick={() => setMachine(m.id)}>
+                  className={`nj-machine${machine === m.id ? " is-on" : ""}`} onClick={() => pick(m.id)}>
                   <b>{m.name}</b>
                   <span>{TECHNOLOGIES.find((t) => t.id === m.technology)?.label} · {m.cutLengthMm} × {m.cutWidthMm} mm</span>
                 </button>

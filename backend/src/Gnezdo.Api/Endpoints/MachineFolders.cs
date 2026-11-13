@@ -8,6 +8,7 @@ namespace Gnezdo.Api.Endpoints;
 
 public record FolderCheckRequest(string? Path);
 public record NcWriteRequest(string? Name, string? Content);
+public record FolderFile(string Name, DateTime At);
 
 /// <summary>
 /// A machine's folders (Settings -> Machines -> Machine -> Folders), written by this server: its NC
@@ -85,6 +86,27 @@ public static class MachineFolders
             var f = await FindAsync(db, id, ct);
             if (f is null || f.Nc.Length == 0 || Problem(f.Nc) is not null) return Results.Ok(new { exists = false });
             return Results.Ok(new { exists = File.Exists(Path.Combine(f.Nc, SafeName(name, "program.nc"))) });
+        });
+
+        // file names starting with a job name in the machine's NC and job folders (New job suggests the next
+        // number from them too: programs written before GNEZDO, or by another program, count): names without
+        // their extension, newest first, at most 2000
+        app.MapGet("/api/machines/{id}/files", async (string id, string? prefix, GnezdoDb db, CancellationToken ct) =>
+        {
+            var f = await FindAsync(db, id, ct);
+            var p = SafeName(prefix, "");
+            if (f is null || p.Length == 0) return Results.Ok(Array.Empty<FolderFile>());
+            var found = new List<FolderFile>();
+            foreach (var dir in new[] { f.Nc, f.Jobs }.Where(d => d.Length > 0 && Problem(d) is null).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    found.AddRange(new DirectoryInfo(dir).EnumerateFiles(p + "*", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive, IgnoreInaccessible = true }).Take(5000)
+                        .Select(x => new FolderFile(Path.GetFileNameWithoutExtension(x.Name), x.LastWriteTimeUtc)));
+                }
+                catch (Exception e) when (e is UnauthorizedAccessException or IOException) { /* a folder it cannot read: none from it */ }
+            }
+            return Results.Ok(found.OrderByDescending(x => x.At).Take(2000).ToList());
         });
 
         // an NC program into the machine's NC folder (409: no folder set, the app may download it instead)

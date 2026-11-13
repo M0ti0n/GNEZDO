@@ -38,7 +38,7 @@ import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
 import { keyLabel, loadKeys } from "./job/manualKeys";
 import { gapsFor, loadLocalMachines, machineCan, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
 import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
-import { loadJobPrefix, suggestJobName } from "./job/jobName";
+import { hasJobNames, suggestJobName } from "./job/jobName";
 import { setMachineLimit } from "./job/stock";
 import { exportSolutionDxf } from "./job/exportNest";
 import { loadStockSettings, newSheet, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
@@ -74,6 +74,8 @@ export function App() {
   const [stockSettings, setStockSettingsState] = useState<StockSettings>(loadStockSettings);
   // machines: shared on the server (the browser keeps a copy, and is all there is in the demo)
   const [machines, setMachinesState] = useState<MachineList>(loadLocalMachines);
+  const machinesRef = useRef(machines);
+  machinesRef.current = machines;
   const setMachines = (m: MachineList) => {
     setMachinesState(m);
     saveLocalMachines(m);
@@ -195,13 +197,15 @@ export function App() {
 
   // New job: a pop-up asks for its name and machine first
   const openTitles = useRef<string[]>([]);
+  const newJobPlain = useRef("New job");
   openTitles.current = state.tabs.map((t) => t.title);
   const newJob = useCallback(() => {
     const n = newJobCount.current + 1;
     const plain = n === 1 ? "New job" : `New job ${n}`;
     // Settings -> Personal: the next number of the person's own job names
-    if (!loadJobPrefix()) { setNewJobOpen(plain); return; }
-    void suggestJobName(openTitles.current).then((name) => setNewJobOpen(name || plain));
+    newJobPlain.current = plain;
+    if (!hasJobNames()) { setNewJobOpen(plain); return; }
+    void suggestJobName(machinesRef.current.defaultId, openTitles.current).then((name) => setNewJobOpen(name || plain));
   }, []);
   const createJob = (name: string, machineId: string) => {
     newJobCount.current += 1;
@@ -1250,7 +1254,8 @@ export function App() {
               <SaveAsDialog name={saveAsFor.name} onCancel={() => setSaveAsFor(null)}
                 onSave={(name) => { const j = saveAsFor.jobId; setSaveAsFor(null); void saveJob(j, name, true); }} />
             )}
-            {newJobOpen && <NewJobDialog defaultName={newJobOpen} machines={machines} onCreate={createJob} onCancel={() => setNewJobOpen(null)} />}
+            {newJobOpen && <NewJobDialog defaultName={newJobOpen} machines={machines} onCreate={createJob} onCancel={() => setNewJobOpen(null)}
+              suggest={hasJobNames() ? async (machineId) => (await suggestJobName(machineId, openTitles.current)) || newJobPlain.current : undefined} />}
             {customFor && (
               <CustomNestDialog onCancel={() => setCustomFor(null)}
                 partIds={(jobParts[customFor.jobId] ?? []).filter((jp) => jp.qty > 0).map((jp) => jp.part.id)}
