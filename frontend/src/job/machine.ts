@@ -89,14 +89,17 @@ export interface CutOrderRules {
   bigTimesMedian: number;
   /** ... or over this share of the sheet [%] */
   bigSheetPct: number;
+  /** Tracing first, over the whole sheet (not part by part), in the order of the shortest rapids:
+   *  each trace line next is the one whose nearer end is nearest, cut from that end. */
+  traceShortest: boolean;
 }
 
-export const DEFAULT_CUT_ORDER: CutOrderRules = { bigLast: true, bigTimesMedian: 5, bigSheetPct: 20 };
+export const DEFAULT_CUT_ORDER: CutOrderRules = { bigLast: true, bigTimesMedian: 5, bigSheetPct: 20, traceShortest: false };
 
 export const cutOrderOf = (m: Machine | undefined): CutOrderRules => {
   const r = { ...DEFAULT_CUT_ORDER, ...(m?.cutOrder ?? {}) };
   // machines saved earlier also carry directions and holes / inside first: directions go to AUTO CUT, the rest is always on
-  return { bigLast: r.bigLast, bigTimesMedian: r.bigTimesMedian, bigSheetPct: r.bigSheetPct };
+  return { bigLast: r.bigLast, bigTimesMedian: r.bigTimesMedian, bigSheetPct: r.bigSheetPct, traceShortest: !!r.traceShortest };
 };
 
 /** Does the machine do this line property? */
