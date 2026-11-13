@@ -128,7 +128,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
                 <Combobox value={s.material} onChange={(material) => set({ material })} options={lists.strict ? lists.techMaterials : lists.materials}
                   strict={lists.strict && !nested} strictNote="not in the Technology tables (Settings → Machines → Technology: material tags)" placeholder="Material" ariaLabel="Material" newHint="a new material" readOnly={nested} />
                 <Combobox value={s.thicknessMm ? String(s.thicknessMm) : ""} onChange={(t) => set({ thicknessMm: Number(t.replace(",", ".").replace(/[^\d.]/g, "")) || 0 })}
-                  options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict && !nested} strictNote="no Technology row for this thickness (Settings → Machines → Technology)"
+                  options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict && !nested} strictNote="no Technology row for this thickness of this material (Settings → Machines → Technology)"
                   placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" readOnly={nested} />
               </div>
             </div>

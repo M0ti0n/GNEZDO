@@ -55,6 +55,10 @@ export interface TechRow {
   mjGapMm?: number;
   /** after a micro joint the cut starts again with: 1 = a normal pierce, 2 = a quick pierce, 0 = no pierce */
   mjPierce?: number;
+  /** Material tags of the technology this thickness is not for (not stocked or not cut in it): the
+   *  thickness is left out of that material's thickness lists (import, part and sheet properties). The
+   *  row's values still cut a sheet of it. Missing: for every tag. */
+  skip?: string[];
   /** Other values of an imported table, kept as they came (by their name there) */
   extra?: Record<string, number>;
 }
@@ -70,7 +74,11 @@ export interface TechSet {
   rows: TechRow[];
 }
 
-export type RowKey = Exclude<keyof TechRow, "extra">;
+export type RowKey = Exclude<keyof TechRow, "extra" | "skip">;
+
+const low = (s: string) => s.trim().toLowerCase();
+/** Is this thickness row for the material (one of its technology's tags, not skipped)? */
+export const rowForMaterial = (r: TechRow, material: string) => !r.skip?.some((x) => low(x) === low(material));
 
 export interface TechColumn {
   key: RowKey; label: string; unit: string; min?: number; max?: number;
@@ -159,7 +167,7 @@ export function addThickness(t: TechSet, thicknessMm: number): TechSet {
   if (!(thicknessMm > 0) || t.rows.some((r) => Math.abs(r.thicknessMm - thicknessMm) < 1e-6)) return t;
   const rows = [...t.rows].sort(byThickness);
   const from = rows.find((r) => r.thicknessMm > thicknessMm) ?? rows[rows.length - 1];
-  const row: TechRow = from ? { ...from, extra: from.extra && { ...from.extra }, thicknessMm } : emptyRow(thicknessMm);
+  const row: TechRow = from ? { ...from, extra: from.extra && { ...from.extra }, skip: from.skip && [...from.skip], thicknessMm } : emptyRow(thicknessMm);
   return { ...t, rows: [...rows, row].sort(byThickness) };
 }
 
@@ -183,7 +191,8 @@ export function techThicknesses(techSets: (TechSet[] | undefined)[], material: s
   const out = new Set<number>();
   for (const techs of techSets) for (const t of techs ?? []) {
     if (m && t.materials.length && !t.materials.some((x) => x.trim().toLowerCase() === m)) continue;
-    for (const r of t.rows) if (r.thicknessMm > 0 && inRange(t, r.thicknessMm)) out.add(r.thicknessMm);
+    // a row not for this material (its tag unticked on the row) is left out
+    for (const r of t.rows) if (r.thicknessMm > 0 && inRange(t, r.thicknessMm) && (!m || !t.materials.length || rowForMaterial(r, m))) out.add(r.thicknessMm);
   }
   return [...out].sort((a, b) => a - b);
 }
@@ -276,10 +285,10 @@ export function technologiesCsv(techs: TechSet[], technology?: Technology): stri
   const groups = techColumnsFor(technology);
   const cols = groups.flatMap((g) => g.cols);
   const q = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-  const head = ["Technology", "Materials", "Used from mm", "Used to mm", "Thickness mm", ...cols.map((c) => `${g(c.key)} ${c.label} ${c.unit}`)];
+  const head = ["Technology", "Materials", "Used from mm", "Used to mm", "Thickness mm", "Thickness for materials", ...cols.map((c) => `${g(c.key)} ${c.label} ${c.unit}`)];
   function g(k: RowKey) { return groups.find((x) => x.cols.some((c) => c.key === k))!.group.replace(" · leads", ""); }
   const lines = [head.map(q).join(";")];
   for (const t of techs) for (const r of t.rows)
-    lines.push([t.name, t.materials.join(", "), String(t.minMm), String(t.maxMm), String(r.thicknessMm), ...cols.map((c) => String(cellValue(r, c)))].map(q).join(";"));
+    lines.push([t.name, t.materials.join(", "), String(t.minMm), String(t.maxMm), String(r.thicknessMm), t.materials.filter((m) => rowForMaterial(r, m)).join(", "), ...cols.map((c) => String(cellValue(r, c)))].map(q).join(";"));
   return lines.join("\r\n") + "\r\n";
 }

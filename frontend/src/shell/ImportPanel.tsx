@@ -174,7 +174,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                   placeholder="Material" ariaLabel="Material" newHint="a new material" />
                 <Combobox className={needProps && p.properties.thicknessMm === "" ? "is-required" : undefined}
                   value={p.properties.thicknessMm} onChange={(t) => setProp({ thicknessMm: t.replace(",", ".").replace(/[^\d.]/g, "") })}
-                  options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict} strictNote="no Technology row for this thickness (Settings → Machines → Technology)"
+                  options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict} strictNote="no Technology row for this thickness of this material (Settings → Machines → Technology)"
                   placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
               </div>
               {p.properties.material.trim() !== "" && p.properties.thicknessMm === "" && (

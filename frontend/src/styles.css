@@ -1989,6 +1989,14 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .tech-table.is-locked .tech-cell[readonly]:hover { border-color: transparent; background: transparent; }
 .tech-table .tech-cell[readonly]:focus { border-color: var(--line); box-shadow: none; background: transparent; }
 .tech-table.is-locked td.is-open, .tech-table.is-locked th.is-open { background: var(--green-tint); }
+/* the materials a thickness is for */
+.tech-table th.tech-for { text-align: left; white-space: nowrap; }
+.tech-table td.tech-for { white-space: nowrap; padding: 2px 6px; border-left: 2px solid var(--line); }
+.tech-table th.tech-for { border-left: 2px solid var(--line); }
+.tech-rtag { height: 22px; padding: 0 7px; margin: 0 3px 0 0; border: 1px solid var(--line); border-radius: 11px; background: #fff; color: var(--ink-3); font: 600 11.5px var(--font-cond); text-decoration: line-through; cursor: pointer; }
+.tech-rtag.is-on { border-color: var(--blue); background: var(--blue-tint); color: var(--blue-ink); text-decoration: none; }
+.tech-rtag:disabled { cursor: default; }
+.tech-rtag:disabled:not(.is-on) { opacity: .7; }
 .tech-table .tech-th { text-align: left; padding-left: 8px; white-space: nowrap; font-family: var(--font); font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--ink); cursor: pointer; }
 .tech-table td { padding: 2px 2px; border-bottom: 1px solid #edf2f2; }
 .tech-cell { width: 100%; min-width: 56px; height: 30px; padding: 0 7px; text-align: right; border: 1px solid transparent; border-radius: 5px; background: transparent; font: inherit; font-variant-numeric: tabular-nums; }
