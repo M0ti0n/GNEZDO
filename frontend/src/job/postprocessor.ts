@@ -78,6 +78,9 @@ export interface Postprocessor {
   fileName?: string;
   /** Only letters and digits in the program's name (the rest left out): for controls that refuse others */
   plainName?: boolean;
+  /** Post process shows RESTART HELP: for a clicked contour, where the program restarts it (the
+   *  postprocessor's counters) */
+  restartHelp?: boolean;
 }
 
 export const DEFAULT_NC_NAME = "{jobname}_{#}";
@@ -94,7 +97,12 @@ export function ncNameOf(pp: Pick<Postprocessor, "fileName" | "plainName"> | und
 /** Where the machine restarts a contour: the program's counters (LVD: #530 the placement, #529 the
  *  contour in it). A postprocessor that knows them returns { text, counters } (one per program contour,
  *  null where none) instead of the text alone. */
-export interface NcCounter { part: number; contour: number }
+export interface NcCounter {
+  /** LVD: #530 (the placement) and #529 (the contour in it) */
+  part?: number; contour?: number;
+  /** a program without counters: the block (N) where the contour starts, and its pierce point from 0,0 */
+  block?: number; at?: NcPt;
+}
 
 /** Runs a postprocessor's source on a program: the NC text (and its restart counters), or why it failed. */
 export function runPostprocessor(source: string, program: NcProgram): { ok: true; text: string; counters?: (NcCounter | null)[] } | { ok: false; error: string } {
