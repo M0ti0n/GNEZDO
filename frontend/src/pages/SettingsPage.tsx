@@ -4,6 +4,8 @@ import { machineFileName, machineZip, readMachineFile } from "../job/machineFile
 import { NavClose } from "./NavClose";
 import { IconClose } from "../components/Icons";
 import { ProjectsSettings } from "../components/ProjectsSettings";
+import { RulesTabs } from "./RulesPage";
+import type { ImportRules } from "../import/rules";
 import { loadJobNames, saveJobNames, suggestJobName, type JobNameRule } from "../job/jobName";
 import { loadViewPrefs, saveViewPrefs, type ViewPrefs } from "../job/viewPrefs";
 import { flush, logDownloadUrl, logSettings, reportProblem, setLogEnabled, type LogSettings as LogSettingsData } from "../job/diag";
@@ -21,10 +23,11 @@ import { DEFAULT_CUT_ORDER, LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, cutOrderOf
 import { DEFAULT_KEYS, KEY_ACTIONS, RESERVED_KEYS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
-type Section = "stock" | "machine" | "keys" | "projects" | "personal" | "data" | "log";
+type Section = "stock" | "machine" | "rules" | "keys" | "projects" | "personal" | "data" | "log";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock and remnants", ready: true },
   { id: "machine", label: "Machines", ready: true },
+  { id: "rules", label: "Rules", ready: true },
   { id: "keys", label: "Shortcuts", ready: true },
   { id: "projects", label: "Projects and parts", ready: true },
   { id: "personal", label: "Personal", ready: true },
@@ -33,13 +36,16 @@ const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
 ];
 
 // The GNEZDO button -> Settings. Stock: the global sheet size and the three default sheet slots.
-export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, onRules, onOpenJob }: {
+export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, rules, onRules, startSection, onOpenJob }: {
+  /** the section shown first (else Stock and remnants) */
+  startSection?: Section;
   /** Projects and parts: a job a part is used in, opened */
   onOpenJob?: (id: string, name: string) => void;
   /** Close (bottom of the list): back to Home */
   onClose?: () => void;
-  /** Import rules: their own page (layers, colors, names) */
-  onRules?: () => void;
+  /** Rules: the import rules (Nesting rules keep their own) */
+  rules: ImportRules;
+  onRules: (r: ImportRules) => void;
   stock: StockSettings; onStock: (s: StockSettings) => void;
   machines: MachineList; onMachines: (m: MachineList) => void;
   /** Machines are kept on the server (false: in this browser, the demo). */
@@ -63,7 +69,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
     onMachines({ defaultId: machines.defaultId === machine.id ? list[0].id : machines.defaultId, list });
     setMSel(list[0].id);
   };
-  const [section, setSection] = useState<Section>("stock");
+  const [section, setSection] = useState<Section>(startSection ?? "stock");
   const [mPage, setMPage] = useState<"machine" | "tech" | "leads" | "nc">("machine");
   // a machine's configuration as a file: Export gives a .zip, Import adds it (or replaces one of the same name)
   const mFile = useRef<HTMLInputElement>(null);
@@ -108,13 +114,13 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
             {s.label}
           </button>
         ))}
-        {onRules && <button className="settings-link" onClick={onRules} title="How drawings are read: layers, colors, file names (its own page)">Import rules</button>}
         {onClose && <NavClose onClose={onClose} />}
       </nav>
 
       {section === "keys" && <KeysSettings />}
       {section === "personal" && <PersonalSettings machines={machines} />}
       {section === "projects" && <ProjectsSettings onOpenJob={onOpenJob} />}
+      {section === "rules" && <RulesTabs rules={rules} onChange={onRules} />}
       {section === "data" && <DataSettings />}
       {section === "log" && <LogSettings isAdmin={isAdmin} />}
 

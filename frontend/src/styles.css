@@ -1479,6 +1479,14 @@ th.num .th-sort { flex-direction: row-reverse; }
   display: grid; place-items: center; text-align: center; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; }
 .info-tab-bar button:first-child { border-left: 0; }
 .info-tab-bar button.is-on { background: var(--green); color: #fff; }
+/* Settings -> Rules: a tab each (Import rules, Nesting rules), the same look as the info tabs */
+.rules-tabs { display: inline-flex; margin-top: 12px; border: 1.5px solid var(--green); border-radius: 7px; overflow: hidden; }
+.rules-tabs button { min-width: 170px; height: 36px; padding: 0 18px; border: 0; border-left: 1px solid #cfe5c2; background: #fff; color: var(--green-ink);
+  font-weight: 600; font-size: 13.5px; text-transform: uppercase; letter-spacing: .03em; }
+.rules-tabs button:first-child { border-left: 0; }
+.rules-tabs button:hover:not(.is-on) { background: var(--green-tint); }
+.rules-tabs button.is-on { background: var(--green); color: #fff; }
+.rules-lead { margin: 0; color: var(--ink-2); font-size: 14px; }
 .info-head { flex: none; padding: 10px 16px 8px; display: flex; flex-direction: column; gap: 1px; }
 .info-head b { font-family: var(--font-cond); font-weight: 600; font-size: 17px; text-transform: uppercase; letter-spacing: .03em; }
 .info-head span { font-size: 13px; color: var(--ink-2); }
