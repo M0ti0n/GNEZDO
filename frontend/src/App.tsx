@@ -1062,7 +1062,7 @@ export function App() {
         lastProcess.current[job.id] = tool;
         setProcessOn((m) => ({ ...m, [job.id]: tool }));
         setJobScreen((m) => ({ ...m, [job.id]: "nest" }));
-      } else setToast("Not built yet: Auto cut, Manual cut, Movement, Break cut, Lead in / out, Remnant, Process del, Post process and Simulation work so far");
+      } else setToast("Not built yet: Auto cut, Manual cut, Break cut, Micro joint, Lead in / out, Movement, Remnant, Process del, Post process and Simulation work so far");
       return;
     }
     if (tool === "fastNest") void startNest(job.id, "fast");
