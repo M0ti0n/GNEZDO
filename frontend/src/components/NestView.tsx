@@ -17,6 +17,7 @@ import { useManualCut } from "./ManualCutPanel";
 import { useMovement } from "./MovementPanel";
 import { useBreakCut } from "./BreakPanel";
 import { RemnantOverlay } from "./RemnantOverlay";
+import { MarkPaths, usePartMarks } from "./PartMarks";
 import { DEFAULT_REMNANT_SETTINGS, type RemnantSettings } from "../job/remnant";
 
 export type ProcessTool = "autoCut" | "manualCut" | "movement" | "breakCut" | "remnant" | "processDel" | "postProcess" | "leadInOut" | "simulation";
@@ -84,6 +85,8 @@ const transformOf = (p: { x: number; y: number; angle: number; mirror: boolean }
 export function SheetSvg({ sheet, parts, titles, cut = false }: { sheet: NestedSheet; parts: Map<string, PartRef>; titles?: boolean; cut?: boolean }) {
   const done = cut ? processedParts(sheet) : null;
   const marks = cut ? liveContours(sheet).filter((c) => c.kind === "trace" || c.kind === "open") : [];
+  // parts not processed: their tracing and open cut lines from their drawings
+  const partMk = usePartMarks(sheet.parts.map((p) => p.partId));
   return (
     <svg className="sheet-svg" viewBox={`-4 -4 ${sheet.lengthMm + 8} ${sheet.widthMm + 8}`} preserveAspectRatio="xMidYMid meet">
       {sheet.outline?.length
@@ -100,6 +103,7 @@ export function SheetSvg({ sheet, parts, titles, cut = false }: { sheet: NestedS
           </path>
         );
       })}
+      {sheet.parts.map((p, i) => !done?.has(i) && partMk.has(p.partId) ? <g key={`pm${i}`} transform={transformOf(p)}><MarkPaths marks={partMk.get(p.partId)} /></g> : null)}
       {marks.map((m, k) => <path key={`m${k}`} className={`sheet-mark is-${m.kind}`} d={m.pts.map(([x, y], j) => `${j ? "L" : "M"}${x} ${y}`).join("")} />)}
       {cut && <RemnantOverlay sheet={sheet} names={false} />}
     </svg>

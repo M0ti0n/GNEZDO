@@ -30,6 +30,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Weights: "MS" counts as mild steel (7.85 kg/dm³), not brass
 - Post process: arcs and circles go out as arcs (G02 / G03, at most 180° each) instead of short lines, found again from the drawing's points, and straight lines as one move each. This applies to the HACO plasma too (its postprocessor already writes arcs)
 
+**Fixed**
+- A part's **tracing and open cut lines are shown before it is processed**: in Part properties (the picture), in the parts beside a sheet (Manual nesting) and on the sheets (tracing purple, open cut light blue). They were always saved with the part and cut when the sheet is processed, but these pictures drew only the closed contours, so the lines looked lost after saving or adding the part to a job
+- Parts saved over (importer, EDIT) show their new lines right away
+
 ## Build 12 Nov 2026, third (`aed34e0`)
 
 **New**

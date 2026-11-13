@@ -2142,6 +2142,11 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .ac-msg { margin: 0; }
 .sheet-part.is-cut { fill: none; stroke: #1b1b1b; }
 .sheet-mark { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+/* a part's tracing / open cut lines before it is processed (thumbnails, part tiles, sheets) */
+.part-mark { fill: none; stroke-linecap: round; pointer-events: none; }
+.part-mark.is-px { stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.part-mark.is-trace { stroke: var(--ln-trace); }
+.part-mark.is-open { stroke: var(--ln-open); }
 .sheet-mark.is-trace { stroke: var(--ln-trace); }
 .sheet-mark.is-open { stroke: var(--ln-open-done); }
 .ac-msg { margin: 0; }

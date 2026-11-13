@@ -6,7 +6,7 @@ import { diag } from "../job/diag";
 import { Lock } from "./NestView";
 import { actionOf, loadKeys, type KeyAction } from "../job/manualKeys";
 import {
-  inMaterial, partLoops, placed, problems, rotateGroup, slideDistance, unionBox, usableBox,
+  inMaterial, partLoops, placed, problems, rotateGroup, slideDistance, transform, unionBox, usableBox,
   type Box, type Dir, type Placed, type Pt,
 } from "../job/manualGeom";
 import { arrange, arrangeAgain, mirrorGroup, partRules, stack, type PartRules } from "../job/manualTools";
@@ -15,6 +15,7 @@ import { loadManualView } from "../job/manualView";
 import { liveContours, originPoint, processedParts, rapidsOf, viaOf, type CutContour } from "../job/cutPath";
 import { useViewPrefs } from "../job/viewPrefs";
 import { RemnantOverlay } from "./RemnantOverlay";
+import { MarkPaths, usePartMarks } from "./PartMarks";
 import { commonEdges, commonLayout, partCommonLines, placedEdges, sharedLines, snapMove, type CommonEdge, type CommonLayout } from "../job/commonCut";
 
 /** Ctrl+C: the copied parts, around the middle of their box (kept across sheets of the job). */
@@ -137,6 +138,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   }, [index, onChange]);
 
   const geo = useMemo(() => items.map((p) => { const r = byId.get(p.partId); return r ? placed(r.path, p) : null; }), [items, byId]);
+  const partMk = usePartMarks(items.map((p) => p.partId));
 
   // common cut lines of the parts (those with the Common cut nesting rule), part frame
   const kerf = sheet.kerfMm ?? 0;
@@ -962,6 +964,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                   </path>
                 );
               })}
+              {/* tracing and open cut lines of the parts (processing draws them as its cut path instead) */}
+              {!cut && items.map((p, i) => partMk.has(p.partId) && geo[i] ? <MarkPaths key={`mk${i}`} marks={partMk.get(p.partId)} f={transform(p)} width={1.2 / v.s} /> : null)}
               {shared.lines.map(([a, b], k) => (
                 <line key={`cc${k}`} className="mn-common" x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} style={{ strokeWidth: 3 / v.s }}>
                   <title>Common cut: one cut for both parts</title>
@@ -1144,6 +1148,7 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
       return (ka < kb ? -1 : ka > kb ? 1 : 0) * dir;
     });
   }, [jobParts, all, sortBy, dir, counts, sheet.material, sheet.thicknessMm]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const tileMarks = usePartMarks(list.map((jp) => jp.part.id));
   const nested = jobParts.reduce((n, jp) => n + (counts[jp.part.id] ?? 0), 0);
   const total = jobParts.reduce((n, jp) => n + jp.qty, 0);
   useEffect(() => {
@@ -1213,6 +1218,7 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
               }}>
               <svg viewBox={`${x0 - w * 0.08} ${y0 - h * 0.08} ${w * 1.16} ${h * 1.16}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
                 <path d={jp.part.path} fillRule="evenodd" style={{ fill: c.fill, stroke: c.stroke }} vectorEffect="non-scaling-stroke" />
+                <MarkPaths marks={tileMarks.get(jp.part.id)} />
               </svg>
               <span className="mn-tile-name">{jp.part.name}</span>
               <span className="mn-tile-qty">{n} / {jp.qty}{limit > jp.qty ? ` (max ${limit})` : ""}</span>

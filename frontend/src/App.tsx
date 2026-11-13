@@ -14,6 +14,7 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { partGeometry } from "./import/toPart";
 import type { SavePart } from "./api/api";
+import { forgetPartMarks } from "./job/cutPath";
 import { applyRules, loadRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
 import { RulesPage } from "./pages/RulesPage";
 import { quantityFromName } from "./import/geometry";
@@ -331,6 +332,7 @@ export function App() {
           if (i.source) return toSave(i, { ...i.source, rotations: [...i.source.rotations] }, true);
           return toSave(i, { ...importProps, name: i.name, mirror: mirrorFor(i, importProps, rules) }, false);
         }), "Import list");
+        forgetPartMarks();   // drawings saved over: their marks are read again
         const saved = green.filter((_, k) => res[k]?.status !== "exists").map((i) => i.id);
         const dup = green.filter((_, k) => res[k]?.status === "exists").map((i) => i.id);
         dropSaved(saved);
@@ -1309,6 +1311,7 @@ export function App() {
           onCancel={() => setProcessing(null)}
           onSave={async (v, replace) => {
             const [r] = await api.saveParts([toSave(processingItem, v, replace)], processingItem.fileName);
+            forgetPartMarks();   // a drawing saved over: its marks are read again
             if (r?.status === "exists") throw new Error("a part with this project and name was just saved by someone else; check again");
             setProcessing(null);
             // a part opened from the database keeps its own values; they do not become the batch's
