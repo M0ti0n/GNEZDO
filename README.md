@@ -59,12 +59,12 @@ Coming:
 
 **Stage 1 (currently implementing)**
 
-- [ ] 2D import with powerful, easy-to-use tools for fixing broken parts: DXF and the repair tools done; DWG and SVG to follow
+- [x] 2D import with powerful, easy-to-use tools for fixing broken parts: DXF and the repair tools done; DWG and SVG to follow
 - [x] SQL database for parts and jobs (remnants to follow)
 - [x] Job creation with auto nesting algorithms and strategies: Fast, Thorough and Custom work; tuning goes on
 - [x] Manual nesting with a variety of tools: the core tools are done
-- [ ] Processing and post-processing tools for path generation and special features
-- [ ] Nesting reports and cost reports
+- [x] Processing and post-processing tools for path generation and special features
+- [x] Nesting reports and cost reports
 
 **Future stages**
 
