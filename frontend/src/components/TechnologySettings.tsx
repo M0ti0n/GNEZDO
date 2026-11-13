@@ -3,7 +3,7 @@ import { NumInput } from "./NumInput";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
   addThickness, cellValue, inRange, rowForMaterial, newTechnology, techColumnsFor, technologiesCsv, technologiesFromDbf,
-  type RowKey, type TechSet,
+  type RowKey, type TechRow, type TechSet,
 } from "../job/technology";
 import type { Technology } from "../job/machine";
 
@@ -48,7 +48,7 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
     if (j !== i) return row;
     const on = rowForMaterial(row, m);
     const skip = on ? [...(row.skip ?? []), m] : (row.skip ?? []).filter((x) => x.trim().toLowerCase() !== m.trim().toLowerCase());
-    const next = { ...row, skip };
+    const next: TechRow = { ...row, skip };
     if (!skip.length) delete next.skip;
     return next;
   }) });
