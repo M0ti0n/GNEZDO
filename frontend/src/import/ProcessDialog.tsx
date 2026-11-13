@@ -161,7 +161,7 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
                   </label>
                 ))}
                 <label className={`chk chk-box${mirrorBlocked ? " is-blocked" : ""}`}
-                  title={mirrorBlocked ? "Parts with open cut lines are not mirrored (Rules → Import rules)" : undefined}>
+                  title={mirrorBlocked ? "Parts with open cut lines are not mirrored (Settings → Rules → Import rules)" : undefined}>
                   <input type="checkbox" checked={v.mirror} disabled={mirrorBlocked} onChange={(e) => set({ mirror: e.target.checked })} />
                   Mirror
                 </label>

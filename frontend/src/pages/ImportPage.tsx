@@ -811,7 +811,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   </label>
                 ))}
                 <label className={`chk chk-box${mirrorBlocked ? " is-blocked" : ""}`}
-                  title={mirrorBlocked ? "Parts with open cut lines are not mirrored (Rules → Import rules)" : undefined}>
+                  title={mirrorBlocked ? "Parts with open cut lines are not mirrored (Settings → Rules → Import rules)" : undefined}>
                   <input type="checkbox" checked={nestRules.mirror && !mirrorBlocked} disabled={mirrorBlocked}
                     onChange={(e) => onNestRules({ ...nestRules, mirror: e.target.checked })} />
                   Mirror

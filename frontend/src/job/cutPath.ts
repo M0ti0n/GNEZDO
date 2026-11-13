@@ -770,13 +770,14 @@ export function rapidsOf(contours: CutContour[], from: Pt): [Pt, Pt][] {
 export function shiftSheet(sheet: NestedSheet, dx: number, dy: number): NestedSheet {
   if (!dx && !dy) return sheet;
   const mv = (p: Pt): Pt => [p[0] + dx, p[1] + dy];
+  const mvStart = (s: BreakStart): BreakStart => ({ ...s, at: mv(s.at), ...(s.p1 ? { p1: mv(s.p1) } : {}) });
   const parts = sheet.parts.map((p) => ({ ...p, x: p.x + dx, y: p.y + dy }));
   let cut = sheet.cut;
   if (cut) {
     const c0 = cut;
     const contours = c0.contours.map((c) => ({
       ...c, pts: c.pts.map(mv), leadIn: c.leadIn.map(mv), leadOut: c.leadOut.map(mv),
-      ...(c.bc ? { bc: { ...c.bc, plan: { ...c.bc.plan, starts: c.bc.plan.starts.map((s) => ({ ...s, at: mv(s.at), ...(s.p1 ? { p1: mv(s.p1) } : {}) })) } } } : {}),
+      ...(c.bc ? { bc: { ...c.bc, plan: { ...c.bc.plan, starts: c.bc.plan.starts.map(mvStart), ...(c.bc.plan.orig ? { orig: mvStart(c.bc.plan.orig) } : {}) } } } : {}),
     }));
     // a rapid's points belong to the contour before it, named by its line: named again
     const renamed = new Map(c0.contours.map((c, i) => [contourKey(c), contourKey(contours[i])]));

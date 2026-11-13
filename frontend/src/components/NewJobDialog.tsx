@@ -59,7 +59,7 @@ export function NewJobDialog({ defaultName, machines, onCreate, onCancel, sugges
           </div>
         </div>
         <footer className="dlg-foot">
-          <span className="proc-missing">Machines: GNEZDO menu → Settings → Machines.</span>
+          <span className="proc-missing">Machines: GNEZDO button → Settings → Machines.</span>
           <button type="button" className="btn btn-plain" onClick={onCancel}>Cancel</button>
           <button type="submit" className="btn btn-save" disabled={!ok}>Create job</button>
         </footer>
