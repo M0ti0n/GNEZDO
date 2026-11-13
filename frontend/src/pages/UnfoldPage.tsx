@@ -5,7 +5,7 @@ import { usePickLists } from "../components/pickLists";
 import { add3, len3, mul3, normalAt, sub3, type Solid, type V3 } from "../import/step/step";
 import { describe, edgePick, facePick, refPoint, relate, type MPick } from "../import/step/measure3d";
 import {
-  infoOf, kFor, loadProfiles, marksOf, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
+  bendTexts, infoOf, kFor, loadProfiles, marksOf, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
   DEFAULT_PROFILE, type Grain, type MarkAs, type StepPart, type StepSettings, type UnfoldProfile,
 } from "../import/step/stepPart";
 import { KIND_LABEL, type BodyKind } from "../import/step/extract";
@@ -80,7 +80,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   const useProfile = (n: string) => {
     const p = profiles.find((x) => x.name === n) ?? DEFAULT_PROFILE;
     setCurrentProfile(p.name);
-    set({ profile: p.name, kFactor: kFor(p, material, stitchMode ? (st.comp.t || null) : u.thickness), markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate, foil: p.foil });
+    set({ profile: p.name, kFactor: kFor(p, material, stitchMode ? (st.comp.t || null) : u.thickness), markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate, engraveText: !!p.engraveText, textMm: p.textMm ?? 6, foil: p.foil });
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPick(null); };
@@ -91,7 +91,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   const flip = stitchMode ? false : st.top !== undefined ? !u.skinFaces.includes(st.top) : u.bends.filter((b) => !b.inner).length > u.bends.filter((b) => b.inner).length;
   const ups = u.bends.filter((b) => b.up).length;
   const download = () => {
-    const url = URL.createObjectURL(new Blob([flatDxf(u, { marks: marksOf(u, st) })], { type: "application/dxf" }));
+    const url = URL.createObjectURL(new Blob([flatDxf(u, { marks: marksOf(u, st), texts: bendTexts(u, st) })], { type: "application/dxf" }));
     const a = document.createElement("a");
     a.href = url; a.download = `${name}_flat.dxf`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -267,7 +267,18 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
                   {m === "trace" ? "Trace" : m === "openCut" ? "Open cut" : "None"}</button>
               ))}
             </span></div>
-          <label className="chk"><input type="checkbox" checked={st.annotate} onChange={(e) => set({ annotate: e.target.checked })} /> Show angle and UP / DOWN</label>
+          <div className="uf-row"><span>Angle, UP</span>
+            <span className="cols-toggle uf-seg" role="radiogroup" aria-label="Angle and UP / DOWN beside the bends">
+              {([["off", "Off"], ["show", "Shown"], ["engrave", "Engraved"]] as const).map(([k, l]) => {
+                const on = k === "off" ? !st.annotate : k === "show" ? st.annotate && !st.engraveText : st.annotate && !!st.engraveText;
+                return <button key={k} type="button" role="radio" aria-checked={on} className={on ? "is-on" : ""}
+                  title={k === "engrave" ? "Traced on the part with a single-line font (Relief SingleLine), beside each bend" : k === "show" ? "Only on the screen" : "Not shown"}
+                  onClick={() => set({ annotate: k !== "off", engraveText: k === "engrave" })}>{l}</button>;
+              })}
+            </span></div>
+          {st.annotate && st.engraveText && (
+            <div className="uf-row"><span>Text height</span><NumInput className="field uf-num" value={st.textMm ?? 6} min={1.5} aria-label="Text height (mm, capitals)" onCommit={(n) => set({ textMm: n })} /><small>mm (capitals; smaller on short bends)</small></div>
+          )}
           <div className="uf-tbl">
             <table>
               <thead><tr><th>#</th><th>Angle</th><th>Dir</th><th>Inner R</th><th>Length</th></tr></thead>
@@ -620,7 +631,8 @@ function FlatView({ u, st, measure }: { u: Unfolded; st: StepSettings; measure: 
         : <path key={i} className="uf-o" d={`M${e.pts.map((p) => `${p[0]} ${y(p[1])}`).join(" L")}`} />))}
       {u.bendLines.map(([a, b], i) => <path key={`b${i}`} className="uf-b" d={`M${a[0]} ${y(a[1])} L${b[0]} ${y(b[1])}`} />)}
       {marks.map(([a, b], i) => <path key={`m${i}`} className="uf-m" d={`M${a[0]} ${y(a[1])} L${b[0]} ${y(b[1])}`} />)}
-      {st.annotate && u.bendLines.map(([a, b], i) => {
+      {st.annotate && st.engraveText && bendTexts(u, st).map((r, i) => <path key={`e${i}`} className="uf-eng" d={`M${r.map((p) => `${p[0]} ${y(p[1])}`).join(" L")}`} />)}
+      {st.annotate && !st.engraveText && u.bendLines.map(([a, b], i) => {
         const bd = u.bends[i];
         if (!bd) return null;
         const mx = (a[0] + b[0]) / 2, my = y((a[1] + b[1]) / 2);
@@ -690,6 +702,8 @@ function ProfilesDialog({ profiles, onClose, onSave }: { profiles: UnfoldProfile
               <div className="uf-row"><span>Marks as</span>
                 <select className="field" value={p.marks} onChange={(e) => setP({ marks: e.target.value as MarkAs })}><option value="trace">Trace</option><option value="openCut">Open cut</option><option value="none">None</option></select></div>
               <label className="chk"><input type="checkbox" checked={p.annotate} onChange={(e) => setP({ annotate: e.target.checked })} /> Show angle and UP / DOWN</label>
+              <label className="chk"><input type="checkbox" checked={!!p.engraveText} disabled={!p.annotate} onChange={(e) => setP({ engraveText: e.target.checked })} /> … engraved (single-line text),</label>
+              <div className="uf-row"><span>Text height</span><NumInput className="field uf-num" value={p.textMm ?? 6} min={1.5} aria-label="Text height (mm)" onCommit={(n) => setP({ textMm: n })} /><small>mm</small></div>
               <label className="chk"><input type="checkbox" checked={p.foil} onChange={(e) => setP({ foil: e.target.checked })} /> Foil / finish on the top side</label>
               {list.length > 1 && <button type="button" className="btn btn-danger-plain uf-mini" onClick={() => { setList((l) => l.filter((_, i) => i !== sel)); setSel(0); }}>Delete profile</button>}
             </div>

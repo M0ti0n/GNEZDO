@@ -2595,3 +2595,4 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .surf-badge { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: #fff; border: 1.5px solid currentColor; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
 .surf-badge.is-grain { color: var(--ln-grain); }
 .surf-badge.is-foil { color: var(--green-ink); }
+.uf-svg .uf-eng { fill: none; stroke: var(--ln-trace); stroke-width: 1.3; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
