@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { liveContours, originPoint } from "../job/cutPath";
-import type { Machine, Origin } from "../job/machine";
+import { rapidOf, type Machine, type Origin } from "../job/machine";
 import type { NestedSheet } from "../job/nest";
-import { RAPID_MM_MIN } from "../job/report";
 import { clock, simAt, simTimeline } from "../job/simulation";
 import { techRowFor } from "../job/technology";
 import type { CutMode } from "./ManualNest";
@@ -32,7 +31,7 @@ export function useSimulation({ index, single, sheets, parts, machine, origin }:
   const tl = useMemo(() => {
     if (!sheet) return null;
     const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row ?? null;
-    return simTimeline(liveContours(sheet), from, row);
+    return simTimeline(liveContours(sheet), from, row, rapidOf(machine));
   }, [sheet, machine, from]);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -138,7 +137,7 @@ export function useSimulation({ index, single, sheets, parts, machine, origin }:
         </div>
         {!single ? <p className="ac-empty sim-msg">Open a sheet (VIEW / EDIT) to play its cut.</p>
           : !can ? <p className="tech-msg ac-msg is-bad">Process the sheet first (Auto cut).</p> : null}
-        <p className="rule-help ac-help">Times {tl?.fromTech ? "from the Technology row's speeds and pierce time" : "with 2000 mm/min (no speed in the Technology row)"} and {Math.round(RAPID_MM_MIN / 1000)} m/min rapids: an estimate (no acceleration). Drag the playback bar to jump.</p>
+        <p className="rule-help ac-help">Times {tl?.fromTech ? "from the Technology row's speeds and pierce time" : "with 2000 mm/min (no speed in the Technology row)"} and {+(rapidOf(machine) / 1000).toFixed(1)} m/min rapids (Settings → Machines): an estimate (no acceleration). Drag the playback bar to jump.</p>
       </div>
     </aside>
   );

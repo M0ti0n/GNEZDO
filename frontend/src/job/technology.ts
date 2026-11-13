@@ -48,6 +48,9 @@ export interface TechRow {
   prePierce?: number;
   /** Laser: the machine's technology program for this row (LVD M98P..., e.g. 6050 = mild steel 5 mm); 0 = not set */
   techProgram?: number;
+  /** Laser: AUTO CUT traces first, over the whole sheet, in the order of the shortest rapids: 1 = on,
+   *  0 = off; not set = on from 4 mm up */
+  traceShortest?: number;
   /** Micro joints (Process -> Micro joint): their length [mm] (0 = 1 mm) */
   mjGapMm?: number;
   /** after a micro joint the cut starts again with: 1 = a normal pierce, 2 = a quick pierce, 0 = no pierce */
@@ -69,8 +72,24 @@ export interface TechSet {
 
 export type RowKey = Exclude<keyof TechRow, "extra">;
 
+export interface TechColumn {
+  key: RowKey; label: string; unit: string; min?: number; max?: number;
+  /** the value of a row that has none set (else 0) */
+  def?: (r: TechRow) => number;
+}
+
+/** From this thickness up AUTO CUT traces in the order of the shortest rapids, unless the row says otherwise [mm] */
+export const TRACE_SHORTEST_FROM_MM = 4;
+const traceDefault = (r: TechRow) => (r.thicknessMm >= TRACE_SHORTEST_FROM_MM - 1e-6 ? 1 : 0);
+
+/** A row's value in a column: what is set, else the column's default. */
+export const cellValue = (r: TechRow, c: TechColumn): number => r[c.key] ?? c.def?.(r) ?? 0;
+
+/** Does AUTO CUT trace over the whole sheet in the order of the shortest rapids with this row? */
+export const traceShortestOf = (r: TechRow) => (r.traceShortest ?? traceDefault(r)) === 1;
+
 /** The table's columns, in groups, as shown and exported. */
-export const TECH_COLUMNS: { group: string; only?: Technology[]; cols: { key: RowKey; label: string; unit: string; min?: number; max?: number }[] }[] = [
+export const TECH_COLUMNS: { group: string; only?: Technology[]; cols: TechColumn[] }[] = [
   { group: "Cutting", cols: [
     { key: "kerfMm", label: "Kerf", unit: "mm" },
     { key: "speed", label: "Speed", unit: "mm/min" },
@@ -106,14 +125,15 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; cols: { key: Ro
     { key: "remLeadOutMm", label: "Lead-out", unit: "mm" },
   ] },
   { group: "Micro joint", cols: [
-    { key: "mjGapMm", label: "Length", unit: "mm" },
-    { key: "mjPierce", label: "Restart", unit: "0 none, 1 pierce, 2 quick", max: 2 },
+    { key: "mjGapMm", label: "Length", unit: "mm", def: () => 1 },
+    { key: "mjPierce", label: "Restart", unit: "0 none, 1 pierce, 2 quick", max: 2, def: () => 1 },
   ] },
   { group: "Laser", only: ["laser"], cols: [
     { key: "midSizeMm", label: "Middle up to", unit: "mm" },
     { key: "littleSizeMm", label: "Little up to", unit: "mm" },
     { key: "prePierce", label: "Pre-pierce", unit: "1 = on", max: 1 },
     { key: "techProgram", label: "Tech program", unit: "no.", max: 99999 },
+    { key: "traceShortest", label: "Trace shortest", unit: "1 = on", max: 1, def: traceDefault },
   ] },
 ];
 
@@ -260,6 +280,6 @@ export function technologiesCsv(techs: TechSet[], technology?: Technology): stri
   function g(k: RowKey) { return groups.find((x) => x.cols.some((c) => c.key === k))!.group.replace(" · leads", ""); }
   const lines = [head.map(q).join(";")];
   for (const t of techs) for (const r of t.rows)
-    lines.push([t.name, t.materials.join(", "), String(t.minMm), String(t.maxMm), String(r.thicknessMm), ...cols.map((c) => String(r[c.key] ?? 0))].map(q).join(";"));
+    lines.push([t.name, t.materials.join(", "), String(t.minMm), String(t.maxMm), String(r.thicknessMm), ...cols.map((c) => String(cellValue(r, c)))].map(q).join(";"));
   return lines.join("\r\n") + "\r\n";
 }

@@ -21,7 +21,7 @@ import { commonBlocks, sharedLineCut, type CommonBlock } from "./commonPath";
 import { cutOrderOf, gapsFor, machineCan, type Machine, type Origin } from "./machine";
 import { partLoops, pointIn, transform, type Box, type Pt } from "./manualGeom";
 import type { NestedSheet, PlacedPart } from "./nest";
-import { techRowFor, type TechRow } from "./technology";
+import { TRACE_SHORTEST_FROM_MM, techRowFor, traceShortestOf, type TechRow } from "./technology";
 
 /** The order picked under AUTO CUT. */
 export type CutRule = "leftRight" | "rightLeft" | "bottomTop" | "topBottom" | "shortest" | "smallBig";
@@ -740,8 +740,12 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   }
   for (const c of fresh) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
   let contours = [...kept, ...fresh];
-  // Settings -> Machines -> Cut order: the sheet's tracing first, shortest rapids (not after a contour order picked by hand)
-  if (cutOrderOf(machine).traceShortest && !q.ordered) contours = tracesShortest(contours, from);
+  // the sheet's tracing first, shortest rapids (not after a contour order picked by hand): on a laser the
+  // Technology row says (not set: from 4 mm up), on other machines Settings -> Machines -> Cut order
+  const traceShortest = machine.technology === "laser"
+    ? (row ? traceShortestOf(row) : sheet.thicknessMm >= TRACE_SHORTEST_FROM_MM - 1e-6)
+    : cutOrderOf(machine).traceShortest;
+  if (traceShortest && !q.ordered) contours = tracesShortest(contours, from);
   return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours, keys, ...(mirrored ? { mirrored } : {}) };
 }
 

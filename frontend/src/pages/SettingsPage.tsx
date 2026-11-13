@@ -19,7 +19,7 @@ import { NcOutputSettings } from "../components/NcOutputSettings";
 import { MachineFoldersSettings } from "../components/MachineFoldersSettings";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
-import { DEFAULT_CUT_ORDER, LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, cutOrderOf, machineCan, newMachine, type Machine, type MachineList } from "../job/machine";
+import { DEFAULT_CUT_ORDER, DEFAULT_RAPID_MM_MIN, LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, cutOrderOf, machineCan, newMachine, type Machine, type MachineList } from "../job/machine";
 import { DEFAULT_KEYS, KEY_ACTIONS, RESERVED_KEYS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
@@ -213,10 +213,14 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
                   <NumInput value={co.bigSheetPct} min={1} disabled={!co.bigLast} aria-label="Percent of the sheet" onCommit={(n) => setCo({ bigSheetPct: Math.min(100, n) })} />% of the sheet</label>
               </div>
               <p className="rule-help">Last within its bounding box: the order picked under AUTO CUT runs up to the big part's box, cuts the parts in the box (touching it counts) in the same order, then the big part, then carries on.</p>
-              <div className="mc-rules">
-                <label className="chk"><input type="checkbox" checked={co.traceShortest} onChange={(e) => setCo({ traceShortest: e.target.checked })} /> Tracing first, over the whole sheet, in the order of the shortest rapids</label>
-              </div>
-              <p className="rule-help">On: AUTO CUT puts every trace line of the sheet before the cutting, not part by part: from 0,0 the nearest line next (each from its nearer end), then shortened further where turning a stretch round saves travel. The LVD laser marks before it cuts in any case; this makes the marking travel short. Off: the tracing goes with each part, in the parts' order.</p>
+              {machine.technology === "laser" ? (
+                <p className="rule-help">Tracing first, over the whole sheet, in the order of the shortest rapids: set per thickness in the Technology table (Laser · Trace shortest; on from 4 mm up unless a row says otherwise). AUTO CUT then puts every trace line of the sheet before the cutting, not part by part: from 0,0 the nearest line next (each from its nearer end), then shortened further where turning a stretch round saves travel.</p>
+              ) : (<>
+                <div className="mc-rules">
+                  <label className="chk"><input type="checkbox" checked={co.traceShortest} onChange={(e) => setCo({ traceShortest: e.target.checked })} /> Tracing first, over the whole sheet, in the order of the shortest rapids</label>
+                </div>
+                <p className="rule-help">On: AUTO CUT puts every trace line of the sheet before the cutting, not part by part: from 0,0 the nearest line next (each from its nearer end), then shortened further where turning a stretch round saves travel. Off: the tracing goes with each part, in the parts' order.</p>
+              </>)}
               
               <div className="mc-row"><button type="button" className="btn btn-plain" disabled={isDef} onClick={() => setM({ cutOrder: { ...DEFAULT_CUT_ORDER } })}>Back to the defaults</button></div>
             </section>
@@ -231,6 +235,16 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
             <span>×</span>
             <NumInput value={machine.cutWidthMm} min={1} aria-label="Cutting width (mm)" onCommit={(n) => setM({ cutWidthMm: n })} />
             <span className="size-unit">mm</span>
+          </div>
+        </section>
+
+        <section className="rule">
+          <h3>Rapid speed</h3>
+          <p className="rule-help">How fast the head travels between cuts, for the time estimates (Nest report, Cost report, Simulation). The pierce times are in the Technology table (Cutting · Pierce). Empty or 0: {DEFAULT_RAPID_MM_MIN[machine.technology].toLocaleString("en-US")} mm/min{machine.technology === "plasma" ? " (measured on a plasma: 2 m in 8 s)" : ""}.</p>
+          <div className="size-row">
+            <NumInput value={machine.rapidMmMin ?? 0} min={0} placeholder={String(DEFAULT_RAPID_MM_MIN[machine.technology])} aria-label="Rapid speed (mm/min)"
+              onCommit={(n) => setM({ rapidMmMin: n > 0 ? n : undefined })} />
+            <span className="size-unit">mm/min</span>
           </div>
         </section>
 

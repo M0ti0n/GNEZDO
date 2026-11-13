@@ -1,15 +1,13 @@
 // Reports of a job (toolbar -> Report): the numbers behind the Nest report (a page per sheet, with
 // its parts) and the Cost report (a price per part). Weights from the part areas; times estimated from
-// the machine's Technology row (cut length / speed, a pierce per contour, rapids between the parts)
+// the machine's Technology row (cut length / speed, a pierce per contour, rapids between the parts at the machine's rapid speed)
 // until Generate path works the real path out.
 
 import type { JobPart } from "../api/types";
 import { densityOf, loopsOf, sheetStats, type NestedSheet, type SheetStats } from "./nest";
-import type { Machine, Origin } from "./machine";
+import { rapidOf, type Machine, type Origin } from "./machine";
 import { techRowFor, type TechRow } from "./technology";
 
-/** Rapid speed assumed for the estimate [mm/min] (the machine's own comes with Motion & times). */
-export const RAPID_MM_MIN = 20000;
 
 type Loop = [number, number][];
 const perimeter = (pts: Loop) => pts.reduce((s, p, i) => { const q = pts[(i + 1) % pts.length]; return s + Math.hypot(q[0] - p[0], q[1] - p[1]); }, 0);
@@ -80,7 +78,7 @@ export function sheetReport(sheet: NestedSheet, jobParts: JobPart[], machine: Ma
       const n = loopsOf(jp.part.path).length;
       d += Math.max(0, n - 1) * Math.hypot(jp.part.w, jp.part.h) * 0.35;
     }
-    rapidS = (d / RAPID_MM_MIN) * 60;
+    rapidS = (d / rapidOf(machine)) * 60;
   }
   return { stats, row, cutS, rapidS, totalS: cutS !== null && rapidS !== null ? cutS + rapidS : null, parts };
 }
