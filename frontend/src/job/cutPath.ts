@@ -67,7 +67,7 @@ export interface CutContour {
   inline?: { axis: "x" | "y"; rev: boolean; pierce: "pierce" | "quick" | "none"; w: number; h: number };
   /** Process → Common pierce: this outline starts from the group's pierce point `at` (its lead-in from
    *  there); `orig`: its own leads, to go back to */
-  cp?: { id: string; at: Pt; orig: { leadIn: Pt[]; leadOut: Pt[] } };
+  cp?: { id: string; at: Pt; orig: { leadIn: Pt[]; leadOut: Pt[]; pts?: Pt[]; lead?: LeadType; spec?: LeadSpec } };
 }
 
 /** Where an outline starts (one piece each), in cut order along it: the original lead, or a break cut

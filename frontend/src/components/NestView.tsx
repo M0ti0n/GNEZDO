@@ -200,7 +200,7 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
     onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
   });
   const cpi = useCommonPierce({
-    index: curIndex, single: full !== null && process === "commonPierce", sheets, parts: byId,
+    index: curIndex, single: full !== null && process === "commonPierce", sheets, parts: byId, machine, origin: sol?.origin ?? machine.origin,
     onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
   });
   const sim = useSimulation({ index: curIndex, single: full !== null && process === "simulation", sheets, parts: byId, machine, origin: sol?.origin ?? machine.origin });

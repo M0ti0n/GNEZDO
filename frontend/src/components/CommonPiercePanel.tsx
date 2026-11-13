@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { autoPoint, commonPierce, DEFAULT_COMMON_PIERCE, piercable, piercesOf, removePierce, type CommonPierceOptions } from "../job/commonPierce";
-import { liveContours, type CutContour } from "../job/cutPath";
+import { leadValues, liveContours, originPoint, type CutContour, type SheetCut } from "../job/cutPath";
+import { editLead, leadCtx, leadOf } from "../job/leadEdit";
+import type { LeadType } from "../job/leads";
+import type { Machine, Origin } from "../job/machine";
 import { diag } from "../job/diag";
 import type { Pt } from "../job/manualGeom";
 import type { NestedSheet } from "../job/nest";
@@ -14,9 +17,14 @@ import toolCommonPierce from "../shell/jobtools/tool-commonPierce.png";
 //  MOVE: click a pierce point (CP), then where it goes. DELETE (on / off): click a pierce point: its
 //  outlines back to their own leads.
 // Each part keeps its own lead-in next to the outline (the minimum lead-in); an arc from the pierce
-// point runs into it. The lead-out: length and angle, set here.
+// point runs into it; the lead-out stays its own. Side: only the outlines whose lead-in starts left /
+// right of the pierce point join. Break cut: the joined outlines get the lead type with a gap like
+// theirs, with the default gap. A group is cut from the outline nearest the machine's 0,0.
 
 type PartRef = { path: string; name?: string };
+
+/** The lead type with a gap like this one (Break cut). */
+const GAP_TYPE: Partial<Record<LeadType, LeadType>> = { corner: "cornerGap", perp: "perpGap", cornerAngle: "angled" };
 type Mode = "select" | "place" | "move" | "delete" | null;
 
 const KEY = "gnezdo.commonPierce";
@@ -25,11 +33,13 @@ const load = (): CommonPierceOptions => {
   catch { return DEFAULT_COMMON_PIERCE; }
 };
 
-export function useCommonPierce({ index, single, sheets, parts, onCut }: {
+export function useCommonPierce({ index, single, sheets, parts, machine, origin, onCut }: {
   index: number;
   single: boolean;
   sheets: NestedSheet[];
   parts: Map<string, PartRef>;
+  machine: Machine;
+  origin: Origin;
   onCut: (index: number, cut: NonNullable<NestedSheet["cut"]>) => void;
 }): { panel: ReactNode; cut: CutMode } {
   const sheet = sheets[index] as NestedSheet | undefined;
@@ -57,6 +67,18 @@ export function useCommonPierce({ index, single, sheets, parts, onCut }: {
   const can = single && !!cutPath && outlines.length > 1;
   const groups = useMemo(() => piercesOf(cutPath, live), [cutPath, live]);
   const nameOf = (part: number) => { const p = sheet?.parts[part]; return (p && parts.get(p.partId)?.name) || `Part ${part + 1}`; };
+  const paths = useMemo(() => new Map([...parts].map(([id, r]) => [id, r.path])), [parts]);
+  /** Break cut: the outline with the lead type with a gap like its own, the default gap */
+  const breakCut = (base: SheetCut, k: number): CutContour | string => {
+    if (!sheet) return "no sheet";
+    const ctx = leadCtx({ ...sheet, cut: base }, paths, machine);
+    const cur = leadOf(ctx, base.contours[k]);
+    const type = GAP_TYPE[cur.type] ?? cur.type;
+    const v = leadValues("outer", ctx.row, type);
+    const r = editLead(ctx, k, { op: "set", type, spec: { ...v, gap: v.gap < 0 ? v.gap : -5 } }, false, live);
+    return typeof r === "string" ? r : r.cut.contours[k];
+  };
+  const job = (id?: string) => ({ from: sheet ? originPoint(sheet, origin) : ([0, 0] as Pt), name: nameOf, breakCut, ...(id ? { id } : {}) });
 
   const apply = (r: ReturnType<typeof commonPierce>, what: string) => {
     if (typeof r === "string") { setMsg({ text: r, bad: true }); return false; }
@@ -72,7 +94,7 @@ export function useCommonPierce({ index, single, sheets, parts, onCut }: {
     if (ks.length < 2) { setMsg({ text: "Select two or more parts first (SELECT, then click them)", bad: true }); return; }
     const p = autoPoint(cutPath, ks, opt);
     if (!p) return;
-    if (apply(commonPierce(cutPath, live, p, ks, opt, nameOf), "Joined")) { setPicked([]); setMode(null); }
+    if (apply(commonPierce(cutPath, live, p, ks, opt, job()), "Joined")) { setPicked([]); setMode(null); }
   };
 
   const nearGroup = (p: Pt, reach: number) => groups.reduce<{ id: string; d: number } | null>((best, g) => {
@@ -86,10 +108,10 @@ export function useCommonPierce({ index, single, sheets, parts, onCut }: {
     const reach = Math.max(1.5, 14 / scale);
     if (moving) {
       const g = groups.find((q) => q.id === moving);
-      if (g && apply(commonPierce(cutPath, live, p, g.ks, opt, nameOf, g.id), "Moved")) setMoving(null);
+      if (g && apply(commonPierce(cutPath, live, p, g.ks, opt, job(g.id)), "Moved")) setMoving(null);
       return;
     }
-    if (mode === "place") { apply(commonPierce(cutPath, live, p, null, opt, nameOf), "Placed"); return; }
+    if (mode === "place") { apply(commonPierce(cutPath, live, p, null, opt, job()), "Placed"); return; }
     if (mode === "move") {
       const g = nearGroup(p, reach);
       if (!g) { setMsg({ text: "MOVE: click a pierce point (CP)", bad: true }); return; }
@@ -138,15 +160,19 @@ export function useCommonPierce({ index, single, sheets, parts, onCut }: {
           <span>Lead-in kept</span>
           <span className="il-num"><NumInput value={opt.minLead} min={0} aria-label="Lead-in kept (mm)" onCommit={(n) => setOpt({ minLead: n })} /><small>mm</small></span>
         </label>
-        <label className="il-row" title="The lead-out of the joined outlines: its length">
-          <span>Lead-out</span>
-          <span className="il-num"><NumInput value={opt.outLen} min={0} aria-label="Lead-out length (mm)" onCommit={(n) => setOpt({ outLen: n })} /><small>mm</small></span>
-        </label>
-        <label className="il-row" title="The lead-out's angle to the outline, to the scrap side: 90° square to it, 0° on along it">
-          <span>Lead-out angle</span>
-          <span className="il-num"><NumInput value={opt.outAngle} min={0} aria-label="Lead-out angle (degrees)" onCommit={(n) => setOpt({ outAngle: Math.min(180, n) })} /><small>°</small></span>
-        </label>
-        <p className="rule-help ac-help">One pierce hole in the scrap for several parts' outlines: the first pierces it, the others start in it with a quick pierce. Each part keeps its own lead-in next to the outline; an arc from the pierce point runs into it (it must stay in the scrap). The values here are for the next JOIN, PLACE or MOVE. Holes keep their own pierces.</p>
+        <div className="il-row">
+          <span>Lead-ins</span>
+          <span className="il-seg" role="radiogroup" aria-label="Which lead-ins join">
+            {(["any", "left", "right"] as const).map((sd) => (
+              <button key={sd} type="button" role="radio" aria-checked={opt.side === sd} className={opt.side === sd ? "is-on" : ""}
+                title={sd === "any" ? "Every outline whose lead-in starts within the radius" : `Only the outlines whose lead-in starts ${sd} of the pierce point (as drawn)`}
+                onClick={() => setOpt({ side: sd })}>{sd === "any" ? "Any side" : sd === "left" ? "Left" : "Right"}</button>
+            ))}
+          </span>
+        </div>
+        <label className="chk" title="The joined outlines get the lead type with a gap like theirs (corner: corner in, gap out; perpendicular: with gap; corner at an angle: angled with gap) and the default gap (the Technology table's outline gap when it is negative, else −5 mm): the cut stops short and a bridge holds the part">
+          <input type="checkbox" checked={opt.breakCut} onChange={(e) => setOpt({ breakCut: e.target.checked })} /> Apply a break cut</label>
+        <p className="rule-help ac-help">One pierce hole in the scrap for several parts' outlines: the first pierces it, the others start in it with a quick pierce. Each part keeps its own lead-in next to the outline; an arc from the pierce point runs into it (it must stay in the scrap); the lead-out stays its own. A group is cut from the outline nearest the machine's 0,0. The values here are for the next JOIN, PLACE or MOVE. Holes keep their own pierces.</p>
         {msg && <p className={`tech-msg ac-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
       </div>
     </aside>

@@ -4,10 +4,12 @@
 // Each part keeps its own lead-in (its type and its place on the outline), cut down to the minimum
 // lead-in: the last part of it, next to the outline. From the common pierce point an arc runs to the
 // start of what is kept, tangent to it there (a straight line when the point lies in line with it).
-// A part joins when the start of its kept lead-in is within the radius of the point and the arc does
-// not go through a part. Its lead-out is set here: length and angle to the outline, to the scrap side.
-// The outlines of a group are cut one after another, where the last of them was (their holes are cut
-// already then).
+// A part joins when the start of its kept lead-in is within the radius of the point (and on the side
+// asked for: left or right of it) and the arc does not go through a part. Its lead-out stays its own.
+// With Break cut the parts first get the lead type with a gap like theirs, with the default gap (the
+// Technology row's outline gap when it is negative, else −5 mm): the outline stops short, a bridge
+// holds the part. The outlines of a group are cut one after another, the nearest the machine's 0,0
+// first, where the last of them was (their holes are cut already then).
 
 import type { CutContour, SheetCut } from "./cutPath";
 import { pointIn, type Pt } from "./manualGeom";
@@ -17,12 +19,13 @@ export interface CommonPierceOptions {
   radius: number;
   /** the part of each part's own lead-in kept next to the outline [mm] (its whole lead-in when shorter) */
   minLead: number;
-  /** lead-out: length [mm] and angle to the outline [°] (90: square to it, 0: on along it) */
-  outLen: number;
-  outAngle: number;
+  /** only the outlines whose lead-in starts left / right of the pierce point (as drawn) join */
+  side: "any" | "left" | "right";
+  /** the joined outlines get a break cut (the lead type with a gap, the default gap) */
+  breakCut: boolean;
 }
 
-export const DEFAULT_COMMON_PIERCE: CommonPierceOptions = { radius: 15, minLead: 2, outLen: 2, outAngle: 45 };
+export const DEFAULT_COMMON_PIERCE: CommonPierceOptions = { radius: 15, minLead: 2, side: "any", breakCut: false };
 
 /** An outline that may share a pierce: a part's own outline, whole (not broken, not inline). */
 export const piercable = (c: CutContour) =>
@@ -88,23 +91,9 @@ function materialTest(cut: SheetCut, live: Set<CutContour>) {
   return (p: Pt) => [...solids.values()].some((s) => s.outer.some((lp) => lp.length > 2 && pointIn(lp, p[0], p[1])) && !s.holes.some((lp) => lp.length > 2 && pointIn(lp, p[0], p[1])));
 }
 
-/** The lead-out: `o.outLen` at `o.outAngle` to the outline's end, to the side that is not the part. */
-function leadOutOf(c: CutContour, o: CommonPierceOptions, inPart: (p: Pt) => boolean): Pt[] {
-  if (!(o.outLen > 0) || c.pts.length < 2) return [];
-  const e = c.pts[c.pts.length - 1];
-  let k = c.pts.length - 2;
-  while (k > 0 && len(sub(e, c.pts[k])) < 1e-3) k--;
-  const t = unit(sub(e, c.pts[k]));
-  const a = (Math.min(180, Math.max(0, o.outAngle)) * Math.PI) / 180;
-  const side = (s: number): Pt => unit(add(mul(t, Math.cos(a)), mul([-t[1] * s, t[0] * s], Math.sin(a))));
-  const probe = (d: Pt) => add(e, mul(d, Math.min(1, o.outLen)));
-  const d = !inPart(probe(side(1))) ? side(1) : side(-1);
-  return [e, r3(add(e, mul(d, o.outLen)))];
-}
-
 /** Where each joined outline's kept lead-in starts, and the direction it runs there. */
 function keptLead(c: CutContour, o: CommonPierceOptions): { pts: Pt[]; e: Pt; d: Pt } {
-  const own = c.cp?.orig.leadIn ?? c.leadIn;
+  const own = c.leadIn;
   if (own.length > 1) {
     const pts = lastPart(own, Math.max(0, o.minLead));
     const d = unit(sub(pts[Math.min(1, pts.length - 1)], pts[0]));
@@ -125,18 +114,29 @@ const newId = (cut: SheetCut) => {
   return `cp${n}`;
 };
 
+export interface CommonPierceJob {
+  /** the machine's 0,0 (the group is cut from the outline nearest it) */
+  from: Pt;
+  /** the part's name, for the messages */
+  name: (part: number) => string;
+  /** the group being moved (its outlines are taken out of it first) */
+  id?: string;
+  /** Break cut: the outline `k` of `base` with the lead type with a gap, the default gap; a text: why not */
+  breakCut?: (base: SheetCut, k: number) => CutContour | string;
+}
+
 /**
  * One common pierce at `p` for these outlines (contour indexes; null: every outline whose lead-in starts
- * within the radius). `id`: the group being moved (its members are taken out of it first). `name(k)`:
- * the part's name for the messages.
+ * within the radius).
  */
-export function commonPierce(cut: SheetCut, live: Set<CutContour>, p: Pt, ks: number[] | null, o: CommonPierceOptions, name: (part: number) => string, id?: string): CommonPierceResult | string {
+export function commonPierce(cut: SheetCut, live: Set<CutContour>, p: Pt, ks: number[] | null, o: CommonPierceOptions, job: CommonPierceJob): CommonPierceResult | string {
+  const { id, name } = job;
   // a group being moved: back to its own leads first
   let base = cut;
   if (id) base = removePierce(cut, id);
   const liveNow = new Set(base.contours.filter((_, i) => live.has(cut.contours[i])));
   const inPart = materialTest(base, liveNow);
-  if (inPart(p)) return "The pierce point is in a part: it has to be in the scrap";
+  if (inPart(p)) return ks && !id ? "The middle between their lead-ins is in a part: PLACE the pierce point in the scrap by hand" : "The pierce point is in a part: it has to be in the scrap";
   const cands = (ks ?? base.contours.map((_, i) => i)).filter((k) => {
     const c = base.contours[k];
     return !!c && liveNow.has(c) && (piercable(c) || (!!c.cp && c.cp.id !== id));
@@ -144,23 +144,39 @@ export function commonPierce(cut: SheetCut, live: Set<CutContour>, p: Pt, ks: nu
   const left: string[] = [];
   const members: { k: number; c: CutContour }[] = [];
   for (const k of cands) {
-    const c0 = base.contours[k];
     // in another group: taken out of it (back to its own leads) first
-    const c = c0.cp ? { ...c0, leadIn: c0.cp.orig.leadIn, leadOut: c0.cp.orig.leadOut, cp: undefined } : c0;
+    const own = restore(base.contours[k]);
+    let c = own;
+    // Break cut: the lead type with a gap, the default gap
+    if (o.breakCut && job.breakCut) {
+      const r = job.breakCut({ ...base, contours: base.contours.map((x, i) => (i === k ? own : x)) }, k);
+      if (typeof r === "string") { left.push(`${name(own.part)}: ${r}`); continue; }
+      c = r;
+    }
     const kept = keptLead(c, o);
     if (len(sub(kept.e, p)) > o.radius + 1e-6) { if (ks) left.push(`${name(c.part)}: its lead-in starts ${len(sub(kept.e, p)).toFixed(1)} mm away (radius ${o.radius} mm)`); continue; }
-    const arc = connector(p, kept.e, kept.d);
-    // the way to the lead must stay in the scrap (its last 0.3 mm meets the lead)
-    const clear = arc.every((q, i) => i === arc.length - 1 || len(sub(q, kept.e)) < 0.3 || !inPart(q));
-    if (!clear) { left.push(`${name(c.part)}: the way from the pierce point goes through a part`); continue; }
+    if (o.side !== "any" && (o.side === "left" ? kept.e[0] > p[0] - 0.01 : kept.e[0] < p[0] + 0.01)) { if (ks) left.push(`${name(c.part)}: its lead-in is not ${o.side} of the pierce point`); continue; }
+    // the way to the lead must stay in the scrap (its last 0.3 mm meets the lead): the arc, else a
+    // straight line (checked along it)
+    const clear = (l: Pt[]) => l.every((q, i) => i === l.length - 1 || len(sub(q, kept.e)) < 0.3 || !inPart(q));
+    const line = (a0: Pt, b0: Pt): Pt[] => { const n = Math.max(2, Math.ceil(len(sub(b0, a0)) / 0.5)); return Array.from({ length: n + 1 }, (_, i) => add(a0, mul(sub(b0, a0), i / n))); };
+    let arc = connector(p, kept.e, kept.d);
+    if (!clear(arc.length > 2 ? arc : line(p, kept.e))) {
+      if (arc.length > 2 && clear(line(p, kept.e))) arc = [p, kept.e];
+      else { left.push(`${name(c.part)}: the way from the pierce point goes through a part`); continue; }
+    }
     const leadIn = [...arc.slice(0, -1).map(r3), ...kept.pts.map(r3)];
-    members.push({ k, c: { ...c, leadIn, leadOut: leadOutOf(c, o, inPart), cp: { id: "", at: r3(p), orig: { leadIn: c.leadIn, leadOut: c.leadOut } } } });
+    const orig: NonNullable<CutContour["cp"]>["orig"] = { leadIn: own.leadIn, leadOut: own.leadOut, pts: own.pts, ...(own.lead ? { lead: own.lead } : {}), ...(own.spec ? { spec: own.spec } : {}) };
+    members.push({ k, c: { ...c, leadIn, cp: { id: "", at: r3(p), orig } } });
   }
   if (members.length < 2) return members.length ? `Only ${name(members[0].c.part)} reaches this point${left.length ? ` (${left.join("; ")})` : ""}: a common pierce needs two or more outlines` : `No outline's lead-in starts within ${o.radius} mm of this point${left.length ? ` (${left.join("; ")})` : ""}`;
   const gid = id ?? newId(base);
   // cut one after another where the last of them was; the outlines left by a group they came from keep theirs
   const byK = new Map(members.map((m) => [m.k, { ...m.c, cp: { ...m.c.cp!, id: gid } }]));
   const lastK = Math.max(...members.map((m) => m.k));
+  // the nearest the machine's 0,0 first
+  const dist = (m: { c: CutContour }) => len(sub(m.c.leadIn[m.c.leadIn.length - 1] ?? m.c.pts[0], job.from));
+  members.sort((a, b) => dist(a) - dist(b));
   const out: CutContour[] = [];
   base.contours.forEach((c, k) => {
     if (byK.has(k)) { if (k === lastK) out.push(...members.map((m) => byK.get(m.k)!)); return; }
@@ -178,11 +194,15 @@ function tidy(cut: SheetCut): SheetCut {
   return { ...cut, contours: cut.contours.map((c) => (c.cp && (n.get(c.cp.id) ?? 0) < 2 ? restore(c) : c)) };
 }
 
-const restore = (c: CutContour): CutContour => {
+function restore(c: CutContour): CutContour {
   if (!c.cp) return c;
-  const { cp, ...rest } = c;
-  return { ...rest, leadIn: cp.orig.leadIn, leadOut: cp.orig.leadOut };
-};
+  const o = c.cp.orig;
+  const out: CutContour = { ...c, leadIn: o.leadIn, leadOut: o.leadOut, pts: o.pts ?? c.pts };
+  delete out.cp; delete out.lead; delete out.spec;
+  if (o.lead) out.lead = o.lead;
+  if (o.spec) out.spec = o.spec;
+  return out;
+}
 
 /** A group's outlines back to their own leads. */
 export function removePierce(cut: SheetCut, id: string): SheetCut {
@@ -206,7 +226,7 @@ export function piercesOf(cut: SheetCut | undefined, live: Set<CutContour>): { i
  * the centre of the smallest circle round the starts. null: fewer than two.
  */
 export function autoPoint(cut: SheetCut, ks: number[], o: CommonPierceOptions): Pt | null {
-  const pts = ks.map((k) => cut.contours[k]).filter(Boolean).map((c) => keptLead(c, o).e);
+  const pts = ks.map((k) => cut.contours[k]).filter(Boolean).map((c) => keptLead(restore(c), o).e);
   if (pts.length < 2) return null;
   // Badoiu-Clarkson: step towards the farthest point
   let c: Pt = [pts.reduce((s, q) => s + q[0], 0) / pts.length, pts.reduce((s, q) => s + q[1], 0) / pts.length];
