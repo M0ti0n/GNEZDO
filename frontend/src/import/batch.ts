@@ -27,7 +27,7 @@ export interface ImportItem {
   /** A flat pattern sent from the 3D Extractor: that part's id there. */
   from3d?: string;
   /** What the part itself asks of nesting and saving (a flat pattern from 3D: its thickness, foil, grain). */
-  own?: { thicknessMm?: string; noMirror?: boolean; rotations?: Rotation[] };
+  own?: { material?: string; thicknessMm?: string; noMirror?: boolean; rotations?: Rotation[] };
 }
 
 /** The Properties for one part: the list's, with what the part itself asks (a STEP part's thickness, foil, grain). */
@@ -36,6 +36,7 @@ export function itemProps(item: ImportItem, props: BatchProperties): BatchProper
   if (!o) return props;
   return {
     ...props,
+    ...(o.material ? { material: o.material } : {}),
     ...(o.thicknessMm ? { thicknessMm: o.thicknessMm } : {}),
     ...(o.rotations ? { rotations: [...o.rotations] } : {}),
     ...(o.noMirror ? { mirror: false } : {}),

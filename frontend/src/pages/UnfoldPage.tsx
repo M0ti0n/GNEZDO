@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { NumInput } from "../components/NumInput";
+import { Combobox } from "../components/Combobox";
+import { usePickLists } from "../components/pickLists";
 import { add3, len3, mul3, normalAt, sub3, type Solid, type V3 } from "../import/step/step";
 import { describe, edgePick, facePick, refPoint, relate, type MPick } from "../import/step/measure3d";
 import {
@@ -32,7 +34,7 @@ const ICONS: Record<string, ReactNode> = {
   dxf: <Ico><path d="M10 4h18l10 10v30H10z" stroke={K} strokeWidth="2.2" /><path d="M24 18v16M18 28l6 6 6-6" stroke={G} strokeWidth="2.6" /></Ico>,
 };
 
-export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, onSend, onName }: {
+export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial, onChange, onSend, onName }: {
   name: string;
   kind: BodyKind;
   qty: number;
@@ -45,7 +47,9 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, on
   onChange: (step: StepPart) => void;
   onSend: () => void;
   /** the name and quantity it goes to Import 2D with */
-  onName: (name: string, qty: number) => void;
+  onName: (name: string, qty: number, material: string) => void;
+  /** its own material ("": the Import 2D properties' one) */
+  partMaterial: string;
 }) {
   const st = step.settings;
   const stitchMode = st.mode === "stitch";
@@ -62,6 +66,16 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, on
     if (next.mode === "sheet" && !nu.outline.length) { setMsg(nu.problems[0] ?? "Not unfolded with this face"); return; }
     setMsg(null);
     onChange({ ...step, settings: next, info: infoOf(nu) });
+  };
+  const lists = usePickLists(partMaterial);
+  // its own material: the profile's K-factor for it (sheet metal) and the material it goes to Import 2D with
+  const setMaterial = (m: string) => {
+    onName(name, qty, m.trim());
+    if (!stitchMode) {
+      const p = profiles.find((x) => x.name === st.profile) ?? DEFAULT_PROFILE;
+      const k = kFor(p, m.trim() || material, u.thickness);
+      if (k !== st.kFactor) set({ kFactor: k });
+    }
   };
   const useProfile = (n: string) => {
     const p = profiles.find((x) => x.name === n) ?? DEFAULT_PROFILE;
@@ -169,10 +183,18 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, on
         <div className="uf-body">
           <div className="uf-row uf-name">
             <label htmlFor="uf-name">Name</label>
-            <NameInput key={name} value={name} onCommit={(n) => onName(n, qty)} />
-            <NumInput className="field uf-num uf-qty" value={qty} min={0} int aria-label="Quantity" title="Pieces (from the assembly)" onCommit={(n) => onName(name, Math.round(n))} />
+            <NameInput key={name} value={name} onCommit={(n) => onName(n, qty, partMaterial)} />
           </div>
-          <p className="uf-note uf-name-note">The part's name in Import 2D (and in the parts library): the drawing's number, usually.</p>
+          <div className="uf-row uf-name">
+            <label>Pieces</label>
+            <NumInput className="field uf-num uf-qty" value={qty} min={0} int aria-label="Pieces" title="Pieces (from the assembly)" onCommit={(n) => onName(name, Math.round(n), partMaterial)} />
+            <div className="uf-mat">
+              <Combobox value={partMaterial} onChange={(m) => setMaterial(m)}
+                options={lists.strict ? lists.techMaterials : lists.materials} strict={lists.strict} strictNote="not in the Technology tables (Settings → Machines → Technology: material tags)"
+                placeholder={material && !partMaterial ? `${material} (Import 2D)` : "Material"} ariaLabel="Material" newHint="a new material" />
+            </div>
+          </div>
+          <p className="uf-note uf-name-note">Its name, pieces and material in Import 2D (the name usually the drawing's number). No material: the Import 2D properties' one.</p>
           <div className="uf-row">
             <span>Mode</span>
             <span className="cols-toggle uf-seg" role="radiogroup" aria-label="How it is laid flat">

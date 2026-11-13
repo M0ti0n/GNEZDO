@@ -24,6 +24,8 @@ export interface X3Part {
   step: StepPart;
   /** its flat pattern is in IMPORT 2D (that item's id) */
   sentTo?: string;
+  /** its own material (else the Import 2D properties' one) */
+  material?: string;
 }
 
 /** Standard parts by their names (English, Slovene, standards, thread sizes). */

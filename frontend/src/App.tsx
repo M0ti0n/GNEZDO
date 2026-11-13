@@ -331,7 +331,7 @@ export function App() {
       return {
         id, fileName: `${name}.step`, name, qty: x.qty || quantityFromName(name),
         state: "ready", drawing: flatDrawing(id, name, u, x.step.settings), checked: false, processed: false,
-        from3d: x.id, own: ownOf(x.step),
+        from3d: x.id, own: { ...ownOf(x.step), ...(x.material ? { material: x.material } : {}) },
       };
     });
     for (const it of items) history.forget(it.id);
@@ -340,14 +340,19 @@ export function App() {
     setToast(`${items.length === 1 ? `${items[0].name} sent` : `${items.length} flat patterns sent`} to Import 2D`);
   };
   /** A part's name (and quantity) for Import 2D; one waiting there already is renamed too. */
-  const renamePart = (id: string, name: string, qty?: number) => {
+  const renamePart = (id: string, name: string, qty?: number, material?: string) => {
     const x = extracts.find((p) => p.id === id);
     if (!x) return;
-    const q = qty ?? x.qty;
-    patchPart(id, { name, qty: q });
+    const q = qty ?? x.qty, m = material ?? x.material ?? "";
+    patchPart(id, { name, qty: q, material: m || undefined });
     dispatch({ type: "rename", id: `drawing:${id}`, title: name });
     const it = x.sentTo ? imports.find((i) => i.id === x.sentTo && !i.processed) : undefined;
-    if (it) { patchItem(it.id, { name, fileName: `${name}.step`, qty: q }); dispatch({ type: "rename", id: `drawing:${it.id}`, title: name }); }
+    if (it) {
+      const own = { ...(it.own ?? {}) };
+      if (m) own.material = m; else delete own.material;
+      patchItem(it.id, { name, fileName: `${name}.step`, qty: q, own });
+      dispatch({ type: "rename", id: `drawing:${it.id}`, title: name });
+    }
   };
   const removeParts = (ids: string[]) => {
     ids.forEach((id) => dispatch({ type: "close", id: `drawing:${id}` }));
@@ -1379,10 +1384,10 @@ export function App() {
             {shownPart && (
               <ErrorBoundary key={shownPart.id} what={shownPart.name}>
               <UnfoldPage key={shownPart.id} name={shownPart.name} kind={shownPart.kind} qty={shownPart.qty} sent={!!shownPart.sentTo}
-                step={shownPart.step} material={importProps.material}
+                step={shownPart.step} material={shownPart.material || importProps.material} partMaterial={shownPart.material ?? ""}
                 onChange={(step) => patchPart(shownPart.id, { step })}
                 onSend={() => sendToImport([shownPart.id])}
-                onName={(name, qty) => renamePart(shownPart.id, name, qty)} />
+                onName={(name, qty, material) => renamePart(shownPart.id, name, qty, material)} />
               </ErrorBoundary>
             )}
             {shownItem?.drawing && (
