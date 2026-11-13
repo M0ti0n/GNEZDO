@@ -37,7 +37,7 @@ export function useBreakCut({ index, single, sheets, parts, machine, onCut }: {
   const paths = useMemo(() => new Map([...parts].map(([id, r]) => [id, r.path])), [parts]);
   const ctx = sheet ? leadCtx(sheet, paths, machine) : null;
   const live = useMemo(() => new Set<CutContour>(sheet ? liveContours(sheet) : []), [sheet]);
-  const outlines = useMemo(() => new Set([...live].filter((c) => c.kind === "outer" && !c.parts && !c.common)), [live]);
+  const outlines = useMemo(() => new Set([...live].filter((c) => c.kind === "outer" && !c.parts && !c.common && !c.inline)), [live]);
   const fresh = (): { type: LeadType; spec: LeadSpec } => {
     const v = leadValues("outer", ctx?.row ?? null, "perpGap");
     return { type: "perpGap", spec: { ...v, gap: v.gap < 0 ? v.gap : -5 } };
@@ -100,7 +100,7 @@ export function useBreakCut({ index, single, sheets, parts, machine, onCut }: {
     const p: Pt = [x, y];
     const reach = Math.max(1, 12 / scale);
     if (resetOn) {
-      const parts = new Set([...live].filter((c) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common));
+      const parts = new Set([...live].filter((c) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.inline));
       const k = pickContour(cutPath, parts, p, reach);
       if (k < 0) { setMsg({ text: "RESET: click a part", bad: true }); return; }
       const r = resetPart(ctx, k, all, live);

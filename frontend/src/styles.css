@@ -2384,6 +2384,16 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .mj-val { position: static; transform: none; border-color: var(--green); }
 .mj-val .li-num { width: 52px; }
 .mj-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* Process -> Inline cut */
+.il .il-scope { margin: -4px 0 0; }
+.il-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; font-weight: 600; }
+.il-num { display: inline-flex; align-items: center; gap: 5px; }
+.il-num .field { width: 70px; height: 32px; text-align: right; }
+.il-num small { font-size: 12px; color: var(--ink-3); font-weight: 400; }
+.il-seg { display: inline-flex; border: 1.5px solid var(--green-ink); border-radius: 6px; overflow: hidden; }
+.il-seg button { height: 30px; padding: 0 11px; border: 0; background: #fff; color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.il-seg button + button { border-left: 1.5px solid var(--green-ink); }
+.il-seg button.is-on { background: var(--green-tint); color: var(--green-ink); }
 /* the app's tool buttons (as Movement's): green when on; one or two rows of text */
 .mj-mode { justify-content: center; text-align: center; min-height: 48px; padding: 4px 8px; font-size: 12.5px; line-height: 1.2; text-wrap: balance; }
 .mj-mode.is-wide { grid-column: 1 / -1; }

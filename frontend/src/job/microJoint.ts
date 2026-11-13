@@ -123,7 +123,7 @@ function rebuild(ctx: LeadCtx, cut: SheetCut, k: number, plan: BreakPlan, plain 
   return replace(cut, k, pieces);
 }
 
-const usable = (c: CutContour) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common;
+const usable = (c: CutContour) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.inline;
 
 /** An automatic mode on contour k (and with `all`, the same contour of every copy, each by its own directions). */
 export function autoJoints(ctx: LeadCtx, k: number, mode: AutoMode, keepOrig: boolean, lengthMm: number, origin: Origin, all: boolean, live: Set<CutContour>): { cut: SheetCut; n: number } | string {

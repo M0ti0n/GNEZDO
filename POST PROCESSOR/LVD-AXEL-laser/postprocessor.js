@@ -14,13 +14,17 @@
 //   M98P8036                  pierce (after a micro joint: M98P8037 quick pierce when the row's MJ
 //                             restart says quick or none)
 //   IF[#516GT0]GOTO19         pre-pierce pass (#516 = the row's "Pre-pierce"): pierce only
-//   G41                       kerf compensation (outlines and holes; not on open cuts)
+//   G41                       kerf compensation (outlines and holes; not on open cuts); G42 on an
+//                             inline cut's stretch cut against its contour's direction
 //   G1 X.. Y.. E001           the first move (the lead-in) with the contour's size class:
 //                             E001 big, E002 middle, E003 little (the row's "Middle up to" /
 //                             "Little up to", the contour's longer side), E004 marking
 //   N15 G1 / G2 / G3 ...      the contour (arcs: I J from the arc's start), then the lead-out
 //   N19 G65P8041H#513         end of the contour
 // Marking: IF[#516GT0]GOTO<next contour>, M98P8033, the moves with E004, no pierce, no G41.
+// Inline cut (Process → Inline cut): the stretches of all its passes in a row are one subprogram
+// (INLINE CUT), each stretch a contour of its own with the pierce chosen there (quick: M98P8037)
+// and the E code of the whole contour it is part of.
 // Numbers: up to 3 decimals, whole numbers without them (X535 Y0.5). Lines end in CR LF.
 
 function postprocess(p) {
@@ -49,10 +53,10 @@ function postprocess(p) {
   const units = [];
   for (const c of p.contours) {
     if (!c.segs.length) continue;
-    const key = c.partNo !== undefined ? `p${c.partNo}` : c.partNos ? `b${c.partNos.join(",")}` : "rest";
+    const key = c.inline ? "inline" : c.partNo !== undefined ? `p${c.partNo}` : c.partNos ? `b${c.partNos.join(",")}` : "rest";
     const last = units[units.length - 1];
     if (last && last.key === key && last.contours.length < 999) last.contours.push(c);
-    else units.push({ key, contours: [c], name: c.partNo !== undefined ? c.part : c.partNos ? "COMMON CUT" : c.part || "CUT" });
+    else units.push({ key, contours: [c], name: c.inline ? "INLINE CUT" : c.partNo !== undefined ? c.part : c.partNos ? "COMMON CUT" : c.part || "CUT" });
   }
 
   // the unit's corner: the part's box, else the lowest X and Y of its contours
@@ -93,7 +97,7 @@ function postprocess(p) {
         // after a micro joint (no lead-in): the row's MJ restart; quick pierce (M98P8037) also stands
         // for "no pierce" until the controller's own way of starting without one is known
         body.push(c.restart === "quick" || c.restart === "none" ? "M98P8037" : "M98P8036", `IF[#516GT0]GOTO${n + 9}`);
-        if (c.kind !== "open") body.push("G41");
+        if (c.kind !== "open") body.push(c.rev ? "G42" : "G41");
       }
       // N?5 marks the first move of the contour itself (after the lead-in)
       const at5 = marking ? -1 : Math.max(c.leadIn, 1);

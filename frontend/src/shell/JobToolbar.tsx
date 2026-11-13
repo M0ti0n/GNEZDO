@@ -80,7 +80,7 @@ const SECTIONS: Section[] = [
       { id: "manualCut", label: "Manual cut", icon: toolManualCut, ready: true, hint: "Manual cut: click contours of a processed sheet in the order to cut them, then APPLY" },
       { id: "breakCut", label: "Break cut", icon: toolBreakCut, ready: true, hint: "Break cut: the outline stops a gap short, so the part stays held in the sheet (a balloon dropped where the break goes, or two for its length)" },
       { id: "microJoint", label: "Micro joint", icon: toolMicroJoint, ready: true, hint: "Micro joint: small uncut places that keep the part in the sheet" },
-      { id: "inlineCut", label: "Inline cut", icon: toolInlineCut, hint: "Inline cut: parts' straight edges that lie in one line cut as one long line across them" },
+      { id: "inlineCut", label: "Inline cut", icon: toolInlineCut, ready: true, hint: "Inline cut: a flying cut for grids of parts on thin sheet: the sides that lie in line cut pass by pass across the sheet, along X then Y" },
       { id: "leadInOut", label: "Lead in / out", icon: toolLeadInOut, ready: true, hint: "Lead in / out: move a contour's leads, change their type and values, reset or delete them (one part or every copy on the sheet)" },
       { id: "movement", label: "Movement", icon: toolMovement, ready: true, hint: "Movement: reroute a rapid move through points (single / multipoint), or send it to another lead-in (the cut order changes); delete points" },
       { id: "remnant", label: "Remnant", icon: toolRemnant, ready: true, hint: "Remnant: what is left of the sheet, worked out, named and saved for later" },
