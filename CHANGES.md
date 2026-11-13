@@ -16,6 +16,8 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
     - **DISTANCE**: two clicks on the flat pattern (corners, ends and hole centers snap); **FLAT DXF**: the flat pattern with the whole bend lines on layer BEND and the marks on BEND_MARK
     - **Profiles** (per customer or the shop standard, kept in this browser for now): a K-factor, K-factors by material and thickness, bend marks, angle labels, foil on by default. Profile → Edit…
   - **Name** and quantity before sending: at the top of a part's panel (Name, pieces), or in the list (the pencil on a row, or F2). A part already waiting in Import 2D is renamed there too
+  - **ONE FACE**: click one flat face; its outline (with its holes) is the flat pattern as it is, ready to send (Stitch with that one face)
+  - **MEASURE 3D**: click a flat face, a round face, an edge, a hole (inside it or on its edge) or a corner; then a second one. One: what it is (edge length, hole Ø, corner X Y Z). Two: the **offset between parallel faces** (a thickness, a slot, a step) or the angle between faces; **hole to hole** (axis to axis, or coaxial and how far along, the wall between them, both Ø); the distance of a corner, an edge, a hole's center or axis from a face; between edges (distance when parallel, else the angle); ΔX ΔY ΔZ. What the pointer is on lights up yellow, the picks orange. **FLAT DISTANCE** (was Distance) still measures the flat pattern
   - Not yet: unfolding tubes and profiles (they are only sorted), Parasolid
 
 ## Build 13 Nov 2026 (`bae6e3b`)
