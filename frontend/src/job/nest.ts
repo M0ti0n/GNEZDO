@@ -94,6 +94,8 @@ export interface NestedSheet {
   kerfMm?: number;
   /** how many times this layout is cut (1 when missing) */
   cutNumber?: number;
+  /** pre-pierce for this sheet (Post process); missing = as its Technology row says */
+  prePierce?: boolean;
   parts: PlacedPart[];
   /** the cut path (Process -> Auto cut); missing = not processed */
   cut?: SheetCut;
