@@ -10,6 +10,7 @@ import type { NestedSheet } from "./nest";
 import { fitMoves } from "./ncArcs";
 import type { NcContour, NcPart, NcProgram, NcPt } from "./postprocessor";
 import { remnantCutPaths } from "./remnantCut";
+import { reusesPierce } from "./commonPierce";
 import { techRowFor } from "./technology";
 
 type Pt = [number, number];
@@ -61,6 +62,8 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
   live.forEach((c, i) => {
     const k = contour(c, c.parts?.length ? undefined : partName(c.part));
     if (!k) return;
+    // Process → Common pierce: an outline starting in a hole pierced already starts with a quick pierce
+    if (reusesPierce(live, i)) k.restart = "quick";
     // Process → Movement: the rapid to it through these points
     const via = mapped(viaOf(c, live[i - 1]));
     if (via.length) k.via = via;

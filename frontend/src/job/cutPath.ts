@@ -65,6 +65,9 @@ export interface CutContour {
    *  with it; `rev`: against the contour's direction (kerf compensation the other side); w × h: the
    *  whole contour's size (its size class) */
   inline?: { axis: "x" | "y"; rev: boolean; pierce: "pierce" | "quick" | "none"; w: number; h: number };
+  /** Process → Common pierce: this outline starts from the group's pierce point `at` (its lead-in from
+   *  there); `orig`: its own leads, to go back to */
+  cp?: { id: string; at: Pt; orig: { leadIn: Pt[]; leadOut: Pt[] } };
 }
 
 /** Where an outline starts (one piece each), in cut order along it: the original lead, or a break cut

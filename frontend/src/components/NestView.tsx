@@ -18,11 +18,12 @@ import { useMovement } from "./MovementPanel";
 import { useBreakCut } from "./BreakPanel";
 import { useMicroJoint } from "./MicroJointPanel";
 import { useInlineCut } from "./InlineCutPanel";
+import { useCommonPierce } from "./CommonPiercePanel";
 import { RemnantOverlay } from "./RemnantOverlay";
 import { MarkPaths, usePartMarks } from "./PartMarks";
 import { DEFAULT_REMNANT_SETTINGS, remnantArea, type RemnantSettings } from "../job/remnant";
 
-export type ProcessTool = "autoCut" | "manualCut" | "movement" | "breakCut" | "microJoint" | "inlineCut" | "remnant" | "processDel" | "postProcess" | "leadInOut" | "simulation";
+export type ProcessTool = "autoCut" | "manualCut" | "movement" | "breakCut" | "microJoint" | "inlineCut" | "commonPierce" | "remnant" | "processDel" | "postProcess" | "leadInOut" | "simulation";
 import { liveContours, processedParts } from "../job/cutPath";
 import { SheetPropertiesDialog } from "./SheetPropertiesDialog";
 import { strategyLabel } from "./CustomNestDialog";
@@ -198,9 +199,13 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
     index: curIndex, single: full !== null && process === "inlineCut", sheets, parts: byId, machine, origin: sol?.origin ?? machine.origin,
     onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
   });
+  const cpi = useCommonPierce({
+    index: curIndex, single: full !== null && process === "commonPierce", sheets, parts: byId,
+    onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
+  });
   const sim = useSimulation({ index: curIndex, single: full !== null && process === "simulation", sheets, parts: byId, machine, origin: sol?.origin ?? machine.origin });
   const cutOn = !!process && !!sol && !!finished && sheets.length > 0;
-  const tool = process === "remnant" ? rm : process === "processDel" ? pdel : process === "postProcess" ? post : process === "leadInOut" ? lio : process === "simulation" ? sim : process === "manualCut" ? mc : process === "movement" ? mv : process === "breakCut" ? bc : process === "microJoint" ? mj : process === "inlineCut" ? il : ac;
+  const tool = process === "remnant" ? rm : process === "processDel" ? pdel : process === "postProcess" ? post : process === "leadInOut" ? lio : process === "simulation" ? sim : process === "manualCut" ? mc : process === "movement" ? mv : process === "breakCut" ? bc : process === "microJoint" ? mj : process === "inlineCut" ? il : process === "commonPierce" ? cpi : ac;
   /** EDIT / VIEW on a sheet card: the one-sheet view (Manual nest's, or Process's) */
   const openSheet = (i: number) => (cutOn ? setFullState(i) : setFull(i));
 
