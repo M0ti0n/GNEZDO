@@ -878,14 +878,13 @@ export function App() {
     }
     return out;
   };
-  // GNEZDO menu -> Export solution to DXF: the solution shown in the job tab, every sheet in one file
+  // Solution info -> Export to DXF: the solution shown in the job tab, every sheet in one file
   const shownSolution = () => {
     if (!job) return null;
     const st = jobSol[job.id];
     const sol = st?.list.find((x) => x.id === st.sel.sol);
     return sol?.run?.result?.sheets.length && (sol.run.state === "done" || sol.run.state === "stopped") ? sol : null;
   };
-  const exportProblem = () => (!job ? "Open a job to export its solution" : !shownSolution() ? "Nest the job first: the solution shown is exported" : null);
   const exportDxf = async () => {
     const sol = shownSolution();
     if (!job || !sol) return;
@@ -1101,8 +1100,7 @@ export function App() {
         } : undefined}
         onActivate={(id) => dispatch({ type: "activate", id })}
         onClose={(id) => requestClose(id)}
-        onMenu={(id) => (id === "exportDxf" ? void exportDxf() : showView(id))}
-        menuOff={{ exportDxf: exportProblem() ?? undefined }}
+        onSettings={() => showView("settings")}
         undo={undoState}
         save={job ? { onSave: () => void saveJob(job.id, job.title), onSaveAs: () => setSaveAsFor({ jobId: job.id, name: `${job.title} copy` }) } : null}
       />
@@ -1137,6 +1135,7 @@ export function App() {
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && jobScreen[job.id] === "nest" && (
               <NestPage
+                onExportDxf={() => void exportDxf()}
                 onManual={(on) => { manualOn.current = on; setToolbarReq((r) => ({ section: on ? "manual" : "auto", n: r.n + 1 })); }}
                 leaveManual={leaveManual}
                 openManual={openManual}
@@ -1304,12 +1303,12 @@ export function App() {
                 undone={undone} />
               </ErrorBoundary>
             )}
-            {active.kind === "rules" && <RulesPage rules={rules} onClose={() => showView("home")} onChange={(r) => {
+            {active.kind === "rules" && <RulesPage rules={rules} onClose={() => showView("settings")} onChange={(r) => {
               setRules(r);
               // a list that has not been touched yet follows the new defaults
               if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller, commonCut: r.commonOnOutline }));
             }} />}
-            {active.kind === "settings" && <SettingsPage onClose={() => showView("home")} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
+            {active.kind === "settings" && <SettingsPage onClose={() => showView("home")} onRules={() => showView("rules")} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "remnants" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
           </main>
         </div>

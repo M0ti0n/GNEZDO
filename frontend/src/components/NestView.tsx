@@ -72,6 +72,8 @@ interface Props {
   remnantSettings?: RemnantSettings;
   /** the job was never saved (Multi sheet saves it first) */
   needsSave?: boolean;
+  /** Solution info -> Export to DXF: the shown solution, every sheet in one file */
+  onExportDxf?: () => void;
   /** the job has changes not saved yet */
   jobDirty?: boolean;
   onSaveJob?: () => Promise<boolean>;
@@ -121,7 +123,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false, process = false, needsSave = false, jobDirty = false, onSaveJob, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS }: Props) {
+export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false, process = false, needsSave = false, jobDirty = false, onSaveJob, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -297,7 +299,7 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
       <aside className="nest-side">
         {cutOn ? tool.panel : <SolutionsPanel solutions={solutions} current={sol?.id ?? null} sheetNo={sheetNo}
           onSelect={onSelect} onAdd={onAdd} onStop={onStop} onRemove={onRemove}>
-          {sol && sheets.length > 0 && <InfoTabs sol={sol} sheets={sheets} sheetNo={sheetNo} parts={byId} jobParts={parts} />}
+          {sol && sheets.length > 0 && <InfoTabs sol={sol} sheets={sheets} sheetNo={sheetNo} parts={byId} jobParts={parts} onExportDxf={finished ? onExportDxf : undefined} />}
         </SolutionsPanel>}
       </aside>
 
@@ -439,8 +441,10 @@ const kg = (n: number) => n.toFixed(1);
 type Tab = "solution" | "nest" | "parts";
 
 /** Below the solutions, in the same tile: the whole solution, the chosen sheet, the parts on it. */
-function InfoTabs({ sol, sheets, sheetNo, parts, jobParts }: {
+function InfoTabs({ sol, sheets, sheetNo, parts, jobParts, onExportDxf }: {
   sol: Solution; sheets: NestedSheet[]; sheetNo: number; parts: Map<string, PartRef>; jobParts: JobPart[];
+  /** missing: the solution is not finished yet */
+  onExportDxf?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("solution");
   const sheet = sheets[sheetNo];
@@ -461,6 +465,14 @@ function InfoTabs({ sol, sheets, sheetNo, parts, jobParts }: {
       </div>
       <div className="info-body">
         {tab === "solution" && <SolutionInfo sheets={sheets} parts={parts} jobParts={jobParts} origin={origin} />}
+        {tab === "solution" && (
+          <button type="button" className="btn btn-plain info-export" disabled={!onExportDxf} onClick={onExportDxf}
+            title={onExportDxf ? `Every sheet of solution ${sol.no} in one DXF file (parts, sheets, 0,0)` : "When the nest has finished"}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M14 3H6v18h12V7z" /><path d="M14 3v4h4" /><path d="M12 10v7M9 14l3 3 3-3" />
+            </svg>Export solution to DXF
+          </button>
+        )}
         {tab === "nest" && <NestInfo sheet={sheet} parts={parts} origin={origin} />}
         {tab === "parts" && <PartsInfo sheet={sheet} parts={parts} />}
       </div>
