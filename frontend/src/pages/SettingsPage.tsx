@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { machineFileName, machineZip, readMachineFile } from "../job/machineFile";
 import { NavClose } from "./NavClose";
-import { loadJobPrefix, saveJobPrefix, suggestJobName } from "../job/jobName";
+import { IconClose } from "../components/Icons";
+import { loadJobNames, saveJobNames, suggestJobName, type JobNameRule } from "../job/jobName";
 import { loadViewPrefs, saveViewPrefs, type ViewPrefs } from "../job/viewPrefs";
 import { flush, logDownloadUrl, logSettings, reportProblem, setLogEnabled, type LogSettings as LogSettingsData } from "../job/diag";
 import { Combobox } from "../components/Combobox";
@@ -105,7 +106,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
       </nav>
 
       {section === "keys" && <KeysSettings />}
-      {section === "personal" && <PersonalSettings />}
+      {section === "personal" && <PersonalSettings machines={machines} />}
       {section === "data" && <DataSettings />}
       {section === "log" && <LogSettings isAdmin={isAdmin} />}
 
@@ -324,15 +325,22 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
 }
 
 /** Manual nest keys: two per action; click a key and press the new one (Esc: keep, Backspace: none). */
-function PersonalSettings() {
-  const [prefix, setPrefix] = useState(loadJobPrefix);
-  const [example, setExample] = useState("");
+function PersonalSettings({ machines }: { machines: MachineList }) {
+  const [names, setNames] = useState<JobNameRule[]>(loadJobNames);
+  const [examples, setExamples] = useState<string[]>([]);
   const [view, setViewState] = useState(loadViewPrefs);
   const setView = (patch: Partial<ViewPrefs>) => { const n = { ...view, ...patch }; setViewState(n); saveViewPrefs(n); };
+  // kept as typed; the next names worked out a moment after typing stops
   useEffect(() => {
-    const t = setTimeout(() => { saveJobPrefix(prefix); void suggestJobName().then(setExample); }, 300);
+    const t = setTimeout(() => {
+      saveJobNames(names);
+      void Promise.all(names.map((r) => (r.prefix.trim() ? suggestJobName(r.machine).catch(() => "") : Promise.resolve("")))).then(setExamples);
+    }, 300);
     return () => clearTimeout(t);
-  }, [prefix]);
+  }, [names]);
+  const setName = (i: number, patch: Partial<JobNameRule>) => setNames((l) => l.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+  const taken = (i: number) => new Set(names.filter((_, k) => k !== i).map((r) => r.machine));
+  const free = machines.list.find((m) => !names.some((r) => r.machine === m.id));
   return (
     <div className="settings-main">
       <header className="settings-head">
@@ -342,11 +350,29 @@ function PersonalSettings() {
       <section className="rule">
         <h3>Job names</h3>
         <p className="rule-help">New job suggests the next number of your own job name: with <b>JOHN</b> and JOHN231, JOHN232, JOHN233 saved last, it suggests <b>JOHN234</b>. It goes on from the latest job that has the two numbers before it saved too, so a lone or old number is not where it continues. Empty: “New job”.</p>
-        <div className="mc-row">
-          <label className="mc-field"><span>Job name</span>
-            <input className="field" value={prefix} placeholder="e.g. JOHN" spellCheck={false} onChange={(e) => setPrefix(e.target.value)} /></label>
-          {prefix.trim() && example && <span className="rule-help">Next suggested: <b>{example}</b></span>}
-        </div>
+        <p className="rule-help">A job name can be for <b>one machine</b>: New job suggests it when that machine is picked, and also counts the files in that machine’s NC and job folders (Settings → Machines → Folders), so JOHN233_1.NCP written there makes the next one JOHN234. A name for <b>all machines</b> is for the machines without one of their own.</p>
+        {names.map((r, i) => (
+          <div className="mc-row jn-row" key={i}>
+            <label className="mc-field"><span>Job name</span>
+              <input className="field" value={r.prefix} placeholder="e.g. JOHN" spellCheck={false} onChange={(e) => setName(i, { prefix: e.target.value })} /></label>
+            <label className="mc-field"><span>Machine</span>
+              <select className="field" value={r.machine} onChange={(e) => setName(i, { machine: e.target.value })}>
+                <option value="" disabled={taken(i).has("")}>All machines</option>
+                {machines.list.map((m) => <option key={m.id} value={m.id} disabled={taken(i).has(m.id)}>{m.name}</option>)}
+              </select></label>
+            {r.prefix.trim() && examples[i] && <span className="rule-help">Next suggested: <b>{examples[i]}</b></span>}
+            {names.length > 1 && (
+              <button type="button" className="icon-btn jn-del" aria-label="Remove this job name" title="Remove this job name"
+                onClick={() => setNames((l) => l.filter((_, k) => k !== i))}><IconClose size={14} /></button>
+            )}
+          </div>
+        ))}
+        {free && (
+          <div className="mc-row">
+            <button type="button" className="mc-add" onClick={() => setNames((l) => [...l, { prefix: "", machine: free.id }])}
+              title="A job name for one machine">+ Add job name</button>
+          </div>
+        )}
       </section>
       <section className="rule">
         <h3>Cut path</h3>

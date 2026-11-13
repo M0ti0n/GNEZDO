@@ -35,6 +35,21 @@ public sealed class FolderTests(ApiFixture api) : IClassFixture<ApiFixture>, IDi
     }
 
     [Fact]
+    public async Task File_names_with_a_job_name_are_listed_from_the_machines_folders()
+    {
+        var nc = Directory.CreateDirectory(Path.Combine(_dir, "ncnames")).FullName;
+        var jobs = Directory.CreateDirectory(Path.Combine(_dir, "jobnames")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(nc, "MIHA2804_1.NCP"), "");
+        await File.WriteAllTextAsync(Path.Combine(nc, "OTHER12_1.NCP"), "");
+        await File.WriteAllTextAsync(Path.Combine(jobs, "MIHA2805.gnezdo"), "");
+        await Machines(new JsonObject { ["nc"] = nc, ["jobs"] = jobs });
+        var names = await api.Client.GetFromJsonAsync<JsonArray>("/api/machines/p1/files?prefix=MIHA");
+        Assert.Equal(new[] { "MIHA2804_1", "MIHA2805" }, names!.Select(n => n!["name"]!.GetValue<string>()).Order().ToArray());
+        Assert.Empty((await api.Client.GetFromJsonAsync<JsonArray>("/api/machines/p1/files?prefix="))!);
+        Assert.Empty((await api.Client.GetFromJsonAsync<JsonArray>("/api/machines/nosuch/files?prefix=MIHA"))!);
+    }
+
+    [Fact]
     public async Task An_nc_program_goes_to_the_machines_folder_and_a_job_file_when_asked()
     {
         var nc = Directory.CreateDirectory(Path.Combine(_dir, "nc")).FullName;

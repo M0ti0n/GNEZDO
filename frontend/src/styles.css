@@ -1566,6 +1566,10 @@ th.num .th-sort { flex-direction: row-reverse; }
 .mc-tab.is-on { border-color: var(--green); background: var(--green-tint); color: var(--green-ink); }
 .mc-default { margin-left: 6px; color: #c89400; }
 .mc-add { height: 36px; padding: 0 14px; border: 1.5px dashed var(--green); border-radius: 7px; background: transparent; color: var(--green-ink); font-weight: 600; }
+.jn-row { flex-wrap: nowrap; }
+.jn-row .mc-field .field { width: 200px; }
+.jn-row > .rule-help { flex: 1; min-width: 0; padding-bottom: 9px; }
+.jn-row .jn-del { margin: 0 0 4px auto; flex: none; }
 .mc-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 8px; }
 .mc-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
 .mc-field .field { width: 240px; height: 36px; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink); font-size: 14px; }
