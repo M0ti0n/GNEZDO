@@ -4,7 +4,16 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- **STEP import (3D sheet metal parts, first prototype)**: File import / Folder import / drop take .step and .stp. A STEP part is read in the browser, its thickness found, and it is unfolded at once (the K-factor from the unfold profile); its flat pattern is in the import list with a **3D** chip and goes through Check lines, Properties and Process all like any drawing. Opened, it shows the part (shaded 3D: drag to turn, wheel to zoom) and its flat pattern side by side, with the **Unfold** panel:
+  - thickness, bends (up / down), flat size; **K-factor** (inner radius + K × thickness); a bend table (angle, UP / DOWN, inner radius, length)
+  - **FIXED FACE**: click a flat face to unfold from (else the biggest); **TOP SIDE**: click a face on the side that lies up on the machine (else the inside of most bends). The flat pattern is always laid top side up (mirrored when needed)
+  - **Bend marks** on the top side, only on the UP bends (the ones that bend toward the top side): 20 mm long, starting 2 mm in from both ends (changeable), as **Trace** (default), Open cut or None. **Show angle and UP / DOWN** beside each bend (on screen, not engraved)
+  - **Foil / finish on the top side**: the part is never mirrored when nesting. **Grain** X / Y: a pattern with the grain along Y is turned 90° so the grain runs along the sheet (X), and nesting only turns it 180°. Rotation steps now include **180°** (import, part properties, Process)
+  - **DISTANCE**: two clicks on the flat pattern (corners, ends and hole centers snap): the distance with its X and Y
+  - **EDIT AS 2D**: the flat pattern with the usual import tools (Back to 3D unfold: changing anything there makes the flat pattern again). **FLAT DXF**: download the flat pattern with the whole bend lines on layer BEND and the marks on BEND_MARK
+  - **Profiles** (per customer or the shop standard, kept in this browser for now): a K-factor, K-factors by material and thickness, bend mark length / inset / kind, angle labels, foil on by default. Profile → Edit…
+  - The part's thickness found, foil (no mirror) and grain (180° only) are used for that part when it is processed instead of the list's Properties
+  - Not yet: assemblies (picking parts out), tubes and profiles, Parasolid
 
 ## Build 13 Nov 2026 (`bae6e3b`)
 

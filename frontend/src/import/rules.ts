@@ -3,7 +3,8 @@ import { dropBadCommon, markOutlineCommon, type Entity, type Role } from "./geom
 // Settings -> Rules -> Import rules.
 // Kept in this browser for now; they move to the server with user settings.
 
-export const ROTATIONS = [90, 45, 30, 5] as const;
+// 180: turned only half round (a part with a grain direction keeps it along the sheet)
+export const ROTATIONS = [180, 90, 45, 30, 5] as const;
 export type Rotation = (typeof ROTATIONS)[number];
 
 export interface ImportRules {

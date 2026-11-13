@@ -6,9 +6,9 @@ import { DxfError, readDxf, type DxfResult } from "./dxf";
 import { readSvg } from "./svg";
 
 /** The files the importers take. */
-export const DRAWING_ACCEPT = ".dxf,.dwg,.svg";
-export const isDrawingName = (name: string) => /\.(dxf|dwg|svg)$/i.test(name);
-export const drawingBaseName = (name: string) => name.replace(/\.(dxf|dwg|svg)$/i, "");
+export const DRAWING_ACCEPT = ".dxf,.dwg,.svg,.step,.stp";
+export const isDrawingName = (name: string) => /\.(dxf|dwg|svg|step|stp)$/i.test(name);
+export const drawingBaseName = (name: string) => name.replace(/\.(dxf|dwg|svg|step|stp)$/i, "");
 
 export async function readDrawingFile(f: File): Promise<DxfResult> {
   if (/\.dwg$/i.test(f.name)) {

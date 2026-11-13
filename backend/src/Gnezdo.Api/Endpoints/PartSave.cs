@@ -38,7 +38,7 @@ public record RestoreRequest(int Revision);
 
 public static class PartSave
 {
-    internal static readonly int[] AllowedRotations = [90, 45, 30, 5];
+    internal static readonly int[] AllowedRotations = [180, 90, 45, 30, 5];
 
     /// <summary>POST /api/parts/existing: which of these parts are already in the database.</summary>
     public static async Task<IResult> ExistingAsync(IReadOnlyList<PartKey> keys, GnezdoDb db, CancellationToken ct)
@@ -67,7 +67,7 @@ public static class PartSave
             if (string.IsNullOrWhiteSpace(p.Name)) e.Add("Name is required.");
             if (string.IsNullOrWhiteSpace(p.Material)) e.Add("Material is required.");
             if (p.ThicknessMm <= 0) e.Add("Thickness must be more than 0.");
-            if (p.Rotations?.Any(r => !AllowedRotations.Contains(r)) == true) e.Add("Rotations can be 90, 45, 30 or 5.");
+            if (p.Rotations?.Any(r => !AllowedRotations.Contains(r)) == true) e.Add("Rotations can be 180, 90, 45, 30 or 5.");
             if (string.IsNullOrWhiteSpace(p.Geometry)) e.Add("Geometry is required.");
             if (e.Count > 0) errors[$"parts[{i}]"] = [.. e];
         }

@@ -127,7 +127,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
             Folder import
           </button>
           <button type="button" className="btn imp-btn" onClick={() => input.current?.click()}
-            title="Choose one or more DXF or DWG files (or drop them on the list)">
+            title="Choose one or more DXF, DWG, SVG or STEP files (or drop them on the list)">
             <svg className="imp-pick-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
               <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M14 3v4h4" />
             </svg>
@@ -135,7 +135,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           </button>
         </div>
 
-        <input ref={input} type="file" hidden multiple accept=".dxf,.dwg,.svg"
+        <input ref={input} type="file" hidden multiple accept=".dxf,.dwg,.svg,.step,.stp"
           onChange={(e) => { take([...(e.target.files ?? [])], false); e.target.value = ""; }} />
         <input ref={folderInput} type="file" hidden multiple {...{ webkitdirectory: "", directory: "" }}
           onChange={(e) => { take([...(e.target.files ?? [])], true); e.target.value = ""; }} />
@@ -236,7 +236,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
           void droppedFiles(e.dataTransfer).then((files) => take(files, hasFolder));
         }}>
       {skipped > 0 && (
-        <p className="imp-note is-skipped">{skipped} {skipped === 1 ? "file was" : "files were"} not DXF or DWG and {skipped === 1 ? "was" : "were"} left out.</p>
+        <p className="imp-note is-skipped">{skipped} {skipped === 1 ? "file was" : "files were"} not DXF, DWG, SVG or STEP and {skipped === 1 ? "was" : "were"} left out.</p>
       )}
       {(p.items.length > 0) && (
         <div className="result-bar">
@@ -282,6 +282,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                 title={item.state === "ready" ? `${TITLE[st.verdict]} · double-click to open` : TITLE[st.verdict]}>
                 <span className="imp-status" aria-label={TITLE[st.verdict]}>{ICON[st.verdict]}</span>
                 <span className="imp-name">{item.name}</span>
+                {item.step && <span className="imp-3d" title={`STEP part: unfolded${item.step.info.thickness ? `, ${item.step.info.thickness} mm` : ""}, ${item.step.info.bends} bends`}>3D</span>}
                 {notes.length > 0 && <span className="imp-notes">{notes.join(" · ")}</span>}
               </button>
               <button className="icon-btn imp-remove" onClick={() => p.onRemove(item.id)} aria-label={`Remove ${item.name}`} title="Remove from list">×</button>

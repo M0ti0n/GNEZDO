@@ -51,7 +51,7 @@ public static class PartEdit
         if (name.Length == 0) errors["name"] = ["Name is required."];
         if (string.IsNullOrWhiteSpace(r.Material)) errors["material"] = ["Material is required."];
         if (r.ThicknessMm <= 0) errors["thicknessMm"] = ["Thickness must be more than 0."];
-        if (r.Rotations?.Any(x => !PartSave.AllowedRotations.Contains(x)) == true) errors["rotations"] = ["Rotations can be 90, 45, 30 or 5."];
+        if (r.Rotations?.Any(x => !PartSave.AllowedRotations.Contains(x)) == true) errors["rotations"] = ["Rotations can be 180, 90, 45, 30 or 5."];
         Project? project = null;
         // a part is always in a project
         if (string.IsNullOrWhiteSpace(r.Project)) errors["project"] = ["Project is required."];
