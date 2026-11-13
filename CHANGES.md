@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D: the part's own nesting rules (a flat pattern from 3D: 180° only, no mirror) shown in the Geometry check panel instead of the list's
 - **3D EXTRACTOR** (new on the side rail, first prototype): flat patterns out of STEP parts and assemblies, sent to Import (now called **IMPORT 2D**). Nothing is saved to the database from here.
   - STEP files (Folder, STEP files, or dropped anywhere in GNEZDO) are read in the browser. Every body is a part in the list, with its name and **quantity** (an assembly: how many times the part is placed in it), grouped as **Sheet metal, Surfaces, Tubes, Profiles, Other parts, Hardware**, with a search
   - **Hide hardware** (on by default): bolts, nuts, washers, pins and the like, found by their names (bolt, screw, nut, washer, DIN / ISO / EN numbers, M8x20 …) and their shape (small turned parts, small flat rings)
@@ -20,6 +21,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
   - **MEASURE 3D**: click a flat face, a round face, an edge, a hole (inside it or on its edge) or a corner; then a second one. One: what it is (edge length, hole Ø, corner X Y Z). Two: the **offset between parallel faces** (a thickness, a slot, a step) or the angle between faces; **hole to hole** (axis to axis, or coaxial and how far along, the wall between them, both Ø); the distance of a corner, an edge, a hole's center or axis from a face; between edges (distance when parallel, else the angle); ΔX ΔY ΔZ. What the pointer is on lights up yellow, the picks orange. **FLAT DISTANCE** (was Distance) still measures the flat pattern
   - The part (3D) and the flat pattern fold away to the side: in each one's title, **fold away** (the other gets the whole room) or **only this one**; the folded one is a narrow strip, a click on it puts them side by side again. Kept for next time
   - **Material** per part, beside its pieces: from the Technology tables' materials (or typed); it goes to Import 2D with the part (used instead of the Properties' material, also in Process) and picks the profile's K-factor for that material. Empty: the Import 2D Properties' material
+  - **Grain and foil travel with the part**: a flat pattern with a grain direction or foil / finish is saved with them (in its drawing). Process shows them as icons beside the part's size (grain: three lines along it; foil: a sheet with its foil peeling). Wherever the part's tracing lines are shown (parts beside a sheet, parts on the sheets), a grain part shows three brown dashed lines along its grain in its middle, turned with the part: only shown, never cut, traced or in the NC program. EDIT on a saved part keeps them
   - Not yet: unfolding tubes and profiles (they are only sorted), Parasolid
 
 ## Build 13 Nov 2026 (`bae6e3b`)

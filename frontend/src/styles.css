@@ -681,6 +681,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 :root {
   --ln-cut: #1b1b1b;       --ln-cut-done: #1fa83a;
   --ln-trace: #9b30d9;
+  --ln-grain: #b07a2a;      /* grain direction: shown only */
   --ln-open: #4fc3f7;      --ln-open-done: #1565c0;
   --ln-bad: #e3262b;
 }
@@ -2588,3 +2589,9 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .uf-meas .link { justify-self: start; }
 .uf-mat { flex: 1; min-width: 0; }
 .uf-mat > * { width: 100%; }
+.surf-badges { display: flex; gap: 6px; }
+.proc-size-row { position: relative; display: grid; }
+.proc-size-row .surf-badges { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+.surf-badge { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: #fff; border: 1.5px solid currentColor; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.surf-badge.is-grain { color: var(--ln-grain); }
+.surf-badge.is-foil { color: var(--green-ink); }

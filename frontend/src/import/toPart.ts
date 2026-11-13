@@ -68,7 +68,11 @@ export interface PartGeometryJson {
   units: "mm";
   entities: Entity[];
   operations: Operation[];
+  /** the part's surface: grain direction in this drawing, protective foil / finish on the top side */
+  marks?: SurfaceMarks;
 }
+
+export interface SurfaceMarks { grain?: "x" | "y"; foil?: boolean }
 
 export function operationsOf(entities: Entity[]): Operation[] {
   const byId = new Map(entities.map((e) => [e.id, e]));
@@ -90,7 +94,7 @@ export function operationsOf(entities: Entity[]): Operation[] {
 const shoelace = (p: Pt[]) => Math.abs(p.reduce((s, a, i) => { const b = p[(i + 1) % p.length]; return s + a.x * b.y - b.x * a.y; }, 0)) / 2;
 
 /** Library fields of a checked drawing: size, net area, outline for thumbnails, geometry. */
-export function partGeometry(d: Drawing): Pick<SavePart, "widthMm" | "heightMm" | "areaMm2" | "outlinePath" | "engraved" | "geometry"> {
+export function partGeometry(d: Drawing, marks?: SurfaceMarks): Pick<SavePart, "widthMm" | "heightMm" | "areaMm2" | "outlinePath" | "engraved" | "geometry"> {
   const report = checkGeometry(d.entities);
   const byId = new Map(d.entities.map((e) => [e.id, e]));
   const loops = report.contours.filter((c) => c.closed).map((c) => ({ c, pts: loopPoints(c, byId) }));
@@ -110,11 +114,12 @@ export function partGeometry(d: Drawing): Pick<SavePart, "widthMm" | "heightMm" 
     areaMm2: Math.round(area),
     outlinePath,
     engraved: d.entities.some((e) => roleOf(e) === "trace"),
-    geometry: JSON.stringify(geometryJson(d)),
+    geometry: JSON.stringify(geometryJson(d, marks)),
   };
 }
 
-export function geometryJson(d: Drawing): PartGeometryJson {
+export function geometryJson(d: Drawing, marks?: SurfaceMarks): PartGeometryJson {
   const entities = d.entities.map((e) => ({ ...e, role: roleOf(e) }));
-  return { format: "gnezdo-part", version: 2, units: "mm", entities, operations: operationsOf(entities) };
+  const m = marks && (marks.grain || marks.foil) ? { marks: { ...(marks.grain ? { grain: marks.grain } : {}), ...(marks.foil ? { foil: true } : {}) } } : {};
+  return { format: "gnezdo-part", version: 2, units: "mm", entities, operations: operationsOf(entities), ...m };
 }

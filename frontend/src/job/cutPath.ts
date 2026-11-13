@@ -132,7 +132,8 @@ export const originMirrors = (origin: Origin) => origin.startsWith("top") === or
 
 // ------------------------------------------------------------------ tracing and open cut lines of a part
 
-export type Marks = { trace: Pt[][]; open: Pt[][] };
+/** Tracing and open cut lines; grain: lines along the grain, only shown (never cut or traced). */
+export type Marks = { trace: Pt[][]; open: Pt[][]; grain?: Pt[][]; foil?: boolean };
 const markCache = new Map<string, { at: number; marks: Promise<Marks> }>();
 
 /** Parts were saved (their drawings may have changed): their marks are read again. */
@@ -152,12 +153,23 @@ async function loadMarks(partId: string): Promise<Marks> {
   const g = await api.partGeometry(partId).catch(() => null);
   const ents = g?.entities ?? [];
   const marks = ents.filter((e) => roleOf(e) === "trace" || roleOf(e) === "openCut");
-  if (!marks.length) return { trace: [], open: [] };
+  const surf = g?.marks;
+  if (!marks.length && !surf?.grain && !surf?.foil) return { trace: [], open: [] };
   const report = checkGeometry(ents);
   const box = report.contours.find((c) => c.closed && c.outer)?.box ?? report.box;
   const f = (q: { x: number; y: number }): Pt => [q.x - box.minX, box.maxY - q.y];
   const runs = (role: string) => chain(marks.filter((e) => roleOf(e) === role).map((e) => pointsAlong(e).map(f)));
-  return { trace: runs("trace"), open: runs("openCut") };
+  return { trace: runs("trace"), open: runs("openCut"), ...(surf?.grain ? { grain: grainLines(box.maxX - box.minX, box.maxY - box.minY, surf.grain) } : {}), ...(surf?.foil ? { foil: true } : {}) };
+}
+
+/** Three lines along the grain in the middle of the part (its frame: y down, box corner at 0,0). */
+export function grainLines(w: number, h: number, dir: "x" | "y"): Pt[][] {
+  const along = dir === "x" ? w : h, across = dir === "x" ? h : w;
+  const len = Math.min(along * 0.45, 90), gap = Math.min(across * 0.12, 9);
+  const cx = w / 2, cy = h / 2;
+  return [-1, 0, 1].map((k) => (dir === "x"
+    ? [[cx - len / 2, cy + k * gap], [cx + len / 2, cy + k * gap]]
+    : [[cx + k * gap, cy - len / 2], [cx + k * gap, cy + len / 2]]) as Pt[]);
 }
 
 const near = (a: Pt, b: Pt, tol = 0.05) => Math.abs(a[0] - b[0]) <= tol && Math.abs(a[1] - b[1]) <= tol;
