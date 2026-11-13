@@ -17,7 +17,6 @@ import type { SavePart } from "./api/api";
 import { forgetPartMarks, shiftSheet } from "./job/cutPath";
 import { loadDefaultProject } from "./job/defaultProject";
 import { applyRules, loadRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
-import { RulesPage } from "./pages/RulesPage";
 import { quantityFromName } from "./import/geometry";
 import { NestReportPage } from "./pages/NestReportPage";
 import { CostReportPage } from "./pages/CostReportPage";
@@ -1321,12 +1320,12 @@ export function App() {
                 undone={undone} />
               </ErrorBoundary>
             )}
-            {active.kind === "rules" && <RulesPage rules={rules} onClose={() => showView("settings")} onChange={(r) => {
-              setRules(r);
-              // a list that has not been touched yet follows the new defaults
-              if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller, commonCut: r.commonOnOutline }));
-            }} />}
-            {active.kind === "settings" && <SettingsPage onClose={() => showView("home")} onRules={() => showView("rules")} onOpenJob={(id, name) => open(jobTab(id, name))} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
+            {(active.kind === "settings" || active.kind === "rules") && <SettingsPage onClose={() => showView("home")} startSection={active.kind === "rules" ? "rules" : undefined}
+              rules={rules} onRules={(r) => {
+                setRules(r);
+                // a list that has not been touched yet follows the new defaults
+                if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller, commonCut: r.commonOnOutline }));
+              }} onOpenJob={(id, name) => open(jobTab(id, name))} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "remnants" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
           </main>
         </div>

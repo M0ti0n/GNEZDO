@@ -1,41 +1,37 @@
 import { useState } from "react";
-import { NavClose } from "./NavClose";
 import { NumInput } from "../components/NumInput";
 import { DEFAULT_RULES, ROTATIONS, type ImportRules } from "../import/rules";
 import { ColourLists } from "./ColourLists";
 import { DEFAULT_NESTING_RULES, SEARCH_GROWTH_MAX, SEARCH_GROWTH_MIN, loadNestingRules, saveNestingRules, type NestingRules } from "../job/nestRules";
 
-type Section = "import" | "nesting";
+type Tab = "import" | "nesting";
 
-const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
-  { id: "import", label: "Import rules", ready: true },
-  { id: "nesting", label: "Nesting rules", ready: true },
+const TABS: { id: Tab; label: string }[] = [
+  { id: "import", label: "Import rules" },
+  { id: "nesting", label: "Nesting rules" },
 ];
 
+const TAB_KEY = "gnezdo.rulesTab";
 
-// GNEZDO menu -> Rules. Import rules decide how new drawings are read; nesting rules how parts are nested.
-export function RulesPage({ rules, onChange, onClose }: { rules: ImportRules; onChange: (r: ImportRules) => void; onClose?: () => void }) {
-  const [section, setSection] = useState<Section>("import");
+// Settings -> Rules, a tab each: Import rules decide how new drawings are read; Nesting rules how parts are nested.
+export function RulesTabs({ rules, onChange }: { rules: ImportRules; onChange: (r: ImportRules) => void }) {
+  const [tab, setTabState] = useState<Tab>(() => { try { return localStorage.getItem(TAB_KEY) === "nesting" ? "nesting" : "import"; } catch { return "import"; } });
+  const setTab = (t: Tab) => { setTabState(t); try { localStorage.setItem(TAB_KEY, t); } catch { /* not kept */ } };
   const set = (patch: Partial<ImportRules>) => onChange({ ...rules, ...patch });
 
   return (
-    <div className="settings">
-      <nav className="settings-nav" aria-label="Rules">
-        <h1>Rules</h1>
-        {SECTIONS.map((s) => (
-          <button key={s.id} className={`settings-link${section === s.id ? " is-on" : ""}`} disabled={!s.ready}
-            onClick={() => setSection(s.id)} title={s.ready ? undefined : "Not built yet"}>
-            {s.label}
-          </button>
-        ))}
-        {onClose && <NavClose onClose={onClose} />}
-      </nav>
+    <div className="settings-main rules-main">
+      <header className="settings-head">
+        <h2>Rules</h2>
+        <div className="rules-tabs" role="tablist" aria-label="Rules">
+          {TABS.map((t) => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? "is-on" : ""} onClick={() => setTab(t.id)}>{t.label}</button>
+          ))}
+        </div>
+      </header>
 
-      {section === "nesting" ? <NestingRulesPane /> : <div className="settings-main">
-        <header className="settings-head">
-          <h2>Import rules</h2>
-          <p>How new drawings are read. Changes apply to files imported from now on; parts already in the import list keep their lines.</p>
-        </header>
+      {tab === "nesting" ? <NestingRulesPane /> : <>
+        <p className="rules-lead">How new drawings are read. Changes apply to files imported from now on; parts already in the import list keep their lines.</p>
 
         <section className="rule">
           <label className="rule-check">
@@ -140,7 +136,7 @@ export function RulesPage({ rules, onChange, onClose }: { rules: ImportRules; on
           Saved in this browser.{" "}
           <button className="link" onClick={() => onChange(DEFAULT_RULES)}>Reset to defaults</button>
         </footer>
-      </div>}
+      </>}
     </div>
   );
 }
@@ -149,11 +145,8 @@ function NestingRulesPane() {
   const [r, setR] = useState<NestingRules>(loadNestingRules);
   const set = (n: NestingRules) => { setR(n); saveNestingRules(n); };
   return (
-    <div className="settings-main">
-      <header className="settings-head">
-        <h2>Nesting rules</h2>
-        <p>How parts are nested. Changes apply from the next use.</p>
-      </header>
+    <>
+      <p className="rules-lead">How parts are nested. Changes apply from the next use.</p>
 
       <section className="rule">
         <h3>Manual nest</h3>
@@ -200,6 +193,6 @@ function NestingRulesPane() {
         Saved in this browser.{" "}
         <button className="link" onClick={() => set(DEFAULT_NESTING_RULES)}>Reset to defaults</button>
       </footer>
-    </div>
+    </>
   );
 }
