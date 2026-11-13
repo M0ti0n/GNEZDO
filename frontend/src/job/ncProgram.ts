@@ -72,7 +72,7 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
   return {
     name,
     sheet: { lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, thicknessMm: sheet.thicknessMm, material: sheet.material },
-    tech: { ...tech.row, name: tech.tech.name },
+    tech: { ...tech.row, name: tech.tech.name, ...(sheet.prePierce !== undefined ? { prePierce: sheet.prePierce ? 1 : 0 } : {}) },
     contours,
     parts: [...boxes].sort((a, b) => a[0] - b[0]).map(([no, box]) => ({ no, ...(partName(no) ? { name: partName(no) } : {}), box })),
   };

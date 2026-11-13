@@ -1160,6 +1160,7 @@ export function App() {
                 jobName={job.title}
                 remnantSettings={stockSettings.remnant}
                 needsSave={!(jobServerId[job.id] ?? (job.id.startsWith("new-") ? null : job.id))}
+                jobDirty={jobDirty(job.id)}
                 onSaveJob={() => saveJob(job.id, job.title)}
               />
             )}

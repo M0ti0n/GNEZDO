@@ -71,6 +71,8 @@ interface Props {
   remnantSettings?: RemnantSettings;
   /** the job was never saved (Multi sheet saves it first) */
   needsSave?: boolean;
+  /** the job has changes not saved yet */
+  jobDirty?: boolean;
   onSaveJob?: () => Promise<boolean>;
 }
 
@@ -118,7 +120,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false, process = false, needsSave = false, onSaveJob, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS }: Props) {
+export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false, process = false, needsSave = false, jobDirty = false, onSaveJob, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -164,7 +166,8 @@ export function NestPage({ parts, solutions, selected, onSelect, onAdd, onStop, 
     partName: (sh, i) => byId.get(sh.parts[i]?.partId ?? "")?.name,
   });
   const post = usePostProcess({
-    index: curIndex, sheets, machine, origin: sol?.origin ?? machine.origin, jobName, needsSave, onSave: onSaveJob ?? (async () => true),
+    index: curIndex, sheets, machine, origin: sol?.origin ?? machine.origin, jobName, needsSave, dirty: jobDirty, onSave: onSaveJob ?? (async () => true),
+    onSheet: (k, patch) => sol && onEditSheet(sol.id, k, patch),
     partName: (sh, i) => byId.get(sh.parts[i]?.partId ?? "")?.name,
   });
   const lio = useLeadInOut({

@@ -5,6 +5,7 @@ import { diag } from "../job/diag";
 import { foldersOf, type Machine, type Origin } from "../job/machine";
 import type { NestedSheet } from "../job/nest";
 import { sheetProgram } from "../job/ncProgram";
+import { techColumnsFor, techRowFor } from "../job/technology";
 import { saveNcFile } from "../job/ncFile";
 import { runPostprocessor } from "../job/postprocessor";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -106,9 +107,15 @@ export function useProcessDel({ index, single, sheets, partName, onClear }: {
 interface Done { sheet: number; file?: string; error?: string }
 
 /** POST PROCESS: the NC program of one sheet, or of every sheet (one file each: JOBNAME_#). */
-export function usePostProcess({ index, sheets, machine, origin, jobName, needsSave, onSave, partName }: {
+export function usePostProcess({ index, sheets, machine, origin, jobName, needsSave, dirty = false, onSave, onSheet, partName }: {
   index: number; sheets: NestedSheet[]; machine: Machine; origin: Origin; jobName: string;
-  needsSave: boolean; onSave: () => Promise<boolean>;
+  /** never saved: asked first (the files are named after the job) */
+  needsSave: boolean;
+  /** saved before, changed since: saved again before the files are written, without asking */
+  dirty?: boolean;
+  onSave: () => Promise<boolean>;
+  /** a change to a sheet (its pre-pierce) */
+  onSheet?: (index: number, patch: Partial<NestedSheet>) => void;
   partName: (sheet: NestedSheet, i: number) => string | undefined;
 }): { panel: ReactNode; cut: CutMode } {
   const [busy, setBusy] = useState<string | null>(null);
@@ -118,11 +125,25 @@ export function usePostProcess({ index, sheets, machine, origin, jobName, needsS
   const ext = pp?.extension || ".nc";
   const fileOf = (i: number) => `${jobName}_${i + 1}${ext}`;
   const folder = foldersOf(machine);
+  // pre-pierce of the selected sheet: its Technology row's, or set for this sheet (laser tables have it)
+  const sheet = sheets[index];
+  const prePierceShown = techColumnsFor(machine.technology).some((g) => g.cols.some((c) => c.key === "prePierce"));
+  const row = sheet ? techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row : undefined;
+  const tablePierce = !!row?.prePierce;
+  const pierceOn = sheet?.prePierce ?? tablePierce;
 
   const run = async (all: boolean, checked = false, saved = false) => {
     if (busy) return;
     if (!pp) { setDone({ ok: false, text: `${machine.name} has no postprocessor (Settings → Machines → NC output)`, list: [] }); return; }
     if (needsSave && !saved) { setAsk({ kind: "save", all }); return; }
+    // saved before: its changes saved again first, so the job and its NC files go together
+    if (!needsSave && dirty && !saved) {
+      setBusy("Saving the job");
+      const ok = await onSave();
+      setBusy(null);
+      if (!ok) { setDone({ ok: false, text: "Not post processed: the job could not be saved", list: [] }); return; }
+      saved = true;
+    }
     // one sheet: ask before replacing its file (every sheet: replaced without asking)
     if (!all && !checked && folder.nc.trim() && api.hasServer) {
       const exists = await api.ncExists(machine.id, fileOf(index)).catch(() => false);
@@ -152,6 +173,16 @@ export function usePostProcess({ index, sheets, machine, origin, jobName, needsS
     <aside className="mn-parts ac" aria-label="Post process">
       {panelHead(toolPostProcess, "Post process")}
       <div className="ac-body">
+        {prePierceShown && sheet && (
+          <div className="pp-pierce">
+            <label className="chk">
+              <input type="checkbox" checked={pierceOn} disabled={!row || !onSheet}
+                onChange={(e) => onSheet?.(index, { prePierce: e.target.checked === tablePierce ? undefined : e.target.checked })} />
+              Pre-pierce <span className="pp-pierce-of">sheet {index + 1}</span>
+            </label>
+            <span className="rule-help">{!row ? "No Technology row for this sheet" : sheet.prePierce === undefined ? `As the Technology table: ${tablePierce ? "on" : "off"}` : `Changed for this sheet · table: ${tablePierce ? "on" : "off"}`}</span>
+          </div>
+        )}
         <div className="pp-actions">
           <button type="button" className="btn btn-primary pp-btn" disabled={!!busy || !sheets.length} onClick={() => void run(false)}
             title={`Sheet ${index + 1}: ${fileOf(index)} (asks before replacing it)`}>Post process selected sheet</button>
