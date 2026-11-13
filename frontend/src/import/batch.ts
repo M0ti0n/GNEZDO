@@ -2,7 +2,7 @@ import { checkGeometry, fixMarkRules, quantityFromName, type Drawing } from "./g
 import { DxfError } from "./dxf";
 import { drawingBaseName, isDrawingName, readDrawingFile } from "./drawingFile";
 import { applyRules, type ImportRules, type Rotation } from "./rules";
-import { currentProfile, flatDrawing, isStepName, nestLimits, newStepPart, profileOf, type StepPart } from "./step/stepPart";
+import { nestLimits, type StepPart } from "./step/stepPart";
 
 /** One file in the import list. */
 export interface ImportItem {
@@ -24,9 +24,9 @@ export interface ImportItem {
     rotations: Rotation[]; mirror: boolean; filler: boolean; commonCut: boolean };
   /** Rotations and mirror the part got when it was processed. */
   applied?: { rotations: Rotation[]; mirror: boolean; filler: boolean; commonCut: boolean };
-  /** A STEP part (3D): unfolded; `drawing` is its flat pattern. */
-  step?: StepPart;
-  /** What the part itself asks of nesting and saving (a STEP part: its thickness, foil, grain). */
+  /** A flat pattern sent from the 3D Extractor: that part's id there. */
+  from3d?: string;
+  /** What the part itself asks of nesting and saving (a flat pattern from 3D: its thickness, foil, grain). */
   own?: { thicknessMm?: string; noMirror?: boolean; rotations?: Rotation[] };
 }
 
@@ -156,20 +156,8 @@ export function newItem(file: File): ImportItem {
   };
 }
 
-export async function readItem(item: ImportItem, file: File, rules: ImportRules, material = ""): Promise<ImportItem> {
+export async function readItem(item: ImportItem, file: File, rules: ImportRules): Promise<ImportItem> {
   if (item.state === "dwg") return item;
-  if (isStepName(file.name)) {
-    // a 3D part: unfolded at once with the profile's values; the unfold view changes them
-    try {
-      const text = await file.text();
-      await new Promise((r) => setTimeout(r, 0));
-      const { part, u } = newStepPart(text, profileOf(currentProfile()), material);
-      if (!u.outline.length) return { ...item, state: "failed", error: u.problems[0] ?? "This STEP part could not be unfolded" };
-      return { ...item, state: "ready", step: part, own: ownOf(part), drawing: flatDrawing(item.id, item.name, u, part.settings) };
-    } catch (e) {
-      return { ...item, state: "failed", error: `Could not read the STEP file (${(e as Error).message})` };
-    }
-  }
   try {
     const { drawing, ignored, declaredUnits } = await readDrawingFile(file);
     // roles come from layers and colors; the outer contour is always plain cutting and a closed

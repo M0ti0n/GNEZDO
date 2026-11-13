@@ -49,6 +49,8 @@ export interface Unfolded {
   problems: string[];
   /** the faces unfolded (indexes in the solid's faces) */
   skinFaces: number[];
+  /** faces picked and stitched (no thickness needed) */
+  stitched?: boolean;
 }
 
 interface Rigid { R: number[]; t: V3 }
@@ -347,4 +349,172 @@ export function flatDxf(u: Unfolded, o: { marks?: [V2, V2][]; bendLines?: boolea
   if (o.bendLines !== false) for (const [a, b] of u.bendLines) line(a, b, "BEND");
   out.push("0", "ENDSEC", "0", "EOF");
   return out.join("\r\n") + "\r\n";
+}
+
+// ------------------------------------------------------------------ stitched faces (surfaces, sharp corners)
+
+export interface StitchOptions {
+  /** the flat pattern seen from the other side of the faces */
+  flip?: boolean;
+  /** bend compensation: the faces are the sheet's top or bottom side (none: laid flat as they are) */
+  comp?: { side: "none" | "top" | "bottom"; t: number; r: number; k: number };
+}
+
+/**
+ * Flat faces picked one by one, laid flat across the edges they share (sharp corners: a surface model, or
+ * one side of a part drawn without bend radii). The first face stays; each next one turns about the edge
+ * it shares with a face laid already. With compensation each bend gets its allowance less its setbacks
+ * (the faces are the sheet's top or bottom side, thickness t, inner radius r, K-factor k).
+ */
+export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfolded {
+  const faces = s.faces;
+  const comp = o.comp && o.comp.side !== "none" && o.comp.t > 0 ? o.comp : null;
+  const problems: string[] = [];
+  const sel = picked.filter((i, k) => faces[i]?.surf.kind === "plane" && picked.indexOf(i) === k);
+  if (sel.length < picked.length) problems.push("Only flat faces are stitched");
+  const stats = { faces: faces.length, skin: 0, planes: 0, cylinders: 0, other: 0, openEnds: 0 };
+  const empty = (msg: string): Unfolded => ({ thickness: comp?.t ?? null, kFactor: comp?.k ?? 0, bends: [], outline: [], bendLines: [], box: { x0: 0, y0: 0, x1: 0, y1: 0 }, stats, problems: [...problems, msg], skinFaces: [] });
+  if (!sel.length) return empty("Click the faces to stitch, one next to the other");
+  const byEdge = new Map<number, number[]>();
+  sel.forEach((i) => faces[i].loops.forEach((l) => l.edges.forEach((e) => { const u = byEdge.get(e.id) ?? []; if (!u.includes(i)) u.push(i); byEdge.set(e.id, u); })));
+  const nOf = (i: number) => { const f = faces[i]; return mul3((f.surf as { n: V3 }).n, f.sense ? 1 : -1); };
+  const cOf = (i: number) => { const p = faces[i].loops.flatMap((l) => l.edges.flatMap((e) => e.pts)); return mul3(p.reduce((a, q) => add3(a, q), [0, 0, 0] as V3), 1 / Math.max(1, p.length)); };
+  const base = sel[0];
+  const flip = !!o.flip;
+  const top0 = mul3(nOf(base), flip ? -1 : 1);
+  const g = new Map<number, Rigid>([[base, I]]);
+  // each face's top side, in the file (from the base: whatever way the shell's faces point)
+  const nTop = new Map<number, V3>([[base, top0]]);
+  const bends: Bend[] = [];
+  const joins: { line: [V3, V3]; gi: Rigid; gj: Rigid; i: number; j: number; shift: V3 }[] = [];
+  // the edges faces were laid flat across (bends, or flat joins); other shared edges are seams: cut
+  const across = new Set<number>();
+  const queue = [base];
+  while (queue.length) {
+    const i = queue.shift()!;
+    for (const l of faces[i].loops) for (const e of l.edges) {
+      for (const j of byEdge.get(e.id) ?? []) {
+        if (j === i || g.has(j)) continue;
+        const a = e.pts[0], b = e.pts[e.pts.length - 1];
+        const d = unit3(sub3(b, a));
+        if (len3(sub3(b, a)) < 1e-6) continue;
+        // into each face from the edge, square to it, in its own plane
+        const intoI = unit3((() => { const w = sub3(cOf(i), a); return sub3(w, mul3(d, dot3(w, d))); })());
+        const intoJ = unit3((() => { const w = sub3(cOf(j), a); return sub3(w, mul3(d, dot3(w, d))); })());
+        // turn j about the edge until it lies in i's plane, on the far side of the edge
+        const th = Math.atan2(dot3(d, cross3(intoJ, mul3(intoI, -1))), dot3(intoJ, mul3(intoI, -1)));
+        const R = rotAbout(a, d, th);
+        // the bend: the angle between the faces' planes, up when j rises toward i's top side
+        const topI = nTop.get(i)!;
+        const phi = Math.acos(Math.max(-1, Math.min(1, -dot3(intoI, intoJ))));
+        const up = dot3(intoJ, topI) > 0;
+        // j's top side (as the file has it): the one that lies up once turned
+        nTop.set(j, rot(rotAbout(a, d, -th), topI));
+        let shift: V3 = [0, 0, 0];
+        const L = len3(sub3(b, a));
+        if (phi > 0.5 * Math.PI / 180) {
+          let innerR = 0;
+          if (comp) {
+            // the faces on the inner side of this bend: a top-side face bent up, a bottom-side face bent down
+            const faceInner = (comp.side === "top") === up;
+            const sb = (comp.r + (faceInner ? 0 : comp.t)) * Math.tan(phi / 2);
+            const ba = phi * (comp.r + comp.k * comp.t);
+            shift = mul3(mul3(intoI, -1), ba - 2 * sb);
+            innerR = comp.r;
+          }
+          bends.push({ innerR, angleDeg: Math.round(((phi * 180) / Math.PI) * 100) / 100, length: Math.round(L * 100) / 100, inner: up, up });
+        }
+        const gj = compose(g.get(i)!, compose(move(shift), R));
+        g.set(j, gj);
+        across.add(e.id);
+        if (phi > 0.5 * Math.PI / 180) joins.push({ line: [a, b], gi: g.get(i)!, gj, i, j, shift });
+        queue.push(j);
+      }
+    }
+  }
+  const missing = sel.filter((i) => !g.has(i));
+  if (missing.length) problems.push(`${missing.length} picked ${missing.length === 1 ? "face does" : "faces do"} not share an edge with the others: left out`);
+  stats.skin = stats.planes = g.size;
+
+  // the frame: the base face, its longest straight edge along X, seen from its top side
+  const B = faces[base];
+  let u: V3 = (B.surf as { x: V3 }).x, best = 0;
+  for (const l of B.loops) for (const e of l.edges) if (e.line) { const v = sub3(e.pts[e.pts.length - 1], e.pts[0]); if (len3(v) > best) { best = len3(v); u = unit3(v); } }
+  const v = cross3(top0, u);
+  const org = B.loops[0].edges[0].pts[0];
+  const to2 = (q: V3): V2 => { const w = sub3(q, org); return [dot3(w, u), dot3(w, v)]; };
+
+  let outline: FlatEdge[] = [];
+  for (const [k, gk] of g) for (const l of faces[k].loops) for (const e of l.edges) {
+    if (across.has(e.id)) continue;
+    const pts = e.pts.map((p) => to2(app(gk, p)));
+    let arc: FlatEdge["arc"];
+    if (e.arc) {
+      const c = to2(app(gk, e.arc.c));
+      const ccw = dot3(rot(gk, e.arc.z), top0) > 0;
+      const ang = (q: V2) => Math.atan2(q[1] - c[1], q[0] - c[0]);
+      const a0 = ang(pts[0]), a1 = ang(pts[pts.length - 1]);
+      arc = ccw ? { c, r: e.arc.r, a0, a1 } : { c, r: e.arc.r, a0: a1, a1: a0 };
+      if (Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 1e-6) arc = { c, r: e.arc.r, a0: 0, a1: 2 * Math.PI };
+    }
+    outline.push({ pts: simplify(pts), ...(arc ? { arc } : {}) });
+  }
+  // compensation moved the faces apart (or over each other): close the ends across each bend
+  const bendLines: [V2, V2][] = [];
+  for (const jn of joins) {
+    const [a, b] = jn.line;
+    const ai = to2(app(jn.gi, a)), bi = to2(app(jn.gi, b)), aj = to2(app(jn.gj, a)), bj = to2(app(jn.gj, b));
+    if (len3(jn.shift) > 1e-9) outline.push({ pts: [ai, aj] }, { pts: [bi, bj] });
+    bendLines.push([[(ai[0] + aj[0]) / 2, (ai[1] + aj[1]) / 2], [(bi[0] + bj[0]) / 2, (bi[1] + bj[1]) / 2]]);
+  }
+  if (comp && joins.length) outline = cancelBacktracks(outline);
+  if (!outline.length) return empty("Nothing to lay flat");
+  const ends: V2[] = outline.flatMap((e) => [e.pts[0], e.pts[e.pts.length - 1]]);
+  stats.openEnds = ends.filter((p, i) => !ends.some((q, j) => j !== i && Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.01)).length;
+  if (stats.openEnds) problems.push(`The outline does not close (${stats.openEnds} loose ends)`);
+  const xs = outline.flatMap((e) => e.pts.map((p) => p[0])), ys = outline.flatMap((e) => e.pts.map((p) => p[1]));
+  const x0 = Math.min(...xs), y0 = Math.min(...ys);
+  const sh = (p: V2): V2 => [p[0] - x0, p[1] - y0];
+  for (const e of outline) { e.pts = e.pts.map(sh); if (e.arc) e.arc.c = sh(e.arc.c); }
+  return {
+    thickness: comp?.t ?? null, kFactor: comp?.k ?? 0, bends, outline, bendLines: bendLines.map(([a, b]) => [sh(a), sh(b)] as [V2, V2]),
+    box: { x0: 0, y0: 0, x1: Math.max(...xs) - x0, y1: Math.max(...ys) - y0 }, stats, problems, skinFaces: [...g.keys()], stitched: true,
+  };
+}
+
+/**
+ * Straight edges that run back over each other (faces moved over each other by a negative compensation,
+ * and the short line closing the gap) cut back: chained end to end, a line going back over the one
+ * before shortens it.
+ */
+function cancelBacktracks(edges: FlatEdge[]): FlatEdge[] {
+  const tol = 1e-4;
+  const same = (p: V2, q: V2) => Math.hypot(p[0] - q[0], p[1] - q[1]) < tol;
+  const lines = edges.filter((e) => !e.arc && e.pts.length === 2).map((e) => [e.pts[0], e.pts[1]] as [V2, V2]);
+  const rest = edges.filter((e) => e.arc || e.pts.length !== 2);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    outer: for (let i = 0; i < lines.length; i++) for (let j = 0; j < lines.length; j++) {
+      if (i === j) continue;
+      let [a, b] = lines[i], [c, d] = lines[j];
+      // orient so that b meets c
+      if (same(a, c)) [a, b] = [b, a];
+      else if (same(a, d)) { [a, b] = [b, a]; [c, d] = [d, c]; }
+      else if (same(b, d)) [c, d] = [d, c];
+      if (!same(b, c)) continue;
+      const u: V2 = [b[0] - a[0], b[1] - a[1]], w: V2 = [d[0] - c[0], d[1] - c[1]];
+      const cr = u[0] * w[1] - u[1] * w[0];
+      const lu = Math.hypot(...u), lw = Math.hypot(...w);
+      if (Math.abs(cr) > 1e-6 * lu * lw || u[0] * w[0] + u[1] * w[1] >= 0) continue;
+      // b -> d goes back toward a: the two become a -> d (or nothing)
+      const keep = [i, j].sort((x, y) => y - x);
+      for (const k of keep) lines.splice(k, 1);
+      if (!same(a, d)) lines.push([a, d]);
+      changed = true;
+      break outer;
+    }
+  }
+  // a chain of a single line once split by an end that is no longer there: joined again by the next pass
+  return [...rest, ...lines.map((l) => ({ pts: [l[0], l[1]] }))];
 }

@@ -4,16 +4,18 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-- **STEP import (3D sheet metal parts, first prototype)**: File import / Folder import / drop take .step and .stp. A STEP part is read in the browser, its thickness found, and it is unfolded at once (the K-factor from the unfold profile); its flat pattern is in the import list with a **3D** chip and goes through Check lines, Properties and Process all like any drawing. Opened, it shows the part (shaded 3D: drag to turn, wheel to zoom) and its flat pattern side by side, with the **Unfold** panel:
-  - thickness, bends (up / down), flat size; **K-factor** (inner radius + K × thickness); a bend table (angle, UP / DOWN, inner radius, length)
-  - **FIXED FACE**: click a flat face to unfold from (else the biggest); **TOP SIDE**: click a face on the side that lies up on the machine (else the inside of most bends). The flat pattern is always laid top side up (mirrored when needed)
-  - **Bend marks** on the top side, only on the UP bends (the ones that bend toward the top side): 20 mm long, starting 2 mm in from both ends (changeable), as **Trace** (default), Open cut or None. **Show angle and UP / DOWN** beside each bend (on screen, not engraved)
-  - **Foil / finish on the top side**: the part is never mirrored when nesting. **Grain** X / Y: a pattern with the grain along Y is turned 90° so the grain runs along the sheet (X), and nesting only turns it 180°. Rotation steps now include **180°** (import, part properties, Process)
-  - **DISTANCE**: two clicks on the flat pattern (corners, ends and hole centers snap): the distance with its X and Y
-  - **EDIT AS 2D**: the flat pattern with the usual import tools (Back to 3D unfold: changing anything there makes the flat pattern again). **FLAT DXF**: download the flat pattern with the whole bend lines on layer BEND and the marks on BEND_MARK
-  - **Profiles** (per customer or the shop standard, kept in this browser for now): a K-factor, K-factors by material and thickness, bend mark length / inset / kind, angle labels, foil on by default. Profile → Edit…
-  - The part's thickness found, foil (no mirror) and grain (180° only) are used for that part when it is processed instead of the list's Properties
-  - Not yet: assemblies (picking parts out), tubes and profiles, Parasolid
+- **3D EXTRACTOR** (new on the side rail, first prototype): flat patterns out of STEP parts and assemblies, sent to Import (now called **IMPORT 2D**). Nothing is saved to the database from here.
+  - STEP files (Folder, STEP files, or dropped anywhere in GNEZDO) are read in the browser. Every body is a part in the list, with its name and **quantity** (an assembly: how many times the part is placed in it), grouped as **Sheet metal, Surfaces, Tubes, Profiles, Other parts, Hardware**, with a search
+  - **Hide hardware** (on by default): bolts, nuts, washers, pins and the like, found by their names (bolt, screw, nut, washer, DIN / ISO / EN numbers, M8x20 …) and their shape (small turned parts, small flat rings)
+  - **Send sheet metal to Import 2D**: every sheet metal part not sent yet. A part opened: **SEND TO IMPORT 2D** (sent again: it replaces the one waiting in Import 2D). There the flat pattern has a 3D chip with its quantity, which is saved with the part; its thickness found, foil (no mirror) and grain (180° only) are used for that part instead of the list's Properties. The Import 2D bubble counts the parts waiting to be processed. **Open in 3D Extractor** goes back to the part
+  - A part opened shows it in 3D (shaded: drag to turn, wheel to zoom) and its flat pattern side by side, with the panel on the right:
+    - **Sheet metal**: thickness found, bends (up / down), flat size; **K-factor** (inner radius + K × thickness); a bend table (angle, UP / DOWN, inner radius, length). **FIXED FACE**: click a flat face to unfold from (else the biggest); **TOP SIDE**: click a face on the side that lies up on the machine (else the inside of most bends). The flat pattern is always laid top side up (mirrored when needed)
+    - **STITCH** (manual, for surface models and parts drawn with sharp corners): click flat faces one next to the other (again: out); the first stays, each next one is laid flat across the edge it shares with one picked before. **Top side**: Turn over / Auto. **Compensate**: No (the faces as they are, default), or the faces are the sheet's **Top side** / **Bottom side**: each bend gets its allowance less its setbacks (thickness, inner radius, K-factor)
+    - **Bend marks** on the top side, only on the UP bends: 20 mm long, starting 2 mm in from both ends (changeable), as **Trace** (default), Open cut or None. **Show angle and UP / DOWN** beside each bend (on screen, not engraved)
+    - **Foil / finish on the top side**: never mirrored when nesting. **Grain** X / Y: a pattern with the grain along Y is turned 90° so it runs along the sheet (X); nesting only turns it 180°. Rotation steps now include **180°** (import, part properties, Process)
+    - **DISTANCE**: two clicks on the flat pattern (corners, ends and hole centers snap); **FLAT DXF**: the flat pattern with the whole bend lines on layer BEND and the marks on BEND_MARK
+    - **Profiles** (per customer or the shop standard, kept in this browser for now): a K-factor, K-factors by material and thickness, bend marks, angle labels, foil on by default. Profile → Edit…
+  - Not yet: unfolding tubes and profiles (they are only sorted), Parasolid
 
 ## Build 13 Nov 2026 (`bae6e3b`)
 

@@ -6,6 +6,8 @@ import { api, demoMode } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
 import { UnfoldPage } from "./pages/UnfoldPage";
+import { readExtract, type X3Part } from "./import/step/extract";
+import { flatDrawing, isStepName, unfoldPart } from "./import/step/stepPart";
 import { sampleDrawings } from "./import/sampleDrawing";
 import { isDrawingFile, itemProps, loadProperties, mirrorBlocked, mirrorFor, newItem, ownOf, readItem, saveProperties, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
 import { draggingFiles, droppedFiles, droppedFolder } from "./import/dropped";
@@ -254,6 +256,7 @@ export function App() {
   // on its list. Without this the browser opens the file itself: the page turns into the DXF's text
   // or, on a job, asks to leave the page and closes the job tab.
   const addFilesRef = useRef<(files: File[], openFirst: boolean) => void>(() => {});
+  const addStepsRef = useRef<(files: File[]) => void>(() => {});
   useEffect(() => {
     const over = (e: DragEvent) => {
       if (!draggingFiles(e.dataTransfer)) return;
@@ -268,8 +271,11 @@ export function App() {
       const dt = e.dataTransfer!;
       const folder = droppedFolder(dt);
       void droppedFiles(dt).then((all) => {
+        // STEP parts and assemblies go to the 3D Extractor
+        const steps = all.filter((f) => isStepName(f.name));
+        if (steps.length) addStepsRef.current(steps);
         const files = all.filter(isDrawingFile);
-        if (!files.length) { setToast("Only DXF, DWG, SVG and STEP files can be dropped into GNEZDO"); return; }
+        if (!files.length) { if (!steps.length) setToast("Only DXF, DWG, SVG and STEP files can be dropped into GNEZDO"); return; }
         setDrawer("import");
         addFilesRef.current(files, !folder && files.length === 1);
         diag("import", `${files.length} ${files.length === 1 ? "file" : "files"} dropped outside the import list: sent to the importer`);
@@ -283,13 +289,68 @@ export function App() {
   const addFiles = async (files: File[], openFirst: boolean) => {
     const fresh = files.map((f) => ({ file: f, item: newItem(f) }));
     setImports((list) => [...list, ...fresh.map((x) => x.item)]);
-    const read = await Promise.all(fresh.map((x) => readItem(x.item, x.file, rules, importProps.material)));
+    const read = await Promise.all(fresh.map((x) => readItem(x.item, x.file, rules)));
     setImports((list) => list.map((i) => read.find((r) => r.id === i.id) ?? i));
     if (openFirst && read[0]?.state === "ready") openItem(read[0]);
     const failed = read.filter((r) => r.state === "failed").length;
     if (failed) setToast(`${failed} ${failed === 1 ? "file" : "files"} could not be read`);
   };
   addFilesRef.current = (f, o) => { void addFiles(f, o); };
+
+  // 3D EXTRACTOR: parts read from STEP files; their flat patterns are sent to Import 2D (nothing saved here)
+  const [extracts, setExtracts] = useState<X3Part[]>([]);
+  const [x3Reading, setX3Reading] = useState(0);
+  const addSteps = async (files: File[]) => {
+    setDrawer("extract");
+    setX3Reading((n) => n + files.length);
+    const errors: string[] = [];
+    let added: X3Part[] = [];
+    for (const f of files) {
+      const r = await readExtract(f, importProps.material);
+      if (r.error) errors.push(r.error);
+      added = [...added, ...r.parts];
+      setExtracts((l) => [...l, ...r.parts]);
+      setX3Reading((n) => n - 1);
+    }
+    if (errors.length) setToast(errors.length === 1 ? errors[0] : `${errors.length} STEP files could not be read`);
+    // one part: opened straight away
+    if (files.length === 1 && added.length === 1) open(drawingTab(added[0].id, added[0].name));
+    diag("extract", `${files.length} STEP ${files.length === 1 ? "file" : "files"}: ${added.length} parts`);
+  };
+  addStepsRef.current = (f) => { void addSteps(f); };
+  const patchPart = (id: string, patch: Partial<X3Part>) => setExtracts((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  /** Flat patterns into Import 2D, with their quantities; sent again: the item there is replaced. */
+  const sendToImport = (ids: string[]) => {
+    const parts = extracts.filter((x) => ids.includes(x.id) && x.step.info.ok);
+    if (!parts.length) return;
+    const items: ImportItem[] = parts.map((x) => {
+      const u = unfoldPart(x.step.text, x.step.settings, x.step.body);
+      const prev = x.sentTo ? imports.find((i) => i.id === x.sentTo && !i.processed) : undefined;
+      const id = prev?.id ?? `imp-3d-${Date.now().toString(36)}-${x.id}`;
+      const name = x.name.replace(/[\\/:*?"<>|]/g, "_");
+      return {
+        id, fileName: `${name}.step`, name, qty: x.qty || quantityFromName(name),
+        state: "ready", drawing: flatDrawing(id, name, u, x.step.settings), checked: false, processed: false,
+        from3d: x.id, own: ownOf(x.step),
+      };
+    });
+    for (const it of items) history.forget(it.id);
+    setImports((list) => [...list.filter((i) => !items.some((n) => n.id === i.id)), ...items]);
+    setExtracts((l) => l.map((x) => { const it = items.find((i) => i.from3d === x.id); return it ? { ...x, sentTo: it.id } : x; }));
+    setToast(`${items.length === 1 ? `${items[0].name} sent` : `${items.length} flat patterns sent`} to Import 2D`);
+  };
+  const removeParts = (ids: string[]) => {
+    ids.forEach((id) => dispatch({ type: "close", id: `drawing:${id}` }));
+    setExtracts((l) => l.filter((x) => !ids.includes(x.id)));
+  };
+  const extractPanel = {
+    parts: extracts, reading: x3Reading,
+    onFiles: (f: File[]) => { void addSteps(f); },
+    onOpen: (id: string) => { const x = extracts.find((p) => p.id === id); if (x) open(drawingTab(x.id, x.name)); },
+    onRemove: removeParts,
+    onSend: sendToImport,
+    openId: null as string | null,
+  };
 
   /** Parts leave the import list: their tabs close and their Undo history ends. */
   const closeTabs = (ids: string[]) => ids.forEach((id) => { history.forget(id); dispatch({ type: "close", id: `drawing:${id}` }); });
@@ -311,7 +372,8 @@ export function App() {
     rotations: [...v.rotations], mirror: v.mirror, filler: v.filler, commonCut: !!v.commonCut,
     ...partGeometry(i.drawing!),
     sourceFile: i.fileName, replace,
-    qty: rules.qtyFromName ? i.qty ?? 0 : 0,
+    // a flat pattern from 3D brings the assembly's quantity
+    qty: i.from3d ? i.qty ?? 0 : rules.qtyFromName ? i.qty ?? 0 : 0,
   });
 
   const importPanel = {
@@ -379,6 +441,7 @@ export function App() {
     onPropsOpen: setPropsOpen,
   };
   const shownItem = active.kind === "drawing" ? imports.find((i) => i.id === active.drawingId) : undefined;
+  const shownPart = active.kind === "drawing" && !shownItem ? extracts.find((x) => x.id === active.drawingId) : undefined;
 
   // Undo / Redo (green bar, Ctrl+Z / Ctrl+Y): one history per import drawing, kept while the part is in the list.
   const history = useRef(new HistoryStore<Drawing>()).current;
@@ -1132,6 +1195,7 @@ export function App() {
           onHome={() => showView("home")}
           onNewJob={newJob}
           importPanel={importPanel}
+          extractPanel={{ ...extractPanel, openId: shownPart?.id ?? null }}
         />
         <div className="workspace">
           {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq} lit={{ commonCut: !!(job && commonSnap[job.id]) }}
@@ -1301,21 +1365,18 @@ export function App() {
                 machines={machines}
                 onShowFilters={() => setDrawer("jobs")} />
             )}
-            {shownItem?.drawing && shownItem.step?.view === "3d" && (
-              <ErrorBoundary key={shownItem.id} what={shownItem.name}>
-              <UnfoldPage key={shownItem.id} name={shownItem.name} step={shownItem.step} material={importProps.material}
-                onChange={(step, drawing) => {
-                  // unfolded again: a new flat pattern (its 2D edits and their undo are gone)
-                  history.forget(shownItem.id);
-                  setHistoryTick((n) => n + 1);
-                  patchItem(shownItem.id, { step, own: ownOf(step), drawing, processed: false, applied: undefined });
-                }}
-                onEdit2d={() => patchItem(shownItem.id, { step: { ...shownItem.step!, view: "2d" } })} />
+            {shownPart && (
+              <ErrorBoundary key={shownPart.id} what={shownPart.name}>
+              <UnfoldPage key={shownPart.id} name={shownPart.name} kind={shownPart.kind} qty={shownPart.qty} sent={!!shownPart.sentTo}
+                step={shownPart.step} material={importProps.material}
+                onChange={(step) => patchPart(shownPart.id, { step })}
+                onSend={() => sendToImport([shownPart.id])} />
               </ErrorBoundary>
             )}
-            {shownItem?.drawing && shownItem.step?.view !== "3d" && (
+            {shownItem?.drawing && (
               <ErrorBoundary key={shownItem.id} what={shownItem.name}>
-              {shownItem.step && <button type="button" className="btn btn-plain uf-back" onClick={() => patchItem(shownItem.id, { step: { ...shownItem.step!, view: "3d" } })}>← Back to 3D unfold</button>}
+              {shownItem.from3d && extracts.some((x) => x.id === shownItem.from3d) && (
+                <button type="button" className="btn btn-plain uf-back" onClick={() => { const x = extracts.find((p) => p.id === shownItem.from3d)!; setDrawer("extract"); open(drawingTab(x.id, x.name)); }}>Open in 3D Extractor</button>)}
               <ImportPage key={shownItem.id}
                 drawing={shownItem.drawing}
                 processed={shownItem.processed}

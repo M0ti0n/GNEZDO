@@ -136,11 +136,11 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 
 /* Left drawer: rail with Parts / Jobs, docked panel pushes the page */
 .drawer { display: flex; flex-shrink: 0; background: var(--plate); border-right: 1px solid var(--line); min-height: 0; }
-.drawer-rail { display: flex; flex-direction: column; gap: 4px; width: var(--rail-w); padding: 8px 6px; border-right: 1px solid transparent; }
+.drawer-rail { display: flex; flex-direction: column; gap: 4px; width: var(--rail-w); padding: 8px 6px; border-right: 1px solid transparent; overflow-y: auto; scrollbar-width: none; }
 .drawer.is-open .drawer-rail { border-right-color: var(--line); }
 .rail-btn {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-  height: 104px; border-radius: 10px;
+  height: clamp(80px, 11.5vh, 104px); border-radius: 10px; text-align: center; line-height: 1.05;
   font-family: var(--font-cond); font-size: 13.5px; font-weight: 600; color: var(--ink-2);
 }
 .rail-btn svg { width: 45px; height: 45px; }
@@ -2493,6 +2493,24 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .uf-leg i.is-other { background: #b2c0c4; }
 .uf-leg i.is-base { background: #78c48c; border-color: #1d9641; }
 .uf-leg i.is-bad { background: #d65a46; }
+.uf-leg i.is-stitch { background: #96c4ee; border-color: #1d7fd0; }
+.uf-empty { flex: 1; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--ink-3); font-size: 14px; line-height: 1.5; }
+.uf-panel > header h2 small { font-size: 14px; font-weight: 600; color: var(--ink-3); margin-left: 4px; }
+.uf-mini.is-on { background: var(--yellow-tint); border-color: var(--yellow-ink); }
+.imp-3d { cursor: default; }
+.x3-search { width: 100%; }
+.x3-opts { display: flex; gap: 12px; flex-wrap: wrap; }
+.x3-actions { grid-template-columns: 1fr; }
+.x3-group + .x3-group { margin-top: 4px; }
+.x3-ghead { display: flex; align-items: center; gap: 7px; width: 100%; padding: 6px 6px 4px; font-size: 13px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--ink-2); font-family: var(--font-cond); }
+.x3-ghead svg { color: var(--green-ink); }
+.x3-ghead .x3-caret { color: var(--ink-3); transition: transform .15s; }
+.x3-ghead[aria-expanded="false"] .x3-caret { transform: rotate(-90deg); }
+.x3-gcount { margin-left: auto; font-weight: 600; color: var(--ink-3); }
+.x3-kind { grid-row: span 2; display: grid; place-items: center; width: 24px; height: 24px; color: var(--ink-2); }
+.x3-kind.is-sent { border-radius: 50%; background: #1fa83a; color: #fff; font-size: 13px; font-weight: 700; width: 22px; height: 22px; }
+.x3-row.is-sent .imp-name { color: var(--ink-2); }
+.rail-count.is-3d { background: var(--ink-3); }
 .uf-leg i.is-mark { height: 0; border: 0; border-top: 3px solid #1d7fd0; border-radius: 0; }
 .uf-leg i.is-bend { height: 0; border: 0; border-top: 1.5px dashed #8aa0a4; border-radius: 0; }
 .uf-up, .uf-down { font-family: var(--font-cond); font-weight: 700; font-size: 12px; letter-spacing: .03em; padding: 0 5px; border-radius: 3px; }
@@ -2536,3 +2554,5 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .uf-prof-edit .uf-row { width: 100%; }
 .uf-ktable .field { width: 100%; min-width: 0; }
 @media (max-width: 1100px) { .uf-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; } }
+
+.tab-3d { font-family: var(--font-cond); font-size: 11px; letter-spacing: .02em; }
