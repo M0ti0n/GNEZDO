@@ -29,7 +29,7 @@ const ICONS: Record<string, ReactNode> = {
   dxf: <Ico><path d="M10 4h18l10 10v30H10z" stroke={K} strokeWidth="2.2" /><path d="M24 18v16M18 28l6 6 6-6" stroke={G} strokeWidth="2.6" /></Ico>,
 };
 
-export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, onSend }: {
+export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, onSend, onName }: {
   name: string;
   kind: BodyKind;
   qty: number;
@@ -41,6 +41,8 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, on
   /** new settings: the part unfolded again */
   onChange: (step: StepPart) => void;
   onSend: () => void;
+  /** the name and quantity it goes to Import 2D with */
+  onName: (name: string, qty: number) => void;
 }) {
   const st = step.settings;
   const stitchMode = st.mode === "stitch";
@@ -132,6 +134,12 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, on
         <header><h2>{KIND_LABEL[kind] === "Other parts" ? "Part" : KIND_LABEL[kind].replace(/s$/, "")} <small>×{qty}</small></h2>
           <span className={`uf-pill${step.info.ok ? " is-ok" : " is-warn"}`}>{sent ? "Sent" : step.info.ok ? (stitchMode ? "Stitched" : "Unfolded") : stitchMode ? "Pick faces" : "Check it"}</span></header>
         <div className="uf-body">
+          <div className="uf-row uf-name">
+            <label htmlFor="uf-name">Name</label>
+            <NameInput key={name} value={name} onCommit={(n) => onName(n, qty)} />
+            <NumInput className="field uf-num uf-qty" value={qty} min={0} int aria-label="Quantity" title="Pieces (from the assembly)" onCommit={(n) => onName(name, Math.round(n))} />
+          </div>
+          <p className="uf-note uf-name-note">The part's name in Import 2D (and in the parts library): the drawing's number, usually.</p>
           <div className="uf-row">
             <span>Mode</span>
             <span className="cols-toggle uf-seg" role="radiogroup" aria-label="How it is laid flat">
@@ -229,6 +237,17 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, onChange, on
       {editProfiles && <ProfilesDialog profiles={profiles} onClose={() => setEditProfiles(false)}
         onSave={(l) => { saveProfiles(l); setProfiles(l); setEditProfiles(false); if (!l.some((p) => p.name === st.profile)) useProfile(l[0].name); }} />}
     </div>
+  );
+}
+
+/** The name, taken when the field is left (Enter) or kept as it was (Esc, empty). */
+function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+  const [v, setV] = useState(value);
+  const done = () => { const t = v.trim(); if (t && t !== value) onCommit(t); else setV(value); };
+  return (
+    <input id="uf-name" className="field" value={v} spellCheck={false} aria-label="Part name for Import 2D"
+      onChange={(e) => setV(e.target.value)} onBlur={done}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setV(value); setTimeout(() => (e.target as HTMLInputElement).blur(), 0); } }} />
   );
 }
 

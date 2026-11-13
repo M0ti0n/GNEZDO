@@ -339,6 +339,16 @@ export function App() {
     setExtracts((l) => l.map((x) => { const it = items.find((i) => i.from3d === x.id); return it ? { ...x, sentTo: it.id } : x; }));
     setToast(`${items.length === 1 ? `${items[0].name} sent` : `${items.length} flat patterns sent`} to Import 2D`);
   };
+  /** A part's name (and quantity) for Import 2D; one waiting there already is renamed too. */
+  const renamePart = (id: string, name: string, qty?: number) => {
+    const x = extracts.find((p) => p.id === id);
+    if (!x) return;
+    const q = qty ?? x.qty;
+    patchPart(id, { name, qty: q });
+    dispatch({ type: "rename", id: `drawing:${id}`, title: name });
+    const it = x.sentTo ? imports.find((i) => i.id === x.sentTo && !i.processed) : undefined;
+    if (it) { patchItem(it.id, { name, fileName: `${name}.step`, qty: q }); dispatch({ type: "rename", id: `drawing:${it.id}`, title: name }); }
+  };
   const removeParts = (ids: string[]) => {
     ids.forEach((id) => dispatch({ type: "close", id: `drawing:${id}` }));
     setExtracts((l) => l.filter((x) => !ids.includes(x.id)));
@@ -348,6 +358,7 @@ export function App() {
     onFiles: (f: File[]) => { void addSteps(f); },
     onOpen: (id: string) => { const x = extracts.find((p) => p.id === id); if (x) open(drawingTab(x.id, x.name)); },
     onRemove: removeParts,
+    onRename: (id: string, name: string) => renamePart(id, name),
     onSend: sendToImport,
     openId: null as string | null,
   };
@@ -1370,7 +1381,8 @@ export function App() {
               <UnfoldPage key={shownPart.id} name={shownPart.name} kind={shownPart.kind} qty={shownPart.qty} sent={!!shownPart.sentTo}
                 step={shownPart.step} material={importProps.material}
                 onChange={(step) => patchPart(shownPart.id, { step })}
-                onSend={() => sendToImport([shownPart.id])} />
+                onSend={() => sendToImport([shownPart.id])}
+                onName={(name, qty) => renamePart(shownPart.id, name, qty)} />
               </ErrorBoundary>
             )}
             {shownItem?.drawing && (

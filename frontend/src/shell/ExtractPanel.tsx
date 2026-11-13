@@ -14,6 +14,8 @@ export interface ExtractPanelProps {
   onFiles: (files: File[]) => void;
   onOpen: (id: string) => void;
   onRemove: (ids: string[]) => void;
+  /** the name it goes to Import 2D with */
+  onRename: (id: string, name: string) => void;
   /** send these parts' flat patterns to IMPORT 2D */
   onSend: (ids: string[]) => void;
   openId: string | null;
@@ -46,6 +48,11 @@ export function ExtractPanel(p: ExtractPanelProps & { onClose: () => void }) {
   const [closed, setClosed] = useState<Set<BodyKind>>(new Set());
   const [over, setOver] = useState(false);
   const [skipped, setSkipped] = useState(0);
+  const [renaming, setRenaming] = useState<{ id: string; v: string } | null>(null);
+  const endRename = (keep: boolean) => {
+    if (keep && renaming && renaming.v.trim()) p.onRename(renaming.id, renaming.v.trim());
+    setRenaming(null);
+  };
   const take = (list: File[]) => {
     const files = list.filter((f) => isStepName(f.name));
     setSkipped(list.length - files.length);
@@ -144,13 +151,27 @@ export function ExtractPanel(p: ExtractPanelProps & { onClose: () => void }) {
                   ].filter(Boolean).join(" · ");
                   return (
                     <div key={x.id} role="listitem" className={`imp-row x3-row${p.openId === x.id ? " is-open" : ""}${x.sentTo ? " is-sent" : ""}`}>
-                      <button className="imp-main" onDoubleClick={() => p.onOpen(x.id)}
-                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); p.onOpen(x.id); } }}
-                        title={`${KIND_LABEL[kind]}${x.sentTo ? " · sent to Import 2D" : ""} · double-click to open`}>
-                        <span className={`x3-kind${x.sentTo ? " is-sent" : ""}`}>{x.sentTo ? "✓" : <KindIcon kind={kind} />}</span>
-                        <span className="imp-name">{x.name}</span>
-                        <span className="imp-qty">×{x.qty}</span>
-                        {note && <span className="imp-notes">{note}</span>}
+                      {renaming?.id === x.id ? (
+                        // renaming: a field in place of the name (not inside the row's button)
+                        <div className="imp-main">
+                          <span className="x3-kind"><KindIcon kind={kind} /></span>
+                          <input className="field x3-rename" autoFocus value={renaming.v} aria-label="Name" spellCheck={false}
+                            onChange={(e) => setRenaming({ id: x.id, v: e.target.value })} onBlur={() => endRename(true)}
+                            onKeyDown={(e) => { if (e.key === "Enter") endRename(true); if (e.key === "Escape") endRename(false); }} />
+                          <span className="imp-qty">×{x.qty}</span>
+                        </div>
+                      ) : (
+                        <button className="imp-main" onDoubleClick={() => p.onOpen(x.id)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); p.onOpen(x.id); } if (e.key === "F2") setRenaming({ id: x.id, v: x.name }); }}
+                          title={`${KIND_LABEL[kind]}${x.sentTo ? " · sent to Import 2D" : ""} · double-click to open · F2: rename`}>
+                          <span className={`x3-kind${x.sentTo ? " is-sent" : ""}`}>{x.sentTo ? "✓" : <KindIcon kind={kind} />}</span>
+                          <span className="imp-name">{x.name}</span>
+                          <span className="imp-qty">×{x.qty}</span>
+                          {note && <span className="imp-notes">{note}</span>}
+                        </button>
+                      )}
+                      <button className="icon-btn imp-remove x3-ren" onClick={() => setRenaming({ id: x.id, v: x.name })} aria-label={`Rename ${x.name}`} title="Rename (the name it goes to Import 2D with)">
+                        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M3 13l1-3.5L11 2.5l2.5 2.5L6.5 12z" /></svg>
                       </button>
                       <button className="icon-btn imp-remove" onClick={() => p.onRemove([x.id])} aria-label={`Remove ${x.name}`} title="Remove from list">×</button>
                     </div>
