@@ -66,6 +66,8 @@ export function NcOutputSettings({ machine, onChange }: { machine: Machine; onCh
                 onChange={(e) => onChange({ ...pp, fileName: e.target.value || undefined })} />
             </label>
             <label className="chk"><input type="checkbox" checked={!!pp.plainName} onChange={(e) => onChange({ ...pp, plainName: e.target.checked || undefined })} /> Letters and digits only</label>
+            <label className="chk" title="Post process shows RESTART HELP: click a contour on the sheet to see where the program restarts it (LVD: the counters #530 and #529; HACO: the block N and the pierce point)">
+              <input type="checkbox" checked={!!pp.restartHelp} onChange={(e) => onChange({ ...pp, restartHelp: e.target.checked || undefined })} /> Restart help in Post process</label>
             <p className="rule-help">The file's name and the name inside the program. <code>{"{jobname}"}</code> the job's name, <code>{"{#}"}</code> the sheet's number; anything else stays as written. Example: job MIHA2280, sheet 1 → <b>{ncNameOf(pp, "MIHA2280", 1)}{pp.extension}</b>. Letters and digits only leaves out spaces, _, - and other characters, for controls that refuse them.</p>
           </div>
         )}

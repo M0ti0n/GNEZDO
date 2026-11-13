@@ -18,6 +18,9 @@
 // Numbers: 3 decimals, whole numbers without them (X17, X-1.300). A full circle is one block (X0 Y0).
 // Stops (from the imported table, if set): S25 stop at the lead-out [s], S31 stop at a corner [s]
 // sharper than S92 [°].
+// Restart help: postprocess also returns, for every contour, the block (N) of its rapid to the pierce
+// point and the pierce point from 0,0 (the program is incremental: a restart there needs the
+// control's own block restart that finds the position).
 
 function postprocess(p, nc) {
   const lines = [];
@@ -53,8 +56,10 @@ function postprocess(p, nc) {
   lines.push(`%1 "${p.name}"`);
   let pos = { x: 0, y: 0 };
   let first = true;
-  for (const c of p.contours) {
-    if (!c.segs.length) continue;
+  const counters = p.contours.map(() => null);
+  p.contours.forEach((c, ci) => {
+    if (!c.segs.length) return;
+    counters[ci] = { block: n + 2, at: { x: c.start.x, y: c.start.y } };
     const feed = feedOf(c);
     // rapid to the pierce point (through Movement's points first, if it has any); the first rapid is
     // absolute (G90 until the lead-in's G91)
@@ -109,9 +114,9 @@ function postprocess(p, nc) {
     if (stopOut) lines.push(`G04 Q ${Math.round(stopOut * 100)} M09`);
     else if (lastArc) lines[lines.length - 1] += " M09";
     else N("M09");
-  }
+  });
   N(`G00 G40 X${num(-pos.x)} Y${num(-pos.y)} `);
   N("M30");
   lines.push("*");
-  return lines.join("\r\n") + "\r\n";
+  return { text: lines.join("\r\n") + "\r\n", counters };
 }
