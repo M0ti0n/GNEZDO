@@ -26,6 +26,9 @@
 // (INLINE CUT), each stretch a contour of its own with the pierce chosen there (quick: M98P8037)
 // and the E code of the whole contour it is part of.
 // Numbers: up to 3 decimals, whole numbers without them (X535 Y0.5). Lines end in CR LF.
+// Restart: N100 GOTO[#530+100] jumps to placement #530 (N101 = 1), GOTO[#529*10] in a subprogram to
+// its contour #529 (N10 = 1). postprocess returns these counters for every contour too, so GNEZDO can
+// tell the operator which to set (Post process → Restart counters).
 
 function postprocess(p) {
   const t = p.tech || {};
@@ -80,6 +83,7 @@ function postprocess(p) {
   // run with pre-pierce on (#516=1).
   const subs = new Map();   // body text -> { no, marking, name, body }
   const placed = [];
+  const counters = p.contours.map(() => null);
   let nextSub = 101;
   const place = (u, contours, marking) => {
     if (!contours.length) return;
@@ -123,6 +127,8 @@ function postprocess(p) {
       sub = { no: nextSub++, marking, name: text(u.name) || "PART", body };
       subs.set(k, sub);
     }
+    // the counters: this placement (#530) and each contour's place in it (#529)
+    contours.forEach((c, i) => { const at = p.contours.indexOf(c); if (at >= 0) counters[at] = { part: placed.length + 1, contour: i + 1 }; });
     placed.push({ sub, x: u.ox, y: u.oy });
   };
   for (const u of units) place(u, u.contours.filter((c) => c.kind === "trace"), true);
@@ -166,5 +172,5 @@ function postprocess(p) {
     out.push(`:${String(s.no).padStart(4, "0")}(${s.name})`, "(V7-17-3)", "#513=30", "G65P8060", "GOTO[#529*10]", ...s.body, "N9999 M99");
   }
   out.push("%");
-  return out.join("\r\n");
+  return { text: out.join("\r\n"), counters };
 }

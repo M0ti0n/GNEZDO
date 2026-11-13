@@ -1,9 +1,11 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/api";
 import { diag } from "../job/diag";
 import { foldersOf, type Machine, type Origin } from "../job/machine";
 import type { NestedSheet } from "../job/nest";
+import { liveContours, type CutContour } from "../job/cutPath";
+import { contourKind, pickContour } from "../job/manualCut";
 import { sheetProgram } from "../job/ncProgram";
 import { techColumnsFor, techRowFor } from "../job/technology";
 import { saveNcFile } from "../job/ncFile";
@@ -107,8 +109,10 @@ export function useProcessDel({ index, single, sheets, partName, onClear }: {
 interface Done { sheet: number; file?: string; error?: string }
 
 /** POST PROCESS: the NC program of one sheet, or of every sheet (one file each: JOBNAME_#). */
-export function usePostProcess({ index, sheets, machine, origin, jobName, needsSave, dirty = false, onSave, onSheet, partName }: {
+export function usePostProcess({ index, single = false, sheets, machine, origin, jobName, needsSave, dirty = false, onSave, onSheet, partName }: {
   index: number; sheets: NestedSheet[]; machine: Machine; origin: Origin; jobName: string;
+  /** one sheet open (RESTART COUNTERS: its contours are clicked) */
+  single?: boolean;
   /** never saved: asked first (the files are named after the job) */
   needsSave: boolean;
   /** saved before, changed since: saved again before the files are written, without asking */
@@ -124,6 +128,36 @@ export function usePostProcess({ index, sheets, machine, origin, jobName, needsS
   const pp = machine.postprocessor;
   const ext = pp?.extension || ".nc";
   const nameOf = (i: number) => ncNameOf(pp, jobName, i + 1);
+  // RESTART COUNTERS (on / off): a contour clicked on the open sheet -> the program's counters for it
+  const [counting, setCounting] = useState(false);
+  const [count, setCount] = useState<{ c: CutContour; lines: string[]; bad?: boolean } | null>(null);
+  useEffect(() => { setCount(null); }, [index, sheets]);
+  const liveSet = useMemo(() => new Set<CutContour>(sheets[index] ? liveContours(sheets[index]) : []), [sheets, index]);
+  const countAt = (x: number, y: number, scale: number) => {
+    const sh = sheets[index];
+    if (!sh?.cut || !pp) return;
+    const k = pickContour(sh.cut, liveSet, [x, y], Math.max(1, 12 / scale));
+    if (k < 0) { setCount(null); return; }
+    const c = sh.cut.contours[k];
+    const live = liveContours(sh);
+    const at = live.indexOf(c);
+    const prog = sheetProgram(sh, machine, origin, nameOf(index), (i) => partName(sh, i));
+    if ("error" in prog) { setCount({ c, lines: [prog.error], bad: true }); return; }
+    const r = runPostprocessor(pp.source, prog);
+    if (!r.ok) { setCount({ c, lines: [r.error], bad: true }); return; }
+    if (!r.counters) { setCount({ c, lines: [`${pp.name} does not give restart counters (GNEZDO's LVD laser postprocessor does from this version on: an LVD machine set up before needs it loaded again, Settings → Machines → NC output → Replace)`], bad: true }); return; }
+    const ni = prog.contours.findIndex((q) => q.cutNo === at);
+    const cnt = ni >= 0 ? r.counters[ni] : null;
+    if (!cnt) { setCount({ c, lines: ["This contour has no restart counters"], bad: true }); return; }
+    const what = `${contourKind(c)}${c.inline ? " (inline cut stretch)" : ""} of ${c.parts ? "a common cut block" : partName(sh, c.part) ?? `part ${c.part + 1}`}`;
+    const lines = [what, `#530 = ${cnt.part}   (part counter)`, `#529 = ${cnt.contour}   (contour counter)`];
+    if (cnt.contour > 1) lines.push(`From the start of this part's program: #530 = ${cnt.part}, #529 = 1`);
+    // the part's other placements (its marking, or its contours cut elsewhere in the order)
+    const others = new Set<number>();
+    prog.contours.forEach((q, i) => { const o = r.counters![i]; if (o && o.part !== cnt.part && q.cutNo !== undefined && !c.parts && !c.inline && live[q.cutNo]?.part === c.part && !live[q.cutNo]?.parts && !live[q.cutNo]?.inline) others.add(o.part); });
+    if (others.size) lines.push(`The part is also at #530 = ${[...others].sort((a, b) => a - b).join(", ")} (its marking or other contours)`);
+    setCount({ c, lines });
+  };
   const fileOf = (i: number) => `${nameOf(i)}${ext}`;
   const folder = foldersOf(machine);
   // pre-pierce of the selected sheet: its Technology row's, or set for this sheet (laser tables have it)
@@ -190,6 +224,19 @@ export function usePostProcess({ index, sheets, machine, origin, jobName, needsS
           <button type="button" className="btn btn-primary pp-btn" disabled={!!busy || !sheets.length} onClick={() => void run(true)}
             title="Every sheet, one file each (files of the same name are replaced)">Post process all sheets</button>
         </div>
+        {pp && (
+          <div className="pp-count">
+            <button type="button" className={`btn btn-plain pp-btn${counting ? " is-on" : ""}`} aria-pressed={counting} disabled={!single}
+              title={single ? "On: click a contour on the sheet: the counters to set on the machine to cut it again (#530 the part, #529 the contour in it)" : "Open a sheet first"}
+              onClick={() => { setCounting(!counting); setCount(null); }}>Restart counters</button>
+            {counting && !count && <p className="rule-help">Click a contour on the sheet.</p>}
+            {count && (
+              <div className={`pp-done pp-counters${count.bad ? " is-bad" : ""}`} role="status">
+                {count.lines.map((l, i) => (i === 0 ? <b key={i}>{l}</b> : <div key={i} className={/^#5/.test(l) ? "pp-cnt" : "pp-cnt-note"}>{l}</div>))}
+              </div>
+            )}
+          </div>
+        )}
         <dl className="pp-info">
           <dt>Postprocessor</dt><dd>{pp ? pp.name : <em>none (Settings → Machines → NC output)</em>}</dd>
           <dt>Files</dt><dd>{fileOf(0)}, {fileOf(1)} …</dd>
@@ -219,5 +266,14 @@ export function usePostProcess({ index, sheets, machine, origin, jobName, needsS
       )}
     </aside>
   );
-  return { panel, cut: { ...quiet, panel, hint: "Post process: the NC programs of the sheet or of all sheets." } };
+  const counter = counting && single && !!pp;
+  return {
+    panel,
+    cut: {
+      ...quiet, panel,
+      ...(counter ? { onPoint: countAt, cursor: "pointer" } : {}),
+      ...(counter && count ? { glow: { all: new Set([count.c]) } } : {}),
+      hint: counter ? "RESTART COUNTERS: click a contour: #530 and #529 to set on the machine to cut it again." : "Post process: the NC programs of the sheet or of all sheets.",
+    },
+  };
 }

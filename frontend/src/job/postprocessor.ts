@@ -37,6 +37,9 @@ export interface NcContour {
   inline?: boolean;
   /** cut against the contour's own direction: kerf compensation right (G42) instead of left (G41) */
   rev?: boolean;
+  /** GNEZDO's: the contour's place in the sheet's cut order (Post process → Restart counters; the
+   *  remnant's cuts: none) */
+  cutNo?: number;
   /** Process → Movement: the rapid to `start` goes through these points first (in order) */
   via?: NcPt[];
   /** Which part it belongs to (its name), for comments */
@@ -88,8 +91,13 @@ export function ncNameOf(pp: Pick<Postprocessor, "fileName" | "plainName"> | und
   return name || `${sheetNo}`;
 }
 
-/** Runs a postprocessor's source on a program: the NC text, or why it failed. */
-export function runPostprocessor(source: string, program: NcProgram): { ok: true; text: string } | { ok: false; error: string } {
+/** Where the machine restarts a contour: the program's counters (LVD: #530 the placement, #529 the
+ *  contour in it). A postprocessor that knows them returns { text, counters } (one per program contour,
+ *  null where none) instead of the text alone. */
+export interface NcCounter { part: number; contour: number }
+
+/** Runs a postprocessor's source on a program: the NC text (and its restart counters), or why it failed. */
+export function runPostprocessor(source: string, program: NcProgram): { ok: true; text: string; counters?: (NcCounter | null)[] } | { ok: false; error: string } {
   let fn: unknown;
   try {
     fn = new Function(`"use strict";\n${source}\n;return typeof postprocess === "function" ? postprocess : undefined;`)();
@@ -98,9 +106,11 @@ export function runPostprocessor(source: string, program: NcProgram): { ok: true
   }
   if (typeof fn !== "function") return { ok: false, error: "The postprocessor has no function postprocess(program)" };
   try {
-    const text = (fn as (p: NcProgram) => unknown)(structuredClone(program));
-    if (typeof text !== "string") return { ok: false, error: "postprocess(program) did not return text" };
-    return { ok: true, text };
+    const out = (fn as (p: NcProgram) => unknown)(structuredClone(program));
+    if (typeof out === "string") return { ok: true, text: out };
+    const o = out as { text?: unknown; counters?: unknown } | null;
+    if (o && typeof o.text === "string") return { ok: true, text: o.text, ...(Array.isArray(o.counters) ? { counters: o.counters as (NcCounter | null)[] } : {}) };
+    return { ok: false, error: "postprocess(program) did not return text" };
   } catch (e) {
     return { ok: false, error: `The postprocessor failed: ${(e as Error).message}` };
   }

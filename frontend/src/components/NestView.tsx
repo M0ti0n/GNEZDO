@@ -171,7 +171,7 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
     partName: (sh, i) => byId.get(sh.parts[i]?.partId ?? "")?.name,
   });
   const post = usePostProcess({
-    index: curIndex, sheets, machine, origin: sol?.origin ?? machine.origin, jobName, needsSave, dirty: jobDirty, onSave: onSaveJob ?? (async () => true),
+    index: curIndex, single: full !== null && process === "postProcess", sheets, machine, origin: sol?.origin ?? machine.origin, jobName, needsSave, dirty: jobDirty, onSave: onSaveJob ?? (async () => true),
     onSheet: (k, patch) => sol && onEditSheet(sol.id, k, patch),
     partName: (sh, i) => byId.get(sh.parts[i]?.partId ?? "")?.name,
   });
