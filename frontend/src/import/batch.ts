@@ -27,7 +27,7 @@ export interface ImportItem {
   /** A flat pattern sent from the 3D Extractor: that part's id there. */
   from3d?: string;
   /** What the part itself asks of nesting and saving (a flat pattern from 3D: its thickness, foil, grain). */
-  own?: { material?: string; thicknessMm?: string; noMirror?: boolean; rotations?: Rotation[] };
+  own?: { material?: string; thicknessMm?: string; noMirror?: boolean; rotations?: Rotation[]; grain?: "x" | "y"; foil?: boolean };
 }
 
 /** The Properties for one part: the list's, with what the part itself asks (a STEP part's thickness, foil, grain). */
@@ -46,7 +46,9 @@ export function itemProps(item: ImportItem, props: BatchProperties): BatchProper
 /** A STEP part's own values from its settings (thickness found, foil, grain). */
 export function ownOf(step: StepPart): ImportItem["own"] {
   const lim = nestLimits(step.settings);
-  return { ...(step.info.thickness ? { thicknessMm: String(step.info.thickness) } : {}), ...lim };
+  // the flat pattern is turned so that its grain runs along X
+  const surf = { ...(step.settings.grain !== "none" ? { grain: "x" as const } : {}), ...(step.settings.foil ? { foil: true } : {}) };
+  return { ...(step.info.thickness ? { thicknessMm: String(step.info.thickness) } : {}), ...lim, ...surf };
 }
 
 /** Properties (Import panel): used for every part in the list, kept for the next import. */

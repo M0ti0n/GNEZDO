@@ -9,6 +9,7 @@ import { FILLER_TIP } from "./filler";
 import { COMMON_CUT_TIP } from "./commonCut";
 import { IMPORT_TOOLS } from "./ImportTools";
 import { loopPoints } from "./toPart";
+import { SurfaceBadges } from "../components/SurfaceIcons";
 import { loadDefaultProject } from "../job/defaultProject";
 
 /** What the dialog saves. */
@@ -29,6 +30,8 @@ interface Props {
   initial: ProcessValues;
   /** Mirror is not allowed for this part (it has open cut lines and the rule says so). */
   mirrorBlocked: boolean;
+  /** the part's surface (a flat pattern from 3D): grain direction, foil / finish on the top side */
+  surface?: { grain?: "x" | "y"; foil?: boolean };
   onCancel: () => void;
   onSave: (v: ProcessValues, replace: boolean) => Promise<void>;
 }
@@ -38,7 +41,7 @@ type Exists = { state: "checking" } | { state: "new" } | { state: "exists"; modi
 // Pop-up of the Process tool: the part as it will be saved, its name, project,
 // description, material and nesting rules. The frame is green for a new part and
 // red when a part with the same project and name is already in the database.
-export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSave }: Props) {
+export function ProcessDialog({ drawing, initial, mirrorBlocked, surface, onCancel, onSave }: Props) {
   const [v, setV] = useState<ProcessValues>({ ...initial, mirror: initial.mirror && !mirrorBlocked });
   const [editing, setEditing] = useState({ name: false, project: false, description: false });
   const [exists, setExists] = useState<Exists>({ state: "checking" });
@@ -109,7 +112,10 @@ export function ProcessDialog({ drawing, initial, mirrorBlocked, onCancel, onSav
         <div className="proc-body">
           <figure className={`proc-image is-${exists.state}`}>
             <div className="proc-frame"><Preview drawing={drawing} /></div>
-            <div className="proc-size" title="Width × height of the part">{size}</div>
+            <div className="proc-size-row">
+              <div className="proc-size" title="Width × height of the part">{size}</div>
+              <SurfaceBadges grain={surface?.grain} foil={surface?.foil} />
+            </div>
             <figcaption>
               <span className="proc-status">
                 {exists.state === "checking" && "Checking the database…"}

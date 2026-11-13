@@ -15,7 +15,7 @@ export function usePartMarks(ids: string[]): Map<string, Marks> {
     let live = true;
     const list = key ? key.split("|") : [];
     void Promise.all(list.map((id) => partMarks(id).catch(() => EMPTY).then((m) => [id, m] as const))).then((r) => {
-      if (live) setMarks(new Map(r.filter(([, m]) => m.trace.length || m.open.length)));
+      if (live) setMarks(new Map(r.filter(([, m]) => m.trace.length || m.open.length || m.grain?.length)));
     });
     return () => { live = false; };
   }, [key]);
@@ -32,5 +32,7 @@ export function MarkPaths({ marks, f, width }: { marks?: Marks; f?: (p: Pt) => P
   return (<>
     {marks.trace.map((r, k) => <path key={`t${k}`} className={`part-mark is-trace${width ? "" : " is-px"}`} d={d(r, f)} style={style("var(--ln-trace)")} />)}
     {marks.open.map((r, k) => <path key={`o${k}`} className={`part-mark is-open${width ? "" : " is-px"}`} d={d(r, f)} style={style("var(--ln-open)")} />)}
+    {/* the grain: shown only (never cut, traced or in the NC program) */}
+    {marks.grain?.map((r, k) => <path key={`g${k}`} className={`part-mark is-grain${width ? "" : " is-px"}`} d={d(r, f)} style={{ ...style("var(--ln-grain)"), strokeDasharray: width ? `${width * 4} ${width * 2.5}` : "5 3" }} />)}
   </>);
 }

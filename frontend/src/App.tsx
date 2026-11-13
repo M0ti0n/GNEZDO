@@ -226,10 +226,12 @@ export function App() {
     const onEdit = async (ev: Event) => {
       const part = (ev as CustomEvent<PartSummary>).detail;
       try {
-        const [drawing, detail] = await Promise.all([drawingOfPart(part), api.part(part.id)]);
+        const [drawing, detail, geo] = await Promise.all([drawingOfPart(part), api.part(part.id), api.partGeometry(part.id).catch(() => null)]);
         const item: ImportItem = {
           id: `imp-db-${part.id}-${Date.now().toString(36)}`, fileName: `${part.name}.dxf`, name: part.name, qty: null,
           state: "ready", drawing, checked: true, processed: false,
+          // its grain and foil are kept when it is saved again
+          ...(geo?.marks ? { own: { ...geo.marks } } : {}),
           source: {
             partId: part.id, name: part.name, project: part.project, description: part.description, material: part.material,
             thicknessMm: String(part.thicknessMm), rotations: detail.rotations as Rotation[], mirror: detail.mirror, filler: detail.filler, commonCut: detail.commonCut,
@@ -386,7 +388,7 @@ export function App() {
     name: v.name.trim(), project: v.project.trim(), description: v.description.trim(),
     material: v.material.trim(), thicknessMm: Number(v.thicknessMm),
     rotations: [...v.rotations], mirror: v.mirror, filler: v.filler, commonCut: !!v.commonCut,
-    ...partGeometry(i.drawing!),
+    ...partGeometry(i.drawing!, i.own),
     sourceFile: i.fileName, replace,
     // a flat pattern from 3D brings the assembly's quantity
     qty: i.from3d ? i.qty ?? 0 : rules.qtyFromName ? i.qty ?? 0 : 0,
@@ -1400,7 +1402,7 @@ export function App() {
                 properties={shownItem.source ? { ...importProps, ...shownItem.source } : itemProps(shownItem, importProps)}
                 nestRules={shownItem.source
                   ? { rotations: shownItem.source.rotations, mirror: shownItem.source.mirror, filler: shownItem.source.filler, commonCut: shownItem.source.commonCut }
-                  : { rotations: importProps.rotations, mirror: importProps.mirror, filler: importProps.filler, commonCut: importProps.commonCut }}
+                  : (({ rotations, mirror, filler, commonCut }) => ({ rotations, mirror, filler, commonCut }))(itemProps(shownItem, importProps))}
                 onProcess={() => setProcessing(shownItem.id)}
                 onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
                 onNestRules={(r) => shownItem.source
@@ -1424,7 +1426,7 @@ export function App() {
         </div>
       </div>
       {processingItem?.drawing && (
-        <ProcessDialog
+        <ProcessDialog surface={processingItem.own}
           drawing={processingItem.drawing}
           initial={processingItem.source ? { ...processingItem.source, rotations: [...processingItem.source.rotations] } : {
             ...itemProps(processingItem, importProps),

@@ -466,10 +466,11 @@ export const api = {
     if (useApi) await post<unknown>(`/api/settings/${key}`, { value, modifiedBy: "" }, "PUT");
   },
   /** A saved part's drawing (entities with roles, mm, y up); null when it was saved without one. */
-  partGeometry: async (id: string): Promise<{ entities: Entity[] } | null> => {
-    const raw = useApi ? await get<{ entities?: Entity[] } | Entity[] | null>(`/api/parts/${id}/geometry`) : JSON.parse(mockGeometry.get(id) ?? "null");
+  partGeometry: async (id: string): Promise<{ entities: Entity[]; marks?: { grain?: "x" | "y"; foil?: boolean } } | null> => {
+    const raw = useApi ? await get<{ entities?: Entity[]; marks?: { grain?: "x" | "y"; foil?: boolean } } | Entity[] | null>(`/api/parts/${id}/geometry`) : JSON.parse(mockGeometry.get(id) ?? "null");
     const entities = Array.isArray(raw) ? raw : raw?.entities;  // a bare list (early saves) or { format, entities, ... }
-    return entities?.length ? { entities } : null;
+    const marks = Array.isArray(raw) ? undefined : raw?.marks;
+    return entities?.length ? { entities, ...(marks ? { marks } : {}) } : null;
   },
   /** Saves a job: new (id null) or over the saved one. */
   saveJob: (id: string | null, d: JobSaveData): Promise<JobSaved> => {
