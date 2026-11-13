@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { GENERIC_POSTPROCESSOR, runPostprocessor, sampleProgram, type Postprocessor } from "../job/postprocessor";
+import { DEFAULT_NC_NAME, GENERIC_POSTPROCESSOR, ncNameOf, runPostprocessor, sampleProgram, type Postprocessor } from "../job/postprocessor";
 import type { Machine } from "../job/machine";
 import { saveNcFile } from "../job/ncFile";
 
@@ -25,7 +25,7 @@ export function NcOutputSettings({ machine, onChange }: { machine: Machine; onCh
       const test = runPostprocessor(source, sampleProgram(tech.tech, tech.thickness));
       if (!test.ok) { setMsg({ text: `${f.name}: ${test.error}`, bad: true }); return; }
       const name = /^\/\/\s*GNEZDO postprocessor:\s*(.+)$/m.exec(source)?.[1]?.trim() || f.name.replace(/\.js$/i, "");
-      onChange({ name, extension: pp?.extension ?? ".nc", source });
+      onChange({ ...pp, name, extension: pp?.extension ?? ".nc", source });
       setMsg({ text: `${name} loaded` });
     } catch (e) { setMsg({ text: `Could not read ${f.name}: ${(e as Error).message}`, bad: true }); }
     finally { if (file.current) file.current.value = ""; }
@@ -58,6 +58,16 @@ export function NcOutputSettings({ machine, onChange }: { machine: Machine; onCh
             <input className="field" value={pp.extension} spellCheck={false}
               onChange={(e) => onChange({ ...pp, extension: e.target.value.trim() ? (e.target.value.trim().startsWith(".") ? e.target.value.trim() : "." + e.target.value.trim()) : "" })} />
           </label>
+        )}
+        {pp && (
+          <div className="ncout-names">
+            <label className="ncout-ext"><span>Program name</span>
+              <input className="field ncout-tpl" value={pp.fileName ?? ""} placeholder={DEFAULT_NC_NAME} spellCheck={false} aria-label="Program name"
+                onChange={(e) => onChange({ ...pp, fileName: e.target.value || undefined })} />
+            </label>
+            <label className="chk"><input type="checkbox" checked={!!pp.plainName} onChange={(e) => onChange({ ...pp, plainName: e.target.checked || undefined })} /> Letters and digits only</label>
+            <p className="rule-help">The file's name and the name inside the program. <code>{"{jobname}"}</code> the job's name, <code>{"{#}"}</code> the sheet's number; anything else stays as written. Example: job MIHA2280, sheet 1 → <b>{ncNameOf(pp, "MIHA2280", 1)}{pp.extension}</b>. Letters and digits only leaves out spaces, _, - and other characters, for controls that refuse them.</p>
+          </div>
         )}
         {msg && <p className={`tech-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
       </section>

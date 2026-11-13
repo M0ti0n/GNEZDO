@@ -7,7 +7,7 @@ import type { NestedSheet } from "../job/nest";
 import { sheetProgram } from "../job/ncProgram";
 import { techColumnsFor, techRowFor } from "../job/technology";
 import { saveNcFile } from "../job/ncFile";
-import { runPostprocessor } from "../job/postprocessor";
+import { ncNameOf, runPostprocessor } from "../job/postprocessor";
 import { ConfirmDialog } from "./ConfirmDialog";
 import type { CutMode } from "./ManualNest";
 import toolProcessDel from "../shell/jobtools/tool-processDel.png";
@@ -123,7 +123,8 @@ export function usePostProcess({ index, sheets, machine, origin, jobName, needsS
   const [ask, setAsk] = useState<null | { kind: "save"; all: boolean } | { kind: "over"; name: string }>(null);
   const pp = machine.postprocessor;
   const ext = pp?.extension || ".nc";
-  const fileOf = (i: number) => `${jobName}_${i + 1}${ext}`;
+  const nameOf = (i: number) => ncNameOf(pp, jobName, i + 1);
+  const fileOf = (i: number) => `${nameOf(i)}${ext}`;
   const folder = foldersOf(machine);
   // pre-pierce of the selected sheet: its Technology row's, or set for this sheet (laser tables have it)
   const sheet = sheets[index];
@@ -156,7 +157,7 @@ export function usePostProcess({ index, sheets, machine, origin, jobName, needsS
       setBusy(`Sheet ${i + 1} of ${sheets.length}`);
       await new Promise((r) => setTimeout(r, 30));   // let the spinner show
       const sh = sheets[i];
-      const prog = sheetProgram(sh, machine, origin, `${jobName}_${i + 1}`, (k) => partName(sh, k));
+      const prog = sheetProgram(sh, machine, origin, nameOf(i), (k) => partName(sh, k));
       if ("error" in prog) { out.push({ sheet: i + 1, error: prog.error }); continue; }
       const r = runPostprocessor(pp.source, prog);
       if (!r.ok) { out.push({ sheet: i + 1, error: r.error }); continue; }
@@ -191,7 +192,7 @@ export function usePostProcess({ index, sheets, machine, origin, jobName, needsS
         </div>
         <dl className="pp-info">
           <dt>Postprocessor</dt><dd>{pp ? pp.name : <em>none (Settings → Machines → NC output)</em>}</dd>
-          <dt>Files</dt><dd>{jobName}_1{ext}, {jobName}_2{ext} …</dd>
+          <dt>Files</dt><dd>{fileOf(0)}, {fileOf(1)} …</dd>
           <dt>To</dt><dd>{folder.nc.trim() ? folder.nc : folder.ncDownload ? "downloaded in the browser" : <em>no NC folder (Settings → Machines → Folders)</em>}</dd>
         </dl>
         {busy && <p className="tech-msg ac-msg" role="status"><span className="pp-spin" aria-hidden="true" /> Post processing… {busy}</p>}
