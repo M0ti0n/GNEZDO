@@ -19,7 +19,7 @@ import { useBreakCut } from "./BreakPanel";
 import { useMicroJoint } from "./MicroJointPanel";
 import { RemnantOverlay } from "./RemnantOverlay";
 import { MarkPaths, usePartMarks } from "./PartMarks";
-import { DEFAULT_REMNANT_SETTINGS, type RemnantSettings } from "../job/remnant";
+import { DEFAULT_REMNANT_SETTINGS, remnantArea, type RemnantSettings } from "../job/remnant";
 
 export type ProcessTool = "autoCut" | "manualCut" | "movement" | "breakCut" | "microJoint" | "remnant" | "processDel" | "postProcess" | "leadInOut" | "simulation";
 import { liveContours, processedParts } from "../job/cutPath";
@@ -490,7 +490,7 @@ function SolutionInfo({ sheets, parts, jobParts, origin }: {
     const groups = new Map<string, { label: string; sizes: Map<string, number>; sheets: number; sheetKg: number; partsKg: number;
       remnantKg: number; usedKg: number; cutM: number; pierces: number; pieces: number }>();
     for (const sh of sheets) {
-      const st = sheetStats(sh, parts, origin);
+      const st = sheetStats(sh, parts, origin, remnantArea(sh));
       const key = `${sh.material}|${sh.thicknessMm}`;
       const g = groups.get(key) ?? { label: `${sh.material} ${sh.thicknessMm} mm`, sizes: new Map(), sheets: 0, sheetKg: 0, partsKg: 0, remnantKg: 0, usedKg: 0, cutM: 0, pierces: 0, pieces: 0 };
       const size = `${sh.lengthMm} × ${sh.widthMm}`;
@@ -530,17 +530,17 @@ function SolutionInfo({ sheets, parts, jobParts, origin }: {
 }
 
 function NestInfo({ sheet, parts, origin }: { sheet: NestedSheet; parts: Map<string, PartRef>; origin: Origin }) {
-  const st = useMemo(() => sheetStats(sheet, parts, origin), [sheet, parts, origin]);
+  const st = useMemo(() => sheetStats(sheet, parts, origin, remnantArea(sheet)), [sheet, parts, origin]);
   const used = st.sheetKg - st.remnantKg;
   const rows: [string, string, string?][] = [
-    ["Efficiency (%)", (used > 0 ? (100 * st.partsKg) / used : 0).toFixed(1), "Weight of the parts / weight of the sheet without the remnant strip"],
+    ["Efficiency (%)", (used > 0 ? (100 * st.partsKg) / used : 0).toFixed(1), `Weight of the parts / weight of the sheet without the remnant${st.remnantProcessed ? "" : " strip"}`],
     ["Cut Area XY (mm)", `${Math.round(st.cutX)} x ${Math.round(st.cutY)}`, "From the origin corner to the farthest part"],
     ["Sheet (kg)", kg(st.sheetKg)],
     ["Part weight (kg)", kg(st.partsKg)],
     ["Scrap (kg)", kg(st.scrapKg), "Inside the cut area, between the parts"],
-    ["Remnant (kg)", kg(st.remnantKg), "The strip after the cut area, the sheet's full width"],
+    ["Remnant (kg)", kg(st.remnantKg), st.remnantProcessed ? "Process → Remnant: its pieces (not the discarded ones)" : "The strip after the cut area, the sheet's full width (Process → Remnant not done)"],
     ["Remnant (%)", st.remnantPct.toFixed(0)],
-    ["Unused (kg)", kg(st.unusedKg), "Beside the cut area, outside the remnant strip"],
+    ["Unused (kg)", kg(st.unusedKg), `Beside the cut area, outside the remnant${st.remnantProcessed ? "" : " strip"}`],
     ["Unused (%)", st.unusedPct.toFixed(0)],
     ["Cutting Number", String(sheet.cutNumber ?? 1), "How many times this layout is cut (Sheet properties of the sheet)"],
     ["Time Rapid", "—", "Needs the technology tables"],

@@ -6,6 +6,7 @@
 import type { JobPart } from "../api/types";
 import { densityOf, loopsOf, sheetStats, type NestedSheet, type SheetStats } from "./nest";
 import { rapidOf, type Machine, type Origin } from "./machine";
+import { remnantArea } from "./remnant";
 import { techRowFor, type TechRow } from "./technology";
 
 
@@ -51,7 +52,7 @@ export interface SheetReport {
 export function sheetReport(sheet: NestedSheet, jobParts: JobPart[], machine: Machine, origin: Origin): SheetReport {
   const byId = new Map(jobParts.map((jp) => [jp.part.id, jp]));
   const refs = new Map(jobParts.map((jp) => [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2 }]));
-  const stats = sheetStats(sheet, refs, origin);
+  const stats = sheetStats(sheet, refs, origin, remnantArea(sheet));
   const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row ?? null;
   const counts = new Map<string, number>();
   for (const p of sheet.parts) counts.set(p.partId, (counts.get(p.partId) ?? 0) + 1);

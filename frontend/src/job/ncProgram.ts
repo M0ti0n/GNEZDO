@@ -21,7 +21,11 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
   const tech = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm);
   if (!tech) return { error: `no Technology row for ${sheet.material} ${sheet.thicknessMm} mm (Settings → Machines → Technology)` };
   const [ox, oy] = originPoint(sheet, origin);
-  const map = ([x, y]: Pt): NcPt => ({ x: Math.round(Math.abs(x - ox) * 1000) / 1000, y: Math.round(Math.abs(y - oy) * 1000) / 1000 });
+  // from the machine's 0,0 corner, signed: a point beyond the sheet's edge (a remnant cut's negative gap,
+  // off the plate) stays beyond it, not folded back onto the sheet
+  const sx = origin.endsWith("right") ? -1 : 1, sy = origin.startsWith("bottom") ? -1 : 1;
+  const r3 = (v: number) => { const r = Math.round(v * 1000) / 1000; return r === 0 ? 0 : r; };
+  const map = ([x, y]: Pt): NcPt => ({ x: r3(sx * (x - ox)), y: r3(sy * (y - oy)) });
 
   const mapped = (pts: Pt[]): NcPt[] => pts.map(map).filter((p, i, a) => !i || Math.hypot(p.x - a[i - 1].x, p.y - a[i - 1].y) > 0.001);
 
