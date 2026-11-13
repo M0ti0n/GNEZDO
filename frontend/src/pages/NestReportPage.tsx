@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { JobPart } from "../api/types";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { MarkPaths, usePartMarks } from "../components/PartMarks";
+import { RemnantOverlay } from "../components/RemnantOverlay";
 import { partColor, type NestedSheet } from "../job/nest";
 import type { Machine, Origin } from "../job/machine";
 import { hmsOf, labelPoint, mmss, parsePages, sheetReport, type SheetReport } from "../job/report";
@@ -233,6 +234,8 @@ function SheetDrawing({ sheet, rep }: { sheet: NestedSheet; rep: SheetReport }) 
         ? <path className="rp-plate" fillRule="evenodd" d={sheet.outline.map((lp) => lp.map(([x, y], i) => `${i ? "L" : "M"}${x * s} ${y * s}`).join("") + "Z").join("")} />
         : <rect className="rp-plate" x={0} y={0} width={w} height={h} />}
       <g transform={`scale(${s})`}>
+        {/* Process → Remnant: the pieces hatched with their names, the cuts */}
+        <RemnantOverlay sheet={sheet} s={s} />
         {sheet.parts.map((p, i) => {
           const jp = byId.get(p.partId);
           if (!jp) return null;

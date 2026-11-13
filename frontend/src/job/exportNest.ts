@@ -7,6 +7,7 @@ import { checkGeometry, pointsAlong, roleOf, type Entity, type Pt, type Role } f
 import { download, drawingOfPart } from "../import/partFile";
 import { sheetLoops } from "./stock";
 import { sheetStats, type NestedSheet, type PlacedPart } from "./nest";
+import { remnantArea } from "./remnant";
 import type { Origin } from "./machine";
 
 const LAYERS: { name: string; color: number }[] = [
@@ -71,7 +72,7 @@ export async function exportSolutionDxf(x: ExportInput): Promise<void> {
     for (const p of sh.parts) placePart(drawings.get(p.partId)!, p, toDxf, line, add);
 
     // the label beside the sheet
-    const st = sheetStats(sh, statParts, x.origin);
+    const st = sheetStats(sh, statParts, x.origin, remnantArea(sh));
     const usedKg = st.sheetKg - st.remnantKg;
     const eff = usedKg > 0 ? (100 * st.partsKg) / usedKg : 0;
     const h = Math.max(20, Math.round(Math.min(W, 1500) / 25));

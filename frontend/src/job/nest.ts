@@ -406,8 +406,11 @@ export interface SheetStats {
   sheetKg: number; partsKg: number;
   /** among the parts, inside the cut area */
   scrapKg: number;
-  /** strip after the parts (the sheet's length past the cut area), reusable */
+  /** reusable: the remnant worked out in Process → Remnant (its pieces not discarded), else the strip
+   *  after the parts (the sheet's length past the cut area) */
   remnantKg: number; remnantPct: number;
+  /** the remnant is Process → Remnant's (else the strip) */
+  remnantProcessed: boolean;
   /** the rest: beside the cut area, too narrow for a remnant strip of the full width */
   unusedKg: number; unusedPct: number;
   /** cut length [m] and pierces (one per closed contour) */
@@ -415,7 +418,8 @@ export interface SheetStats {
   pieces: number;
 }
 
-export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string; areaMm2: number }>, origin: Origin = "top-left"): SheetStats {
+/** processedA: the area of Process → Remnant's pieces (remnantArea in remnant.ts); null / missing: none */
+export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string; areaMm2: number }>, origin: Origin = "top-left", processedA: number | null = null): SheetStats {
   const t = sheet.thicknessMm, rho = densityOf(sheet.material);
   const kg = (areaMm2: number) => (areaMm2 * t * rho) / 1e6;  // mm² · mm → dm³ (1e6 mm³)
   let cutX = 0, cutY = 0, partsArea = 0, cut = 0, pierces = 0;
@@ -437,12 +441,13 @@ export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string
   // a shaped sheet (remnant, DXF): its own area (outline less holes); the strips are measured on its extents
   const shoelace = (lp: [number, number][]) => Math.abs(lp.reduce((a, p, i) => { const q = lp[(i + 1) % lp.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
   const sheetA = sheet.outline?.length ? shoelace(sheet.outline[0]) - sheet.outline.slice(1).reduce((a, lp) => a + shoelace(lp), 0) : L * W;
-  const cutA = cutX * cutY, remnantA = Math.min((L - cutX) * W, Math.max(0, sheetA - cutA));
+  const cutA = cutX * cutY;
+  const remnantA = processedA !== null ? Math.min(processedA, Math.max(0, sheetA - partsArea)) : Math.min((L - cutX) * W, Math.max(0, sheetA - cutA));
   const unusedA = Math.max(0, sheetA - cutA - remnantA);
   return {
     cutX, cutY, pieces: sheet.parts.length,
     sheetKg: kg(sheetA), partsKg: kg(partsArea), scrapKg: kg(Math.max(0, cutA - partsArea)),
-    remnantKg: kg(remnantA), remnantPct: (100 * remnantA) / sheetA,
+    remnantKg: kg(remnantA), remnantPct: (100 * remnantA) / sheetA, remnantProcessed: processedA !== null,
     unusedKg: kg(unusedA), unusedPct: (100 * unusedA) / sheetA,
     cutM: cut / 1000, pierces,
   };

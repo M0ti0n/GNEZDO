@@ -66,6 +66,11 @@ export interface SheetRemnant {
 export const sheetPartsKey = (sheet: NestedSheet) => sheet.parts.map(partKey).join(";");
 export const remnantValid = (sheet: NestedSheet) => !!sheet.remnant && sheet.remnant.key === sheetPartsKey(sheet);
 
+/** The area of the sheet's remnant pieces (not windows, not discarded) [mm²]; null: no remnant worked out
+ *  (or the parts moved since). For sheetStats. */
+export const remnantArea = (sheet: NestedSheet): number | null =>
+  remnantValid(sheet) ? sheet.remnant!.pieces.filter((p) => !p.window && p.status !== "discarded").reduce((a, p) => a + p.areaMm2, 0) : null;
+
 /** REM_<job>_S<sheet>_<n> */
 export const remnantName = (job: string, sheetNo: number, n: number) =>
   `REM_${(job.trim() || "job").replace(/[^\w.-]+/g, "_").replace(/^_+|_+$/g, "")}_S${sheetNo}_${n}`;
