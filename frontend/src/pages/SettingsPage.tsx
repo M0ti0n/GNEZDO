@@ -213,6 +213,10 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
                   <NumInput value={co.bigSheetPct} min={1} disabled={!co.bigLast} aria-label="Percent of the sheet" onCommit={(n) => setCo({ bigSheetPct: Math.min(100, n) })} />% of the sheet</label>
               </div>
               <p className="rule-help">Last within its bounding box: the order picked under AUTO CUT runs up to the big part's box, cuts the parts in the box (touching it counts) in the same order, then the big part, then carries on.</p>
+              <div className="mc-rules">
+                <label className="chk"><input type="checkbox" checked={co.traceShortest} onChange={(e) => setCo({ traceShortest: e.target.checked })} /> Tracing first, over the whole sheet, in the order of the shortest rapids</label>
+              </div>
+              <p className="rule-help">On: AUTO CUT puts every trace line of the sheet before the cutting, not part by part: from 0,0 the nearest line next (each from its nearer end), then shortened further where turning a stretch round saves travel. The LVD laser marks before it cuts in any case; this makes the marking travel short. Off: the tracing goes with each part, in the parts' order.</p>
               
               <div className="mc-row"><button type="button" className="btn btn-plain" disabled={isDef} onClick={() => setM({ cutOrder: { ...DEFAULT_CUT_ORDER } })}>Back to the defaults</button></div>
             </section>

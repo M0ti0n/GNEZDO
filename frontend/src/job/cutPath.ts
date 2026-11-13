@@ -739,7 +739,61 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     for (const c of kept) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
   }
   for (const c of fresh) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
-  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours: [...kept, ...fresh], keys, ...(mirrored ? { mirrored } : {}) };
+  let contours = [...kept, ...fresh];
+  // Settings -> Machines -> Cut order: the sheet's tracing first, shortest rapids (not after a contour order picked by hand)
+  if (cutOrderOf(machine).traceShortest && !q.ordered) contours = tracesShortest(contours, from);
+  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours, keys, ...(mirrored ? { mirrored } : {}) };
+}
+
+/**
+ * Every trace line of the sheet first, in the order of the shortest rapids from `from` (the 0,0): the
+ * next one is the line whose nearer end is nearest to where the head is, cut from that end; then the
+ * rest of the contours in their order. A few passes then turn a line round, or swap a stretch of the
+ * order end for end, where that makes the rapids shorter (2-opt).
+ */
+export function tracesShortest(contours: CutContour[], from: Pt): CutContour[] {
+  const traces = contours.filter((c) => c.kind === "trace" && c.pts.length > 1);
+  const runs = traces.map((c) => ({ c, a: c.pts[0], b: c.pts[c.pts.length - 1] }));
+  const d = (p: Pt, q: Pt) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+  // nearest neighbor: each step the nearer end of the nearest line
+  const order: { c: CutContour; a: Pt; b: Pt }[] = [];
+  const left = runs.slice();
+  let at = from;
+  while (left.length) {
+    let k = 0, rev = false, best = Infinity;
+    left.forEach((r, j) => {
+      const da = d(at, r.a), db = d(at, r.b);
+      if (da < best) { best = da; k = j; rev = false; }
+      if (db < best) { best = db; k = j; rev = true; }
+    });
+    const r = left.splice(k, 1)[0];
+    order.push(rev ? { c: r.c, a: r.b, b: r.a } : r);
+    at = order[order.length - 1].b;
+  }
+  // 2-opt on the rapids (a closed trace starts and ends at the same point: turning it round changes nothing)
+  const n = order.length;
+  const startOf = (i: number) => (i < 0 ? from : order[i].b);
+  for (let pass = 0; pass < 8 && n > 2 && n <= 400; pass++) {
+    let better = false;
+    for (let i = 0; i < n - 1; i++) for (let j = i + 1; j < n; j++) {
+      // reversing order[i..j] (and each line in it): the rapids into i and out of j change
+      const before = d(startOf(i - 1), order[i].a) + (j + 1 < n ? d(order[j].b, order[j + 1].a) : 0);
+      const after = d(startOf(i - 1), order[j].b) + (j + 1 < n ? d(order[i].a, order[j + 1].a) : 0);
+      if (after < before - 1e-6) {
+        const seg = order.slice(i, j + 1).reverse().map((r) => ({ c: r.c, a: r.b, b: r.a }));
+        order.splice(i, j - i + 1, ...seg);
+        better = true;
+      }
+    }
+    if (!better) break;
+  }
+  const done = order.map(({ c, a }) => {
+    const turned = !(c.pts[0][0] === a[0] && c.pts[0][1] === a[1]);
+    const t: CutContour = turned ? { ...c, pts: c.pts.slice().reverse(), leadIn: c.leadOut.slice().reverse(), leadOut: c.leadIn.slice().reverse() } : { ...c };
+    delete t.via;   // its rapid comes from somewhere else now
+    return t;
+  });
+  return [...done, ...contours.filter((c) => !traces.includes(c))];
 }
 
 /** The rapid to each contour (index in `contours`): from where the head is, through its points, to the pierce. */

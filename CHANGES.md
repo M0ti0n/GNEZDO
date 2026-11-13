@@ -5,6 +5,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 ## Next build
 
 **New**
+- Settings → Machines → Cut order: **Tracing first, over the whole sheet, in the order of the shortest rapids** (off unless ticked, per machine). AUTO CUT then puts every trace line of the sheet before the cutting instead of part by part: from 0,0 the nearest line next, each cut from its nearer end, then shortened further where turning a stretch of the order round saves travel. Not used after an order picked by hand (Manual cut). The LVD postprocessor keeps that order (a part's marking may then come in more than one T2 placement)
 - Settings → **Projects and parts** (instead of the Projects placeholder): every saved project and its parts.
   - Toolbar: Project search (code, name or customer), **Part name** search (lists the projects that have such a part; it also filters their parts), Created from / to, **Show projects without parts**, **Delete** (the ticked projects)
   - **Default project**: what parts imported with the project box left empty are offered (kept in this browser)
