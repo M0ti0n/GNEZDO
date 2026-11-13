@@ -122,8 +122,11 @@ export const originMirrors = (origin: Origin) => origin.startsWith("top") === or
 
 // ------------------------------------------------------------------ tracing and open cut lines of a part
 
-type Marks = { trace: Pt[][]; open: Pt[][] };
+export type Marks = { trace: Pt[][]; open: Pt[][] };
 const markCache = new Map<string, { at: number; marks: Promise<Marks> }>();
+
+/** Parts were saved (their drawings may have changed): their marks are read again. */
+export const forgetPartMarks = () => markCache.clear();
 
 /** A part's trace and open cut lines in its outline's frame (as the thumbnail path: y down), joined into runs. */
 export function partMarks(partId: string): Promise<Marks> {

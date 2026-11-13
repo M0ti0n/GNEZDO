@@ -115,7 +115,7 @@ export function PartPropertiesDialog({ part, onClose, onSaved, onDeleted, onVers
 
         <div className="proc-body">
           <figure className="proc-image pp-image">
-            <div className="pp-thumb"><PartThumb part={p} size={260} /></div>
+            <div className="pp-thumb"><PartThumb part={p} size={260} marks /></div>
             <div className="proc-size">{Math.round(p.w)} × {Math.round(p.h)} mm</div>
             <dl className="pp-facts">
               <dt>Version</dt>
