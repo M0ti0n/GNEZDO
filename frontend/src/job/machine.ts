@@ -37,6 +37,8 @@ export interface Machine {
   partGapMm: number;
   /** Cutting beam diameter [mm]; 0 = not set. */
   kerfMm: number;
+  /** Rapid speed for the time estimates (reports, simulation) [mm/min]; missing = the technology's default. */
+  rapidMmMin?: number;
   /** Which line properties it cuts; the others are skipped for its jobs (missing = it can). */
   lines?: Partial<Record<LineCapability, boolean>>;
   /** Writes its NC programs (Settings -> Machines -> NC output); missing = none yet. */
@@ -101,6 +103,13 @@ export const cutOrderOf = (m: Machine | undefined): CutOrderRules => {
   // machines saved earlier also carry directions and holes / inside first: directions go to AUTO CUT, the rest is always on
   return { bigLast: r.bigLast, bigTimesMedian: r.bigTimesMedian, bigSheetPct: r.bigSheetPct, traceShortest: !!r.traceShortest };
 };
+
+/** Rapid speed assumed when a machine has none set [mm/min]: plasma measured on a HACO (2 m in 8 s), laser a guess. */
+export const DEFAULT_RAPID_MM_MIN: Record<Technology, number> = { laser: 20000, plasma: 15000, waterjet: 20000, other: 20000 };
+
+/** The machine's rapid speed for the time estimates [mm/min]. */
+export const rapidOf = (m: Machine | undefined): number =>
+  (m?.rapidMmMin && m.rapidMmMin > 0 ? m.rapidMmMin : DEFAULT_RAPID_MM_MIN[m?.technology ?? "laser"]) ?? 20000;
 
 /** Does the machine do this line property? */
 export const machineCan = (m: Machine | undefined, c: LineCapability) => m?.lines?.[c] !== false;

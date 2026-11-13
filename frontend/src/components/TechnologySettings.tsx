@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { NumInput } from "./NumInput";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
-  addThickness, inRange, newTechnology, techColumnsFor, technologiesCsv, technologiesFromDbf,
+  addThickness, cellValue, inRange, newTechnology, techColumnsFor, technologiesCsv, technologiesFromDbf,
   type RowKey, type TechSet,
 } from "../job/technology";
 import type { Technology } from "../job/machine";
@@ -142,7 +142,7 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
                     </th>
                     {cols.map((c) => (
                       <td key={c.key}>
-                        <NumInput className="tech-cell" value={r[c.key] ?? 0} min={c.min ?? 0} aria-label={`${r.thicknessMm} mm ${c.label} (${c.unit})`}
+                        <NumInput className="tech-cell" value={cellValue(r, c)} min={c.min ?? 0} aria-label={`${r.thicknessMm} mm ${c.label} (${c.unit})`}
                           onFocusCapture={() => setRowSel(i)} onCommit={(n) => setCell(i, c.key, c.max !== undefined ? Math.min(c.max, n) : n)} />
                       </td>
                     ))}

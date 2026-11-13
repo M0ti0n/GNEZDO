@@ -6,7 +6,6 @@
 
 import { viaOf, type CutContour } from "./cutPath";
 import type { Pt } from "./manualGeom";
-import { RAPID_MM_MIN } from "./report";
 import type { TechRow } from "./technology";
 
 /** Cutting speed when the Technology row has none [mm/min] */
@@ -41,7 +40,8 @@ const accOf = (pts: Pt[]) => { const a = [0]; for (let i = 1; i < pts.length; i+
 /** The whole cut of a contour: lead-in, contour, lead-out, as one polyline */
 const cutPts = (c: CutContour): Pt[] => [...c.leadIn, ...(c.leadIn.length ? c.pts.slice(1) : c.pts), ...(c.leadOut.length ? c.leadOut.slice(1) : [])];
 
-export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | null): SimTimeline {
+/** rapidMmMin: the machine's rapid speed (rapidOf) */
+export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | null, rapidMmMin: number): SimTimeline {
   const fromTech = !!row && row.speed > 0;
   const speed = fromTech ? row!.speed : FALLBACK_SPEED;
   const legs: Leg[] = [];
@@ -56,7 +56,7 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
     // the rapid, through Movement's points
     const rp: Pt[] = [at, ...viaOf(c, contours[k - 1]), p0];
     const racc = accOf(rp), d = racc[racc.length - 1];
-    if (d > 0.01) { const dt = (d / RAPID_MM_MIN) * 60; legs.push({ k, phase: "rapid", t0: t, t1: t + dt, pts: rp, acc: racc }); t += dt; }
+    if (d > 0.01) { const dt = (d / rapidMmMin) * 60; legs.push({ k, phase: "rapid", t0: t, t1: t + dt, pts: rp, acc: racc }); t += dt; }
     if (c.kind !== "trace") {
       const dt = row?.pierceS || 0;
       if (dt > 0) { legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt; }
