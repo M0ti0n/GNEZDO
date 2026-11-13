@@ -1020,13 +1020,13 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                     {cut?.balloons?.map((b, j) => {
                       // a balloon up and right of its point, on a short leader
                       // (side -1: up and left, so a pair 1 / 2 does not overlap)
-                      const r = 10 / v.s, dx = 16 / v.s, cx = b.at[0] + (b.side ?? 1) * dx, cy = b.at[1] - dx;
+                      const r = 5 / v.s, dx = 8 / v.s, cx = b.at[0] + (b.side ?? 1) * dx, cy = b.at[1] - dx;
                       return (
                         <g key={`b${j}`} className={`bc-balloon${b.neg ? " is-neg" : ""}${b.sel ? " is-sel" : ""}${b.float ? " is-float" : ""}`}>
-                          <line x1={b.at[0]} y1={b.at[1]} x2={cx} y2={cy} style={{ strokeWidth: 1.2 / v.s }} />
-                          <circle cx={b.at[0]} cy={b.at[1]} r={1.8 / v.s} className="bc-dot" />
-                          <circle cx={cx} cy={cy} r={r} style={{ strokeWidth: 1.5 / v.s }} />
-                          <text x={cx} y={cy} style={{ fontSize: (b.label.length > 1 ? 7.5 : 9.5) / v.s }}>{b.label}</text>
+                          <line x1={b.at[0]} y1={b.at[1]} x2={cx} y2={cy} style={{ strokeWidth: 0.8 / v.s }} />
+                          <circle cx={b.at[0]} cy={b.at[1]} r={1.2 / v.s} className="bc-dot" />
+                          <circle cx={cx} cy={cy} r={r} style={{ strokeWidth: 1 / v.s }} />
+                          <text x={cx} y={cy} style={{ fontSize: (b.label.length > 1 ? 4.2 : 5.5) / v.s }}>{b.label}</text>
                         </g>
                       );
                     })}

@@ -210,9 +210,56 @@ function Wedge({ c, a0, a1, r, color }: { c: V; a0: number; a1: number; r: numbe
   </g>);
 }
 
+// what the boxes must keep off: the drawing's lines as points every 2 units
+const segPts = (a: V, b: V): V[] => {
+  const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 2));
+  return Array.from({ length: n + 1 }, (_, i) => [a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n] as V);
+};
+const arcPts = (c: V, r: number, a0: number, a1: number): V[] => {
+  const n = Math.max(2, Math.ceil((Math.abs(a1 - a0) * Math.PI * r) / 360));
+  return Array.from({ length: n + 1 }, (_, i) => at(c, dirOf(a0 + ((a1 - a0) * i) / n), r));
+};
+/** a wedge: its arc and its inside */
+const wedgePts = (c: V, a0: number, a1: number, r: number): V[] => [...arcPts(c, r, a0, a1), ...arcPts(c, r * 0.6, a0, a1)];
+const dotPts = (p: V): V[] => arcPts(p, 7, 0, 360);
+
+/** a value box wanted near `at`, out from it towards `dir` (screen degrees) first */
+interface Want { k: keyof LeadSpec; at: V; dir: number; color: string; unit: string; label: string; min?: number; max?: number }
+
 /**
- * The lead type drawn big, with its values in boxes on it (lead-in, lead-out, angles, gap, radius: as
- * the type uses them). Not to scale: the lines show the directions, the boxes the sizes.
+ * Where the boxes go: each in turn tries places round its point, nearest its own direction first and
+ * then further round and further out, and takes the first that is clear of every line and of the boxes
+ * already placed (none clear: the one with least on it). hw / hh: half a box, in drawing units.
+ */
+function placeBoxes(wants: Want[], obs: V[], hw: number, hh: number): V[] {
+  const m = 3, placed: V[] = [];
+  const clampP = (p: V): V => [Math.max(hw + 2, Math.min(W - hw - 2, p[0])), Math.max(hh + 2, Math.min(H - hh - 2, p[1]))];
+  const turns = [0, 15, -15, 30, -30, 45, -45, 65, -65, 90, -90, 120, -120, 150, -150, 180];
+  return wants.map((w) => {
+    const cands: { p: V; s: number }[] = [];
+    for (const da of turns) for (const dd of [0, 8, 18, 30, 46]) {
+      const d = dirOf(w.dir + da);
+      // out far enough that the box's own edge is clear of the point
+      const l = Math.abs(d[0]) * hw + Math.abs(d[1]) * hh + 5 + dd;
+      cands.push({ p: clampP(at(w.at, d, l)), s: Math.abs(da) / 15 + dd / 9 });
+    }
+    cands.sort((x, y) => x.s - y.s);
+    let best = cands[0].p, worst = Infinity;
+    for (const { p } of cands) {
+      let bad = 0;
+      for (const o of obs) if (Math.abs(o[0] - p[0]) < hw + m && Math.abs(o[1] - p[1]) < hh + m) bad++;
+      for (const q of placed) if (Math.abs(q[0] - p[0]) < 2 * hw + m && Math.abs(q[1] - p[1]) < 2 * hh + m) bad += 1000;
+      if (bad < worst) { worst = bad; best = p; if (!bad) break; }
+    }
+    placed.push(best);
+    return best;
+  });
+}
+
+/**
+ * The lead type drawn big, with its values in boxes beside it (lead-in, lead-out, angles, gap, radius:
+ * as the type uses them), never on its lines. Not to scale: the lines show the directions, the boxes
+ * the sizes.
  */
 export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
   type: LeadType; spec: LeadSpec; onChange: (s: LeadSpec) => void;
@@ -220,24 +267,27 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
   gapLocked?: boolean;
 }) {
   const set = (k: keyof LeadSpec, v: number) => onChange({ ...spec, [k]: v });
+  // the drawing's width on screen: a box is a fixed size in pixels, so its size in drawing units
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [px, setPx] = useState(340);
+  useEffect(() => {
+    if (!el) return;
+    const ro = new ResizeObserver(() => { if (el.clientWidth) setPx(el.clientWidth); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
   const ln = (a: V, b: V, color: string, w = 4) => <path d={`M${a[0]} ${a[1]}L${b[0]} ${b[1]}`} stroke={color} strokeWidth={w} strokeLinecap="round" fill="none" />;
   const dot = (p: V, color: string) => <circle cx={p[0]} cy={p[1]} r={6} fill="#fff" stroke={color} strokeWidth={3} />;
-  // a value box: kept inside the drawing
-  const box = (k: keyof LeadSpec, p: V, color: string, unit: string, label: string, min = 0, max = 999) => {
-    const x = Math.max(40, Math.min(W - 40, p[0])), y = Math.max(16, Math.min(H - 16, p[1]));
-    return (
-      // a negative gap (the cut stops short: a bridge is left) shows light red
-      <label key={k} className={`li-val${k === "gap" && spec.gap < 0 ? " is-neg" : ""}${k === "gap" && gapLocked ? " is-locked" : ""}`}
-        style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, borderColor: color }} title={k === "gap" && gapLocked ? "Gap: set by the balloons 1 and 2" : label}>
-        <NumInput value={spec[k]} min={min} placeholder="0" aria-label={label} className="li-num" disabled={k === "gap" && gapLocked}
-          onCommit={(n) => set(k, Math.min(max, n))} />
-        <span>{unit}</span>
-      </label>
-    );
-  };
   const clampA = (a: number) => Math.max(1, Math.min(179, a || 90));
   const LIN = 80, LOUT = 62;
-  let drawing: ReactNode, boxes: ReactNode[] = [];
+  const GAPL = "Gap (mm): + runs past the start, − stops short";
+  const LINL = "Lead-in (mm)", LOUTL = "Lead-out (mm)", AINL = "Lead-in angle from the edge (°)", AOUTL = "Lead-out angle from the edge (°)";
+  let drawing: ReactNode;
+  // the boxes, in the order they are placed (the angles first: they belong by their wedges)
+  let wants: Want[] = [];
+  let obs: V[] = [];
+  const mid = (a: V, b: V): V => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const deg = (d: V) => (Math.atan2(d[1], d[0]) * 180) / Math.PI;
 
   if (type === "cornerGap") {
     // the part up left, its corner C: in line from the right (as Corner, in line); the cut came down the
@@ -259,11 +309,13 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
       {spec.lin > 0 && ln(PI, C, IN)}
       {dot(PI, IN)}
     </>);
-    boxes = [
-      box("lin", [C[0] + 70, C[1] + 26], IN, "mm", "Lead-in (mm)"),
-      box("lout", at(E, dOut, 102), OUT, "mm", "Lead-out (mm)"),
-      box("gap", stop ? [C[0] - 44, C[1] - G / 2] : [C[0] - G / 2, C[1] + 28], GAP, "mm", "Gap (mm): + runs past the start, − stops short", -999),
-      box("aOut", at(E, dirOf((oDeg + tDeg) / 2), 62), AOUT, "°", "Lead-out angle from the edge (°)", 1, 179),
+    obs = [...segPts([14, C[1]], C), ...segPts(C, [C[0], 18]), ...segPts(C, E), ...segPts(E, PO), ...segPts(PI, C), ...dotPts(PI), ...wedgePts(E, oDeg, tDeg, 34)];
+    wants = [
+      { k: "aOut", at: at(E, dirOf((oDeg + tDeg) / 2), 34), dir: (oDeg + tDeg) / 2, color: AOUT, unit: "°", label: AOUTL, min: 1, max: 179 },
+      { k: "lin", at: mid(C, PI), dir: 90, color: IN, unit: "mm", label: LINL },
+      { k: "lout", at: PO, dir: oDeg, color: OUT, unit: "mm", label: LOUTL },
+      // the gap's box in the part, beside the gap
+      { k: "gap", at: mid(C, E), dir: stop ? 180 : -90, color: GAP, unit: "mm", label: GAPL, min: -999 },
     ];
   } else if (type === "corner" || type === "cornerAngle") {
     // the part up left, its corner C; lead-in from the right / at its angle from the edge going up,
@@ -283,31 +335,41 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
       {spec.lin > 0 && ln(PI, C, IN)}
       {dot(PI, IN)}
     </>);
-    boxes = [
-      box("lin", at(C, dIn, 120), IN, "mm", "Lead-in (mm)"),
-      box("lout", at(C, dOut, 102), OUT, "mm", "Lead-out (mm)"),
-      ...(angled ? [box("aIn", at(C, dirOf(-90 + aIn / 2), 66), AIN, "°", "Lead-in angle from the edge (°)", 1, 179),
-        box("aOut", at(C, dirOf(180 - aOut / 2), 66), AOUT, "°", "Lead-out angle from the edge (°)", 1, 179)] : []),
+    obs = [...segPts([14, C[1]], C), ...segPts(C, [C[0], 18]), ...segPts(C, PO), ...segPts(PI, C), ...dotPts(PI),
+      ...(angled ? [...wedgePts(C, -90, -90 + aIn, 46), ...wedgePts(C, 180 - aOut, 180, 42)] : [])];
+    const bIn = -90 + aIn / 2, bOut = 180 - aOut / 2;
+    wants = [
+      ...(angled ? [
+        { k: "aIn", at: at(C, dirOf(bIn), 46), dir: bIn, color: AIN, unit: "°", label: AINL, min: 1, max: 179 },
+        { k: "aOut", at: at(C, dirOf(bOut), 42), dir: bOut, color: AOUT, unit: "°", label: AOUTL, min: 1, max: 179 },
+      ] as Want[] : []),
+      { k: "lin", at: angled ? PI : mid(C, PI), dir: angled ? deg(dIn) : -90, color: IN, unit: "mm", label: LINL },
+      { k: "lout", at: PO, dir: deg(dOut), color: OUT, unit: "mm", label: LOUTL },
     ];
   } else {
     // a straight edge, the part below: the cut comes round from the left to P, runs on by the gap to E,
-    // then leaves; the leads are on the scrap side (above)
-    const y = 150, P: V = [128, y];
+    // then leaves; the leads are on the scrap side (above). A negative gap (the cut stops short, before
+    // P): P further right, E well left of it, the leads shorter, so the two leads do not cross.
+    const y = 150;
     const usesGap = type !== "perp";
+    const stop = usesGap && spec.gap < 0;
+    const P: V = [stop ? 206 : 128, y];
     // the gap always drawn (not to scale): solid when it runs past the start, dashed when it stops short
-    const g = usesGap ? (spec.gap < 0 ? -30 : 30) : 0;
+    const g = !usesGap ? 0 : stop ? (type === "perpGap" ? -84 : -110) : 30;
     const E: V = [P[0] + (type === "perp" ? 10 : g), y];   // 90° leads side by side
     const angled = type === "angled";
     const aIn = angled ? clampA(spec.aIn) : 90, aOut = angled ? clampA(spec.aOut) : 90;
     const dIn = dirOf(180 + aIn), dOut = dirOf(-aOut);   // from P: back along the edge turned up by the angle
-    const R = 50;
-    const PI = at(P, dIn, spec.lin > 0 ? LIN : 0), PO = at(E, dOut, spec.lout > 0 ? LOUT : 0);
+    const R = stop ? 42 : 50;
+    const LI = stop && angled ? 50 : LIN, LO = stop ? (angled ? 40 : 50) : LOUT;
+    const PI = at(P, dIn, spec.lin > 0 ? LI : 0), PO = at(E, dOut, spec.lout > 0 ? LO : 0);
+    const rIn = stop ? 34 : 46, rOut = stop ? 30 : 42;
     drawing = (<>
       <rect x={14} y={y} width={W - 28} height={H - y - 8} fill="rgba(27,42,48,.09)" />
       <path d={`M14 ${y}H${W - 14}`} stroke="var(--ink, #1b2a30)" strokeWidth={5} fill="none" />
-      {usesGap && <path d={`M${P[0]} ${y}H${E[0]}`} stroke={GAP} strokeWidth={6} strokeLinecap="round" opacity={g < 0 ? 0.55 : 1} strokeDasharray={g < 0 ? "5 5" : undefined} />}
-      {angled && <Wedge c={P} a0={180 + aIn} a1={180} r={46} color={AIN} />}
-      {angled && <Wedge c={E} a0={0} a1={-aOut} r={42} color={AOUT} />}
+      {usesGap && <path d={`M${P[0]} ${y}H${E[0]}`} stroke={GAP} strokeWidth={6} strokeLinecap="round" opacity={stop ? 0.55 : 1} strokeDasharray={stop ? "5 5" : undefined} />}
+      {angled && <Wedge c={P} a0={180 + aIn} a1={180} r={rIn} color={AIN} />}
+      {angled && <Wedge c={E} a0={0} a1={-aOut} r={rOut} color={AOUT} />}
       {type === "arc" ? (<>
         <path d={`M${P[0]} ${y}V${y - R}H${P[0] - R}`} stroke={IN} strokeWidth={1.4} strokeDasharray="3 3" fill="none" opacity={0.6} />
         <path d={`M${P[0] - R} ${y - R}A${R} ${R} 0 0 0 ${P[0]} ${y}`} stroke={IN} strokeWidth={4} fill="none" strokeLinecap="round" />
@@ -319,21 +381,47 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
         {dot(PI, IN)}
       </>)}
     </>);
-    // straight up (90°): the two boxes beside their lines, else beyond the lines' ends
-    const side = !angled;
-    boxes = type === "arc" ? [
-      box("radius", [P[0] - R - 6, y - R - 30], IN, "mm", "Arc radius (mm)"),
-      box("gap", [(P[0] + E[0]) / 2, y + 34], GAP, "mm", "Gap (mm): + runs past the start, − stops short", -999),
-    ] : [
-      box("lin", side ? [P[0] - 46, P[1] - 50] : at(P, dIn, 120), IN, "mm", "Lead-in (mm)"),
-      box("lout", side ? [E[0] + 46, E[1] - 31] : at(E, dOut, 102), OUT, "mm", "Lead-out (mm)"),
-      ...(usesGap ? [box("gap", [(P[0] + E[0]) / 2, y + 34], GAP, "mm", "Gap (mm): + runs past the start, − stops short", -999)] : []),
-      ...(angled ? [box("aIn", at(P, dirOf(180 + aIn / 2), 66), AIN, "°", "Lead-in angle from the edge (°)", 1, 179),
-        box("aOut", at(E, dirOf(-aOut / 2), 62), AOUT, "°", "Lead-out angle from the edge (°)", 1, 179)] : []),
-    ];
+    obs = [...segPts([14, y], [W - 14, y])];
+    if (type === "arc") obs.push(...arcPts([P[0], y - R], R, 90, 180), ...arcPts([E[0], y - R], R, 0, 90), ...dotPts([P[0] - R, y - R]), ...segPts([P[0], y], [P[0], y - R]));
+    else obs.push(...segPts(E, PO), ...segPts(PI, P), ...dotPts(PI));
+    if (angled) obs.push(...wedgePts(P, 180 + aIn, 180, rIn), ...wedgePts(E, -aOut, 0, rOut));
+    // each lead's box on its outer side, away from the other lead
+    const inSide = stop ? 0 : 180, outSide = stop ? 180 : 0;
+    const gapWant: Want[] = usesGap ? [{ k: "gap", at: mid(P, E), dir: 90, color: GAP, unit: "mm", label: GAPL, min: -999 }] : [];
+    if (type === "arc") {
+      wants = [{ k: "radius", at: [P[0] - R * 0.3, y - R * 0.7], dir: -90 + (stop ? 40 : -40), color: IN, unit: "mm", label: "Arc radius (mm)" }, ...gapWant];
+    } else if (!angled) {
+      wants = [
+        { k: "lin", at: mid(P, PI), dir: inSide, color: IN, unit: "mm", label: LINL },
+        { k: "lout", at: mid(E, PO), dir: outSide, color: OUT, unit: "mm", label: LOUTL },
+        ...gapWant,
+      ];
+    } else {
+      const bIn = 180 + aIn / 2, bOut = -aOut / 2;
+      wants = [
+        { k: "aIn", at: at(P, dirOf(bIn), rIn), dir: stop ? 0 : bIn, color: AIN, unit: "°", label: AINL, min: 1, max: 179 },
+        { k: "aOut", at: at(E, dirOf(bOut), rOut), dir: stop ? 180 : bOut, color: AOUT, unit: "°", label: AOUTL, min: 1, max: 179 },
+        { k: "lin", at: PI, dir: stop ? -45 : deg(dIn), color: IN, unit: "mm", label: LINL },
+        { k: "lout", at: PO, dir: stop ? -135 : deg(dOut), color: OUT, unit: "mm", label: LOUTL },
+        ...gapWant,
+      ];
+    }
   }
+  // a box is about 66 × 30 px on screen
+  const sc = W / Math.max(200, px);
+  const spots = placeBoxes(wants, obs, 33 * sc, 15 * sc);
+  const order: (keyof LeadSpec)[] = ["lin", "lout", "gap", "radius", "aIn", "aOut"];
+  const boxes = wants.map((w, i) => ({ w, p: spots[i] })).sort((a, b) => order.indexOf(a.w.k) - order.indexOf(b.w.k)).map(({ w, p }) => (
+    // a negative gap (the cut stops short: a bridge is left) shows light red
+    <label key={w.k} className={`li-val${w.k === "gap" && spec.gap < 0 ? " is-neg" : ""}${w.k === "gap" && gapLocked ? " is-locked" : ""}`}
+      style={{ left: `${(p[0] / W) * 100}%`, top: `${(p[1] / H) * 100}%`, borderColor: w.color }} title={w.k === "gap" && gapLocked ? "Gap: set by the balloons 1 and 2" : w.label}>
+      <NumInput value={spec[w.k]} min={w.min ?? 0} placeholder="0" aria-label={w.label} className="li-num" disabled={w.k === "gap" && gapLocked}
+        onCommit={(n) => set(w.k, Math.min(w.max ?? 999, n))} />
+      <span>{w.unit}</span>
+    </label>
+  ));
   return (
-    <div className="li-editor">
+    <div className="li-editor" ref={setEl}>
       <svg viewBox={`0 0 ${W} ${H}`} aria-hidden="true">{drawing}</svg>
       {boxes}
     </div>
