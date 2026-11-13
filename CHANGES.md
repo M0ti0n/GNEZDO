@@ -15,6 +15,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
     - **Foil / finish on the top side**: never mirrored when nesting. **Grain** X / Y: a pattern with the grain along Y is turned 90° so it runs along the sheet (X); nesting only turns it 180°. Rotation steps now include **180°** (import, part properties, Process)
     - **DISTANCE**: two clicks on the flat pattern (corners, ends and hole centers snap); **FLAT DXF**: the flat pattern with the whole bend lines on layer BEND and the marks on BEND_MARK
     - **Profiles** (per customer or the shop standard, kept in this browser for now): a K-factor, K-factors by material and thickness, bend marks, angle labels, foil on by default. Profile → Edit…
+  - **Name** and quantity before sending: at the top of a part's panel (Name, pieces), or in the list (the pencil on a row, or F2). A part already waiting in Import 2D is renamed there too
   - Not yet: unfolding tubes and profiles (they are only sorted), Parasolid
 
 ## Build 13 Nov 2026 (`bae6e3b`)

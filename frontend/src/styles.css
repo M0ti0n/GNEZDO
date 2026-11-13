@@ -2556,3 +2556,8 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 @media (max-width: 1100px) { .uf-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; } }
 
 .tab-3d { font-family: var(--font-cond); font-size: 11px; letter-spacing: .02em; }
+.uf-name input#uf-name { flex: 1; min-width: 0; font-weight: 600; }
+.uf-name .uf-qty { width: 58px; }
+.uf-name-note { margin-top: -4px; }
+.x3-rename { height: 26px; padding: 0 6px; font-weight: 600; min-width: 0; }
+.x3-ren svg { display: block; margin: auto; }
