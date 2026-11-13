@@ -142,7 +142,7 @@ export function ExtractPanel(p: ExtractPanelProps & { onClose: () => void }) {
                 {open && list.map((x) => {
                   const i = x.step.info;
                   const note = [
-                    i.thickness ? `${i.thickness} mm` : "",
+                    [x.material, i.thickness ? `${i.thickness} mm` : ""].filter(Boolean).join(" "),
                     i.ok && i.w ? `${Math.round(i.w)} × ${Math.round(i.h)}` : "",
                     i.bends ? `${i.bends} ${i.bends === 1 ? "bend" : "bends"}` : "",
                     kind === "surface" && !i.ok ? "stitch faces" : "",
