@@ -209,6 +209,26 @@ export function readSolid(text: string): Solid {
     return { pts: [p0, p1] };
   };
 
+  // a B-spline surface that is flat (FreeCAD writes some side faces so): a plane
+  const flatSpline = (se: Entity): Surf | null => {
+    const bs = part(se, "B_SPLINE_SURFACE_WITH_KNOTS") ?? part(se, "B_SPLINE_SURFACE");
+    if (!bs) return null;
+    const base = part(se, "B_SPLINE_SURFACE") ?? bs;
+    const net = base.args[base === bs ? 3 : 2] as Val[][];
+    if (!Array.isArray(net) || !net.length || !Array.isArray(net[0])) return null;
+    const P3 = net.map((row) => row.map(P));
+    const all = P3.flat();
+    const o = P3[0][0];
+    const su = sub3(P3[P3.length - 1][0], o), sv = sub3(P3[0][P3[0].length - 1], o);
+    let n = cross3(su, sv);
+    if (len3(n) < 1e-9) { const far = all.reduce((b, q) => (len3(sub3(q, o)) > len3(sub3(b, o)) ? q : b), o); n = cross3(sub3(far, o), su); }
+    if (len3(n) < 1e-9) return null;
+    n = unit3(n);
+    const size = Math.max(...all.map((q) => len3(sub3(q, o))), 1);
+    if (all.some((q) => Math.abs(dot3(sub3(q, o), n)) > 1e-6 * size)) return null;
+    return { kind: "plane", o, n, x: unit3(len3(su) > 1e-9 ? su : sv) };
+  };
+
   const problems: string[] = [];
   // the solid: the first MANIFOLD_SOLID_BREP (or BREP_WITH_VOIDS), its outer shell
   let shell: Entity | null = null, name = "";
@@ -231,7 +251,7 @@ export function readSolid(text: string): Solid {
     let surf: Surf;
     if (se.type === "PLANE") { const ax = axis2(se.args[1]); surf = { kind: "plane", o: ax.o, n: ax.z, x: ax.x }; }
     else if (se.type === "CYLINDRICAL_SURFACE") { const ax = axis2(se.args[1]); surf = { kind: "cyl", a: ax.o, d: ax.z, x: ax.x, r: (se.args[2] as number) * unitMm }; }
-    else surf = { kind: "other", type: se.type === "COMPLEX" ? (se.parts?.map((p) => p.type).join("+") ?? "COMPLEX") : se.type };
+    else surf = flatSpline(se) ?? { kind: "other", type: se.type === "COMPLEX" ? (se.parts?.map((p) => p.type).join("+") ?? "COMPLEX") : se.type };
     const sense = (f.args[3] as Enum)?.enum !== "F";
     const loops: Face["loops"] = [];
     for (const br of f.args[1] as Val[]) {
