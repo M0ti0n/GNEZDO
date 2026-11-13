@@ -25,7 +25,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Import **DWG** drawings (parts, stock sheets, remnants): the GNEZDO server converts them to DXF with the ODA File Converter (free, installed on that PC) or LibreDWG's dwg2dxf (in a "tools" folder next to "program"), found by itself or set in config.json (INSTALL.txt). Without a converter the import list says so
 
 **Changed**
-- Lead in / out and Break cut drawing: the value boxes are **placed beside the lines, never on them** (each box tries spots round its line or angle, nearest its own side first, and takes the first clear of every line and the other boxes), for every type, angle and a negative gap. A negative gap is drawn with the leads further apart, so they no longer cross
+- Lead in / out and Break cut drawing: a **static picture** with the value boxes **beside the lines, never on them**. The angles are drawn at 45° (Corner in, gap out: 90°) whatever is typed, so neither the lines nor the boxes move while values change; only a gap turning negative redraws it (the cut stops short, the leads drawn further apart so they no longer cross)
 - Break cut balloons (BC, 1, 2) on the sheet are **half the size**
 - Weights: "MS" counts as mild steel (7.85 kg/dm³), not brass
 - Post process: arcs and circles go out as arcs (G02 / G03, at most 180° each) instead of short lines, found again from the drawing's points, and straight lines as one move each. This applies to the HACO plasma too (its postprocessor already writes arcs)

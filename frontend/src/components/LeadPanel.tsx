@@ -278,7 +278,10 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
   }, [el]);
   const ln = (a: V, b: V, color: string, w = 4) => <path d={`M${a[0]} ${a[1]}L${b[0]} ${b[1]}`} stroke={color} strokeWidth={w} strokeLinecap="round" fill="none" />;
   const dot = (p: V, color: string) => <circle cx={p[0]} cy={p[1]} r={6} fill="#fff" stroke={color} strokeWidth={3} />;
-  const clampA = (a: number) => Math.max(1, Math.min(179, a || 90));
+  // a static picture: the angles drawn at 45° (Corner in, gap out: 90°) whatever the values, and the
+  // lines at full length, so the boxes stay where they are while values are typed (only a gap turning
+  // negative redraws it, the cut then stops short)
+  const NOM = 45;
   const LIN = 80, LOUT = 62;
   const GAPL = "Gap (mm): + runs past the start, − stops short";
   const LINL = "Lead-in (mm)", LOUTL = "Lead-out (mm)", AINL = "Lead-in angle from the edge (°)", AOUTL = "Lead-out angle from the edge (°)";
@@ -293,13 +296,13 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
     // the part up left, its corner C: in line from the right (as Corner, in line); the cut came down the
     // right edge and stops the gap short of C (or runs on past it), then leaves at its angle to the scrap
     const C: V = [150, 122], G = 34;
-    const aOut = clampA(spec.aOut);
+    const aOut = 90;
     const stop = spec.gap <= 0;
     const E: V = stop ? [C[0], C[1] - G] : [C[0] - G, C[1]];
     const tDeg = stop ? 90 : 180;                       // the way the cut goes at E (screen)
     const oDeg = stop ? 90 - aOut : 180 - aOut;         // turned towards the scrap
     const dIn: V = [1, 0], dOut = dirOf(oDeg);
-    const PI = at(C, dIn, spec.lin > 0 ? LIN : 0), PO = at(E, dOut, spec.lout > 0 ? LOUT : 0);
+    const PI = at(C, dIn, LIN), PO = at(E, dOut, LOUT);
     drawing = (<>
       <rect x={14} y={18} width={C[0] - 14} height={C[1] - 18} fill="rgba(27,42,48,.09)" />
       <Wedge c={E} a0={oDeg} a1={tDeg} r={34} color={AOUT} />
@@ -307,7 +310,7 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
       <path d={`M${C[0]} ${C[1]}L${E[0]} ${E[1]}`} stroke={GAP} strokeWidth={6} strokeLinecap="round" opacity={stop ? 0.55 : 1} strokeDasharray={stop ? "5 5" : undefined} />
       {spec.lout > 0 && ln(E, PO, OUT)}
       {spec.lin > 0 && ln(PI, C, IN)}
-      {dot(PI, IN)}
+      {dot(spec.lin > 0 ? PI : C, IN)}
     </>);
     obs = [...segPts([14, C[1]], C), ...segPts(C, [C[0], 18]), ...segPts(C, E), ...segPts(E, PO), ...segPts(PI, C), ...dotPts(PI), ...wedgePts(E, oDeg, tDeg, 34)];
     wants = [
@@ -322,9 +325,9 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
     // lead-out down / at its angle from the edge going left
     const C: V = [150, 122];
     const angled = type === "cornerAngle";
-    const aIn = angled ? clampA(spec.aIn) : 90, aOut = angled ? clampA(spec.aOut) : 90;
+    const aIn = angled ? NOM : 90, aOut = angled ? NOM : 90;
     const dIn = dirOf(-90 + aIn), dOut = dirOf(180 - aOut);
-    const PI = at(C, dIn, spec.lin > 0 ? LIN : 0), PO = at(C, dOut, spec.lout > 0 ? LOUT : 0);
+    const PI = at(C, dIn, LIN), PO = at(C, dOut, LOUT);
     drawing = (<>
       <rect x={14} y={18} width={C[0] - 14} height={C[1] - 18} fill="rgba(27,42,48,.09)" />
       {angled && <Wedge c={C} a0={-90} a1={-90 + aIn} r={46} color={AIN} />}
@@ -333,7 +336,7 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
       <path d={`M14 ${C[1]}H${C[0]}V18`} stroke="var(--ink, #1b2a30)" strokeWidth={5} fill="none" />
       {spec.lout > 0 && ln(C, PO, OUT)}
       {spec.lin > 0 && ln(PI, C, IN)}
-      {dot(PI, IN)}
+      {dot(spec.lin > 0 ? PI : C, IN)}
     </>);
     obs = [...segPts([14, C[1]], C), ...segPts(C, [C[0], 18]), ...segPts(C, PO), ...segPts(PI, C), ...dotPts(PI),
       ...(angled ? [...wedgePts(C, -90, -90 + aIn, 46), ...wedgePts(C, 180 - aOut, 180, 42)] : [])];
@@ -358,11 +361,11 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
     const g = !usesGap ? 0 : stop ? (type === "perpGap" ? -84 : -110) : 30;
     const E: V = [P[0] + (type === "perp" ? 10 : g), y];   // 90° leads side by side
     const angled = type === "angled";
-    const aIn = angled ? clampA(spec.aIn) : 90, aOut = angled ? clampA(spec.aOut) : 90;
+    const aIn = angled ? NOM : 90, aOut = angled ? NOM : 90;
     const dIn = dirOf(180 + aIn), dOut = dirOf(-aOut);   // from P: back along the edge turned up by the angle
     const R = stop ? 42 : 50;
     const LI = stop && angled ? 50 : LIN, LO = stop ? (angled ? 40 : 50) : LOUT;
-    const PI = at(P, dIn, spec.lin > 0 ? LI : 0), PO = at(E, dOut, spec.lout > 0 ? LO : 0);
+    const PI = at(P, dIn, LI), PO = at(E, dOut, LO);
     const rIn = stop ? 34 : 46, rOut = stop ? 30 : 42;
     drawing = (<>
       <rect x={14} y={y} width={W - 28} height={H - y - 8} fill="rgba(27,42,48,.09)" />
@@ -378,7 +381,7 @@ export function LeadEditor({ type, spec, onChange, gapLocked = false }: {
       </>) : (<>
         {spec.lout > 0 && ln(E, PO, OUT)}
         {spec.lin > 0 && ln(PI, P, IN)}
-        {dot(PI, IN)}
+        {dot(spec.lin > 0 ? PI : P, IN)}
       </>)}
     </>);
     obs = [...segPts([14, y], [W - 14, y])];
