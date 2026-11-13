@@ -8,6 +8,7 @@ import { readDxf } from "../dxf";
 import { fixMarkRules, type Drawing, type Role } from "../geometry";
 import type { Rotation } from "../rules";
 import { readStep, type Solid, type StepModel } from "./step";
+import { textLines, textWidth } from "../singleLine";
 import { bendMarks, flatDxf, stitch, unfold, type Unfolded, type V2 } from "./unfold";
 
 export const STEP_ACCEPT = ".step,.stp";
@@ -30,8 +31,11 @@ export interface StepSettings {
   markLen: number;
   markInset: number;
   marks: MarkAs;
-  /** angle and UP / DOWN shown beside the bends (on the drawing, not engraved) */
+  /** angle and UP / DOWN shown beside the bends */
   annotate: boolean;
+  /** ... and engraved (traced) with the single-line font, `textMm` high (capitals) */
+  engraveText?: boolean;
+  textMm?: number;
   /** sheet: unfolded across its bends; stitch: the faces picked laid flat across their shared edges */
   mode: "sheet" | "stitch";
   /** stitch: the faces picked (indexes in the solid's faces), the first one stays */
@@ -64,11 +68,13 @@ export interface UnfoldProfile {
   markInset: number;
   marks: MarkAs;
   annotate: boolean;
+  engraveText?: boolean;
+  textMm?: number;
   /** new parts start with foil / finish on the top side */
   foil: boolean;
 }
 
-export const DEFAULT_PROFILE: UnfoldProfile = { name: "Standard", kFactor: 0.44, kTable: [], markLen: 20, markInset: 2, marks: "trace", annotate: true, foil: false };
+export const DEFAULT_PROFILE: UnfoldProfile = { name: "Standard", kFactor: 0.44, kTable: [], markLen: 20, markInset: 2, marks: "trace", annotate: true, engraveText: false, textMm: 6, foil: false };
 
 const PROFILES = "gnezdo.unfoldProfiles", CURRENT = "gnezdo.unfoldProfile";
 export function loadProfiles(): UnfoldProfile[] {
@@ -92,7 +98,7 @@ export function kFor(p: UnfoldProfile, material: string, thicknessMm: number | n
 }
 
 export function settingsFrom(p: UnfoldProfile): StepSettings {
-  return { profile: p.name, kFactor: p.kFactor, foil: p.foil, grain: "none", markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate, mode: "sheet", stitch: [], comp: { side: "none", t: 0, r: 0 } };
+  return { profile: p.name, kFactor: p.kFactor, foil: p.foil, grain: "none", markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate, engraveText: !!p.engraveText, textMm: p.textMm ?? 6, mode: "sheet", stitch: [], comp: { side: "none", t: 0, r: 0 } };
 }
 
 // ------------------------------------------------------------------ unfolding
@@ -145,12 +151,42 @@ function turn90(u: Unfolded): Unfolded {
 /** The bend marks the settings ask for. */
 export const marksOf = (u: Unfolded, st: StepSettings) => (st.marks === "none" ? [] : bendMarks(u, st.markLen, st.markInset));
 
-/** The flat pattern as an import drawing: the outline cut, the bend marks traced (or open cut). */
+/** A bend's label: its angle and which way it goes. */
+export const bendLabel = (b: { angleDeg: number; up: boolean }) => `${Math.round(b.angleDeg * 10) / 10}° ${b.up ? "UP" : "DOWN"}`;
+
+/**
+ * The bends' labels engraved: single-line text beside each bend line, in its middle, along it (turned to
+ * be read from below or the right). Shorter bends get smaller text (the text at most 70 % of the bend).
+ */
+export function bendTexts(u: Unfolded, st: StepSettings): V2[][] {
+  if (!st.annotate || !st.engraveText) return [];
+  const cap0 = st.textMm ?? 6;
+  return u.bendLines.flatMap(([a, b], i) => {
+    const bd = u.bends[i];
+    if (!bd) return [];
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (L < 1e-6) return [];
+    const label = bendLabel(bd);
+    // fit the text into the bend's middle 70 %
+    const w1 = textWidth(label, 1);
+    const cap = Math.min(cap0, (0.7 * L) / Math.max(w1, 1e-6));
+    if (cap < 1.5) return [];
+    let ang = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+    if (ang > 90.5) ang -= 180; else if (ang <= -89.5) ang += 180;
+    const r = (ang * Math.PI) / 180;
+    // above the line (its left side, read along it), clear of it
+    const gap = Math.max(1, cap * 0.35);
+    const at: V2 = [(a[0] + b[0]) / 2 - Math.sin(r) * gap, (a[1] + b[1]) / 2 + Math.cos(r) * gap];
+    return textLines(label, { at, align: "center", valign: "baseline", angle: ang, capMm: cap });
+  });
+}
+
+/** The flat pattern as an import drawing: the outline cut, the bend marks traced (or open cut), the labels traced. */
 export function flatDrawing(id: string, name: string, u: Unfolded, st: StepSettings): Drawing {
-  const text = flatDxf(u, { marks: marksOf(u, st), bendLines: false });
+  const text = flatDxf(u, { marks: marksOf(u, st), bendLines: false, texts: bendTexts(u, st) });
   const r = readDxf(text, `${name}.dxf`);
   const role: Role = st.marks === "openCut" ? "openCut" : "trace";
-  const entities = r.drawing.entities.map((e) => (e.layer === "BEND_MARK" ? { ...e, role, fileRole: role } : e));
+  const entities = r.drawing.entities.map((e) => (e.layer === "BEND_MARK" ? { ...e, role, fileRole: role } : e.layer === "BEND_TEXT" ? { ...e, role: "trace" as Role, fileRole: "trace" as Role } : e));
   return { ...r.drawing, id, fileName: name, entities: fixMarkRules(entities).entities };
 }
 
