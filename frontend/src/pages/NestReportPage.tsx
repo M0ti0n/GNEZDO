@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { JobPart } from "../api/types";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
+import { MarkPaths, usePartMarks } from "../components/PartMarks";
 import { partColor, type NestedSheet } from "../job/nest";
 import type { Machine, Origin } from "../job/machine";
 import { hmsOf, labelPoint, mmss, parsePages, sheetReport, type SheetReport } from "../job/report";
@@ -176,7 +177,7 @@ function ReportPage({ page, no, total, job, sheet, rep, at }: {
                 <td className="num"><b>{r.qty}</b></td>
                 <td className="num">{r.kg.toFixed(2)}</td>
                 <td className="num">{mmss(r.cutS)}</td>
-                <td className="rp-thumb">{r.jp && <PartThumb part={r.jp.part} size={40} />}</td>
+                <td className="rp-thumb">{r.jp && <PartThumb part={r.jp.part} size={40} marks />}</td>
               </tr>
             );
           })}
@@ -205,6 +206,8 @@ function SheetDrawing({ sheet, rep }: { sheet: NestedSheet; rep: SheetReport }) 
   const s = Math.min(W / sheet.lengthMm, H / sheet.widthMm);
   const w = sheet.lengthMm * s, h = sheet.widthMm * s;
   const byId = new Map(rep.parts.map((p) => [p.partId, p.jp]));
+  // the parts' tracing and open cut lines
+  const lines = usePartMarks(sheet.parts.map((p) => p.partId));
   const marks = sheet.parts.map((p) => {
     const jp = byId.get(p.partId);
     if (!jp) return null;
@@ -234,8 +237,12 @@ function SheetDrawing({ sheet, rep }: { sheet: NestedSheet; rep: SheetReport }) 
           const jp = byId.get(p.partId);
           if (!jp) return null;
           const c = partColor(jp.no);
-          return <path key={i} d={jp.part.path} fillRule="evenodd" transform={`translate(${p.x} ${p.y}) rotate(${p.angle})${p.mirror ? " scale(-1 1)" : ""}`}
-            style={{ fill: c.fill, stroke: c.stroke }} strokeWidth={0.8 / s} />;
+          return (
+            <g key={i} transform={`translate(${p.x} ${p.y}) rotate(${p.angle})${p.mirror ? " scale(-1 1)" : ""}`}>
+              <path d={jp.part.path} fillRule="evenodd" style={{ fill: c.fill, stroke: c.stroke }} strokeWidth={0.8 / s} />
+              <MarkPaths marks={lines.get(p.partId)} width={1 / s} />
+            </g>
+          );
         })}
       </g>
       {marks.filter((m) => m.big).map((m, i) => <text key={i} className="rp-no" x={m.cx} y={m.cy + 5.5}>{m.jp.no}</text>)}

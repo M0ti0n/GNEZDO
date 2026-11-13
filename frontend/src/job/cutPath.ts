@@ -759,3 +759,34 @@ export function rapidsOf(contours: CutContour[], from: Pt): [Pt, Pt][] {
   for (const r of rapidPaths(contours, from)) for (let i = 1; i < r.pts.length; i++) out.push([r.pts[i - 1], r.pts[i]]);
   return out;
 }
+
+/**
+ * The sheet's parts and cut path moved by dx, dy (its size changed and the 0,0 corner is right or
+ * bottom: the parts stay where they are from 0,0). Processed parts stay processed.
+ */
+export function shiftSheet(sheet: NestedSheet, dx: number, dy: number): NestedSheet {
+  if (!dx && !dy) return sheet;
+  const mv = (p: Pt): Pt => [p[0] + dx, p[1] + dy];
+  const parts = sheet.parts.map((p) => ({ ...p, x: p.x + dx, y: p.y + dy }));
+  let cut = sheet.cut;
+  if (cut) {
+    const c0 = cut;
+    const contours = c0.contours.map((c) => ({
+      ...c, pts: c.pts.map(mv), leadIn: c.leadIn.map(mv), leadOut: c.leadOut.map(mv),
+      ...(c.bc ? { bc: { ...c.bc, plan: { ...c.bc.plan, starts: c.bc.plan.starts.map((s) => ({ ...s, at: mv(s.at), ...(s.p1 ? { p1: mv(s.p1) } : {}) })) } } } : {}),
+    }));
+    // a rapid's points belong to the contour before it, named by its line: named again
+    const renamed = new Map(c0.contours.map((c, i) => [contourKey(c), contourKey(contours[i])]));
+    contours.forEach((c, i) => {
+      const v = c0.contours[i].via;
+      if (v) contours[i] = { ...c, via: { pts: v.pts.map(mv), after: renamed.get(v.after) ?? v.after } };
+    });
+    const keys: Record<number, string> = {};
+    for (const [k, key] of Object.entries(c0.keys)) {
+      const i = Number(k), was = sheet.parts[i];
+      keys[i] = was && key === partKey(was) ? partKey(parts[i]) : key;
+    }
+    cut = { ...c0, contours, keys };
+  }
+  return { ...sheet, parts, cut };
+}

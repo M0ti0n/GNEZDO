@@ -93,7 +93,7 @@ export function CostReportPage({ job, jobParts, userName }: { job: ReportJob; jo
       <div className="cp-rows">
         {rows.map((r) => (
           <div key={r.jp.part.id} className="cp-row">
-            <div className="cp-thumb"><PartThumb part={r.jp.part} size={52} /></div>
+            <div className="cp-thumb"><PartThumb part={r.jp.part} size={52} marks /></div>
             <div className="cp-main">
               <div className="cp-line1"><b>{r.jp.part.name}</b><span className="cp-qty">{r.jp.qty} pcs</span><span className="cp-each">{money(r.each, snap.currency)} / pcs</span></div>
               <div className="cp-line2">

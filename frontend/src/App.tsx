@@ -14,7 +14,7 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { partGeometry } from "./import/toPart";
 import type { SavePart } from "./api/api";
-import { forgetPartMarks } from "./job/cutPath";
+import { forgetPartMarks, shiftSheet } from "./job/cutPath";
 import { applyRules, loadRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
 import { RulesPage } from "./pages/RulesPage";
 import { quantityFromName } from "./import/geometry";
@@ -36,7 +36,7 @@ import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNe
 import { NestPage, type ProcessTool, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
 import { keyLabel, loadKeys } from "./job/manualKeys";
-import { gapsFor, loadLocalMachines, machineCan, machineOf, normalizeMachines, saveLocalMachines, type MachineList } from "./job/machine";
+import { gapsFor, loadLocalMachines, machineCan, machineOf, normalizeMachines, saveLocalMachines, type MachineList, type Origin } from "./job/machine";
 import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
 import { hasJobNames, suggestJobName } from "./job/jobName";
 import { setMachineLimit } from "./job/stock";
@@ -798,8 +798,15 @@ export function App() {
       const used = sheets.reduce((n, sh, i) => n + (sh.sheetId === stockOf.id ? (i === index ? patch.cutNumber! : sh.cutNumber ?? 1) : 0), 0);
       if (used > stockOf.qty) setToast(`The layouts now need ${used} of this stock sheet; the stock has ${stockOf.qty}`);
     }
+    // a new size keeps the parts where they are from the 0,0 corner (a right or bottom corner moves
+    // with the sheet's edge: the parts go with it)
+    const resized = (sh: NestedSheet, origin: Origin): NestedSheet => {
+      const dx = patch.lengthMm !== undefined && origin.endsWith("right") ? patch.lengthMm - sh.lengthMm : 0;
+      const dy = patch.widthMm !== undefined && origin.startsWith("bottom") ? patch.widthMm - sh.widthMm : 0;
+      return { ...shiftSheet(sh, dx, dy), ...patch };
+    };
     patchSol(jobId, solId, (x) => x.run?.result ? {
-      ...x, run: { ...x.run, result: { ...x.run.result, sheets: x.run.result.sheets.map((sh, i) => (i === index ? { ...sh, ...patch } : sh)) } },
+      ...x, run: { ...x.run, result: { ...x.run.result, sheets: x.run.result.sheets.map((sh, i) => (i === index ? resized(sh, x.origin ?? machineFor(jobId).origin) : sh)) } },
     } : x);
   };
   // Re-nest this sheet: its parts nested again on it alone (the other sheets stay as they are)

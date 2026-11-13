@@ -1,3 +1,4 @@
+import { DateInput } from "./DateInput";
 import type { JSX, ReactNode } from "react";
 import type { DateMode } from "../api/types";
 import { IconChevronLeft } from "./Icons";
@@ -51,8 +52,8 @@ export function DateLine({ label, on, value, onToggle, onChange }: {
         <span className="date-label">{label}</span>
       </label>
       <div className="date-field">
-        <input className="field" type="date" value={value.date} title={`${label} date`} aria-label={`${label} date`}
-          onChange={(e) => onChange({ ...value, date: e.target.value })} />
+        <DateInput value={value.date} title={`${label} date`} aria-label={`${label} date`}
+          onChange={(date) => onChange({ ...value, date })} />
         <div className="date-modes" role="radiogroup" aria-label={`${label}: compare`}>
           {DATE_MODES.map((m) => (
             <button key={m.id} type="button" role="radio" aria-checked={value.mode === m.id} aria-label={m.label}

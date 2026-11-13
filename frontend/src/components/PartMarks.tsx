@@ -27,9 +27,10 @@ const d = (run: Pt[], f?: (p: Pt) => Pt) => run.map((p, j) => { const [x, y] = f
 /** The marks as paths (part frame, or through `f` onto a sheet); `width` in drawing units, else 1.4 px. */
 export function MarkPaths({ marks, f, width }: { marks?: Marks; f?: (p: Pt) => Pt; width?: number }) {
   if (!marks) return null;
-  const style = width ? { strokeWidth: width } : undefined;
+  // inline: thumbnails' own path rules (fills, selected colors) must not reach these lines
+  const style = (stroke: string) => ({ fill: "none", stroke, ...(width ? { strokeWidth: width } : {}) });
   return (<>
-    {marks.trace.map((r, k) => <path key={`t${k}`} className={`part-mark is-trace${width ? "" : " is-px"}`} d={d(r, f)} style={style} />)}
-    {marks.open.map((r, k) => <path key={`o${k}`} className={`part-mark is-open${width ? "" : " is-px"}`} d={d(r, f)} style={style} />)}
+    {marks.trace.map((r, k) => <path key={`t${k}`} className={`part-mark is-trace${width ? "" : " is-px"}`} d={d(r, f)} style={style("var(--ln-trace)")} />)}
+    {marks.open.map((r, k) => <path key={`o${k}`} className={`part-mark is-open${width ? "" : " is-px"}`} d={d(r, f)} style={style("var(--ln-open)")} />)}
   </>);
 }

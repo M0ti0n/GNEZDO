@@ -33,6 +33,9 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Post process: arcs and circles go out as arcs (G02 / G03, at most 180° each) instead of short lines, found again from the drawing's points, and straight lines as one move each. This applies to the HACO plasma too (its postprocessor already writes arcs)
 
 **Fixed**
+- Sheet properties of a nested sheet: a **new size keeps the parts where they are from the 0,0 corner**. With the 0,0 corner at the bottom or the right, the parts (and a processed sheet's cut path, its Movement points and break cuts) move with that edge, so they stay put from 0,0 and the sheet shrinks or grows on the far sides; processed parts stay processed
+- Nest report and Cost report: the parts' **tracing and open cut lines** on the sheet drawings and the part pictures
+- Date fields in the search filters (Parts, Jobs, Remnants): an **English calendar** of GNEZDO's own (Monday first, Today, Clear) instead of the browser's, which showed the computer's language (Danes, Počisti); dates show and type as 13. 11. 2026 (2026-11-13 works too)
 - A part's **tracing and open cut lines are shown before it is processed**: in Part properties (the picture), in the parts beside a sheet (Manual nesting) and on the sheets (tracing purple, open cut light blue). They were always saved with the part and cut when the sheet is processed, but these pictures drew only the closed contours, so the lines looked lost after saving or adding the part to a job
 - Parts saved over (importer, EDIT) show their new lines right away
 
