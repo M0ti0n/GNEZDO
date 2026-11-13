@@ -4,7 +4,7 @@ import { api, materialKey, type PartFacets, type SavedRemnant } from "../api/api
 import { DEFAULT_SORT, type DateMode, type JobFilter, type PartFilter, type PartSummary, type SortOrder } from "../api/types";
 import { SortControl, loadSort, saveSort } from "../components/SortControl";
 import { DateLine, PanelHead, SizeLine } from "../components/FilterFields";
-import { IconHome, IconLibrary, IconRemnant, IconSearch } from "../components/Icons";
+import { IconHome, IconImport, IconLibrary, IconNewJob, IconRemnant, IconSearch } from "../components/Icons";
 import { RemnantsPanel, type RemnantFilter } from "./RemnantsPanel";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { JobsPanel } from "./JobsPanel";
@@ -35,6 +35,8 @@ interface Props {
   machines?: MachineList;
   homeActive: boolean;
   onHome: () => void;
+  /** New job: its pop-up (name and machine) */
+  onNewJob: () => void;
   importPanel: ImportPanelProps;
   /** Show the number of pieces from the file name (import rule). */
   showQty: boolean;
@@ -42,7 +44,7 @@ interface Props {
 
 // Left side: a rail that opens a docked panel for finding imported parts
 // (to drag into a job), searching jobs, or importing new drawings.
-export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRemnantSearch, remnant, homeActive, onHome, importPanel, showQty, machines }: Props) {
+export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRemnantSearch, remnant, homeActive, onHome, onNewJob, importPanel, showQty, machines }: Props) {
   const toggle = (m: DrawerMode) => onMode(mode === m ? null : m);
   return (
     <aside className={`drawer${mode ? " is-open" : ""}`}>
@@ -50,6 +52,14 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRem
         <button className={`rail-btn${homeActive ? " is-on" : ""}`} onClick={onHome} title="Home"
           aria-current={homeActive ? "page" : undefined}>
           <IconHome /><span>Home</span>
+        </button>
+        <button role="tab" aria-selected={mode === "import"} className={`rail-btn${mode === "import" ? " is-on" : ""}`}
+          onClick={() => toggle("import")} title="Import parts: DXF, DWG or SVG drawings into the parts library">
+          <IconImport /><span>Import</span>
+          {importPanel.items.length > 0 && <span className="rail-count">{importPanel.items.length}</span>}
+        </button>
+        <button className="rail-btn" onClick={onNewJob} title="New job">
+          <IconNewJob /><span>New job</span>
         </button>
         <button role="tab" aria-selected={mode === "parts"} className={`rail-btn${mode === "parts" ? " is-on" : ""}`}
           onClick={() => toggle("parts")} title="Imported parts">

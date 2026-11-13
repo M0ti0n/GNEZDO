@@ -124,7 +124,10 @@ export function JobToolbar({ onTool, onSection, request, lit = {} }: {
   }, [open]);
 
   return (<>
-    <SideScroll className="jtools" wrapClassName="jtools-wrap" role="toolbar" label="Job tools" more="tools" activeKey={open}>
+    {/* Process or Report open: the row to its right end (Report at the screen's edge, Work parts partly out
+        of sight on the left); Work parts or Automatic nest: to its left end */}
+    <SideScroll className="jtools" wrapClassName="jtools-wrap" role="toolbar" label="Job tools" more="tools" activeKey={open}
+      align={open === "process" || open === "report" ? "end" : open === "work" || open === "auto" ? "start" : undefined}>
       {SECTIONS.map((s) => open === s.id ? (
         <div key={s.id} className={`jsec jsec-${s.id} is-open is-active`} role="group" aria-label={s.label}>
           <button type="button" className="jsec-back" onClick={() => setOpen(null)} title={`Close ${s.label} (Esc)`} aria-label={`Close ${s.label}`}>

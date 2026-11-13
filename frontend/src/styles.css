@@ -143,7 +143,7 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
   height: 104px; border-radius: 10px;
   font-family: var(--font-cond); font-size: 13.5px; font-weight: 600; color: var(--ink-2);
 }
-.rail-btn svg { width: 28px; height: 28px; }
+.rail-btn svg { width: 45px; height: 45px; }
 .rail-btn:hover { background: var(--sheet); color: var(--ink); }
 .rail-btn.is-on { background: var(--green-tint); color: var(--green-ink); }
 .drawer-panel { display: flex; flex-direction: column; width: var(--panel-w); min-height: 0; }
@@ -2303,12 +2303,12 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .ac-pickbar .btn.li-reset.is-on, .ac-pickbar .btn.li-reset.is-on:hover:not(:disabled) { background: #1e8db5 !important; color: #fff; }
 /* Micro joint: the length, the modes (on / off each) */
 .mj-len { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; font-weight: 600; }
-.mj-val { position: static; transform: none; border-color: #1565c0; }
+.mj-val { position: static; transform: none; border-color: var(--green); }
 .mj-val .li-num { width: 52px; }
 .mj-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.mj-mode { display: flex; align-items: center; justify-content: center; text-align: center; height: 48px; padding: 2px 8px; font-size: 12.5px; font-weight: 600; line-height: 1.2; text-transform: uppercase; letter-spacing: .02em; white-space: normal; text-wrap: balance; }
+/* the app's tool buttons (as Movement's): green when on; one or two rows of text */
+.mj-mode { justify-content: center; text-align: center; min-height: 48px; padding: 4px 8px; font-size: 12.5px; line-height: 1.2; text-wrap: balance; }
 .mj-mode.is-wide { grid-column: 1 / -1; }
-.mj-mode.is-on, .mj-mode.is-on:hover:not(:disabled) { background: #1565c0; border-color: #1565c0; color: #fff; }
 .li-del:hover:not(:disabled) { background: #fde8e8 !important; }
 .li-spacer { flex: 1; }
 .li-dlg { width: min(560px, 100%); }

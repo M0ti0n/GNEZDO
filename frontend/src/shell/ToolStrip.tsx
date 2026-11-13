@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { PageKind } from "../state/tabs";
 import {
-  IconFolder, IconImport, IconLayers, IconLibrary, IconLock, IconNest, IconNewJob,
+  IconFolder, IconLayers, IconLibrary, IconLock, IconNest,
   IconReport, IconStock,
 } from "../components/Icons";
 
@@ -23,10 +23,7 @@ export type ToolAction = (toolId: string) => void;
 export const toolsFor = (kind: PageKind): Tool[] => {
   switch (kind) {
     case "home":
-      return [
-        { id: "import", label: "Import", icon: <IconImport />, tone: "blue" },
-        { id: "newJob", label: "New job", icon: <IconNewJob />, tone: "green" },
-      ];
+      return [];   // Import and New job: on the side rail
     case "import":
       return [
         { id: "chooseFolder", label: "Choose folder", icon: <IconFolder />, disabled: true },
