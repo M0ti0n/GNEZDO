@@ -1068,7 +1068,7 @@ export function App() {
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
     if (section === "report" && (tool === "nestReport" || tool === "costReport")) { setJobScreen((m) => ({ ...m, [job.id]: tool })); return; }
     if (section === "process") {
-      if (tool === "autoCut" || tool === "manualCut" || tool === "movement" || tool === "breakCut" || tool === "microJoint" || tool === "remnant" || tool === "processDel" || tool === "postProcess" || tool === "leadInOut" || tool === "simulation") {
+      if (tool === "autoCut" || tool === "manualCut" || tool === "movement" || tool === "breakCut" || tool === "microJoint" || tool === "inlineCut" || tool === "remnant" || tool === "processDel" || tool === "postProcess" || tool === "leadInOut" || tool === "simulation") {
         lastProcess.current[job.id] = tool;
         setProcessOn((m) => ({ ...m, [job.id]: tool }));
         setJobScreen((m) => ({ ...m, [job.id]: "nest" }));

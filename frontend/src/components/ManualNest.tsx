@@ -28,6 +28,8 @@ export interface CutMode {
   picking: boolean;
   /** picked parts in cutting order */
   picked: number[];
+  /** the picked parts without their order numbers (a selection, not an order) */
+  noNumbers?: boolean;
   onPick: (i: number) => void;
   panel: ReactNode;
   hint: string;
@@ -1046,7 +1048,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                         </g>
                       );
                     })()}
-                    {cut?.picked.map((i, k) => {
+                    {!cut?.noNumbers && cut?.picked.map((i, k) => {
                       const g = geo[i];
                       if (!g) return null;
                       return <text key={`n${i}`} className="cut-no" x={(g.box.x0 + g.box.x1) / 2} y={(g.box.y0 + g.box.y1) / 2} style={{ fontSize: 16 / v.s, strokeWidth: 3 / v.s }}>{k + 1}</text>;

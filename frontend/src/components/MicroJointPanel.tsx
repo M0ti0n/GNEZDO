@@ -49,7 +49,7 @@ export function useMicroJoint({ index, single, sheets, parts, machine, origin, o
   const paths = useMemo(() => new Map([...parts].map(([id, r]) => [id, r.path])), [parts]);
   const ctx = sheet ? leadCtx(sheet, paths, machine) : null;
   const live = useMemo(() => new Set<CutContour>(sheet ? liveContours(sheet) : []), [sheet]);
-  const usable = useMemo(() => new Set([...live].filter((c) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common)), [live]);
+  const usable = useMemo(() => new Set([...live].filter((c) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.inline)), [live]);
   const [all, setAll] = useState(false);
   const [move, setMove] = useState(false);
   const [keepOrig, setKeepOrig] = useState(false);

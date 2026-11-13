@@ -29,8 +29,14 @@ export interface NcContour {
   heightMm: number;
   /** Cut at the small-hole speed (marked as a hole in the importer, or set by hand); missing = by size */
   small?: boolean;
-  /** Starts again right after a micro joint (no lead-in): pierce as the Technology row's MJ restart says */
+  /** Starts again right after a micro joint (no lead-in): pierce as the Technology row's MJ restart says;
+   *  an inline cut's stretch: pierce as Process → Inline cut says */
   restart?: "pierce" | "quick" | "none";
+  /** Process → Inline cut: a stretch of a contour, cut in a pass with others (one after another, all
+   *  parts' stretches of the passes in a row); widthMm / heightMm are the whole contour's */
+  inline?: boolean;
+  /** cut against the contour's own direction: kerf compensation right (G42) instead of left (G41) */
+  rev?: boolean;
   /** Process → Movement: the rapid to `start` goes through these points first (in order) */
   via?: NcPt[];
   /** Which part it belongs to (its name), for comments */
@@ -145,7 +151,7 @@ function postprocess(p) {
   for (const c of p.contours) {
     N("G00 X" + f(c.start.x) + " Y" + f(c.start.y));
     const feed = c.kind !== "outer" && c.small ? (p.tech.smallHoleSpeed || p.tech.speed) : p.tech.speed;
-    const comp = c.kind === "open" || c.kind === "trace" ? "" : "G41 ";
+    const comp = c.kind === "open" || c.kind === "trace" ? "" : c.rev ? "G42 " : "G41 ";
     N("M07");
     let pos = c.start;
     c.segs.forEach((s, i) => {

@@ -61,6 +61,10 @@ export interface CutContour {
   bc?: { plan: BreakPlan; piece: number };
   /** this piece starts again right after a micro joint (no lead-in; the Technology row's MJ restart) */
   restart?: boolean;
+  /** Process → Inline cut: a stretch of a contour, cut in a pass along `axis` with the stretches in line
+   *  with it; `rev`: against the contour's direction (kerf compensation the other side); w × h: the
+   *  whole contour's size (its size class) */
+  inline?: { axis: "x" | "y"; rev: boolean; pierce: "pierce" | "quick" | "none"; w: number; h: number };
 }
 
 /** Where an outline starts (one piece each), in cut order along it: the original lead, or a break cut
@@ -74,7 +78,7 @@ export function contourKey(c: CutContour): string {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const [x, y] of c.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
   const r = (v: number) => (Math.round(v * 10) / 10).toFixed(1);
-  return `${c.parts ? `b${c.parts.join(".")}` : c.part}:${c.kind}${c.common ? "c" : ""}:${r(x0)},${r(y0)},${r(x1)},${r(y1)}`;
+  return `${c.parts ? `b${c.parts.join(".")}` : c.part}:${c.kind}${c.common ? "c" : ""}${c.inline ? `i${c.inline.axis}` : ""}:${r(x0)},${r(y0)},${r(x1)},${r(y1)}`;
 }
 
 /** The points the rapid to `c` goes through (none when the contour before it is no longer the one they were made for). */

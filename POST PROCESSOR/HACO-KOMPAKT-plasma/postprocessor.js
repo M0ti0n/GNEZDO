@@ -70,7 +70,8 @@ function postprocess(p, nc) {
     }
     pos = c.start;
     // open cuts (and remnant cuts) without kerf compensation
-    const comp = c.kind === "open" ? "" : `G41 ${c.kind === "inner" ? "D02" : "D01"} `;
+    // an inline cut's stretch cut against its contour's direction: compensation right (G42)
+    const comp = c.kind === "open" ? "" : `${c.rev ? "G42" : "G41"} ${c.kind === "inner" ? "D02" : "D01"} `;
     let head = `${first ? "G91 " : ""}${comp}${feed !== feedState ? `F${feed} ` : ""}`;
     feedState = feed;
     let lastArc = false;
