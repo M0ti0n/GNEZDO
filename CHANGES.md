@@ -38,6 +38,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Process → Post process: **Pre-pierce** check box for the selected sheet (laser machines). It shows what the sheet's Technology row says (Pre-pierce column) and can be turned on or off for this sheet alone (kept with the sheet, written into its NC program: #516); set back to the table's value, it follows the table again
 
 **Changed**
+- Process: new **Inline cut** button (Fab's icon; not built yet) and Fab's new **Process del** icon. Micro joint's mode buttons are taller, so their names fit on two rows
 - Post process on a job saved before: its **changes are saved first, without asking**, so the job and its NC files go together (a job never saved still asks first, as the files are named after it)
 - Lead in / out and Break cut drawing: a **static picture** with the value boxes **beside the lines, never on them**. The angles are drawn at 45° (Corner in, gap out: 90°) whatever is typed, so neither the lines nor the boxes move while values change; only a gap turning negative redraws it (the cut stops short, the leads drawn further apart so they no longer cross)
 - Break cut balloons (BC, 1, 2) on the sheet are **half the size**
