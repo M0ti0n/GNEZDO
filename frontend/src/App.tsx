@@ -1119,6 +1119,7 @@ export function App() {
           machines={machines}
           homeActive={!activeTab && state.view === "home"}
           onHome={() => showView("home")}
+          onNewJob={newJob}
           importPanel={importPanel}
         />
         <div className="workspace">

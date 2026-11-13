@@ -12,6 +12,9 @@ interface Props {
   more: string;
   /** Changing this brings the element marked .is-active into view (a tab just opened or chosen). */
   activeKey?: string | null;
+  /** With a new activeKey: "end" scrolls the row to its right end, "start" to its left end (else just
+   *  far enough to show the .is-active element). */
+  align?: "start" | "end";
 }
 
 const Chevron = ({ left }: { left?: boolean }) => (
@@ -26,7 +29,7 @@ const ARROW = 44;
 // A row that scrolls sideways when not everything fits: arrows at the ends, the mouse wheel
 // scrolls sideways and the row can be dragged with the mouse (a drag is not a click).
 // Touch screens swipe as usual.
-export function SideScroll({ children, className, wrapClassName = "", role, label, more, activeKey }: Props) {
+export function SideScroll({ children, className, wrapClassName = "", role, label, more, activeKey, align }: Props) {
   const row = useRef<HTMLDivElement>(null);
   const [ends, setEnds] = useState({ left: false, right: false });
   const update = () => {
@@ -57,6 +60,7 @@ export function SideScroll({ children, className, wrapClassName = "", role, labe
   // the chosen element is scrolled into view, clear of the arrows
   useEffect(() => {
     const el = row.current;
+    if (el && align) { el.scrollLeft = align === "end" ? el.scrollWidth : 0; update(); return; }
     const item = el?.querySelector<HTMLElement>(".is-active");
     if (!el || !item) return;
     const box = el.getBoundingClientRect();

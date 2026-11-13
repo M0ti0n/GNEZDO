@@ -17,8 +17,9 @@ export const IconHome = (p: P) => (
 );
 
 // Drawing sheet with an arrow coming in
+// A part (a bracket with a hole) with an arrow down into it
 export const IconImport = (p: P) => (
-  <Svg {...p}><path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z" /><path d="M14 3v5h5" /><path d="M12 10.5v6" /><path d="m9.5 14 2.5 2.5 2.5-2.5" /></Svg>
+  <Svg {...p}><path d="M3.5 3.5h10l7 7v10h-17z" /><circle cx="16" cy="16.5" r="1.6" /><path d="M9 6.5v9.5" /><path d="m6 13 3 3 3-3" /></Svg>
 );
 
 // Plate with a corner chamfer and a plus

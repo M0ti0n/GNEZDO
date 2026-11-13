@@ -179,7 +179,7 @@ export function useMicroJoint({ index, single, sheets, parts, machine, origin, o
         </div>
         <div className="mj-modes">
           {MODES.map((m) => (
-            <button key={m.id} type="button" className={`btn btn-plain mj-mode${mode === m.id ? " is-on" : ""}${m.id === "manual" ? " is-wide" : ""}`} aria-pressed={mode === m.id}
+            <button key={m.id} type="button" className={`rm-btn mj-mode${mode === m.id ? " is-on" : ""}${m.id === "manual" ? " is-wide" : ""}`} aria-pressed={mode === m.id}
               disabled={!can} title={m.title} onClick={() => toggle(m.id)}>{m.label}</button>
           ))}
         </div>
