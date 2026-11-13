@@ -2553,7 +2553,24 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .uf-prof-edit { padding: 12px 18px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; align-items: flex-start; }
 .uf-prof-edit .uf-row { width: 100%; }
 .uf-ktable .field { width: 100%; min-width: 0; }
-@media (max-width: 1100px) { .uf-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; } }
+.uf-panes.is-3d { grid-template-columns: minmax(0, 1fr) 34px; }
+.uf-panes.is-flat { grid-template-columns: 34px minmax(0, 1fr); }
+.uf-pane h3 { position: relative; padding-right: 70px; }
+.uf-pane-btns { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; }
+.uf-pane-btns .icon-btn { width: 28px; height: 28px; display: grid; place-items: center; color: var(--ink-2); border-radius: 6px; }
+.uf-pane-btns .icon-btn:hover { background: var(--sheet); color: var(--ink); }
+.uf-strip { display: none; }
+.uf-pane.is-shut > :not(.uf-strip) { display: none; }
+.uf-pane.is-shut .uf-strip { display: flex; flex-direction: column; align-items: center; gap: 10px; height: 100%; padding: 10px 0; color: var(--ink-2); font-weight: 600; font-size: 13.5px; }
+.uf-pane.is-shut .uf-strip span { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+.uf-pane.is-shut .uf-strip:hover { background: var(--blue-tint); color: var(--ink); }
+@media (max-width: 1100px) {
+  .uf-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; }
+  .uf-panes.is-3d { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 34px; }
+  .uf-panes.is-flat { grid-template-columns: minmax(0, 1fr); grid-template-rows: 34px minmax(0, 1fr); }
+  .uf-pane.is-shut .uf-strip { flex-direction: row; justify-content: center; padding: 0 10px; }
+  .uf-pane.is-shut .uf-strip span { writing-mode: horizontal-tb; transform: none; }
+}
 
 .tab-3d { font-family: var(--font-cond); font-size: 11px; letter-spacing: .02em; }
 .uf-name input#uf-name { flex: 1; min-width: 0; font-weight: 600; }
