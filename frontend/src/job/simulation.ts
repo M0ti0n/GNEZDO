@@ -6,6 +6,7 @@
 
 import { viaOf, type CutContour } from "./cutPath";
 import type { Pt } from "./manualGeom";
+import { reusesPierce } from "./commonPierce";
 import type { TechRow } from "./technology";
 
 /** Cutting speed when the Technology row has none [mm/min] */
@@ -59,7 +60,8 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
     if (d > 0.01) { const dt = (d / rapidMmMin) * 60; legs.push({ k, phase: "rapid", t0: t, t1: t + dt, pts: rp, acc: racc }); t += dt; }
     if (c.kind !== "trace") {
       // an inline cut's stretch: no pierce time unless it pierces normally (a quick pierce's time is not known)
-      const dt = c.inline && c.inline.pierce !== "pierce" ? 0 : row?.pierceS || 0;
+      // a common pierce's hole pierced already: none either
+      const dt = (c.inline && c.inline.pierce !== "pierce") || reusesPierce(contours, k) ? 0 : row?.pierceS || 0;
       if (dt > 0) { legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt; }
     }
     const v = c.small && row && row.smallHoleSpeed > 0 ? row.smallHoleSpeed : speed;

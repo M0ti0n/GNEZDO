@@ -152,7 +152,7 @@ export function copiesOf(ctx: LeadCtx, cut: SheetCut, k: number, live: Set<CutCo
   const mirrored = !!cut.mirrored;
   const hole0 = c0.kind === "inner" ? loopOf(ctx, c0, mirrored)?.k : undefined;
   return cut.contours.flatMap((c, i) => {
-    if (own.has(i) || !live.has(c) || c.kind !== c0.kind || c.parts || c.common || c.inline) return [];
+    if (own.has(i) || !live.has(c) || c.kind !== c0.kind || c.parts || c.common || c.inline || c.cp) return [];
     const p = ctx.sheet.parts[c.part];
     if (!p || p.partId !== p0.partId || !!p.mirror !== !!p0.mirror) return [];
     if (c0.kind === "inner" && loopOf(ctx, c, mirrored)?.k !== hole0) return [];
@@ -299,7 +299,7 @@ export function leadNear(cut: SheetCut, live: Set<CutContour>, p: Pt, reach: num
   let best: { k: number; si: number } | null = null, bd = reach;
   for (const b of balloonsOf(cut, live)) { const d = len(sub(b.at, p)); if (d <= bd) { bd = d; best = { k: b.k, si: b.si }; } }
   cut.contours.forEach((c, k) => {
-    if (!live.has(c) || c.kind !== "outer" || c.parts || c.common || c.inline) return;
+    if (!live.has(c) || c.kind !== "outer" || c.parts || c.common || c.inline || c.cp) return;
     const d = len(sub(c.leadIn[0] ?? c.pts[0], p));
     // a piece's lead is its start in the plan; an outline without breaks: its one start
     if (d <= bd) { bd = d; best = { k, si: c.bc ? c.bc.piece : 0 }; }

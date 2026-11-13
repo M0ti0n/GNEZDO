@@ -55,7 +55,7 @@ const distPoly = (pts: Pt[], p: Pt) => {
 };
 
 /** A contour this tool works on: an outline or a hole of one part (not a common cut block's). */
-export const editable = (c: CutContour) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.bc && !c.inline;
+export const editable = (c: CutContour) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.bc && !c.inline && !c.cp;
 
 /** The contour nearest the point (its leads count most: they are what is clicked), within `reach` mm. */
 export function contourAt(cut: SheetCut, live: Set<CutContour>, p: Pt, reach: number): number {

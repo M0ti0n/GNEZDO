@@ -35,7 +35,7 @@ export const DEFAULT_INLINE: InlineOptions = { first: "x", width: 3, runIn: 2, p
 
 /** A contour may go inline: an outline or a hole of one part, not a common cut, not in pieces already. */
 export const inlineable = (c: CutContour) =>
-  (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.bc && !c.inline;
+  (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.bc && !c.inline && !c.cp;
 
 const near = (a: Pt, b: Pt, d = 1e-3) => Math.hypot(a[0] - b[0], a[1] - b[1]) < d;
 
