@@ -198,18 +198,20 @@ export function inlineCut(cut: SheetCut, live: Set<CutContour>, parts: number[] 
   }
 
   // the cut order: the inline passes where the first of these parts was; their contours not inline
-  // (holes, tracing, open cuts) before the passes, outlines after them
+  // (holes, open cuts) before the passes, outlines after them
   const goingSet = new Set(going);
   const touched = new Set(going.map((c) => c.part));
   const before: CutContour[] = [], after: CutContour[] = [];
+  // tracing stays where it is (all tracing first, or with its part)
+  const mineOf = (c: CutContour) => !c.parts && c.kind !== "trace" && touched.has(c.part);
   for (const c of cut.contours) {
-    if (goingSet.has(c) || !touched.has(c.part) || c.parts) continue;
+    if (goingSet.has(c) || !mineOf(c)) continue;
     (c.kind === "outer" ? after : before).push(c);
   }
   const out: CutContour[] = [];
   let placed = false;
   for (const c of cut.contours) {
-    const mine = !c.parts && touched.has(c.part);
+    const mine = mineOf(c);
     if (!mine) { out.push(c); continue; }
     if (!placed) { out.push(...before, ...pieces, ...after); placed = true; }
   }
