@@ -48,6 +48,10 @@ export interface TechRow {
   prePierce?: number;
   /** Laser: the machine's technology program for this row (LVD M98P..., e.g. 6050 = mild steel 5 mm); 0 = not set */
   techProgram?: number;
+  /** Micro joints (Process -> Micro joint): their length [mm] (0 = 1 mm) */
+  mjGapMm?: number;
+  /** after a micro joint the cut starts again with: 1 = a normal pierce, 2 = a quick pierce, 0 = no pierce */
+  mjPierce?: number;
   /** Other values of an imported table, kept as they came (by their name there) */
   extra?: Record<string, number>;
 }
@@ -101,6 +105,10 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; cols: { key: Ro
     { key: "remLeadInMm", label: "Lead-in", unit: "mm" },
     { key: "remLeadOutMm", label: "Lead-out", unit: "mm" },
   ] },
+  { group: "Micro joint", cols: [
+    { key: "mjGapMm", label: "Length", unit: "mm" },
+    { key: "mjPierce", label: "Restart", unit: "0 none, 1 pierce, 2 quick", max: 2 },
+  ] },
   { group: "Laser", only: ["laser"], cols: [
     { key: "midSizeMm", label: "Middle up to", unit: "mm" },
     { key: "littleSizeMm", label: "Little up to", unit: "mm" },
@@ -117,7 +125,7 @@ export const emptyRow = (thicknessMm: number): TechRow => ({
   holeLeadInMm: 0, holeLeadOutMm: 0, holeGapMm: 0, holeLeadRadiusMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outGapMm: 0, outLeadRadiusMm: 0,
   leadInAngle: 0, leadOutAngle: 0, partGapMm: 0, borderMm: 0,
   remGapInMm: 0, remGapOutMm: 0, remMinDistMm: 0, remLeadInMm: 0, remLeadOutMm: 0,
-  midSizeMm: 0, littleSizeMm: 0, prePierce: 0, techProgram: 0,
+  midSizeMm: 0, littleSizeMm: 0, prePierce: 0, techProgram: 0, mjGapMm: 1, mjPierce: 1,
 });
 
 export const newTechnology = (name = "New technology"): TechSet => ({

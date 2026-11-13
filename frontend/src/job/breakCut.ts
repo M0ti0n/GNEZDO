@@ -35,7 +35,16 @@ function measure(lp: Pt[]) {
     mids.sort((x, y) => x.o - y.o);
     return [pa, ...mids.map((x) => lp[x.i]), pb];
   };
-  return { P, pos, between };
+  /** the point at position d along the loop */
+  const at = (d: number): Pt => {
+    const q = ((d % P) + P) % P;
+    let i = 0;
+    while (i < n - 1 && cum[i + 1] < q) i++;
+    const a = lp[i], b = lp[(i + 1) % n], L = cum[i + 1] - cum[i];
+    const t = L > 0 ? (q - cum[i]) / L : 0;
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  };
+  return { P, pos, between, at };
 }
 
 export const planId = () => Math.random().toString(36).slice(2, 10);
@@ -77,7 +86,9 @@ export function buildPieces(ctx: LeadCtx, base: CutContour, plan: BreakPlan, mir
   // each start on the loop, with its values (a manual break's gap: from its balloons)
   const starts: { s: BreakStart; at: ReturnType<typeof startNear>; pos: number; spec: LeadSpec }[] = [];
   for (const s of plan.starts) {
-    const at = startNear(ctx, L.lp, s.at, s.type, side, 0.05);
+    // a micro joint: `at` is its middle, the cut starts again half its length on (it stops the other half before)
+    const from = s.tag === "mj" ? m.at(m.pos(s.at) - s.spec.gap / 2) : s.at;
+    const at = startNear(ctx, L.lp, from, s.tag === "mj" ? null : s.type, side, 0.05);
     if (typeof at === "string") return at;
     let spec = s.spec;
     if (s.tag === "manual" && s.p1) {
@@ -90,11 +101,12 @@ export function buildPieces(ctx: LeadCtx, base: CutContour, plan: BreakPlan, mir
   if (!starts.length) return "nothing left to cut";
   const p0 = starts[0].pos;
   starts.sort((a, b) => ((a.pos - p0 + m.P) % m.P) - ((b.pos - p0 + m.P) % m.P));
-  const sorted: BreakPlan = { id: plan.id, starts: starts.map((x) => ({ ...x.s, at: r2((x.at as { at: Pt }).at) })) };
+  const sorted: BreakPlan = { ...plan, starts: starts.map((x) => ({ ...x.s, at: r2(x.s.tag === "mj" ? x.s.at : (x.at as { at: Pt }).at) })) };
   const made = starts.map((x) => leadsAt(L.lp, kind, ctx.rules, ctx.row, x.at as Exclude<typeof x.at, string>, x.s.type, x.spec, side));
   const keep = { part: base.part, kind: base.kind } as Pick<CutContour, "part" | "kind">;
   const one = (k: number, body: Omit<CutContour, "part" | "kind">): CutContour => ({
     ...keep, ...body, lead: starts[k].s.type, spec: starts[k].spec,
+    ...(starts[k].s.tag === "mj" ? { restart: true } : {}),
     ...(sorted.starts.length > 1 || sorted.starts[0].tag !== "orig" ? { bc: { plan: sorted, piece: k } } : {}),
     ...(k === 0 && base.via ? { via: base.via } : {}),
   });
@@ -115,7 +127,7 @@ export function buildPieces(ctx: LeadCtx, base: CutContour, plan: BreakPlan, mir
 }
 
 /** The cut with the outline of contour k replaced by these pieces (where its first piece was). */
-function replace(cut: SheetCut, k: number, pieces: CutContour[]): SheetCut {
+export function replace(cut: SheetCut, k: number, pieces: CutContour[]): SheetCut {
   const old = new Set(piecesOf(cut, k));
   const first = Math.min(...old);
   const out: CutContour[] = [];
@@ -124,7 +136,7 @@ function replace(cut: SheetCut, k: number, pieces: CutContour[]): SheetCut {
 }
 
 /** A point of the outline of contour `from` at the same place on the outline of contour `to` (a copy of the part). */
-function mapPoint(ctx: LeadCtx, from: CutContour, to: CutContour, p: Pt, mirrored: boolean): Pt | null {
+export function mapPoint(ctx: LeadCtx, from: CutContour, to: CutContour, p: Pt, mirrored: boolean): Pt | null {
   const A = loopOf(ctx, from, mirrored), B = loopOf(ctx, to, mirrored);
   if (!A || !B || A.raw.length !== B.raw.length) return null;
   const q = nearestOn(A.raw, p);
@@ -133,14 +145,17 @@ function mapPoint(ctx: LeadCtx, from: CutContour, to: CutContour, p: Pt, mirrore
 }
 
 /** The outlines (first piece each) of the other copies of contour k's part (same mirror). */
-function copiesOf(ctx: LeadCtx, cut: SheetCut, k: number, live: Set<CutContour>): number[] {
+export function copiesOf(ctx: LeadCtx, cut: SheetCut, k: number, live: Set<CutContour>): number[] {
   const c0 = cut.contours[k], p0 = ctx.sheet.parts[c0.part];
   const own = new Set(piecesOf(cut, k));
   const seen = new Set<string>();
+  const mirrored = !!cut.mirrored;
+  const hole0 = c0.kind === "inner" ? loopOf(ctx, c0, mirrored)?.k : undefined;
   return cut.contours.flatMap((c, i) => {
-    if (own.has(i) || !live.has(c) || c.kind !== "outer" || c.parts || c.common) return [];
+    if (own.has(i) || !live.has(c) || c.kind !== c0.kind || c.parts || c.common) return [];
     const p = ctx.sheet.parts[c.part];
     if (!p || p.partId !== p0.partId || !!p.mirror !== !!p0.mirror) return [];
+    if (c0.kind === "inner" && loopOf(ctx, c, mirrored)?.k !== hole0) return [];
     const g = c.bc ? c.bc.plan.id : `c${i}`;
     if (seen.has(g)) return [];
     seen.add(g);
@@ -156,11 +171,14 @@ export type BreakOp =
   | { op: "delete"; si: number };
 
 /** The plan with the op done (a start's index si in the plan's order), or why not. */
-function applyOp(ctx: LeadCtx, plan: BreakPlan, op: BreakOp, kind: "outer" | "inner"): BreakPlan | string {
+export function applyOp(ctx: LeadCtx, plan: BreakPlan, op: BreakOp, kind: "outer" | "inner"): BreakPlan | string {
   const starts = plan.starts.slice();
   if (op.op === "add") {
     const rest = op.keepOrig ? starts : starts.filter((s) => s.tag !== "orig");
-    return { ...plan, starts: [...rest, op.start] };
+    const orig = plan.orig ?? starts.find((s) => s.tag === "orig");
+    // kept: back in when it had gone; not kept: remembered
+    if (op.keepOrig && !rest.some((s) => s.tag === "orig") && plan.orig) rest.unshift(plan.orig);
+    return { ...plan, starts: [...rest, op.start], ...(orig ? { orig } : {}) };
   }
   const s = starts[op.si];
   if (!s) return "That lead is not there any more";
@@ -184,9 +202,10 @@ export function editBreak(ctx: LeadCtx, k: number, op: BreakOp, all: boolean, li
   let cut = ctx.sheet.cut;
   const c0 = cut?.contours[k];
   if (!cut || !c0) return "Pick an outline";
-  if (c0.kind !== "outer" || c0.parts || c0.common) return "Break cuts go on part outlines (not on holes or common cut blocks)";
+  const holes = (op.op === "add" && op.start.tag === "mj") || (op.op !== "add" && c0.bc?.plan.starts[op.si]?.tag === "mj");
+  if ((c0.kind !== "outer" && !(holes && c0.kind === "inner")) || c0.parts || c0.common) return holes ? "Micro joints go on part outlines and holes (not on common cut blocks)" : "Break cuts go on part outlines (not on holes or common cut blocks)";
   const mirrored = !!cut.mirrored;
-  const kind = "outer";
+  const kind = c0.kind === "inner" ? "inner" : "outer";
   const plan0 = planOf(ctx, cut, k);
   // a new or moved start: onto the outline (a sharp corner within 3 mm: the corner; corner types need one)
   if (op.op === "add" || op.op === "move") {
@@ -194,7 +213,8 @@ export function editBreak(ctx: LeadCtx, k: number, op: BreakOp, all: boolean, li
     if (!L) return "the part's drawing is not there";
     const side: 1 | -1 = mirrored ? -1 : 1;
     const type = op.op === "add" ? op.start.type : plan0.starts[op.si]?.type ?? "perpGap";
-    const snap = (p: Pt, t: LeadType | null) => { const s = startNear(ctx, L.lp, p, t, side, 3); return typeof s === "string" ? s : s.at; };
+    const mj = op.op === "add" ? op.start.tag === "mj" : plan0.starts[op.si]?.tag === "mj";
+    const snap = (p: Pt, t: LeadType | null) => { const s = startNear(ctx, L.lp, p, mj ? null : t, side, 3); return typeof s === "string" ? s : s.at; };
     if (op.op === "add") {
       const at = snap(op.start.at, op.start.type);
       if (typeof at === "string") return at;
@@ -245,19 +265,30 @@ export function editBreak(ctx: LeadCtx, k: number, op: BreakOp, all: boolean, li
   return { cut, n };
 }
 
-/** The balloons of the sheet's break cuts: where, its label, its outline (a piece's index) and start. */
-export interface Balloon { at: Pt; label: "BC" | "1" | "2"; k: number; si: number; which: "at" | "p1"; neg: boolean }
-export function balloonsOf(cut: SheetCut | undefined, live: Set<CutContour>): Balloon[] {
+/** The balloons of the sheet's break cuts (or micro joints: MJ1, MJ2 … per contour): where, its label,
+ *  its contour (a piece's index), start, and what hovering over it tells. */
+export interface Balloon { at: Pt; label: string; k: number; si: number; which: "at" | "p1"; neg: boolean; title: string }
+const mm = (v: number) => `${+Math.abs(v).toFixed(2)} mm`;
+export function balloonsOf(cut: SheetCut | undefined, live: Set<CutContour>, what: "bc" | "mj" = "bc"): Balloon[] {
   if (!cut) return [];
   const out: Balloon[] = [];
   const seen = new Set<string>();
   cut.contours.forEach((c, k) => {
     if (!c.bc || !live.has(c) || seen.has(c.bc.plan.id)) return;
     seen.add(c.bc.plan.id);
+    let n = 0;
     c.bc.plan.starts.forEach((s, si) => {
       const neg = s.tag === "manual" || s.spec.gap < 0;
-      if (s.tag === "bc") out.push({ at: s.at, label: "BC", k, si, which: "at", neg });
-      if (s.tag === "manual" && s.p1) out.push({ at: s.p1, label: "1", k, si, which: "p1", neg }, { at: s.at, label: "2", k, si, which: "at", neg });
+      if (what === "mj") {
+        if (s.tag === "mj") { n++; out.push({ at: s.at, label: `MJ${n}`, k, si, which: "at", neg: false, title: `Micro joint ${n}: ${mm(s.spec.gap)}` }); }
+        return;
+      }
+      const gap = s.spec.gap < 0 ? `gap ${mm(s.spec.gap)} (not cut)` : `gap +${mm(s.spec.gap)} (runs past)`;
+      if (s.tag === "bc") out.push({ at: s.at, label: "BC", k, si, which: "at", neg, title: `Break cut: ${gap}` });
+      if (s.tag === "manual" && s.p1) {
+        const t = `Break cut, balloon 1 to 2: ${mm(s.spec.gap)} not cut`;
+        out.push({ at: s.p1, label: "1", k, si, which: "p1", neg, title: t }, { at: s.at, label: "2", k, si, which: "at", neg, title: t });
+      }
     });
   });
   return out;
