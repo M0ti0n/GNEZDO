@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D tools in groups: **DRAWING** (Line, Circle, Arc, Rect.) and **DIMENSION** (Length, Diameter, Radius, Angle). A group's button opens its tools below the strip (blue: drawing, red: dimension); while one of them is on, the button shows that tool. New drawing tools (cutting lines, ends of lines snap, Esc or right click starts again):
+  - **Circle**: the center, then a point on it, or type its diameter (20 + Enter)
+  - **Arc**: the start, a point it goes through, the end
+  - **Rect.**: one corner, then the opposite one, or type width x height (200x100 + Enter: toward the pointer)
 - Import 2D: the part's own nesting rules (a flat pattern from 3D: 180° only, no mirror) shown in the Geometry check panel instead of the list's
 - **3D EXTRACTOR** (new on the side rail, first prototype): flat patterns out of STEP parts and assemblies, sent to Import (now called **IMPORT 2D**). Nothing is saved to the database from here.
   - STEP files (Folder, STEP files, or dropped anywhere in GNEZDO) are read in the browser. Every body is a part in the list, with its name and **quantity** (an assembly: how many times the part is placed in it), grouped as **Sheet metal, Surfaces, Tubes, Profiles, Other parts, Hardware**, with a search

@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { SideScroll } from "../components/SideScroll";
 
 // Tools of the import screen, drawn after Fab's icon sheet.
@@ -8,6 +9,7 @@ const K = "#1b1b1b";
 const R = "#e3262b";
 const G = "#9acd32";
 const GA = "#1d9641";   // align arrows: the top bar green
+const BL = "#1ea0e6";   // drawing tools: the points clicked
 
 const Ico = ({ w = 48, children }: { w?: number; children: ReactNode }) => (
   <svg viewBox={`0 0 ${w} 48`} width={w} height={48} fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -76,7 +78,19 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
   },
   {
     id: "line", label: "Line",
-    icon: <Ico><path d="M9 9L39 39" stroke={K} strokeWidth="3.4" /></Ico>,
+    icon: <Ico><path d="M9 14L39 34" stroke={K} strokeWidth="3.4" /><circle cx="9" cy="14" r="3.6" fill={BL} /><circle cx="39" cy="34" r="3.6" fill={BL} /></Ico>,
+  },
+  {
+    id: "circle", label: "Circle",
+    icon: <Ico><circle cx="24" cy="24" r="14" stroke={K} strokeWidth="3.4" /><circle cx="24" cy="24" r="3.6" fill={BL} /></Ico>,
+  },
+  {
+    id: "arc", label: "Arc",
+    icon: <Ico><path d="M9 33A16 16 0 0 1 39 36" stroke={K} strokeWidth="3.4" /><circle cx="9" cy="33" r="3.6" fill={BL} /><circle cx="27" cy="14.5" r="3.6" fill={BL} /><circle cx="39" cy="36" r="3.6" fill={BL} /></Ico>,
+  },
+  {
+    id: "rect", label: "Rect.",
+    icon: <Ico><rect x="9" y="12" width="30" height="24" stroke={K} strokeWidth="3.4" /><circle cx="9" cy="36" r="3.6" fill={BL} /><circle cx="39" cy="12" r="3.6" fill={BL} /></Ico>,
   },
   {
     id: "alignH", label: "Align H",
@@ -136,7 +150,7 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     ),
   },
   {
-    id: "dimension", label: "Dimension",
+    id: "dimension", label: "Length",
     icon: (
       <Ico>
         <path d="M6 34H42" stroke={K} strokeWidth="3.4" />
@@ -263,24 +277,98 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
   },
 ];
 
+/** Tools shown together under one button: it opens them below the strip. */
+export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim"; tools: string[]; icon: ReactNode }[] = [
+  {
+    id: "drawGroup", label: "Drawing", tone: "draw", tools: ["line", "circle", "arc", "rect"],
+    icon: <Ico><path d="M12 10L37 37" stroke={K} strokeWidth="3.4" /><circle cx="12" cy="10" r="3.8" fill={BL} /><circle cx="37" cy="37" r="3.8" fill={BL} /></Ico>,
+  },
+  {
+    id: "dimGroup", label: "Dimension", tone: "dim", tools: ["dimension", "diameter", "radius", "angle"],
+    icon: (
+      <Ico>
+        <path d="M6 34H42" stroke={K} strokeWidth="3.4" />
+        <path d="M7 10V30M41 10V30" stroke={R} strokeWidth="1.8" />
+        <path d="M12 15H36" stroke={R} strokeWidth="1.8" />
+        <Arrow x={7.5} y={15} angle={180} color={R} />
+        <Arrow x={40.5} y={15} angle={0} color={R} />
+      </Ico>
+    ),
+  },
+];
+
+/** The strip's order: single tools and groups (a group stands where its first tool stood). */
+const STRIP: string[] = ["properties", "extend", "trim", "drawGroup", "alignH", "alignV", "erase", "dimGroup",
+  ...IMPORT_TOOLS.map((t) => t.id).filter((id) => !["properties", "extend", "trim", "alignH", "alignV", "erase"].includes(id) && !TOOL_GROUPS.some((g) => g.tools.includes(id)))];
+
 /** blocked: tools that cannot be used now, with the reason shown on hover (greyed out). */
 /** lit: switches that are on besides the active tool (Check lines while the Geometry check panel is open). */
 export function ImportToolStrip({ active, onTool, blocked = {}, lit = {} }: {
   active: string | null; onTool: (id: string) => void; blocked?: Record<string, string>; lit?: Record<string, boolean>;
 }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const tool = (t: (typeof IMPORT_TOOLS)[number], onPick?: () => void) => (
+    <button key={t.id} className={`itool${t.wide ? " is-wide" : ""}${active === t.id || lit[t.id] ? " is-on" : ""}`}
+      aria-pressed={active === t.id || !!lit[t.id]} aria-disabled={blocked[t.id] ? true : undefined}
+      // greyed out but still hoverable, so the tooltip can say why it is blocked
+      title={blocked[t.id] ? `${t.label}: ${blocked[t.id]}` : t.label}
+      onClick={() => { if (!blocked[t.id]) { onTool(t.id); onPick?.(); } }}>
+      <span className="itool-box">{t.icon}</span>
+      <span className="itool-label">{t.label}</span>
+    </button>
+  );
   // when not all tools fit (smaller screens) the strip scrolls sideways: arrows, wheel, drag, swipe
   return (
     <SideScroll className="itools" wrapClassName="itools-wrap" role="toolbar" label="Import tools" more="tools">
-      {IMPORT_TOOLS.map((t) => (
-        <button key={t.id} className={`itool${t.wide ? " is-wide" : ""}${active === t.id || lit[t.id] ? " is-on" : ""}`}
-          aria-pressed={active === t.id || !!lit[t.id]} aria-disabled={blocked[t.id] ? true : undefined}
-          // greyed out but still hoverable, so the tooltip can say why it is blocked
-          title={blocked[t.id] ? `${t.label}: ${blocked[t.id]}` : t.label}
-          onClick={() => { if (!blocked[t.id]) onTool(t.id); }}>
-          <span className="itool-box">{t.icon}</span>
-          <span className="itool-label">{t.label}</span>
-        </button>
-      ))}
+      {STRIP.map((id) => {
+        const g = TOOL_GROUPS.find((x) => x.id === id);
+        if (!g) { const t = IMPORT_TOOLS.find((x) => x.id === id); return t ? tool(t) : null; }
+        return <ToolGroup key={g.id} group={g} active={active} open={open === g.id}
+          onOpen={(v) => setOpen(v ? g.id : null)} renderTool={(t) => tool(t, () => setOpen(null))} />;
+      })}
     </SideScroll>
+  );
+}
+
+/** A group's button: lit while one of its tools is on (showing that tool's icon); a click opens its tools below. */
+function ToolGroup({ group, active, open, onOpen, renderTool }: {
+  group: (typeof TOOL_GROUPS)[number]; active: string | null; open: boolean;
+  onOpen: (v: boolean) => void; renderTool: (t: (typeof IMPORT_TOOLS)[number]) => ReactNode;
+}) {
+  const btn = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const cur = group.tools.includes(active ?? "") ? IMPORT_TOOLS.find((t) => t.id === active) : undefined;
+  useLayoutEffect(() => {
+    if (!open || !btn.current) return;
+    const r = btn.current.getBoundingClientRect();
+    const w = pop.current?.offsetWidth ?? 0;
+    setAt({ left: Math.max(8, Math.min(r.left, window.innerWidth - w - 8)), top: r.bottom + 6 });
+  }, [open]);
+  // closed by a click elsewhere, Esc, scrolling or resizing
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => { if (!pop.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) onOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onOpen(false); } };
+    const close = () => onOpen(false);
+    document.addEventListener("pointerdown", away, true);
+    window.addEventListener("keydown", esc, true);
+    window.addEventListener("resize", close);
+    return () => { document.removeEventListener("pointerdown", away, true); window.removeEventListener("keydown", esc, true); window.removeEventListener("resize", close); };
+  }, [open, onOpen]);
+  return (
+    <>
+      <button ref={btn} className={`itool itool-group is-${group.tone}${cur ? " is-on" : ""}${open ? " is-open" : ""}`}
+        aria-haspopup="true" aria-expanded={open} title={cur ? `${group.label}: ${cur.label}` : `${group.label}: ${group.tools.map((id) => IMPORT_TOOLS.find((t) => t.id === id)?.label).join(", ")}`}
+        onClick={() => onOpen(!open)}>
+        <span className="itool-box">{cur ? cur.icon : group.icon}<span className="itool-caret" aria-hidden="true" /></span>
+        <span className="itool-label">{cur ? cur.label : group.label}</span>
+      </button>
+      {open && createPortal(
+        <div ref={pop} className={`itool-pop is-${group.tone}`} role="toolbar" aria-label={group.label}
+          style={at ? { left: at.left, top: at.top } : { visibility: "hidden", left: 0, top: 0 }}>
+          {group.tools.map((id) => { const t = IMPORT_TOOLS.find((x) => x.id === id); return t ? renderTool(t) : null; })}
+        </div>, document.body)}
+    </>
   );
 }

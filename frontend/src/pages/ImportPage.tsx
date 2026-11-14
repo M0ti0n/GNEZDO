@@ -37,6 +37,32 @@ const COMMON_HINT = "Common cut: a straight line of a closed cutting contour (th
 const SWEEP_HINT = "Highlighted: lines on top of other lines (within 0.1 mm), lines outside the part outline and loose points. Click a line to keep it; Delete removes the rest.";
 const SCALE_HINT = "Click a line, an arc or a circle (or drag a window, Ctrl+A for all), then type a size with a unit (200mm: one item gets that size) or a scale factor (2). Enter scales the whole part.";
 const LINE_HINT = "Click the start point, then the end point; the line goes on from there. Ends of lines snap (green square). Esc or right click finishes.";
+/** Drawing tools besides Line: what to click (ends of lines snap; Esc or right click starts again). */
+const SHAPES: Record<string, { hint: string; next: string[] }> = {
+  circle: { hint: "Click the center, then a point on the circle (or type its diameter). Ends of lines snap. Esc starts again.", next: ["Now click a point on the circle, or type its diameter"] },
+  arc: { hint: "Click the start, a point the arc goes through, then its end. Ends of lines snap. Esc starts again.", next: ["Now click a point the arc goes through", "Now click the end of the arc"] },
+  rect: { hint: "Click one corner, then the opposite corner (or type width x height, e.g. 200x100). Ends of lines snap. Esc starts again.", next: ["Now click the opposite corner, or type width x height"] },
+};
+const DRAWING_TOOLS = new Set(["line", "circle", "arc", "rect"]);
+
+/** The circle through three points (null when they are on one line). */
+function circleThrough(a: Pt, b: Pt, c: Pt): { c: Pt; r: number } | null {
+  const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+  if (Math.abs(d) < 1e-9) return null;
+  const a2 = a.x * a.x + a.y * a.y, b2 = b.x * b.x + b.y * b.y, c2 = c.x * c.x + c.y * c.y;
+  const ux = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / d;
+  const uy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / d;
+  return { c: { x: ux, y: uy }, r: Math.hypot(a.x - ux, a.y - uy) };
+}
+/** The arc from a through m to b (counter-clockwise start and end angles, degrees, as in DXF). */
+function arcThrough(a: Pt, m: Pt, b: Pt): { c: Pt; r: number; start: number; end: number } | null {
+  const k = circleThrough(a, m, b);
+  if (!k) return null;
+  const ang = (p: Pt) => (Math.atan2(p.y - k.c.y, p.x - k.c.x) * 180) / Math.PI;
+  // a -> m -> b turning left: counter-clockwise from a to b; else from b to a
+  const ccw = (m.x - a.x) * (b.y - a.y) - (m.y - a.y) * (b.x - a.x) > 0;
+  return ccw ? { ...k, start: ang(a), end: ang(b) } : { ...k, start: ang(b), end: ang(a) };
+}
 
 const EDITING: Record<string, { hint: string }> = {
   trim: { hint: "Click the piece of a line to cut off (all lines are cutting edges). Shift+click extends. Ctrl+Z undoes." },
@@ -97,6 +123,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
 
   // Line tool: start point, then each next point; points snap to the ends of lines.
   const [lineStart, setLineStart] = useState<Pt | null>(null);
+  // Circle / Arc / Rect.: the points clicked so far, and what is typed (a diameter, width x height)
+  const [shapePts, setShapePts] = useState<Pt[]>([]);
+  const [shapeText, setShapeText] = useState("");
   const [cursor, setCursor] = useState<{ p: Pt; snapped: boolean } | null>(null);
   const lineSeq = useRef(0);
   const ends = useMemo(() => drawing.entities.flatMap((e) => {
@@ -167,6 +196,50 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     done(tool === "angle" ? angleOf(firstPick, pk) : dimensionOf(firstPick, pk));
   };
 
+  /** A circle, an arc or a rectangle from the points clicked (or typed), as cutting lines. */
+  const addShape = (kind: string, pts: Pt[]) => {
+    const id = () => `dw${Date.now().toString(36)}${++lineSeq.current}`;
+    let add: Entity[] = [];
+    let text = "";
+    if (kind === "circle") {
+      const r = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      if (r < 1e-6) return;
+      add = [{ id: id(), kind: "circle", c: pts[0], r, role: "cut" }];
+      text = `Circle Ø ${num(2 * r)} mm added`;
+    } else if (kind === "arc") {
+      const a = arcThrough(pts[0], pts[1], pts[2]);
+      if (!a) { setShapePts([]); setMessage({ text: "The three points are on one line: no arc. Click the start again", bad: true }); return; }
+      add = [{ id: id(), kind: "arc", c: a.c, r: a.r, start: a.start, end: a.end, role: "cut" }];
+      text = `Arc R ${num(a.r)} mm added`;
+    } else if (kind === "rect") {
+      const [p, q] = pts;
+      const w = Math.abs(q.x - p.x), h = Math.abs(q.y - p.y);
+      if (w < 1e-6 || h < 1e-6) { setMessage({ text: "A rectangle needs a width and a height", bad: true }); return; }
+      const c: Pt[] = [p, { x: q.x, y: p.y }, q, { x: p.x, y: q.y }];
+      add = c.map((a, i) => ({ id: id(), kind: "line" as const, a, b: c[(i + 1) % 4], role: "cut" as Role }));
+      text = `Rectangle ${num(w)} × ${num(h)} mm added`;
+    }
+    if (!add.length) return;
+    commit({ ...drawing, entities: [...drawing.entities, ...add] }, kind === "rect" ? "Rectangle" : kind === "arc" ? "Arc" : "Circle");
+    setSelected(null);
+    setShapePts([]);
+    setShapeText("");
+    setMessage({ text: `${text}. Next one, or Esc` });
+  };
+  /** Typed: a circle's diameter, a rectangle's width x height (toward the pointer). */
+  const applyShapeText = () => {
+    if (!tool || !shapePts.length) return;
+    const nums = shapeText.replace(/,/g, ".").match(/\d*\.?\d+/g)?.map(Number) ?? [];
+    const p0 = shapePts[0];
+    if (tool === "circle" && nums[0] > 0) { addShape("circle", [p0, { x: p0.x + nums[0] / 2, y: p0.y }]); return; }
+    if (tool === "rect" && nums.length >= 2 && nums[0] > 0 && nums[1] > 0) {
+      const sx = cursor && cursor.p.x < p0.x ? -1 : 1, sy = cursor && cursor.p.y < p0.y ? -1 : 1;
+      addShape("rect", [p0, { x: p0.x + sx * nums[0], y: p0.y + sy * nums[1] }]);
+      return;
+    }
+    setMessage({ text: tool === "circle" ? "Type the diameter (mm), e.g. 20" : "Type width x height (mm), e.g. 200x100", bad: true });
+  };
+
   const finishLine = () => {
     if (lineStart) setMessage({ text: "Line finished" });
     setLineStart(null);
@@ -188,6 +261,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       // Esc steps back: a line being drawn is finished, a half-done measurement starts again,
       // and otherwise the tool is put away (as clicking its button again)
       if (tool === "line" && lineStart) { finishLine(); return; }
+      if (tool && SHAPES[tool] && shapePts.length) { setShapePts([]); setShapeText(""); setMessage({ text: "Started again" }); return; }
       if (firstPick) { setFirstPick(null); setMessage({ text: "Started again: click the first one" }); return; }
       if (tool === "scale" && scaleSel.size) { setScaleSel(new Set()); setMessage({ text: "Selection cleared" }); return; }
       onTool(tool);
@@ -281,7 +355,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (box) { const p = local(e); setBox((b) => b && { ...b, x1: p.x, y1: p.y }); return; }
     const d = drag.current;
     if (!d) {
-      if ((tool === "line" || tool === "dimension") && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
+      if ((tool && DRAWING_TOOLS.has(tool) || tool === "dimension") && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
       // hover with Trim / Extend: preview the result
       if (tool && EDITING[tool] && view) {
         const id = lineUnder(e.clientX, e.clientY);
@@ -311,6 +385,17 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       setSelected(null);
       setLineStart(at.p);                                    // go on from the end, like AutoCAD
       setMessage({ text: `Line ${fmtMm(Math.hypot(at.p.x - lineStart.x, at.p.y - lineStart.y))} added. Next point, or Esc to finish` });
+      return;
+    }
+    if (isClick && tool && SHAPES[tool] && view) {
+      if (pr!.button === 2) { if (shapePts.length) { setShapePts([]); setShapeText(""); setMessage({ text: "Started again" }); } return; }
+      if (pr!.button !== 0) return;
+      const at = snapAt(e.clientX, e.clientY, view).p;
+      const pts = [...shapePts, at];
+      if (pts.length > 1 && Math.hypot(at.x - pts[pts.length - 2].x, at.y - pts[pts.length - 2].y) < 1e-6) return;
+      const need = tool === "arc" ? 3 : 2;
+      if (pts.length < need) { setShapePts(pts); setMessage({ text: SHAPES[tool].next[pts.length - 1] }); return; }
+      addShape(tool, pts);
       return;
     }
     if (pr && pr.button === 0 && tool === "sweep" && isClick) {
@@ -525,6 +610,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage(null);
     setPreview(null);
     setLineStart(null);
+    setShapePts([]);
+    setShapeText("");
     setCursor(null);
     setFirstPick(null);
     setMeasures([]);
@@ -599,7 +686,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "scale" ? SCALE_HINT : "not built yet") : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : SHAPES[tool] ? SHAPES[tool].hint : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "scale" ? SCALE_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -611,7 +698,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         blocked={problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
-        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "line" || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale") ? " is-marking" : ""}`}
+        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || DRAWING_TOOLS.has(tool) || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale") ? " is-marking" : ""}`}
         onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -692,6 +779,39 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 </g>
               );
             })()}
+            {tool && SHAPES[tool] && cursor && (() => {
+              const c = toScreen(cursor.p, view);
+              const P = shapePts.map((p) => toScreen(p, view));
+              let shape: React.ReactNode = null, label = "";
+              if (tool === "circle" && P[0]) {
+                const r = Math.hypot(c.x - P[0].x, c.y - P[0].y);
+                shape = <><circle cx={P[0].x} cy={P[0].y} r={r} className="line-rubber" /><line x1={P[0].x} y1={P[0].y} x2={c.x} y2={c.y} className="line-rubber is-thin" /></>;
+                label = `Ø ${num(2 * Math.hypot(cursor.p.x - shapePts[0].x, cursor.p.y - shapePts[0].y))}`;
+              } else if (tool === "rect" && P[0]) {
+                shape = <rect x={Math.min(P[0].x, c.x)} y={Math.min(P[0].y, c.y)} width={Math.abs(c.x - P[0].x)} height={Math.abs(c.y - P[0].y)} className="line-rubber" />;
+                label = `${num(Math.abs(cursor.p.x - shapePts[0].x))} × ${num(Math.abs(cursor.p.y - shapePts[0].y))}`;
+              } else if (tool === "arc" && P[0]) {
+                const a = shapePts.length === 2 ? arcThrough(shapePts[0], shapePts[1], cursor.p) : null;
+                if (a) {
+                  const s0 = toScreen({ x: a.c.x + a.r * Math.cos((a.start * Math.PI) / 180), y: a.c.y + a.r * Math.sin((a.start * Math.PI) / 180) }, view);
+                  const s1 = toScreen({ x: a.c.x + a.r * Math.cos((a.end * Math.PI) / 180), y: a.c.y + a.r * Math.sin((a.end * Math.PI) / 180) }, view);
+                  const sweep = ((a.end - a.start) % 360 + 360) % 360;
+                  // screen y points down: counter-clockwise in the drawing is clockwise on screen (sweep flag 1)
+                  shape = <path d={`M${s0.x} ${s0.y}A${a.r * view.s} ${a.r * view.s} 0 ${sweep > 180 ? 1 : 0} 1 ${s1.x} ${s1.y}`} className="line-rubber" />;
+                  label = `R ${num(a.r)}`;
+                } else shape = <line x1={P[P.length - 1].x} y1={P[P.length - 1].y} x2={c.x} y2={c.y} className="line-rubber is-thin" />;
+              }
+              return (
+                <g className="line-draw" pointerEvents="none">
+                  {shape}
+                  {P.map((q, i) => <circle key={i} cx={q.x} cy={q.y} r={3.5} className="line-start" />)}
+                  {cursor.snapped
+                    ? <rect x={c.x - 7} y={c.y - 7} width={14} height={14} className="snap-mark" />
+                    : <path d={`M${c.x - 8} ${c.y}H${c.x + 8}M${c.x} ${c.y - 8}V${c.y + 8}`} className="line-cross" />}
+                  {label && <text x={c.x + 12} y={c.y - 10} className="line-len">{label}</text>}
+                </g>
+              );
+            })()}
             {tool && MEASURING[tool] && (
               <MeasureLayer measures={measures} toScreen={(p) => toScreen(p, view)}
                 first={firstPick?.kind === "point" ? toScreen(firstPick.p, view) : firstPick?.kind === "round" ? toScreen(firstPick.c, view) : null}
@@ -705,6 +825,14 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
           </svg>
         )}
 
+        {(tool === "circle" || tool === "rect") && view && shapePts.length === 1 && (() => {
+          const q = toScreen(shapePts[0], view);
+          return (
+            <DynamicInput x={q.x} y={q.y} w={size.w} h={size.h} label={tool === "circle" ? "Diameter (mm)" : "Width x height (mm)"} value={shapeText}
+              placeholder={tool === "circle" ? "20" : "200x100"} onChange={setShapeText} onEnter={applyShapeText}
+              onEscape={() => { setShapePts([]); setShapeText(""); setMessage({ text: "Started again" }); }} />
+          );
+        })()}
         {tool === "scale" && view && scaleAt && scaleItems.length > 0 && (() => {
           const one = scaleItems.length === 1 ? sizeOf(scaleItems[0]) : null;
           const q = toScreen(scaleAt, view);
