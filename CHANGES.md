@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 14 Nov 2026 (`5c16b3a`)
+
 - Bug check, 3D Extractor: big parts (many sampled curve points) no longer stop with a "call stack" error (bounding boxes, bend lengths, measures); a part named after a standard (DIN / ISO …) that unfolds as a bent or bigger sheet part stays sheet metal instead of hardware; washers whose circles come in halves are found as hardware; a STEP file that fails unexpectedly no longer leaves the list "reading…"
 - Import 2D tools in groups: **DRAWING** (Line, Circle, Arc, Rect.) and **DIMENSION** (Length, Diameter, Radius, Angle). A group's button opens its tools below the strip (blue: drawing, red: dimension); while one of them is on, the button shows that tool. New drawing tools (cutting lines, ends of lines snap, Esc or right click starts again):
   - **Circle**: the center, then a point on it, or type its diameter (20 + Enter)
