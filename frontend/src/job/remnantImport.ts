@@ -2,7 +2,7 @@
 // closed contour) and holes, mm, y down from the top-left of its box.
 
 import { readDrawingFile } from "../import/drawingFile";
-import { boxOf, union } from "../import/geometry";
+import { boxOf, union, type Entity } from "../import/geometry";
 import { dxfOutline } from "./dxfSheet";
 
 export interface ImportedRemnant { outline: number[][]; holes: number[][][]; widthMm: number; heightMm: number; areaMm2: number }
@@ -27,4 +27,13 @@ export async function remnantFromFile(f: File): Promise<ImportedRemnant> {
   if (!drawing.entities.length) throw new Error(`${f.name}: no lines in the file`);
   const b = drawing.entities.map(boxOf).reduce(union);
   return fromLoops((dxfOutline(drawing.entities, b, true) ?? []) as number[][][], f.name);
+}
+
+/** A remnant drawn or imported in Import 2D (Geometry check -> Save as remnant): its biggest closed contour is
+ *  the outline, the closed contours inside it holes. Throws with a message for the person. */
+export function remnantFromEntities(entities: Entity[], name: string): ImportedRemnant {
+  const cuts = entities.filter((e) => (e.role ?? "cut") === "cut");
+  if (!cuts.length) throw new Error("No cutting lines to make a remnant of");
+  const b = cuts.map(boxOf).reduce(union);
+  return fromLoops((dxfOutline(cuts, b, true) ?? []) as number[][][], name);
 }

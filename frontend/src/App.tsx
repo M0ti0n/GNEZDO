@@ -30,7 +30,8 @@ import { HomePage, type HomeAction } from "./pages/HomePage";
 import { JobPage } from "./pages/JobPage";
 import { JobSearchPage, type SheetParts } from "./pages/JobSearchPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
-import { RemnantsPage } from "./pages/RemnantsPage";
+import { RemnantDialog, RemnantsPage } from "./pages/RemnantsPage";
+import { remnantFromEntities } from "./job/remnantImport";
 import type { RemnantFilter } from "./shell/RemnantsPanel";
 import type { SavedRemnant } from "./api/api";
 import { Drawer, type DrawerMode, type RailSection } from "./shell/Drawer";
@@ -413,6 +414,21 @@ export function App() {
     if (!quiet) setToast(`${items.length === 1 ? items[0].name : `${items.length} parts`} added to the import list`);
     diag("fittings", `${list.length} ${list.length === 1 ? "part" : "parts"} into the import list: ${items.map((i) => `${i.name} x${i.qty}`).join(", ")}`);
     return items.map((i) => i.id);
+  };
+
+  // Import 2D -> Geometry check -> Save as remnant: the drawing into the saved remnants (the remnant dialog first)
+  const [remDraft, setRemDraft] = useState<{ r: SavedRemnant; names: Set<string> } | null>(null);
+  const saveAsRemnant = async (item: ImportItem) => {
+    if (!item.drawing) return;
+    const props = itemProps(item, importProps);
+    const base = (item.sketch ? "SKETCH" : item.name).replace(/[^\w.-]+/g, "_");
+    try {
+      const g = remnantFromEntities(item.drawing.entities, item.sketch ? NEW_PART : item.name);
+      const names = new Set((await api.remnants().catch(() => [] as SavedRemnant[])).map((r) => r.name));
+      let name = `REM_${base}`;
+      for (let k = 2; names.has(name); k++) name = `REM_${base}_${k}`;
+      setRemDraft({ names, r: { name, material: props.material ?? "", thicknessMm: Number(props.thicknessMm) || 1, job: "", sheet: 0, qty: 1, file: item.fileName, ...g } });
+    } catch (e) { setToast((e as Error).message); }
   };
 
   /** Parts leave the import list: their tabs close and their Undo history ends. */
@@ -1510,7 +1526,8 @@ export function App() {
                 fromDatabase={!!shownItem.source}
                 onEdit={(drawing, label) => editDrawing(shownItem.id, shownItem.drawing!, drawing, label)}
                 undone={undone}
-                onSaveToList={shownItem.sketch ? () => setNaming({ id: shownItem.id }) : undefined} />
+                onSaveToList={shownItem.sketch ? () => setNaming({ id: shownItem.id }) : undefined}
+                onSaveRemnant={() => void saveAsRemnant(shownItem)} />
               </ErrorBoundary>
             )}
             {active.kind === "special" && (
@@ -1553,6 +1570,11 @@ export function App() {
             setToast(`${r?.status === "replaced" ? "Replaced" : "Saved"} ${v.name.trim()} in the database`);
           }}
         />
+      )}
+      {remDraft && (
+        <RemnantDialog title="Save as remnant" fresh r={remDraft.r} names={remDraft.names} onCancel={() => setRemDraft(null)}
+          onSave={(r) => void api.saveRemnants([r]).then(() => { setRemDraft(null); setToast(`${r.name} saved to the remnants`); diag("import", `Saved as remnant: ${r.name}`); },
+            (e: Error) => setToast(`Not saved: ${e.message}`))} />
       )}
       {naming && (
         <SketchNameDialog taken={new Set(imports.filter((i) => !i.sketch).map((i) => i.name.toLowerCase()))}

@@ -119,9 +119,11 @@ interface Props {
   snaps?: SnapKind[];
   /** The New part (an empty canvas to draw on): Save to list names it and puts it in the import list. */
   onSaveToList?: () => void;
+  /** Save as remnant: the drawing (a remnant sketched, a damaged part) into the saved remnants. */
+  onSaveRemnant?: () => void;
 }
 
-export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false, fromDatabase = false, snaps, onSaveToList }: Props) {
+export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false, fromDatabase = false, snaps, onSaveToList, onSaveRemnant }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
   const [tool, setTool] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -1478,6 +1480,13 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           </header>
+          {onSaveRemnant && (
+            <div className="gc-save gc-rem">
+              <button type="button" className="btn gc-save-btn" onClick={onSaveRemnant} disabled={!drawing.entities.length}
+                title="Save this outline as a remnant (a remnant sketched here, or a damaged part whose good area can take smaller parts): it goes to the saved remnants">Save as remnant</button>
+              <span>A sketched remnant or a damaged part: into the saved remnants.</span>
+            </div>
+          )}
           {onSaveToList && (
             <div className="gc-save">
               <button type="button" className="btn gc-save-btn" onClick={onSaveToList} disabled={!drawing.entities.length}
