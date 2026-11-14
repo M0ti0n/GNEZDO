@@ -42,6 +42,9 @@ export interface StepSettings {
   stitch: number[];
   /** stitch: the top side is the faces' other side (missing: the inside of most bends) */
   flip?: boolean;
+  /** threaded holes by their diameter ("6.80"): the thread (M8: marked with a cross and M8, not cut) or
+   *  "cut"; a diameter not listed: as its tap drill says (6.8 -> M8), else cut */
+  threads?: Record<string, string>;
   /** stitch: bend compensation; the faces are the sheet's top or bottom side (none: as they are) */
   comp: { side: "none" | "top" | "bottom"; t: number; r: number };
 }
@@ -181,12 +184,76 @@ export function bendTexts(u: Unfolded, st: StepSettings): V2[][] {
   });
 }
 
+// ------------------------------------------------------------------ threaded holes
+
+/** Metric coarse threads and their tap drills (mm): a hole of a tap drill's size is most likely tapped. */
+export const TAP_DRILLS: [string, number][] = [
+  ["M2", 1.6], ["M2.5", 2.05], ["M3", 2.5], ["M4", 3.3], ["M5", 4.2], ["M6", 5], ["M8", 6.8], ["M10", 8.5],
+  ["M12", 10.2], ["M14", 12], ["M16", 14], ["M18", 15.5], ["M20", 17.5], ["M22", 19.5], ["M24", 21],
+];
+export const holeKey = (d: number) => d.toFixed(2);
+/** The thread whose tap drill this hole is (within 0.06 mm), else null. */
+export const threadByDrill = (d: number) => TAP_DRILLS.find(([, t]) => Math.abs(t - d) <= 0.06)?.[0] ?? null;
+
+interface Hole { c: V2; r: number; edges: number[] }
+/** The round holes of the flat pattern: whole circles, or arcs around one center that close (halves). */
+function holesOf(u: Unfolded): Hole[] {
+  const groups = new Map<string, Hole & { sweep: number }>();
+  u.outline.forEach((e, i) => {
+    if (!e.arc) return;
+    const k = `${Math.round(e.arc.c[0] * 100)},${Math.round(e.arc.c[1] * 100)},${Math.round(e.arc.r * 100)}`;
+    const g = groups.get(k) ?? { c: e.arc.c, r: e.arc.r, edges: [], sweep: 0 };
+    g.edges.push(i);
+    g.sweep += e.arc.a1 - e.arc.a0;
+    groups.set(k, g);
+  });
+  const small = Math.min(u.box.x1, u.box.y1);
+  // a whole circle that is not the part's own outline (a round blank)
+  return [...groups.values()].filter((g) => g.sweep >= 2 * Math.PI - 1e-3 && 2 * g.r < 0.98 * small);
+}
+
+/** The flat pattern's holes by size: how many, and what they are (a thread, or cut). */
+export function holeGroups(u: Unfolded, st: StepSettings): { key: string; d: number; count: number; auto: string | null; thread: string | null }[] {
+  const by = new Map<string, { key: string; d: number; count: number; auto: string | null; thread: string | null }>();
+  for (const h of holesOf(u)) {
+    const d = 2 * h.r, key = holeKey(d);
+    const g = by.get(key) ?? { key, d, count: 0, auto: threadByDrill(d), thread: null };
+    g.count++;
+    by.set(key, g);
+  }
+  for (const g of by.values()) { const set = st.threads?.[g.key]; g.thread = set === undefined ? g.auto : set === "cut" ? null : set; }
+  return [...by.values()].sort((a, b) => a.d - b.d);
+}
+
+/**
+ * Threaded holes are not cut: each is a small traced cross with its thread (M8) beside it, for drilling and
+ * tapping after cutting. The flat pattern without those holes, and the lines to trace.
+ */
+export function applyThreads(u: Unfolded, st: StepSettings): { u: Unfolded; lines: V2[][] } {
+  const groups = holeGroups(u, st);
+  if (!groups.some((g) => g.thread)) return { u, lines: [] };
+  const drop = new Set<number>();
+  const lines: V2[][] = [];
+  for (const h of holesOf(u)) {
+    const t = groups.find((g) => g.key === holeKey(2 * h.r))?.thread;
+    if (!t) continue;
+    h.edges.forEach((i) => drop.add(i));
+    const [x, y] = h.c;
+    const a = Math.max(1.5, h.r * 0.8);
+    lines.push([[x - a, y], [x + a, y]], [[x, y - a], [x, y + a]]);
+    const cap = Math.min(5, Math.max(2.5, h.r * 1.1));
+    lines.push(...textLines(t, { at: [x + a + cap * 0.35, y], align: "left", valign: "middle", capMm: cap }));
+  }
+  return { u: { ...u, outline: u.outline.filter((_, i) => !drop.has(i)) }, lines };
+}
+
 /** The flat pattern as an import drawing: the outline cut, the bend marks traced (or open cut), the labels traced. */
-export function flatDrawing(id: string, name: string, u: Unfolded, st: StepSettings): Drawing {
-  const text = flatDxf(u, { marks: marksOf(u, st), bendLines: false, texts: bendTexts(u, st) });
+export function flatDrawing(id: string, name: string, u0: Unfolded, st: StepSettings): Drawing {
+  const { u, lines } = applyThreads(u0, st);
+  const text = flatDxf(u, { marks: marksOf(u, st), bendLines: false, texts: bendTexts(u, st), threads: lines });
   const r = readDxf(text, `${name}.dxf`);
   const role: Role = st.marks === "openCut" ? "openCut" : "trace";
-  const entities = r.drawing.entities.map((e) => (e.layer === "BEND_MARK" ? { ...e, role, fileRole: role } : e.layer === "BEND_TEXT" ? { ...e, role: "trace" as Role, fileRole: "trace" as Role } : e));
+  const entities = r.drawing.entities.map((e) => (e.layer === "BEND_MARK" ? { ...e, role, fileRole: role } : e.layer === "BEND_TEXT" || e.layer === "THREAD" ? { ...e, role: "trace" as Role, fileRole: "trace" as Role } : e));
   return { ...r.drawing, id, fileName: name, entities: fixMarkRules(entities).entities };
 }
 

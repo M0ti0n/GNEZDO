@@ -5,7 +5,7 @@ import { usePickLists } from "../components/pickLists";
 import { add3, len3, lowHigh, mul3, normalAt, sub3, type Solid, type V3 } from "../import/step/step";
 import { describe, edgePick, facePick, refPoint, relate, type MPick } from "../import/step/measure3d";
 import {
-  bendTexts, infoOf, kFor, loadProfiles, marksOf, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
+  applyThreads, bendTexts, holeGroups, TAP_DRILLS, infoOf, kFor, loadProfiles, marksOf, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
   DEFAULT_PROFILE, type Grain, type MarkAs, type StepPart, type StepSettings, type UnfoldProfile,
 } from "../import/step/stepPart";
 import { KIND_LABEL, type BodyKind } from "../import/step/extract";
@@ -91,7 +91,8 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   const flip = stitchMode ? false : st.top !== undefined ? !u.skinFaces.includes(st.top) : u.bends.filter((b) => !b.inner).length > u.bends.filter((b) => b.inner).length;
   const ups = u.bends.filter((b) => b.up).length;
   const download = () => {
-    const url = URL.createObjectURL(new Blob([flatDxf(u, { marks: marksOf(u, st), texts: bendTexts(u, st) })], { type: "application/dxf" }));
+    const t = applyThreads(u, st);
+    const url = URL.createObjectURL(new Blob([flatDxf(t.u, { marks: marksOf(t.u, st), texts: bendTexts(t.u, st), threads: t.lines })], { type: "application/dxf" }));
     const a = document.createElement("a");
     a.href = url; a.download = `${name}_flat.dxf`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -257,6 +258,27 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
                   onClick={() => set({ grain: g })}>{g === "none" ? "None" : g.toUpperCase()}</button>
               ))}
             </span></div>
+          {(() => {
+            const groups = holeGroups(u, st);
+            if (!groups.length) return null;
+            return (<>
+              <div className="uf-lbl">Holes</div>
+              <div className="uf-holes">
+                {groups.map((g) => (
+                  <div key={g.key} className="uf-row">
+                    <span className="uf-hole">Ø {fmt(g.d)} <small>×{g.count}</small></span>
+                    <select className="field" value={g.thread ?? "cut"} aria-label={`Holes Ø${fmt(g.d)}`}
+                      title="Cut: the hole is cut. A thread: not cut; a small cross and the thread (M8) are traced, to drill and tap after cutting"
+                      onChange={(e) => set({ threads: { ...(st.threads ?? {}), [g.key]: e.target.value } })}>
+                      <option value="cut">Cut</option>
+                      {TAP_DRILLS.map(([m, t]) => <option key={m} value={m}>{m} thread{Math.abs(t - g.d) <= 0.06 ? " (tap drill size)" : ""}</option>)}
+                    </select>
+                    {g.auto && g.thread === g.auto && st.threads?.[g.key] === undefined && <small className="uf-auto" title={`Ø${fmt(g.d)} is the tap drill of ${g.auto}: probably tapped`}>probably</small>}
+                  </div>
+                ))}
+              </div>
+            </>);
+          })()}
           <div className="uf-lbl">Bend marks</div>
           <div className="uf-row"><span>Length</span><NumInput className="field uf-num" value={st.markLen} min={1} aria-label="Bend mark length (mm)" onCommit={(n) => set({ markLen: n })} />
             <span>in</span><NumInput className="field uf-num" value={st.markInset} min={0} aria-label="Bend mark inset (mm)" onCommit={(n) => set({ markInset: n })} /><small>mm</small></div>
@@ -582,7 +604,9 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure }: {
 
 // ------------------------------------------------------------------ the flat pattern (SVG, measured)
 
-function FlatView({ u, st, measure }: { u: Unfolded; st: StepSettings; measure: boolean }) {
+function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measure: boolean }) {
+  // threaded holes: a cross and the thread instead of the hole (as it goes to Import 2D)
+  const { u, lines: threadLines } = useMemo(() => applyThreads(u0, st), [u0, st]);
   const svg = useRef<SVGSVGElement>(null);
   const [pts, setPts] = useState<V2[]>([]);
   const [near, setNear] = useState<V2 | null>(null);
@@ -632,6 +656,7 @@ function FlatView({ u, st, measure }: { u: Unfolded; st: StepSettings; measure: 
         : <path key={i} className="uf-o" d={`M${e.pts.map((p) => `${p[0]} ${y(p[1])}`).join(" L")}`} />))}
       {u.bendLines.map(([a, b], i) => <path key={`b${i}`} className="uf-b" d={`M${a[0]} ${y(a[1])} L${b[0]} ${y(b[1])}`} />)}
       {marks.map(([a, b], i) => <path key={`m${i}`} className="uf-m" d={`M${a[0]} ${y(a[1])} L${b[0]} ${y(b[1])}`} />)}
+      {threadLines.map((r, i) => <path key={`th${i}`} className="uf-eng" d={`M${r.map((p) => `${p[0]} ${y(p[1])}`).join(" L")}`} />)}
       {st.annotate && st.engraveText && bendTexts(u, st).map((r, i) => <path key={`e${i}`} className="uf-eng" d={`M${r.map((p) => `${p[0]} ${y(p[1])}`).join(" L")}`} />)}
       {st.annotate && !st.engraveText && u.bendLines.map(([a, b], i) => {
         const bd = u.bends[i];

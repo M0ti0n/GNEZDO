@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- 3D Extractor, **Holes**: the flat pattern's round holes by size (Ø, how many). A size can be **Cut** or a **thread** (M2 … M24): a threaded hole is not cut; a small traced cross with its thread beside it (M8, single-line text) marks it for drilling and tapping after cutting. Holes the size of a tap drill (Ø6.8 → M8, Ø8.5 → M10 …, metric coarse) are set to their thread by themselves and marked "probably"; any size can be changed. Into Import 2D as tracing lines, into the flat DXF on layer THREAD
 
 ## Build 14 Nov 2026 (`5c16b3a`)
 

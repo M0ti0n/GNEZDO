@@ -332,7 +332,7 @@ export function bendMarks(u: Unfolded, len = 20, inset = 2, all = false): [V2, V
 
 /** The flat pattern as DXF (R12): outline on layer 0 (lines, arcs, circles); bend marks on BEND_MARK
  *  (traced); the bends' whole lines on BEND (for a drawing, not for cutting) unless left out. */
-export function flatDxf(u: Unfolded, o: { marks?: [V2, V2][]; bendLines?: boolean; texts?: V2[][] } = {}): string {
+export function flatDxf(u: Unfolded, o: { marks?: [V2, V2][]; bendLines?: boolean; texts?: V2[][]; threads?: V2[][] } = {}): string {
   const out: string[] = ["0", "SECTION", "2", "ENTITIES"];
   const n = (v: number) => (Math.round(v * 1e6) / 1e6).toString();
   const line = (a: V2, b: V2, layer: string) => out.push("0", "LINE", "8", layer, "10", n(a[0]), "20", n(a[1]), "30", "0", "11", n(b[0]), "21", n(b[1]), "31", "0");
@@ -348,6 +348,8 @@ export function flatDxf(u: Unfolded, o: { marks?: [V2, V2][]; bendLines?: boolea
   for (const [a, b] of o.marks ?? []) line(a, b, "BEND_MARK");
   // engraved labels (single-line text) on BEND_TEXT
   for (const run of o.texts ?? []) for (let i = 1; i < run.length; i++) line(run[i - 1], run[i], "BEND_TEXT");
+  // threaded holes: a cross and the thread size (M8) instead of the hole, on THREAD
+  for (const run of o.threads ?? []) for (let i = 1; i < run.length; i++) line(run[i - 1], run[i], "THREAD");
   if (o.bendLines !== false) for (const [a, b] of u.bendLines) line(a, b, "BEND");
   out.push("0", "ENDSEC", "0", "EOF");
   return out.join("\r\n") + "\r\n";
