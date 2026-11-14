@@ -88,7 +88,7 @@ const FIT_ICON: Record<string, ReactNode> = {
   ),
 };
 export const FIT_TOOLS: { id: string; label: string }[] = [
-  { id: "fit-elbow", label: "Elbow" }, { id: "fit-transition", label: "Rect. → round" },
+  { id: "fit-elbow", label: "Segmented elbow" }, { id: "fit-transition", label: "Rect. → round" },
   { id: "fit-branch", label: "Branch reducer" }, { id: "fit-flange", label: "Flange" },
   { id: "fit-thread", label: "Threaded flange" }, { id: "fit-screw", label: "Screw flight" },
 ];
@@ -140,7 +140,8 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
   },
   {
     id: "arc", label: "Arc",
-    icon: <Ico><path d="M9 33A16 16 0 0 1 39 36" stroke={K} strokeWidth="3.4" /><circle cx="9" cy="33" r="3.6" fill={BL} /><circle cx="27" cy="14.5" r="3.6" fill={BL} /><circle cx="39" cy="36" r="3.6" fill={BL} /></Ico>,
+    // three points: start, a point on it, end (the center only shown)
+    icon: <Ico><path d="M6 38A18 18 0 0 1 42 38" stroke={K} strokeWidth="3.6" /><path d="M21 38h6M24 35v6" stroke="#8aa0a4" strokeWidth="1.6" /><circle cx="6" cy="38" r="3.8" fill={BL} /><circle cx="24" cy="20" r="3.8" fill={BL} /><circle cx="42" cy="38" r="3.8" fill={BL} /></Ico>,
   },
   {
     id: "rect", label: "Rect.",
@@ -156,15 +157,18 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
   },
   {
     id: "offset", label: "Offset",
-    icon: <Ico><path d="M8 32L32 8" stroke={K} strokeWidth="3.4" /><path d="M16 40L40 16" stroke={K} strokeWidth="3.4" /><path d="M21 20.5L27 26.5" stroke={BL} strokeWidth="2" /><path d="M27.5 27l-1-4.6-3.6 3.6z" fill={BL} /><circle cx="20" cy="20" r="2.8" fill={BL} /></Ico>,
+    // a line and its copy at a distance (red: the new one and how far)
+    icon: <Ico><path d="M5 12H43" stroke={K} strokeWidth="3.6" /><path d="M5 37H43" stroke={R} strokeWidth="3.6" /><path d="M24 15V34" stroke={R} strokeWidth="2" /><Arrow x={24} y={14.4} angle={-90} color={R} /><Arrow x={24} y={34.6} angle={90} color={R} /><circle cx="10" cy="12" r="3.4" fill={BL} /></Ico>,
   },
   {
     id: "fillet", label: "Radius",
-    icon: <Ico><path d="M10 40V24A14 14 0 0 1 24 10H40" stroke={K} strokeWidth="3.4" /><path d="M10 10L18 18" stroke={BL} strokeWidth="1.8" strokeDasharray="3 2.5" /><circle cx="10" cy="10" r="3.6" fill={BL} /></Ico>,
+    // the sharp corner (dashed) rounded off (red), its radius
+    icon: <Ico><path d="M8 26V8H26" stroke="#8aa0a4" strokeWidth="1.8" strokeDasharray="3 2.5" /><path d="M8 44V26M26 8H44" stroke={K} strokeWidth="3.6" /><path d="M8 26A18 18 0 0 1 26 8" stroke={R} strokeWidth="4" /><path d="M26 26L14.5 14.5" stroke={R} strokeWidth="1.8" /><circle cx="26" cy="26" r="2.2" fill={R} /><text x="30" y="40" fontFamily="Barlow Semi Condensed, Barlow, sans-serif" fontSize="15" fontWeight="700" fill={R}>R</text></Ico>,
   },
   {
     id: "chamfer", label: "Chamfer",
-    icon: <Ico><path d="M10 40V22L22 10H40" stroke={K} strokeWidth="3.4" /><path d="M10 22V10H22" stroke={BL} strokeWidth="1.8" strokeDasharray="3 2.5" /><circle cx="10" cy="10" r="3.6" fill={BL} /></Ico>,
+    // the sharp corner (dashed) cut off straight (red), equal on both lines
+    icon: <Ico><path d="M8 24V8H24" stroke="#8aa0a4" strokeWidth="1.8" strokeDasharray="3 2.5" /><path d="M8 44V24M24 8H44" stroke={K} strokeWidth="3.6" /><path d="M8 24L24 8" stroke={R} strokeWidth="4" /><path d="M4 16h8M16 4v8" stroke={R} strokeWidth="1.6" /><text x="26" y="38" fontFamily="Barlow Semi Condensed, Barlow, sans-serif" fontSize="13" fontWeight="700" fill={R}>45°</text></Ico>,
   },
   {
     id: "alignH", label: "Align H",
@@ -365,7 +369,7 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
 ];
 
 /** Tools shown together under one button: it opens them below the strip (open until another group or this one is clicked). */
-export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim" | "fit"; tools: string[]; icon: ReactNode }[] = [
+export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim"; tools: string[]; icon: ReactNode }[] = [
   {
     id: "drawGroup", label: "Drawing", tone: "draw", tools: ["line", "circle", "arc", "rect", "slot", "xline", "offset", "fillet", "chamfer"],
     icon: <Ico><path d="M12 10L37 37" stroke={K} strokeWidth="3.4" /><circle cx="12" cy="10" r="3.8" fill={BL} /><circle cx="37" cy="37" r="3.8" fill={BL} /></Ico>,
@@ -382,7 +386,6 @@ export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim" | "f
       </Ico>
     ),
   },
-  { id: "fitGroup", label: "Fittings", tone: "fit", tools: FIT_TOOLS.map((t) => t.id), icon: FIT_ICON.elbow },
 ];
 
 /** The strip's order: single tools and groups (a group stands where its first tool stood). */

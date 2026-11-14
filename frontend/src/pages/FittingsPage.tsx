@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import { ImportToolStrip, fitIcon } from "../import/ImportTools";
+import { FIT_TOOLS, ImportToolStrip, fitIcon } from "../import/ImportTools";
 import { Preview } from "../import/ProcessDialog";
 import { NumInput } from "../components/NumInput";
 import {
@@ -55,7 +55,7 @@ export function FittingsPage({ session, onSession, stateOf, properties, onProper
 
   return (
     <div className="import uf fit">
-      <ImportToolStrip active={`fit-${kind}`} onTool={onTool} blocked={blocked} openGroup="fitGroup" strip={["properties", "fitGroup", "process"]} />
+      <ImportToolStrip active={`fit-${kind}`} onTool={onTool} blocked={blocked} strip={["properties", ...FIT_TOOLS.map((t) => t.id), "process"]} />
       <section className="uf-pane fit-pane" aria-label="Canvas">
         <h3>{shown ? <>{shown.name} <em>{shown.label} ×{shown.qty * count} · {fmt(shown.w)} × {fmt(shown.h)} mm{stateOf(sigs[pi]) === "saved" ? " · processed ✓" : stateOf(sigs[pi]) === "listed" ? " · in the import list" : ""}</em></> : FITTING_NAMES[kind]}</h3>
         {drawing ? <div className="fit-canvas"><Preview drawing={drawing} /></div>
