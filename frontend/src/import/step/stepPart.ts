@@ -8,6 +8,7 @@ import { readDxf } from "../dxf";
 import { fixMarkRules, type Drawing, type Role } from "../geometry";
 import type { Rotation } from "../rules";
 import { readStep, type Solid, type StepModel } from "./step";
+import { withCuts, type FaceCut } from "./split";
 import { textLines, textWidth } from "../singleLine";
 import { bendMarks, flatDxf, stitch, unfold, type Unfolded, type V2 } from "./unfold";
 
@@ -50,6 +51,8 @@ export interface StepSettings {
   threadText?: number;
   /** stitch: bend compensation; the faces are the sheet's top or bottom side (none: as they are) */
   comp: { side: "none" | "top" | "bottom"; t: number; r: number };
+  /** stitch: edges added across flat faces (two corners each), splitting them (a flange cut at its corners) */
+  cuts?: FaceCut[];
 }
 
 export interface StepPart {
@@ -123,9 +126,22 @@ export function modelOf(text: string): StepModel {
 /** One body's faces. */
 export const solidOf = (text: string, body = 0): Solid => modelOf(text).bodies[body]?.solid ?? { faces: [], unitMm: 1, name: "", problems: ["This body is not in the file"] };
 
+const cutSolids = new WeakMap<Solid, Map<string, Solid>>();
+/** The body as stitching sees it: with its added edges (stitch mode), else as it is. */
+export function partSolid(text: string, body: number, st: StepSettings): Solid {
+  const s = solidOf(text, body);
+  if (st.mode !== "stitch" || !st.cuts?.length) return s;
+  const key = JSON.stringify(st.cuts);
+  let m = cutSolids.get(s);
+  if (!m) { m = new Map(); cutSolids.set(s, m); }
+  let c = m.get(key);
+  if (!c) { c = withCuts(s, st.cuts).solid; if (m.size > 30) m.delete(m.keys().next().value!); m.set(key, c); }
+  return c;
+}
+
 /** The part unfolded with its settings: the top side picked, or the inside of most bends. */
 export function unfoldPart(text: string, st: StepSettings, body = 0): Unfolded {
-  const s = solidOf(text, body);
+  const s = partSolid(text, body, st);
   if (st.mode === "stitch") {
     const comp = { ...st.comp, k: st.kFactor };
     let u = stitch(s, st.stitch, { flip: !!st.flip, comp });
