@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D, Geometry check: **Save as remnant** (at the top): the drawing's outline (its biggest closed cutting contour, the closed ones inside it as holes) goes to the saved remnants, after the remnant dialog (name REM_<part>, material, thickness, pieces, note). For a remnant sketched on the New part canvas, or a damaged part whose good area can still take smaller parts
 - Drawing icons: **Arc** centered; **Offset** with its new line in blue and the clicked point red; **Radius** and **Chamfer** in blue
 - Import 2D: dimension numbers 60 % bigger
 - DXF export with the aid lines and dimensions: a part's export has them by default (the menu's tick box switches them off), and **Export solution to DXF** now carries every part's aid lines (layer AID) and dimensions (layer DIM) too
@@ -13,7 +14,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Break cut: a lead is picked from about 10 mm around it, along its whole length (not only at the pierce point), and a balloon also on the balloon itself; break cut and micro joint balloons are twice as big
 - Movement: the modes one under the other, bigger icons with their name and what they do beside them
 - Common cut:
-  - **Common cut on** (job toolbar) now works for **Automatic nest** too (Fast, Thorough: the biggest blocks; Custom as before, with its trials); when blocks and no blocks take the same sheets, the blocks are kept
+  - **Common cut on** (job toolbar) now works for **Automatic nest** too (Fast, Thorough: the biggest blocks; Custom as before, with its trials). Custom with Common cut ticked often made no blocks: its trials kept the nest without blocks when it took the same sheets with a slightly shorter last sheet. Now the blocks are kept unless the nest without them takes fewer sheets
   - Manual nest: with Common cut on, a dragged part snaps its marked line onto another part's (any part, not only copies of the same one) without holding a key
   - parts joined into one block (a grid of squares) no longer show as overlapping where their corners meet
   - new **chain** blocks (Arrange and Automatic nest): every other copy turned 180°, sharing one marked line and then the other, so trapezoids and triangles make rows of any length (before: pairs only)
