@@ -1,3 +1,4 @@
+import type { Aid } from "./draw";
 import type { SavePart } from "../api/api";
 import { buildContours, checkGeometry, endsOf, pointsAlong, roleOf, type Contour, type Drawing, type Entity, type Pt } from "./geometry";
 
@@ -70,6 +71,8 @@ export interface PartGeometryJson {
   operations: Operation[];
   /** the part's surface: grain direction in this drawing, protective foil / finish on the top side */
   marks?: SurfaceMarks;
+  /** aid lines and dimensions: only for editing on the importer canvas (never cut or nested) */
+  aids?: Aid[];
 }
 
 export interface SurfaceMarks { grain?: "x" | "y"; foil?: boolean }
@@ -121,5 +124,5 @@ export function partGeometry(d: Drawing, marks?: SurfaceMarks): Pick<SavePart, "
 export function geometryJson(d: Drawing, marks?: SurfaceMarks): PartGeometryJson {
   const entities = d.entities.map((e) => ({ ...e, role: roleOf(e) }));
   const m = marks && (marks.grain || marks.foil) ? { marks: { ...(marks.grain ? { grain: marks.grain } : {}), ...(marks.foil ? { foil: true } : {}) } } : {};
-  return { format: "gnezdo-part", version: 2, units: "mm", entities, operations: operationsOf(entities), ...m };
+  return { format: "gnezdo-part", version: 2, units: "mm", entities, operations: operationsOf(entities), ...m, ...(d.aids?.length ? { aids: d.aids } : {}) };
 }

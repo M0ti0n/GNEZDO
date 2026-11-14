@@ -1,6 +1,8 @@
 // Drawing entities of an imported DXF/DWG, in millimeters, y up (as in the CAD file),
 // and the geometry check that runs on them.
 
+import type { Aid } from "./draw";
+
 export interface Pt { x: number; y: number }
 
 /**
@@ -46,6 +48,8 @@ export interface Drawing {
   entities: Entity[];
   /** Loose points from the file (DXF POINT): never cut; shown so Sweep can remove them. */
   points?: { id: string; p: Pt; layer?: string }[];
+  /** Aid lines, slot center lines and dimensions: saved with the part, shown and used only on the importer canvas. */
+  aids?: Aid[];
 }
 
 export interface Box { minX: number; minY: number; maxX: number; maxY: number }

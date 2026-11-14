@@ -389,8 +389,11 @@ function PartMenu({ x, y, part, onClose, onProperties, onVersions }: {
     };
   }, [onClose]);
   const pick = (f: () => void) => () => { onClose(); f(); };
+  // Export with the part's dimensions and aid lines (kept for next time)
+  const [withAids, setWithAidsState] = useState(() => { try { return localStorage.getItem("gnezdo.exportAids") === "1"; } catch { return false; } });
+  const setWithAids = (v: boolean) => { setWithAidsState(v); try { localStorage.setItem("gnezdo.exportAids", v ? "1" : "0"); } catch { /* this session */ } };
   // keep the menu on screen
-  const left = Math.min(x, window.innerWidth - 200), top = Math.min(y, window.innerHeight - 220);
+  const left = Math.min(x, window.innerWidth - 240), top = Math.min(y, window.innerHeight - 250);
   return (
     <div ref={ref} className="ctx-menu" role="menu" style={{ left, top }} onContextMenu={(e) => e.preventDefault()}>
       <div className="ctx-title">{part.name}</div>
@@ -399,8 +402,11 @@ function PartMenu({ x, y, part, onClose, onProperties, onVersions }: {
         title={part.revision < 2 ? "Only one version so far" : undefined}>Versions{part.revision > 1 ? ` (${part.revision})` : ""}…</button>
       <div className="ctx-sep" role="separator" />
       <button role="menuitem" onClick={pick(() => editPart(part))} title="Open the part on the importer canvas to change it or measure it">Edit</button>
-      <button role="menuitem" onClick={pick(() => void exportPart(part, "dxf"))}>Export DXF</button>
-      <button role="menuitem" onClick={pick(() => void exportPart(part, "svg"))}>Export SVG</button>
+      <button role="menuitem" onClick={pick(() => void exportPart(part, "dxf", withAids))}>Export DXF</button>
+      <button role="menuitem" onClick={pick(() => void exportPart(part, "svg", withAids))}>Export SVG</button>
+      <label className="ctx-check" title="Export the part's dimensions and aid lines too (layers DIM and AID); they are never cut">
+        <input type="checkbox" checked={withAids} onChange={(e) => setWithAids(e.target.checked)} /> With dimensions and aid lines
+      </label>
     </div>
   );
 }

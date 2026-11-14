@@ -1,3 +1,4 @@
+import type { SnapKind } from "./draw";
 import { dropBadCommon, markOutlineCommon, type Entity, type Role } from "./geometry";
 
 // Settings -> Rules -> Import rules.
@@ -27,6 +28,8 @@ export interface ImportRules {
   coloursAsCuts: boolean;
   /** Which colors mean cutting, tracing, open cut and common cut. */
   colours: ColourRules;
+  /** What drawing on the importer canvas snaps to (missing: everything). */
+  snaps?: SnapKind[];
 }
 
 /**

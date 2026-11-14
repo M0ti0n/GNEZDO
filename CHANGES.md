@@ -5,6 +5,19 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 ## Next build
 
 - 3D Extractor, **Holes**: the flat pattern's round holes by size (Ø, how many). A size can be **Cut** or a **thread** (M2 … M24): a threaded hole is not cut; a small traced cross with its thread beside it (M8, single-line text) marks it for drilling and tapping after cutting. Holes the size of a tap drill (Ø6.8 → M8, Ø8.5 → M10 …, metric coarse) are set to their thread by themselves and marked "probably"; any size can be changed. Into Import 2D as tracing lines, into the flat DXF on layer THREAD
+- Thread marks bigger: the cross 15 mm and its M# text 15 mm high by default; both sizes can be set in the Holes section
+- Import 2D, **dynamic input** while drawing (as in AutoCAD): boxes next to the pointer, Tab to the next box, Enter applies, Esc steps back; a box left empty follows the pointer
+  - **Line**: Length [Tab] Angle (a positive angle turns counterclockwise, a negative one clockwise)
+  - **Rect.**: X [Tab] Y (signed); **Circle**: Ø
+- New **DRAWING** tools, in the same icon style:
+  - **Slot**: the center of one end, the center of the other, then a point for the radius; or the first center, then Distance [Tab] Radius [Tab] Angle. The dashed center line between the ends is kept, its middle snaps
+  - **Aid line**: an endless dashed blue line through two points, or a point and a typed angle. Hold **Ctrl**: click a line, then a point or a parallel line, and the aid line goes half way between, parallel to the line
+  - **Offset**: click a line, arc, circle or aid line, then click the side (points snap) or type the distance + Enter
+  - **Radius**: click a corner where exactly two lines meet and type R; it can be no bigger than the shorter line allows
+  - **Chamfer**: click a corner, then Distance 1 [Tab] Distance 2
+- **Extend**, new mode: hold **Ctrl** and click two lines to join them at their crossing (both are extended or trimmed to it)
+- Snapping: ends, middles, centers, **quadrants** of circles and arcs, crossings, **perpendicular** and **tangent** from the last point, each with its own mark. **Settings → Rules → Snapping while drawing** sets which ones are on
+- **Dimensions and aid lines are kept with the part**: saved with it when processed and shown again (and working) only in Import 2D; Erase removes them. They are never cut or nested. Exporting a part (DXF / SVG) has a check box **With dimensions and aid lines** (layers DIM and AID)
 
 ## Build 14 Nov 2026 (`5c16b3a`)
 

@@ -93,6 +93,26 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     icon: <Ico><rect x="9" y="12" width="30" height="24" stroke={K} strokeWidth="3.4" /><circle cx="9" cy="36" r="3.6" fill={BL} /><circle cx="39" cy="12" r="3.6" fill={BL} /></Ico>,
   },
   {
+    id: "slot", label: "Slot",
+    icon: <Ico><path d="M15 15H33A9 9 0 0 1 33 33H15A9 9 0 0 1 15 15Z" stroke={K} strokeWidth="3.4" /><path d="M15 24H33" stroke={BL} strokeWidth="1.8" strokeDasharray="3 2.5" /><circle cx="15" cy="24" r="3.4" fill={BL} /><circle cx="33" cy="24" r="3.4" fill={BL} /><circle cx="33" cy="15" r="3.4" fill={BL} /></Ico>,
+  },
+  {
+    id: "xline", label: "Aid line",
+    icon: <Ico><path d="M4 41L44 7" stroke={BL} strokeWidth="2.6" strokeDasharray="5 3.5" /><circle cx="14" cy="32.5" r="3.6" fill={BL} /><circle cx="34" cy="15.5" r="3.6" fill={BL} /></Ico>,
+  },
+  {
+    id: "offset", label: "Offset",
+    icon: <Ico><path d="M8 32L32 8" stroke={K} strokeWidth="3.4" /><path d="M16 40L40 16" stroke={K} strokeWidth="3.4" /><path d="M21 20.5L27 26.5" stroke={BL} strokeWidth="2" /><path d="M27.5 27l-1-4.6-3.6 3.6z" fill={BL} /><circle cx="20" cy="20" r="2.8" fill={BL} /></Ico>,
+  },
+  {
+    id: "fillet", label: "Radius",
+    icon: <Ico><path d="M10 40V24A14 14 0 0 1 24 10H40" stroke={K} strokeWidth="3.4" /><path d="M10 10L18 18" stroke={BL} strokeWidth="1.8" strokeDasharray="3 2.5" /><circle cx="10" cy="10" r="3.6" fill={BL} /></Ico>,
+  },
+  {
+    id: "chamfer", label: "Chamfer",
+    icon: <Ico><path d="M10 40V22L22 10H40" stroke={K} strokeWidth="3.4" /><path d="M10 22V10H22" stroke={BL} strokeWidth="1.8" strokeDasharray="3 2.5" /><circle cx="10" cy="10" r="3.6" fill={BL} /></Ico>,
+  },
+  {
     id: "alignH", label: "Align H",
     icon: (
       <Ico>
@@ -280,7 +300,7 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
 /** Tools shown together under one button: it opens them below the strip. */
 export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim"; tools: string[]; icon: ReactNode }[] = [
   {
-    id: "drawGroup", label: "Drawing", tone: "draw", tools: ["line", "circle", "arc", "rect"],
+    id: "drawGroup", label: "Drawing", tone: "draw", tools: ["line", "circle", "arc", "rect", "slot", "xline", "offset", "fillet", "chamfer"],
     icon: <Ico><path d="M12 10L37 37" stroke={K} strokeWidth="3.4" /><circle cx="12" cy="10" r="3.8" fill={BL} /><circle cx="37" cy="37" r="3.8" fill={BL} /></Ico>,
   },
   {

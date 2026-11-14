@@ -276,6 +276,10 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
                     {g.auto && g.thread === g.auto && st.threads?.[g.key] === undefined && <small className="uf-auto" title={`Ø${fmt(g.d)} is the tap drill of ${g.auto}: probably tapped`}>probably</small>}
                   </div>
                 ))}
+                {groups.some((g) => g.thread) && (
+                  <div className="uf-row"><span>Mark</span><NumInput className="field uf-num" value={st.threadCross ?? 15} min={2} aria-label="Cross size (mm)" title="The cross, overall (mm)" onCommit={(n) => set({ threadCross: n })} />
+                    <span>text</span><NumInput className="field uf-num" value={st.threadText ?? 15} min={2} aria-label="Text height (mm)" title="The thread's text height, capitals (mm)" onCommit={(n) => set({ threadText: n })} /><small>mm</small></div>
+                )}
               </div>
             </>);
           })()}
