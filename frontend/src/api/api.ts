@@ -362,6 +362,8 @@ const detailOf = (p: PartSummary): PartDetail =>
 /** What a job tab saves (Work parts SAVE). The stock and nest are kept as the tab has them. */
 export interface JobSaveData { name: string; parts: JobPart[]; stock: unknown[]; nest: unknown | null; modifiedBy?: string; machine?: string }
 /** jobFile: the job's file in the machine's job folder; jobFileError: why it was not written (the job is saved anyway). */
+/** A sheet of a saved job sent to a machine (its NC program written), and whether the operator marked it as cut. */
+export interface SheetSentRow { sheet: number; file: string; machine: string; sentAt: string; sentBy: string; cutAt: string | null; cutBy: string }
 export interface JobSaved { id: string; name: string; status: JobStatus; sheetCount: number; modifiedAt: string; jobFile?: string | null; jobFileError?: string | null }
 /** A saved job's stock sheets and saved nest (its parts: jobParts). */
 export interface JobDetail { id: string; name: string; status: JobStatus; sheetCount: number; stock: unknown[] | null; nest: unknown | null; machine?: string }
@@ -422,6 +424,12 @@ export const api = {
   /** The operator marks a saved job as cut (or not): other apps read it through the status API. */
   setJobCut: (jobId: string, cut: boolean): Promise<{ id: string; status: JobStatus; cutAt: string | null; cutBy: string }> =>
     useApi ? post(`/api/jobs/${encodeURIComponent(jobId)}/cut`, { cut }, "PUT") : Promise.reject(new Error("The demo has no server to keep that.")),
+  /** The sheets of a saved job sent to a machine (POST PROCESS), and which are marked as cut. */
+  jobSent: async (jobId: string): Promise<SheetSentRow[]> =>
+    useApi ? get<SheetSentRow[]>(`/api/jobs/${encodeURIComponent(jobId)}/sent`) : [],
+  /** The operator marks one sheet as cut (or not); the job is cut when all its sheets are. */
+  setSheetCut: (jobId: string, sheet: number, cut: boolean): Promise<{ sheet: number; cutAt: string | null; cutBy: string; status: JobStatus }> =>
+    useApi ? post(`/api/jobs/${encodeURIComponent(jobId)}/sheets/${sheet}/cut`, { cut }, "PUT") : Promise.reject(new Error("The demo has no server to keep that.")),
   /** POST PROCESS: the sheets whose NC programs were written, recorded with the saved job (the status API reads them). */
   recordSent: (jobId: string, r: { machine: string; all: boolean; sheets: { sheet: number; file: string; parts: Record<string, number> }[] }): Promise<unknown> =>
     useApi ? post(`/api/jobs/${encodeURIComponent(jobId)}/sent`, r) : Promise.resolve(null),

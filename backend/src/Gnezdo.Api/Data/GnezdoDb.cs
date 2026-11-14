@@ -124,6 +124,7 @@ public class GnezdoDb : DbContext
             e.Property(x => x.Machine).HasMaxLength(50);
             e.Property(x => x.File).HasMaxLength(260);
             e.Property(x => x.SentBy).HasMaxLength(100);
+            e.Property(x => x.CutBy).HasMaxLength(100);
             e.HasIndex(x => x.JobId);
         });
 

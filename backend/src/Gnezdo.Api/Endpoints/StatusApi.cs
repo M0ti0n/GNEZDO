@@ -90,7 +90,8 @@ public static partial class StatusApi
 
     // ------------------------------------------------------------------ the status of a project's parts
 
-    public sealed record SheetSent(int Sheet, string File, string Machine, int Pieces, DateTimeOffset SentAt, string SentBy);
+    public sealed record SheetSent(int Sheet, string File, string Machine, int Pieces, DateTimeOffset SentAt, string SentBy,
+        bool IsCut, DateTimeOffset? CutAt, string CutBy);
     public sealed record JobLine(string Id, string Name, string Machine, int Qty, int Nested, int Sent,
         /// <summary>marked as cut by the operator: its pieces (sent, else nested) count as cut</summary>
         bool IsCut, DateTimeOffset? CutAt, string CutBy, int Cut, DateTimeOffset ModifiedAt, IReadOnlyList<SheetSent> Sheets);
@@ -99,6 +100,32 @@ public static partial class StatusApi
         DateTimeOffset ImportedAt, int InJobs, int Nested, int Sent, DateTimeOffset? LastSentAt, int Cut,
         /// <summary>imported | inJob | nested | partlySent | sent | partlyCut | cut</summary>
         string Status, IReadOnlyList<JobLine> Jobs);
+
+    /// <summary>Pieces cut in a job: those on its sheets marked as cut; a job marked as cut as a whole: all its
+    /// nested pieces (also on sheets never recorded as sent).</summary>
+    private static int CutPieces(bool jobCut, IReadOnlyList<SheetSent> sheets, int nested)
+    {
+        var onSheets = sheets.Where(s => s.IsCut).Sum(s => s.Pieces);
+        return jobCut ? Math.Max(onSheets, nested) : onSheets;
+    }
+
+    /// <summary>The job is cut when every sheet is: its sheets' records (all of 1..SheetCount sent and cut).</summary>
+    private static void JobCutFromSheets(Job job, IReadOnlyCollection<NcSent> rows, string by, DateTimeOffset now)
+    {
+        var cut = job.SheetCount > 0 && Enumerable.Range(1, job.SheetCount).All(n => rows.Any(r => r.Sheet == n && r.CutAt is not null));
+        if (cut)
+        {
+            job.CutAt ??= now;
+            if (job.CutBy.Length == 0) job.CutBy = Cut(by, 100);
+            job.Status = Data.JobStatus.Cut;
+        }
+        else
+        {
+            job.CutAt = null;
+            job.CutBy = "";
+            if (job.Status == Data.JobStatus.Cut) job.Status = job.SheetCount > 0 ? Data.JobStatus.Nested : Data.JobStatus.Draft;
+        }
+    }
 
     private static string StatusOf(int qty, int inJobs, int nested, int sent, int cut) =>
         cut > 0 ? (cut >= Math.Max(1, qty) ? "cut" : "partlyCut") :
@@ -132,10 +159,11 @@ public static partial class StatusApi
             {
                 if (!jobs.TryGetValue(jp.JobId, out var j)) continue;
                 var sheets = sent.Where(s => s.Row.JobId == j.Id && s.Parts.GetValueOrDefault(key) > 0).OrderBy(s => s.Row.Sheet)
-                    .Select(s => new SheetSent(s.Row.Sheet, s.Row.File, s.Row.Machine, s.Parts[key], s.Row.SentAt, s.Row.SentBy)).ToList();
+                    .Select(s => new SheetSent(s.Row.Sheet, s.Row.File, s.Row.Machine, s.Parts[key], s.Row.SentAt, s.Row.SentBy,
+                        s.Row.CutAt is not null, s.Row.CutAt, s.Row.CutBy)).ToList();
                 int nestedN = nested[j.Id].GetValueOrDefault(key), sentN = sheets.Sum(s => s.Pieces);
                 js.Add(new JobLine(j.Id.ToString(CultureInfo.InvariantCulture), j.Name, j.Machine, jp.Qty, nestedN, sentN,
-                    j.CutAt is not null, j.CutAt, j.CutBy, j.CutAt is null ? 0 : sentN > 0 ? sentN : nestedN, j.ModifiedAt, sheets));
+                    j.CutAt is not null, j.CutAt, j.CutBy, CutPieces(j.CutAt is not null, sheets, nestedN), j.ModifiedAt, sheets));
             }
             var n = ParseName(p.Name);
             int inJobs = js.Sum(j => j.Qty), nest = js.Sum(j => j.Nested), sentT = js.Sum(j => j.Sent), cutT = js.Sum(j => j.Cut);
@@ -182,7 +210,7 @@ public static partial class StatusApi
         // ---- POST PROCESS: what was sent to the machine (NC programs of a saved job's sheets)
         app.MapPost("/api/jobs/{id:int}/sent", async (int id, SentReport r, HttpContext ctx, GnezdoDb db, TimeProvider clock, CancellationToken ct) =>
         {
-            var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id, ct);
+            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
             if (job is null) return Results.NotFound(new { message = "Save the job first: there is no such saved job." });
             var sheets = (r.Sheets ?? []).Where(s => s.Sheet > 0).GroupBy(s => s.Sheet).Select(g => g.Last()).ToList();
             var numbers = sheets.Select(s => s.Sheet).ToHashSet();
@@ -191,15 +219,23 @@ public static partial class StatusApi
             db.NcSent.RemoveRange(old.Where(s => numbers.Contains(s.Sheet) || r.All));
             var now = clock.GetUtcNow();
             var by = ctx.User.Identity?.Name ?? (r.SentBy ?? "").Trim();
+            var kept = old.Where(s => !numbers.Contains(s.Sheet) && !r.All).ToList();
             foreach (var s in sheets)
             {
-                var parts = (s.Parts ?? []).Where(kv => kv.Value > 0).ToDictionary(kv => kv.Key, kv => kv.Value);
-                db.NcSent.Add(new NcSent
+                var parts = (s.Parts ?? []).Where(kv => kv.Value > 0).OrderBy(kv => kv.Key, StringComparer.Ordinal).ToDictionary(kv => kv.Key, kv => kv.Value);
+                var json = JsonSerializer.Serialize(parts);
+                // the same sheet written again with the same parts (more sheets post processed together): still cut if it was
+                var was = old.FirstOrDefault(o => o.Sheet == s.Sheet && SameParts(o.Parts, parts));
+                var row = new NcSent
                 {
                     JobId = id, JobName = Cut(job.Name, 200), Sheet = s.Sheet, Machine = Cut(r.Machine ?? job.Machine, 50),
-                    File = Cut(s.File ?? "", 260), Parts = JsonSerializer.Serialize(parts), SentAt = now, SentBy = Cut(by, 100),
-                });
+                    File = Cut(s.File ?? "", 260), Parts = json, SentAt = now, SentBy = Cut(by, 100),
+                    CutAt = was?.CutAt, CutBy = was?.CutBy ?? "",
+                };
+                db.NcSent.Add(row);
+                kept.Add(row);
             }
+            if (job.CutAt is not null || kept.Any(k => k.CutAt is not null)) JobCutFromSheets(job, kept, by, now);
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { recorded = sheets.Count });
         });
@@ -209,10 +245,18 @@ public static partial class StatusApi
         {
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
             if (job is null) return Results.NotFound(new { message = "There is no such saved job." });
+            var now = clock.GetUtcNow();
+            var by = Cut(ctx.User.Identity?.Name ?? (r.By ?? "").Trim(), 100);
+            // every sheet sent to the machine with it
+            foreach (var row in await db.NcSent.Where(s => s.JobId == id).ToListAsync(ct))
+            {
+                if (r.Cut) { if (row.CutAt is null) { row.CutAt = now; row.CutBy = by; } }
+                else { row.CutAt = null; row.CutBy = ""; }
+            }
             if (r.Cut)
             {
-                job.CutAt ??= clock.GetUtcNow();
-                job.CutBy = Cut(ctx.User.Identity?.Name ?? (r.By ?? "").Trim(), 100);
+                job.CutAt ??= now;
+                job.CutBy = by;
                 job.Status = Data.JobStatus.Cut;
             }
             else
@@ -223,6 +267,28 @@ public static partial class StatusApi
             }
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { id = job.Id.ToString(CultureInfo.InvariantCulture), status = job.Status.ToString().ToLowerInvariant(), cutAt = job.CutAt, cutBy = job.CutBy });
+        });
+
+        // ---- the sheets sent to the machine, and one marked as cut (or not) by the operator
+        app.MapGet("/api/jobs/{id:int}/sent", async (int id, GnezdoDb db, CancellationToken ct) =>
+        {
+            var rows = await db.NcSent.AsNoTracking().Where(s => s.JobId == id).OrderBy(s => s.Sheet).ToListAsync(ct);
+            return Results.Ok(rows.Select(s => new { sheet = s.Sheet, file = s.File, machine = s.Machine, sentAt = s.SentAt, sentBy = s.SentBy, cutAt = s.CutAt, cutBy = s.CutBy }));
+        });
+        app.MapPut("/api/jobs/{id:int}/sheets/{sheet:int}/cut", async (int id, int sheet, JobCutRequest r, HttpContext ctx, GnezdoDb db, TimeProvider clock, CancellationToken ct) =>
+        {
+            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
+            if (job is null) return Results.NotFound(new { message = "There is no such saved job." });
+            var rows = await db.NcSent.Where(s => s.JobId == id).ToListAsync(ct);
+            var row = rows.FirstOrDefault(s => s.Sheet == sheet);
+            if (row is null) return Results.Json(new { message = $"Sheet {sheet} was not sent to a machine: post process it first." }, statusCode: StatusCodes.Status409Conflict);
+            var now = clock.GetUtcNow();
+            var by = Cut(ctx.User.Identity?.Name ?? (r.By ?? "").Trim(), 100);
+            if (r.Cut) { row.CutAt ??= now; row.CutBy = by; }
+            else { row.CutAt = null; row.CutBy = ""; }
+            JobCutFromSheets(job, rows, by, now);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { sheet, cutAt = row.CutAt, cutBy = row.CutBy, status = job.Status.ToString().ToLowerInvariant() });
         });
 
         // ---- the status API itself: an API key for every call
@@ -311,6 +377,12 @@ public static partial class StatusApi
                 notInList = parts.Where(x => !used.Contains(x.Id)).Select(x => x.Name).ToList(),
             });
         });
+    }
+
+    private static bool SameParts(string json, Dictionary<string, int> parts)
+    {
+        var a = PartsOf(json);
+        return a.Count == parts.Count && a.All(kv => parts.TryGetValue(kv.Key, out var n) && n == kv.Value);
     }
 
     private static object View(ApiKey k) => new { id = k.Id, name = k.Name, prefix = k.Prefix, createdAt = k.CreatedAt, createdBy = k.CreatedBy, lastUsedAt = k.LastUsedAt };

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { api } from "../api/api";
+import { api, type SheetSentRow } from "../api/api";
 import {
   DEFAULT_SORT, defaultDir,
   type DateFilter, type JobFilter, type JobPart, type JobStatus, type JobSummary, type PartSummary, type SortKey, type SortOrder,
@@ -282,13 +282,26 @@ function JobPreview({ job, onOpen, targets, onSend, onStatus }: {
   // the operator marks the job as cut (other apps see it through the status API)
   const [cutBusy, setCutBusy] = useState(false);
   const [cutError, setCutError] = useState<string | null>(null);
+  // the sheets sent to the machine (POST PROCESS) and which are cut
+  const [sent, setSent] = useState<SheetSentRow[]>([]);
+  const loadSent = () => api.jobSent(job.id).then(setSent, () => setSent([]));
+  useEffect(() => { setSent([]); void loadSent(); }, [job.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const sentOf = (i: number) => sent.find((x) => x.sheet === i + 1);
   const markCut = async (cut: boolean) => {
     setCutBusy(true);
     setCutError(null);
-    try { onStatus?.((await api.setJobCut(job.id, cut)).status); }
+    try { onStatus?.((await api.setJobCut(job.id, cut)).status); await loadSent(); }
     catch (e) { setCutError((e as Error).message); }
     finally { setCutBusy(false); }
   };
+  const markSheet = async (i: number, cut: boolean) => {
+    setCutBusy(true);
+    setCutError(null);
+    try { onStatus?.((await api.setSheetCut(job.id, i + 1, cut)).status); await loadSent(); }
+    catch (e) { setCutError((e as Error).message); }
+    finally { setCutBusy(false); }
+  };
+  const pickedSent = picked !== null ? sentOf(picked) : undefined;
   useEffect(() => {
     let alive = true;
     setParts(null);
@@ -351,11 +364,16 @@ function JobPreview({ job, onOpen, targets, onSend, onStatus }: {
           </span>
         )}
         {cutError && <span className="proc-missing" role="alert">{cutError}</span>}
+        {picked !== null && (pickedSent?.cutAt
+          ? <button type="button" className="btn btn-plain" disabled={cutBusy} onClick={() => void markSheet(picked, false)}
+              title={`Sheet ${picked + 1} was marked as cut${pickedSent.cutBy ? ` by ${pickedSent.cutBy}` : ""}: take it back`}>Sheet {picked + 1} not cut</button>
+          : <button type="button" className="btn btn-plain" disabled={cutBusy || !pickedSent} onClick={() => void markSheet(picked, true)}
+              title={pickedSent ? `The operator has cut sheet ${picked + 1}: other apps (status API) see its parts as cut` : `Sheet ${picked + 1} was not sent to a machine: post process it first`}>Mark sheet {picked + 1} as cut</button>)}
         {job.status === "cut"
           ? <button type="button" className="btn btn-plain" disabled={cutBusy} onClick={() => void markCut(false)}
-              title="Not cut after all: other apps see it as not cut">Not cut</button>
+              title="Not cut after all: every sheet back to not cut">Not cut</button>
           : <button type="button" className="btn btn-plain" disabled={cutBusy || job.sheetCount === 0} onClick={() => void markCut(true)}
-              title={job.sheetCount ? "The operator has cut this job: other apps (status API) see it as cut" : "Nest the job first"}>Mark as cut</button>}
+              title={job.sheetCount ? "The operator has cut the whole job: every sheet marked as cut (other apps see it through the status API)" : "Nest the job first"}>Mark all as cut</button>}
         <button className="btn btn-primary" onClick={onOpen}>Open job</button>
       </div>
 
@@ -365,11 +383,12 @@ function JobPreview({ job, onOpen, targets, onSend, onStatus }: {
         {job.sheetCount > 0 && sheets && parts && sheets.length > 0 && (
           <ul className={`sheet-tiles${cols === 1 ? " is-single" : ""}`} aria-label={`${sheets.length} sheets`}>
             {shownSheets.map(({ sh, i }) => (
-              <li key={i} className={`sheet-tile has-nest${picked === i ? " is-picked" : ""}`} aria-selected={picked === i}
+              <li key={i} className={`sheet-tile has-nest${picked === i ? " is-picked" : ""}${sentOf(i)?.cutAt ? " is-cut" : ""}`} aria-selected={picked === i}
                 title={`Sheet ${i + 1}: ${sh.material} ${mm(sh.thicknessMm)}, ${sh.lengthMm} × ${sh.widthMm}. Click to pick it (its parts can then be sent to an open job)`}
                 onClick={() => { setPicked((p) => (p === i ? null : i)); setMenu(false); }}>
                 <SheetSvg sheet={sh} parts={byId} titles />
-                <span className="sheet-no">Sheet {i + 1}{(sh.cutNumber ?? 1) > 1 ? ` ×${sh.cutNumber}` : ""}</span>
+                <span className="sheet-no">Sheet {i + 1}{(sh.cutNumber ?? 1) > 1 ? ` ×${sh.cutNumber}` : ""}
+                  {sentOf(i) && <em className={`sheet-state${sentOf(i)!.cutAt ? " is-cut" : ""}`}>{sentOf(i)!.cutAt ? "Cut" : "Sent"}</em>}</span>
               </li>
             ))}
             {shownSheets.length === 0 && <li className="sheets-empty">No sheet of this material / thickness</li>}

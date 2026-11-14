@@ -240,4 +240,7 @@ public class NcSent
     public string Parts { get; set; } = "";
     public DateTimeOffset SentAt { get; set; }
     public string SentBy { get; set; } = "";
+    /// <summary>The operator marked this sheet as cut (Job search); null = not cut yet.</summary>
+    public DateTimeOffset? CutAt { get; set; }
+    public string CutBy { get; set; } = "";
 }

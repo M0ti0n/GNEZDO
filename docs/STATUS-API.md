@@ -37,9 +37,12 @@ X-Api-Key: gz_…
 saved job, with the pieces of each part on it (times the sheet's cut number). Post processing the same sheet
 again replaces its record; post processing every sheet replaces the job's records.
 
-"Cut" is the operator's: Job search → **Mark as cut** on a nested job (**Not cut** takes it back). The job's
-pieces count as cut: those sent to the machine, or its nested ones when nothing was recorded as sent. Each job
-line shows `isCut`, `cutAt` and `cutBy`; a part and a check line add up `cut`.
+"Cut" is the operator's, by sheet: Job search → pick a sheet → **Mark sheet N as cut** (only a sheet sent to a
+machine), or **Mark all as cut** for the whole job. A sheet's pieces count as cut; a job marked as cut as a
+whole counts all its nested pieces. The job is cut (`isCut`) when all its sheets are. Post processing sheets
+again keeps the cut mark of a sheet whose parts did not change. Each sheet shows `isCut`, `cutAt`, `cutBy`;
+each job line `isCut`, `cutAt`, `cutBy` and `cut`; a part and a check line add up `cut`. A part in two jobs
+counts from whichever job's sheets are cut.
 
 Parts belong to a project (the order): the same drawing in two orders is two parts, so the numbers of one
 order never mix with another's. A part taken from an older project into a new job still counts for its own
@@ -67,7 +70,8 @@ Every part of the project.
       "jobs": [
         { "id": "88", "name": "S235_5_1411", "machine": "laser", "qty": 6, "nested": 6, "sent": 3,
           "isCut": false, "cutAt": null, "cutBy": "", "cut": 0, "modifiedAt": "…",
-          "sheets": [ { "sheet": 1, "file": "S235_5_1411_1.nc", "machine": "laser", "pieces": 3, "sentAt": "…", "sentBy": "…" } ] }
+          "sheets": [ { "sheet": 1, "file": "S235_5_1411_1.nc", "machine": "laser", "pieces": 3, "sentAt": "…", "sentBy": "…",
+                        "isCut": false, "cutAt": null, "cutBy": "" } ] }
       ]
     }
   ]

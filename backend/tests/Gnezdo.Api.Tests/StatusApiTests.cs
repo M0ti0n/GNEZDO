@@ -89,7 +89,7 @@ public sealed class StatusApiTests(ApiFixture api) : IClassFixture<ApiFixture>
         var part = (await api.Client.GetFromJsonAsync<List<PartDto>>("/api/parts"))!.First(p => p.Project != "");
         var code = part.Project;
 
-        // a job with 5 of it, 4 nested; sheet 1 (3 of it) post processed, twice: the second replaces the first
+        // a job with 5 of it, 3 nested; sheet 1 (3 of it) post processed, twice: the second replaces the first
         var nest = new JsonObject
         {
             ["selected"] = "s1",
@@ -99,7 +99,7 @@ public sealed class StatusApiTests(ApiFixture api) : IClassFixture<ApiFixture>
                 ["result"] = new JsonObject
                 {
                     ["sheets"] = new JsonArray(new JsonObject { ["lengthMm"] = 3000, ["widthMm"] = 1500, ["parts"] = new JsonArray(new JsonObject { ["partId"] = part.Id }) }),
-                    ["nested"] = new JsonObject { [part.Id] = 4 },
+                    ["nested"] = new JsonObject { [part.Id] = 3 },
                 },
             }),
         };
@@ -123,7 +123,7 @@ public sealed class StatusApiTests(ApiFixture api) : IClassFixture<ApiFixture>
         var body = JsonNode.Parse(await res.Content.ReadAsStringAsync())!;
         var p = body["parts"]!.AsArray().First(x => x!["id"]!.GetValue<string>() == part.Id)!;
         Assert.True(p["inJobs"]!.GetValue<int>() >= 5);
-        Assert.True(p["nested"]!.GetValue<int>() >= 4);
+        Assert.True(p["nested"]!.GetValue<int>() >= 3);
         Assert.Equal(3, p["sent"]!.GetValue<int>());
         Assert.Contains(p["status"]!.GetValue<string>(), new[] { "sent", "partlySent" });
         var line = p["jobs"]!.AsArray().First(j => j!["id"]!.GetValue<string>() == jobId)!;
@@ -158,7 +158,22 @@ public sealed class StatusApiTests(ApiFixture api) : IClassFixture<ApiFixture>
         var cutLine = after["jobs"]!.AsArray().First(j => j!["id"]!.GetValue<string>() == jobId)!;
         Assert.True(cutLine["isCut"]!.GetValue<bool>());
         Assert.Equal("Operator", cutLine["cutBy"]!.GetValue<string>());
+        Assert.True(cutLine["sheets"]![0]!["isCut"]!.GetValue<bool>());
         Assert.Equal(HttpStatusCode.OK, (await api.Client.PutAsJsonAsync($"/api/jobs/{jobId}/cut", new { cut = false })).StatusCode);
+        Assert.Equal(0, (await PartNow())["cut"]!.GetValue<int>());
+
+        // one sheet at a time: sheet 1 cut (the job's only sheet: the job is cut too), written again unchanged it stays cut
+        var sheet = await api.Client.PutAsJsonAsync($"/api/jobs/{jobId}/sheets/1/cut", new { cut = true, by = "Operator" });
+        Assert.Equal(HttpStatusCode.OK, sheet.StatusCode);
+        Assert.Equal("cut", (await sheet.Content.ReadFromJsonAsync<JsonObject>())!["status"]!.GetValue<string>());
+        Assert.Equal(3, (await PartNow())["cut"]!.GetValue<int>());
+        Assert.Equal(HttpStatusCode.OK, (await api.Client.PostAsJsonAsync($"/api/jobs/{jobId}/sent", report)).StatusCode);
+        Assert.Equal(3, (await PartNow())["cut"]!.GetValue<int>());
+        var listed = (await api.Client.GetFromJsonAsync<JsonArray>($"/api/jobs/{jobId}/sent"))!;
+        Assert.NotNull(listed[0]!["cutAt"]);
+        Assert.Equal(HttpStatusCode.Conflict, (await api.Client.PutAsJsonAsync($"/api/jobs/{jobId}/sheets/2/cut", new { cut = true })).StatusCode);
+        var undo = await api.Client.PutAsJsonAsync($"/api/jobs/{jobId}/sheets/1/cut", new { cut = false });
+        Assert.Equal("nested", (await undo.Content.ReadFromJsonAsync<JsonObject>())!["status"]!.GetValue<string>());
         Assert.Equal(0, (await PartNow())["cut"]!.GetValue<int>());
 
         // an unknown project: 404 for its status, every drawing missing in a check
