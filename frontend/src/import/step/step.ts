@@ -114,6 +114,13 @@ export interface Solid { faces: Face[]; unitMm: number; name: string; problems: 
 const SEG = 0.4;   // max mm between sampled points along a curve
 
 /** Every body of a STEP file (an assembly: each part, with its quantity). */
+/** Smallest and biggest of many numbers (Math.min(...list) overflows the stack on big parts). */
+export function lowHigh(list: number[]): [number, number] {
+  let lo = Infinity, hi = -Infinity;
+  for (const v of list) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  return [lo, hi];
+}
+
 export function readStep(text: string): StepModel {
   const E = parseStep(text);
   const get = (r: Val | undefined): Entity => {
@@ -225,7 +232,7 @@ export function readStep(text: string): StepModel {
     if (len3(n) < 1e-9) { const far = all.reduce((b, q) => (len3(sub3(q, o)) > len3(sub3(b, o)) ? q : b), o); n = cross3(sub3(far, o), su); }
     if (len3(n) < 1e-9) return null;
     n = unit3(n);
-    const size = Math.max(...all.map((q) => len3(sub3(q, o))), 1);
+    const size = Math.max(lowHigh(all.map((q) => len3(sub3(q, o))))[1], 1);
     if (all.some((q) => Math.abs(dot3(sub3(q, o), n)) > 1e-6 * size)) return null;
     return { kind: "plane", o, n, x: unit3(len3(su) > 1e-9 ? su : sv) };
   };

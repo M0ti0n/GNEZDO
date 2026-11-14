@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { NumInput } from "../components/NumInput";
 import { Combobox } from "../components/Combobox";
 import { usePickLists } from "../components/pickLists";
-import { add3, len3, mul3, normalAt, sub3, type Solid, type V3 } from "../import/step/step";
+import { add3, len3, lowHigh, mul3, normalAt, sub3, type Solid, type V3 } from "../import/step/step";
 import { describe, edgePick, facePick, refPoint, relate, type MPick } from "../import/step/measure3d";
 import {
   bendTexts, infoOf, kFor, loadProfiles, marksOf, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
@@ -392,7 +392,8 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure }: {
       g.clearRect(0, 0, W, H);
       const all = solid.faces.flatMap((f) => f.loops.flatMap((l) => l.edges.flatMap((e) => e.pts)));
       if (!all.length) return;
-      const lo = [0, 1, 2].map((i) => Math.min(...all.map((p) => p[i]))), hi = [0, 1, 2].map((i) => Math.max(...all.map((p) => p[i])));
+      const r3 = [0, 1, 2].map((i) => lowHigh(all.map((p) => p[i])));
+      const lo = r3.map((x) => x[0]), hi = r3.map((x) => x[1]);
       const ctr: V3 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
       const size = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1;
       const s = (Math.min(W, H) * 0.78 * cam.zoom) / size;

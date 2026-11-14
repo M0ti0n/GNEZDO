@@ -308,11 +308,16 @@ export function App() {
     const errors: string[] = [];
     let added: X3Part[] = [];
     for (const f of files) {
-      const r = await readExtract(f, importProps.material);
-      if (r.error) errors.push(r.error);
-      added = [...added, ...r.parts];
-      setExtracts((l) => [...l, ...r.parts]);
-      setX3Reading((n) => n - 1);
+      try {
+        const r = await readExtract(f, importProps.material);
+        if (r.error) errors.push(r.error);
+        added = [...added, ...r.parts];
+        setExtracts((l) => [...l, ...r.parts]);
+      } catch (e) {
+        errors.push(`${f.name}: ${(e as Error).message}`);
+      } finally {
+        setX3Reading((n) => n - 1);
+      }
     }
     if (errors.length) setToast(errors.length === 1 ? errors[0] : `${errors.length} STEP files could not be read`);
     // one part: opened straight away

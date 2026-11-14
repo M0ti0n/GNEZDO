@@ -10,7 +10,7 @@
 //  4. The flat pattern: the skin's edges that only one skin face has (outline, holes); the bends'
 //     middle lines as bend lines.
 
-import { add3, cross3, dot3, len3, mul3, normalAt, sub3, unit3, type Face, type Solid, type V3 } from "./step";
+import { add3, cross3, dot3, len3, lowHigh, mul3, normalAt, sub3, unit3, type Face, type Solid, type V3 } from "./step";
 
 export type V2 = [number, number];
 
@@ -210,7 +210,7 @@ export function unfold(s: Solid, opt: number | UnfoldOptions = 0.44): Unfolded {
           cyl.set(j, m);
           const ext = all.map((q) => dot3(sub3(q, a), d));
           const inner = dot3(n, r0) < 0;
-          bends.push({ innerR: Math.round(innerR * 1000) / 1000, angleDeg: Math.round(((Math.abs(phi) * 180) / Math.PI) * 100) / 100, length: Math.round((Math.max(...ext) - Math.min(...ext)) * 100) / 100, inner, up: inner !== flip });
+          bends.push({ innerR: Math.round(innerR * 1000) / 1000, angleDeg: Math.round(((Math.abs(phi) * 180) / Math.PI) * 100) / 100, length: Math.round((lowHigh(ext)[1] - lowHigh(ext)[0]) * 100) / 100, inner, up: inner !== flip });
           queue.push(j);
           continue;
         }
@@ -280,7 +280,7 @@ export function unfold(s: Solid, opt: number | UnfoldOptions = 0.44): Unfolded {
     // over every face of this bend (a bend split in two faces)
     for (const [k2, m2] of cyl) if (m2 === m && k2 !== k) pts.push(...faces[k2].loops.flatMap((l) => l.edges.flatMap((x) => x.pts)));
     const ss = pts.map((q) => dot3(sub3(q, m.a), m.d));
-    const s0 = Math.min(...ss), s1 = Math.max(...ss);
+    const [s0, s1] = lowHigh(ss);
     const at = (sv: number): V2 => to2(app(m.g, add3(add3(add3(m.a, mul3(m.d, sv)), m.r0), mul3(m.dir, (Math.abs(m.phi) / 2) * m.rn))));
     bendLines.push([at(s0), at(s1)]);
   }
@@ -290,11 +290,11 @@ export function unfold(s: Solid, opt: number | UnfoldOptions = 0.44): Unfolded {
   if (stats.openEnds) problems.push(`The outline does not close (${stats.openEnds} loose ends)`);
   // in the corner: from 0,0
   const xs = outline.flatMap((e) => e.pts.map((p) => p[0])), ys = outline.flatMap((e) => e.pts.map((p) => p[1]));
-  const x0 = Math.min(...xs), y0 = Math.min(...ys);
+  const [x0, xh] = lowHigh(xs), [y0, yh] = lowHigh(ys);
   const sh = (p: V2): V2 => [p[0] - x0, p[1] - y0];
   for (const e of outline) { e.pts = e.pts.map(sh); if (e.arc) e.arc.c = sh(e.arc.c); }
   const bl = bendLines.map(([a, b]) => [sh(a), sh(b)] as [V2, V2]);
-  const box = { x0: 0, y0: 0, x1: Math.max(...xs) - x0, y1: Math.max(...ys) - y0 };
+  const box = { x0: 0, y0: 0, x1: xh - x0, y1: yh - y0 };
   if (stats.other) problems.push(`${stats.other} faces of a kind not unfolded (side faces of reliefs and corners are fine)`);
   return { thickness: t, kFactor, bends, outline, bendLines: bl, box, stats, problems, skinFaces: faces.map((_, k) => k).filter(skin) };
 }
@@ -475,12 +475,12 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
   stats.openEnds = ends.filter((p, i) => !ends.some((q, j) => j !== i && Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.01)).length;
   if (stats.openEnds) problems.push(`The outline does not close (${stats.openEnds} loose ends)`);
   const xs = outline.flatMap((e) => e.pts.map((p) => p[0])), ys = outline.flatMap((e) => e.pts.map((p) => p[1]));
-  const x0 = Math.min(...xs), y0 = Math.min(...ys);
+  const [x0, xh] = lowHigh(xs), [y0, yh] = lowHigh(ys);
   const sh = (p: V2): V2 => [p[0] - x0, p[1] - y0];
   for (const e of outline) { e.pts = e.pts.map(sh); if (e.arc) e.arc.c = sh(e.arc.c); }
   return {
     thickness: comp?.t ?? null, kFactor: comp?.k ?? 0, bends, outline, bendLines: bendLines.map(([a, b]) => [sh(a), sh(b)] as [V2, V2]),
-    box: { x0: 0, y0: 0, x1: Math.max(...xs) - x0, y1: Math.max(...ys) - y0 }, stats, problems, skinFaces: [...g.keys()], stitched: true,
+    box: { x0: 0, y0: 0, x1: xh - x0, y1: yh - y0 }, stats, problems, skinFaces: [...g.keys()], stitched: true,
   };
 }
 

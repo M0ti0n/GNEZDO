@@ -2,7 +2,7 @@
 // circle edge, a flat face, a round face) and what lies between two of them: the offset of parallel
 // faces, hole sizes and the distance between holes (their axes), distances to a face, angles.
 
-import { add3, cross3, dot3, len3, mul3, normalAt, sub3, unit3, type Face, type Solid, type V3 } from "./step";
+import { add3, cross3, dot3, len3, lowHigh, mul3, normalAt, sub3, unit3, type Face, type Solid, type V3 } from "./step";
 
 export type MPick =
   | { kind: "point"; face: number; p: V3; what: "corner" | "center" }
@@ -28,7 +28,8 @@ export function facePick(s: Solid, i: number): MPick | null {
   if (f.surf.kind === "cyl") {
     const { a, d, r } = f.surf;
     const ts = pts.map((p) => dot3(sub3(p, a), d));
-    const c = add3(a, mul3(d, (Math.min(...ts) + Math.max(...ts)) / 2));
+    const [t0, t1] = lowHigh(ts);
+    const c = add3(a, mul3(d, (t0 + t1) / 2));
     return { kind: "cyl", face: i, c, d: unit3(d), r };
   }
   return null;
