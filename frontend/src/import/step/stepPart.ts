@@ -53,6 +53,8 @@ export interface StepSettings {
   comp: { side: "none" | "top" | "bottom"; t: number; r: number };
   /** stitch: edges added across flat faces (two corners each), splitting them (a flange cut at its corners) */
   cuts?: FaceCut[];
+  /** stitch: edges (their numbers) not stitched across: cut in the flat pattern (where a tube opens) */
+  seams?: number[];
 }
 
 export interface StepPart {
@@ -144,9 +146,9 @@ export function unfoldPart(text: string, st: StepSettings, body = 0): Unfolded {
   const s = partSolid(text, body, st);
   if (st.mode === "stitch") {
     const comp = { ...st.comp, k: st.kFactor };
-    let u = stitch(s, st.stitch, { flip: !!st.flip, comp });
+    let u = stitch(s, st.stitch, { flip: !!st.flip, comp, seams: st.seams });
     // no side picked: the inside of most bends up (as for sheet metal)
-    if (st.flip === undefined && u.bends.filter((b) => !b.up).length > u.bends.filter((b) => b.up).length) u = stitch(s, st.stitch, { flip: true, comp });
+    if (st.flip === undefined && u.bends.filter((b) => !b.up).length > u.bends.filter((b) => b.up).length) u = stitch(s, st.stitch, { flip: true, comp, seams: st.seams });
     return st.grain === "y" && u.outline.length ? turn90(u) : u;
   }
   const first = unfold(s, { kFactor: st.kFactor, base: st.base });

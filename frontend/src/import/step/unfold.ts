@@ -362,6 +362,8 @@ export interface StitchOptions {
   flip?: boolean;
   /** bend compensation: the faces are the sheet's top or bottom side (none: laid flat as they are) */
   comp?: { side: "none" | "top" | "bottom"; t: number; r: number; k: number };
+  /** edges never stitched across (seams, cut): where a closed shape (a tube) opens */
+  seams?: number[];
 }
 
 /**
@@ -380,7 +382,9 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
   const empty = (msg: string): Unfolded => ({ thickness: comp?.t ?? null, kFactor: comp?.k ?? 0, bends: [], outline: [], bendLines: [], box: { x0: 0, y0: 0, x1: 0, y1: 0 }, stats, problems: [...problems, msg], skinFaces: [] });
   if (!sel.length) return empty("Click the faces to stitch, one next to the other");
   const byEdge = new Map<number, number[]>();
-  sel.forEach((i) => faces[i].loops.forEach((l) => l.edges.forEach((e) => { const u = byEdge.get(e.id) ?? []; if (!u.includes(i)) u.push(i); byEdge.set(e.id, u); })));
+  const seams = new Set(o.seams ?? []);
+  sel.forEach((i) => faces[i].loops.forEach((l) => l.edges.forEach((e) => {
+    if (seams.has(e.id)) return; const u = byEdge.get(e.id) ?? []; if (!u.includes(i)) u.push(i); byEdge.set(e.id, u); })));
   const nOf = (i: number) => { const f = faces[i]; return mul3((f.surf as { n: V3 }).n, f.sense ? 1 : -1); };
   const cOf = (i: number) => { const p = faces[i].loops.flatMap((l) => l.edges.flatMap((e) => e.pts)); return mul3(p.reduce((a, q) => add3(a, q), [0, 0, 0] as V3), 1 / Math.max(1, p.length)); };
   const base = sel[0];
@@ -392,7 +396,8 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
   const bends: Bend[] = [];
   const joins: { line: [V3, V3]; gi: Rigid; gj: Rigid; i: number; j: number; shift: V3 }[] = [];
   // the edges faces were laid flat across (bends, or flat joins); other shared edges are seams: cut
-  const across = new Set<number>();
+  // (per face: an edge split in pieces keeps its number, and only the piece joined is not cut)
+  const across = new Set<string>();
   const queue = [base];
   while (queue.length) {
     const i = queue.shift()!;
@@ -402,6 +407,18 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
         const a = e.pts[0], b = e.pts[e.pts.length - 1];
         const d = unit3(sub3(b, a));
         if (len3(sub3(b, a)) < 1e-6) continue;
+        // only where j's piece of the edge lies along this one (an edge split by an added edge: its halves
+        // are not joined to each other)
+        let t0 = Infinity, t1 = -Infinity;
+        const Le = len3(sub3(b, a));
+        for (const l2 of faces[j].loops) for (const x of l2.edges) {
+          if (x.id !== e.id) continue;
+          const pa = dot3(sub3(x.pts[0], a), d), pb = dot3(sub3(x.pts[x.pts.length - 1], a), d);
+          const lo = Math.max(0, Math.min(pa, pb)), hi = Math.min(Le, Math.max(pa, pb));
+          if (hi - lo > 1e-6) { t0 = Math.min(t0, lo); t1 = Math.max(t1, hi); }
+        }
+        if (!(t1 > t0)) continue;
+        const a2 = add3(a, mul3(d, t0)), b2 = add3(a, mul3(d, t1));
         // into each face from the edge, square to it, in its own plane
         const intoI = unit3((() => { const w = sub3(cOf(i), a); return sub3(w, mul3(d, dot3(w, d))); })());
         const intoJ = unit3((() => { const w = sub3(cOf(j), a); return sub3(w, mul3(d, dot3(w, d))); })());
@@ -415,7 +432,7 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
         // j's top side (as the file has it): the one that lies up once turned
         nTop.set(j, rot(rotAbout(a, d, -th), topI));
         let shift: V3 = [0, 0, 0];
-        const L = len3(sub3(b, a));
+        const L = t1 - t0;
         if (phi > 0.5 * Math.PI / 180) {
           let innerR = 0;
           if (comp) {
@@ -430,8 +447,9 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
         }
         const gj = compose(g.get(i)!, compose(move(shift), R));
         g.set(j, gj);
-        across.add(e.id);
-        if (phi > 0.5 * Math.PI / 180) joins.push({ line: [a, b], gi: g.get(i)!, gj, i, j, shift });
+        across.add(`${i}:${e.id}`);
+        across.add(`${j}:${e.id}`);
+        if (phi > 0.5 * Math.PI / 180) joins.push({ line: [a2, b2], gi: g.get(i)!, gj, i, j, shift });
         queue.push(j);
       }
     }
@@ -450,7 +468,7 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
 
   let outline: FlatEdge[] = [];
   for (const [k, gk] of g) for (const l of faces[k].loops) for (const e of l.edges) {
-    if (across.has(e.id)) continue;
+    if (across.has(`${k}:${e.id}`)) continue;
     const pts = e.pts.map((p) => to2(app(gk, p)));
     let arc: FlatEdge["arc"];
     if (e.arc) {
