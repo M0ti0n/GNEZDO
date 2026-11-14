@@ -226,12 +226,14 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
   if (cutOn && full !== null && sheets[full]) {
     return (
       <div className="nest-page is-manual">
-        <ManualNest sol={sol!} index={full} sheets={sheets} jobParts={parts} parts={byId} edit={false}
+        {/* parts not processed yet can be moved (the processed ones stay where they are) */}
+        <ManualNest sol={sol!} index={full} sheets={sheets} jobParts={parts} parts={byId} edit={editable(full)}
           origin={sol!.origin ?? machine.origin} counts={countsOf(sheets)}
           onIndex={(k) => { setFullState(k); onSelect({ sol: sol!.id, sheet: k }); }}
           onClose={() => setFullState(null)}
           locked={sol!.locked.includes(full)} onToggleLock={() => onToggleLock(sol!.id, full)}
-          onChange={() => { /* nothing moves in Process */ }}
+          onChange={(k, list) => onEditSheet(sol!.id, k, { parts: list })}
+          fixed={processedParts(sheets[full])}
           onInfo={(k) => setProps(k)} cut={tool.cut} />
         {propsDialog}
       </div>

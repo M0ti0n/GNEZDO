@@ -112,8 +112,8 @@ export function useMovement({ index, single, sheets, parts, origin, onCut }: {
             <button key={m.id} type="button" className={`rm-btn mv-btn${m.id === "delete" ? " is-del" : ""}${mode === m.id ? " is-on" : ""}`} aria-pressed={mode === m.id}
               disabled={!can} title={can ? m.hint : "Open a processed sheet (VIEW / EDIT)"} onClick={() => setMode(mode === m.id ? null : m.id)}>
               <img src={m.icon} alt="" draggable={false} />
-              {/* a word a row, centered: SINGLE / POINT, MULTIPOINT */}
-              <span>{m.label.split(" ").map((w, i) => <span key={i}>{w}</span>)}</span>
+              {/* one button a row: the icon big, its name and what it does beside it */}
+              <span className="mv-text"><b>{m.label}</b><small>{m.hint}</small></span>
             </button>
           ))}
         </div>

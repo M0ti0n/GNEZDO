@@ -42,7 +42,7 @@ const LAYER: Record<Role, { name: string; color: number }> = {
 const num = (v: number) => (Math.abs(v) < 1e-9 ? "0" : String(+v.toFixed(6)));
 
 /** Aid lines and dimensions as plain lines and texts (export with them ticked): layers AID and DIM. */
-function aidShapes(d: Drawing): { layer: "AID" | "DIM"; a: Pt; b: Pt }[] {
+export function aidShapes(d: Drawing): { layer: "AID" | "DIM"; a: Pt; b: Pt }[] {
   const out: { layer: "AID" | "DIM"; a: Pt; b: Pt }[] = [];
   const all = d.entities.flatMap((e) => pointsAlong(e));
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -64,9 +64,9 @@ function aidShapes(d: Drawing): { layer: "AID" | "DIM"; a: Pt; b: Pt }[] {
   return out;
 }
 /** Aid arcs and circles (lines, arcs and circles turned into aid lines): layer AID. */
-const aidArcs = (d: Drawing): Entity[] => (d.aids ?? []).flatMap((a) => (a.kind === "carc" ? [carcEnt(a)] : []));
+export const aidArcs = (d: Drawing): Entity[] => (d.aids ?? []).flatMap((a) => (a.kind === "carc" ? [carcEnt(a)] : []));
 /** The dimensions' texts and where they stand. */
-function dimTexts(d: Drawing): { at: Pt; text: string }[] {
+export function dimTexts(d: Drawing): { at: Pt; text: string }[] {
   const n2 = (v: number) => String(Math.round(v * 100) / 100);
   return (d.aids ?? []).flatMap((a) => {
     if (a.kind !== "dim") return [];

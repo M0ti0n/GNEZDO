@@ -15,8 +15,8 @@ request.json (written by GNEZDO from the job tab):
                                     {"index", "id", "material", "thicknessMm", "lengthMm", "widthMm",
                                      "outline"?, "trims", "partGapMm"?, "kerfMm"?,
                                      "parts": [{"path", "x", "y", "angle", "mirror"}]}  (sheet frame, y down)
-   "commonCut": true | false,       Custom only: parts with common cut edges are joined into blocks
-                                    along them before the nest (commoncut.py); a few block sizes and no
+   "commonCut": true | false,       parts with common cut edges are joined into blocks
+                                    along them before the nest (commoncut.py); Custom: a few block sizes and no
                                     blocks are tried first (a quarter of the time), the best is nested
    "parts":  [{"id", "name", "path", "qty", "rotations": [90], "mirror", "material", "thicknessMm",
                "commonEdges"?: [[x1, y1, x2, y2], ...]}],   marked common cut lines, in the path's frame
@@ -265,7 +265,7 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
             skipped += [{"partId": p["id"], "reason": f"No stock sheet for {label}"} for p in parts]
             continue
         items, ids, shifts, common = [], [], [], {}
-        use_common = bool(req.get("commonCut")) and req.get("mode") == "custom"
+        use_common = bool(req.get("commonCut"))
         sx, sy = flips
         for p in parts:
             try:
@@ -442,8 +442,9 @@ class Run:
                 opts.blocks = self.req["blocks"]
             minutes = self.req.get("minutes")
             common = None
-            if g.get("common") and level == "custom":
-                common, minutes = self.common_trials(i, opts, minutes, on_progress)
+            if g.get("common"):
+                # Custom: a short trial of each block size first; Fast / Thorough: the biggest blocks
+                common, minutes = self.common_trials(i, opts, minutes, on_progress, try_sizes=level == "custom")
                 if common["share"] > 0:
                     opts = dataclasses.replace(opts, common={"edges": g["common"], "kerf": g["kerf"], "share": common["share"]})
             tried = common.pop("_job", None) if common else None
@@ -488,7 +489,7 @@ class Run:
     # -- common cut: block sizes tried first -------------------------------------------------
     SHARES = (1.0, 0.5, 0.25)
 
-    def common_trials(self, i: int, opts: Options, minutes, on_progress) -> tuple[dict, float | None]:
+    def common_trials(self, i: int, opts: Options, minutes, on_progress, try_sizes: bool = True) -> tuple[dict, float | None]:
         """Which common cut block size to nest with: a short nest of each (and of none) within a
         quarter of the time: the most parts placed (limited sheets), then the fewest sheets, then the
         shortest last sheet wins. One block size only: no trials. Returns the choice (for the result;
@@ -507,7 +508,7 @@ class Run:
                 plans.append(sh)
         if not plans:
             return {"share": 0.0, "note": "No part has common cut edges that join (straight, facing, same length)"}, minutes
-        if len(plans) == 1:
+        if len(plans) == 1 or not try_sizes:
             return {"share": plans[0], "trials": []}, minutes
         total = 90.0 if minutes is None else max(30.0, 0.25 * minutes * 60.0)
         options = plans + [0.0]
@@ -531,7 +532,8 @@ class Run:
                            "placed": sum(len(s["parts"]) for s in placed), "_job": r})
         if not trials:
             return {"share": plans[0], "trials": []}, minutes
-        best = min(trials, key=lambda t: (-t["placed"], t["sheets"], t["equiv"], -t["share"]))
+        # common cut was asked for: blocks win unless the nest without them places more or takes fewer sheets
+        best = min(trials, key=lambda t: (-t["placed"], t["sheets"], t["share"] == 0, t["equiv"], -t["share"]))
         spent = (time.perf_counter() - t0) / 60.0
         left = None if minutes is None else max(0.5, minutes - spent)
         shown = [{k: v for k, v in t.items() if k != "_job"} for t in trials]

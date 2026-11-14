@@ -4,6 +4,20 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Drawing icons: **Arc** centered; **Offset** with its new line in blue and the clicked point red; **Radius** and **Chamfer** in blue
+- Import 2D: dimension numbers 60 % bigger
+- DXF export with the aid lines and dimensions: a part's export has them by default (the menu's tick box switches them off), and **Export solution to DXF** now carries every part's aid lines (layer AID) and dimensions (layer DIM) too
+- **Inline cut** no longer breaks arcs and circles into pieces: contours are split only at their corners; circles, slots and contours with rounded corners are cut whole (as before inline)
+- Job, Manual nest: zoomed in, the sheet can be moved well past its edges (about a third of the view), so an edge no longer ends up squeezed against the ruler
+- Process with a sheet open: parts not processed yet can be moved again (no tool on); processed parts stay where they are (Delete cut path to move them)
+- Break cut: a lead is picked from about 10 mm around it, along its whole length (not only at the pierce point), and a balloon also on the balloon itself; break cut and micro joint balloons are twice as big
+- Movement: the modes one under the other, bigger icons with their name and what they do beside them
+- Common cut:
+  - **Common cut on** (job toolbar) now works for **Automatic nest** too (Fast, Thorough: the biggest blocks; Custom as before, with its trials); when blocks and no blocks take the same sheets, the blocks are kept
+  - Manual nest: with Common cut on, a dragged part snaps its marked line onto another part's (any part, not only copies of the same one) without holding a key
+  - parts joined into one block (a grid of squares) no longer show as overlapping where their corners meet
+  - new **chain** blocks (Arrange and Automatic nest): every other copy turned 180°, sharing one marked line and then the other, so trapezoids and triangles make rows of any length (before: pairs only)
+- Common pierce: **Lead-ins to the nearest corner** (on by default): each outline starts at its corner nearest the pierce point, a straight lead from the point. A grid of equal parts: SELECT them and JOIN, and the pierce goes where their corners meet
 - Import 2D, **Rotate**: the lines that came with the file turn together. Click one of them (or window a few) and the whole part is picked, so it can no longer be pulled apart; lines drawn in Import 2D still turn on their own
 - Import 2D tabs show **2D** (as 3D Extractor tabs show 3D)
 - Drawing tool icons redrawn so they read better: **Arc** (three points), **Offset** (a line and its copy at a distance), **Radius** and **Chamfer** (the corner rounded or cut off in red)

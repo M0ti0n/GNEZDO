@@ -1,7 +1,9 @@
 // Process -> Common pierce: several parts' outlines start from one pierce hole in the scrap between
 // them. The first of them pierces it; the others start in it again with a quick pierce.
 //
-// Each part keeps its own lead-in (its type and its place on the outline), cut down to the minimum
+// To the corner (the default): each outline starts at its corner nearest the pierce point, a straight
+// lead from the point into it (parts in a grid: one pierce where their corners meet, in the middle of
+// them). Else each part keeps its own lead-in (its type and its place on the outline), cut down to the minimum
 // lead-in: the last part of it, next to the outline. From the common pierce point an arc runs to the
 // start of what is kept, tangent to it there (a straight line when the point lies in line with it).
 // A part joins when the start of its kept lead-in is within the radius of the point (and on the side
@@ -23,9 +25,59 @@ export interface CommonPierceOptions {
   side: "any" | "left" | "right";
   /** the joined outlines get a break cut (the lead type with a gap, the default gap) */
   breakCut: boolean;
+  /** each outline starts at its corner nearest the pierce point instead (a straight lead from the point
+   *  into it: parts in a grid meet at one pierce where their corners meet); no corner: its nearest point */
+  toCorner: boolean;
 }
 
-export const DEFAULT_COMMON_PIERCE: CommonPierceOptions = { radius: 15, minLead: 2, side: "any", breakCut: false };
+export const DEFAULT_COMMON_PIERCE: CommonPierceOptions = { radius: 15, minLead: 2, side: "any", breakCut: false, toCorner: true };
+
+/** Turns sharper than this (degrees) are an outline's corners. */
+const CORNER = 30;
+
+/** An outline's corners (closed loop, without its closing point). */
+function cornersOf(lp: Pt[]): Pt[] {
+  const n = lp.length, out: Pt[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = lp[(i + n - 1) % n], b = lp[i], c = lp[(i + 1) % n];
+    const u = unit(sub(b, a)), v = unit(sub(c, b));
+    const ang = (Math.acos(Math.max(-1, Math.min(1, dot(u, v)))) * 180) / Math.PI;
+    if (ang > CORNER) out.push(b);
+  }
+  return out;
+}
+
+/** The point of the loop nearest p, and on which edge. */
+function nearestOnLoop(lp: Pt[], p: Pt): { at: Pt; edge: number; d: number } {
+  let best = { at: lp[0], edge: 0, d: Infinity };
+  for (let i = 0; i < lp.length; i++) {
+    const a = lp[i], b = lp[(i + 1) % lp.length], ab = sub(b, a), L2 = dot(ab, ab);
+    const t = L2 ? Math.max(0, Math.min(1, dot(sub(p, a), ab) / L2)) : 0;
+    const q = add(a, mul(ab, t)), d = len(sub(p, q));
+    if (d < best.d) best = { at: q, edge: i, d };
+  }
+  return best;
+}
+
+/** Where on the outline it starts for a pierce at p: its corner nearest p (else its nearest point). */
+function startFor(c: CutContour, p: Pt): Pt {
+  const lp = loopOf(c.pts);
+  const cs = cornersOf(lp);
+  if (!cs.length) return nearestOnLoop(lp, p).at;
+  return cs.reduce((a, q) => (len(sub(q, p)) < len(sub(a, p)) ? q : a));
+}
+
+/** The outline started at q (on it): its points from q round to q again; no lead-out (it was at the old start). */
+function startedAt(c: CutContour, q: Pt): CutContour {
+  const lp = loopOf(c.pts);
+  const { edge } = nearestOnLoop(lp, q);
+  const k = (edge + 1) % lp.length;
+  const atVertex = len(sub(lp[edge], q)) < 1e-6 ? edge : len(sub(lp[k], q)) < 1e-6 ? k : -1;
+  const from = atVertex >= 0 ? atVertex : k;
+  const ring = [...lp.slice(from), ...lp.slice(0, from)];
+  const pts = atVertex >= 0 ? [...ring, ring[0]] : [q, ...ring, q];
+  return { ...c, pts: pts.map(r3), leadIn: [], leadOut: [] };
+}
 
 /** An outline that may share a pierce: a part's own outline, whole (not broken, not inline). */
 export const piercable = (c: CutContour) =>
@@ -146,14 +198,16 @@ export function commonPierce(cut: SheetCut, live: Set<CutContour>, p: Pt, ks: nu
   for (const k of cands) {
     // in another group: taken out of it (back to its own leads) first
     const own = restore(base.contours[k]);
-    let c = own;
+    // to the corner: started at its corner nearest the pierce point, a straight lead from the point
+    const corner = o.toCorner ? startFor(own, p) : null;
+    let c = corner ? startedAt(own, corner) : own;
     // Break cut: the lead type with a gap, the default gap
     if (o.breakCut && job.breakCut) {
-      const r = job.breakCut({ ...base, contours: base.contours.map((x, i) => (i === k ? own : x)) }, k);
+      const r = job.breakCut({ ...base, contours: base.contours.map((x, i) => (i === k ? c : x)) }, k);
       if (typeof r === "string") { left.push(`${name(own.part)}: ${r}`); continue; }
       c = r;
     }
-    const kept = keptLead(c, o);
+    const kept = corner && !o.breakCut ? { pts: [r3(corner)], e: corner, d: unit(sub(corner, p)) } : keptLead(c, o);
     if (len(sub(kept.e, p)) > o.radius + 1e-6) { if (ks) left.push(`${name(c.part)}: its lead-in starts ${len(sub(kept.e, p)).toFixed(1)} mm away (radius ${o.radius} mm)`); continue; }
     if (o.side !== "any" && (o.side === "left" ? kept.e[0] > p[0] - 0.01 : kept.e[0] < p[0] + 0.01)) { if (ks) left.push(`${name(c.part)}: its lead-in is not ${o.side} of the pierce point`); continue; }
     // the way to the lead must stay in the scrap (its last 0.3 mm meets the lead): the arc, else a
@@ -226,15 +280,33 @@ export function piercesOf(cut: SheetCut | undefined, live: Set<CutContour>): { i
  * the centre of the smallest circle round the starts. null: fewer than two.
  */
 export function autoPoint(cut: SheetCut, ks: number[], o: CommonPierceOptions): Pt | null {
-  const pts = ks.map((k) => cut.contours[k]).filter(Boolean).map((c) => keptLead(restore(c), o).e);
-  if (pts.length < 2) return null;
-  // Badoiu-Clarkson: step towards the farthest point
+  const cs = ks.map((k) => cut.contours[k]).filter(Boolean).map(restore);
+  if (cs.length < 2) return null;
+  // to the corner: the point nearest all the outlines (a grid: where their corners meet), found by
+  // taking each one's corner nearest the point and centring between them, a few times over
+  if (o.toCorner) {
+    let c: Pt = [0, 0];
+    for (const x of cs) { const lp = loopOf(x.pts); const m = lp.reduce((s, q) => add(s, q), [0, 0] as Pt); c = add(c, mul(m, 1 / lp.length / cs.length)); }
+    for (let round = 0; round < 12; round++) {
+      const near = cs.map((x) => startFor(x, c));
+      const next = smallestCircle(near);
+      if (len(sub(next, c)) < 1e-3) { c = next; break; }
+      c = next;
+    }
+    return r3(c);
+  }
+  const pts = cs.map((c) => keptLead(c, o).e);
+  return r3(smallestCircle(pts));
+}
+
+/** The centre of (about) the smallest circle round the points (Badoiu-Clarkson: step towards the farthest). */
+function smallestCircle(pts: Pt[]): Pt {
   let c: Pt = [pts.reduce((s, q) => s + q[0], 0) / pts.length, pts.reduce((s, q) => s + q[1], 0) / pts.length];
   for (let i = 1; i <= 400; i++) {
     const far = pts.reduce((a, q) => (len(sub(q, c)) > len(sub(a, c)) ? q : a));
     c = add(c, mul(sub(far, c), 1 / (i + 1)));
   }
-  return r3(c);
+  return c;
 }
 
 /** Does this outline start in a common pierce another outline has pierced before it (cut order)? */

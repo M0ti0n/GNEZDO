@@ -267,6 +267,13 @@ export function editBreak(ctx: LeadCtx, k: number, op: BreakOp, all: boolean, li
 
 /** The balloons of the sheet's break cuts (or micro joints: MJ1, MJ2 … per contour): where, its label,
  *  its contour (a piece's index), start, and what hovering over it tells. */
+/** How far a point is from a balloon: its own point, or the balloon drawn up and to either side of it
+ *  (16 px off, 10 px round; px: mm per screen pixel; 0: only the point). */
+export function balloonDist(at: Pt, p: Pt, px: number): number {
+  let d = len(sub(at, p));
+  if (px > 0) for (const side of [1, -1]) d = Math.min(d, Math.max(0, len(sub([at[0] + side * 16 * px, at[1] - 16 * px], p)) - 10 * px));
+  return d;
+}
 export interface Balloon { at: Pt; label: string; k: number; si: number; which: "at" | "p1"; neg: boolean; title: string }
 const mm = (v: number) => `${+Math.abs(v).toFixed(2)} mm`;
 export function balloonsOf(cut: SheetCut | undefined, live: Set<CutContour>, what: "bc" | "mj" = "bc"): Balloon[] {
@@ -295,12 +302,20 @@ export function balloonsOf(cut: SheetCut | undefined, live: Set<CutContour>, wha
 }
 
 /** The lead (outline k, start si) whose pierce or balloon is nearest p within reach mm; si -1: none. */
-export function leadNear(cut: SheetCut, live: Set<CutContour>, p: Pt, reach: number): { k: number; si: number } | null {
+export function leadNear(cut: SheetCut, live: Set<CutContour>, p: Pt, reach: number, px = 0): { k: number; si: number } | null {
   let best: { k: number; si: number } | null = null, bd = reach;
-  for (const b of balloonsOf(cut, live)) { const d = len(sub(b.at, p)); if (d <= bd) { bd = d; best = { k: b.k, si: b.si }; } }
+  for (const b of balloonsOf(cut, live)) { const d = balloonDist(b.at, p, px); if (d <= bd) { bd = d; best = { k: b.k, si: b.si }; } }
+  // a lead counts along its whole length (and its pierce), not only at the pierce point
+  const segD = (a: Pt, b: Pt) => {
+    const ab = sub(b, a), L2 = ab[0] * ab[0] + ab[1] * ab[1];
+    const t = L2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / L2)) : 0;
+    return len(sub([a[0] + ab[0] * t, a[1] + ab[1] * t], p));
+  };
   cut.contours.forEach((c, k) => {
     if (!live.has(c) || c.kind !== "outer" || c.parts || c.common || c.inline || c.cp) return;
-    const d = len(sub(c.leadIn[0] ?? c.pts[0], p));
+    const li = c.leadIn.length ? c.leadIn : [c.pts[0]];
+    let d = len(sub(li[0], p));
+    for (let j = 0; j + 1 < li.length; j++) d = Math.min(d, segD(li[j], li[j + 1]));
     // a piece's lead is its start in the plan; an outline without breaks: its one start
     if (d <= bd) { bd = d; best = { k, si: c.bc ? c.bc.piece : 0 }; }
   });

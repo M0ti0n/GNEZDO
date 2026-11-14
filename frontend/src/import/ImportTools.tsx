@@ -141,7 +141,7 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
   {
     id: "arc", label: "Arc",
     // three points: start, a point on it, end (the center only shown)
-    icon: <Ico><path d="M6 38A18 18 0 0 1 42 38" stroke={K} strokeWidth="3.6" /><path d="M21 38h6M24 35v6" stroke="#8aa0a4" strokeWidth="1.6" /><circle cx="6" cy="38" r="3.8" fill={BL} /><circle cx="24" cy="20" r="3.8" fill={BL} /><circle cx="42" cy="38" r="3.8" fill={BL} /></Ico>,
+    icon: <Ico><path d="M6 32A18 18 0 0 1 42 32" stroke={K} strokeWidth="3.6" /><path d="M21 32h6M24 29v6" stroke="#8aa0a4" strokeWidth="1.6" /><circle cx="6" cy="32" r="3.8" fill={BL} /><circle cx="24" cy="14" r="3.8" fill={BL} /><circle cx="42" cy="32" r="3.8" fill={BL} /></Ico>,
   },
   {
     id: "rect", label: "Rect.",
@@ -157,18 +157,18 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
   },
   {
     id: "offset", label: "Offset",
-    // a line and its copy at a distance (red: the new one and how far)
-    icon: <Ico><path d="M5 12H43" stroke={K} strokeWidth="3.6" /><path d="M5 37H43" stroke={R} strokeWidth="3.6" /><path d="M24 15V34" stroke={R} strokeWidth="2" /><Arrow x={24} y={14.4} angle={-90} color={R} /><Arrow x={24} y={34.6} angle={90} color={R} /><circle cx="10" cy="12" r="3.4" fill={BL} /></Ico>,
+    // a line (red dot: where it is clicked) and its copy at a distance (blue: the new one and how far)
+    icon: <Ico><path d="M5 12H43" stroke={K} strokeWidth="3.6" /><path d="M5 37H43" stroke={BL} strokeWidth="3.6" /><path d="M24 15V34" stroke={BL} strokeWidth="2" /><Arrow x={24} y={14.4} angle={-90} color={BL} /><Arrow x={24} y={34.6} angle={90} color={BL} /><circle cx="10" cy="12" r="3.4" fill={R} /></Ico>,
   },
   {
     id: "fillet", label: "Radius",
-    // the sharp corner (dashed) rounded off (red), its radius
-    icon: <Ico><path d="M8 26V8H26" stroke="#8aa0a4" strokeWidth="1.8" strokeDasharray="3 2.5" /><path d="M8 44V26M26 8H44" stroke={K} strokeWidth="3.6" /><path d="M8 26A18 18 0 0 1 26 8" stroke={R} strokeWidth="4" /><path d="M26 26L14.5 14.5" stroke={R} strokeWidth="1.8" /><circle cx="26" cy="26" r="2.2" fill={R} /><text x="30" y="40" fontFamily="Barlow Semi Condensed, Barlow, sans-serif" fontSize="15" fontWeight="700" fill={R}>R</text></Ico>,
+    // the sharp corner (dashed) rounded off (blue), its radius
+    icon: <Ico><path d="M8 26V8H26" stroke="#8aa0a4" strokeWidth="1.8" strokeDasharray="3 2.5" /><path d="M8 44V26M26 8H44" stroke={K} strokeWidth="3.6" /><path d="M8 26A18 18 0 0 1 26 8" stroke={BL} strokeWidth="4" /><path d="M26 26L14.5 14.5" stroke={BL} strokeWidth="1.8" /><circle cx="26" cy="26" r="2.2" fill={BL} /><text x="30" y="40" fontFamily="Barlow Semi Condensed, Barlow, sans-serif" fontSize="15" fontWeight="700" fill={BL}>R</text></Ico>,
   },
   {
     id: "chamfer", label: "Chamfer",
-    // the sharp corner (dashed) cut off straight (red), equal on both lines
-    icon: <Ico><path d="M8 24V8H24" stroke="#8aa0a4" strokeWidth="1.8" strokeDasharray="3 2.5" /><path d="M8 44V24M24 8H44" stroke={K} strokeWidth="3.6" /><path d="M8 24L24 8" stroke={R} strokeWidth="4" /><path d="M4 16h8M16 4v8" stroke={R} strokeWidth="1.6" /><text x="26" y="38" fontFamily="Barlow Semi Condensed, Barlow, sans-serif" fontSize="13" fontWeight="700" fill={R}>45°</text></Ico>,
+    // the sharp corner (dashed) cut off straight (blue), equal on both lines
+    icon: <Ico><path d="M8 24V8H24" stroke="#8aa0a4" strokeWidth="1.8" strokeDasharray="3 2.5" /><path d="M8 44V24M24 8H44" stroke={K} strokeWidth="3.6" /><path d="M8 24L24 8" stroke={BL} strokeWidth="4" /><path d="M4 16h8M16 4v8" stroke={BL} strokeWidth="1.6" /><text x="26" y="38" fontFamily="Barlow Semi Condensed, Barlow, sans-serif" fontSize="13" fontWeight="700" fill={BL}>45°</text></Ico>,
   },
   {
     id: "alignH", label: "Align H",

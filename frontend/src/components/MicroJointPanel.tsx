@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { balloonsOf, editBreak, mapPoint, piecesOf } from "../job/breakCut";
+import { balloonDist, balloonsOf, editBreak, mapPoint, piecesOf } from "../job/breakCut";
 import { liveContours, type CutContour } from "../job/cutPath";
 import { diag } from "../job/diag";
 import { leadCtx } from "../job/leadEdit";
@@ -83,8 +83,8 @@ export function useMicroJoint({ index, single, sheets, parts, machine, origin, o
     return true;
   };
 
-  const balloonAt = (p: Pt, reach: number) => cutPath ? balloonsOf(cutPath, live, "mj").reduce<{ k: number; si: number; d: number } | null>((best, b) => {
-    const d = Math.hypot(b.at[0] - p[0], b.at[1] - p[1]);
+  const balloonAt = (p: Pt, reach: number, px = 0) => cutPath ? balloonsOf(cutPath, live, "mj").reduce<{ k: number; si: number; d: number } | null>((best, b) => {
+    const d = balloonDist(b.at, p, px);
     return d <= reach && (!best || d < best.d) ? { k: b.k, si: b.si, d } : best;
   }, null) : null;
 
@@ -98,7 +98,7 @@ export function useMicroJoint({ index, single, sheets, parts, machine, origin, o
       return;
     }
     if (move) {
-      const b = balloonAt(p, reach);
+      const b = balloonAt(p, reach, 1 / scale);
       if (!b) { setMsg({ text: "MOVE: click a micro joint's balloon", bad: true }); return; }
       setMoving({ k: b.k, si: b.si });
       setSel({ k: b.k, si: b.si });
@@ -127,7 +127,7 @@ export function useMicroJoint({ index, single, sheets, parts, machine, origin, o
       return;
     }
     // no mode: a balloon picked (its length into the box)
-    const b = balloonAt(p, reach);
+    const b = balloonAt(p, reach, 1 / scale);
     setSel(b ? { k: b.k, si: b.si } : null);
     setMsg(b ? null : { text: "Click a micro joint's balloon to pick it, or choose a mode" });
   };
