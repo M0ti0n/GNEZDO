@@ -184,6 +184,15 @@ namespace Gnezdo.Api.Data.SqliteMigrations
                     b.Property<long>("CreatedAt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long?>("CutAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CutBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
                     b.Property<string>("Machine")
                         .IsRequired()
                         .HasMaxLength(50)

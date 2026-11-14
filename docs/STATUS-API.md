@@ -1,7 +1,9 @@
 # GNEZDO status API
 
 A read-only API for other apps (a BOM app, a workflow overview) that want to know where the laser parts
-of an order stand: in GNEZDO or not, in a job, nested, sent to a machine. Nothing can be changed through it.
+of an order stand: in GNEZDO or not, in a job, nested, sent to a machine, cut. Nothing can be changed through
+it: the other app compares with its own data and flags what it finds (a drawing never imported, or one with
+no laser parts at all, is for that app to mark).
 
 Server build only (the desktop build has no keys menu).
 
@@ -28,11 +30,16 @@ X-Api-Key: gz_…
 | `nested`     | on the job's saved nest (the solution shown)                              |
 | `partlySent` | some pieces sent to a machine                                             |
 | `sent`       | at least the part's quantity sent to a machine                            |
+| `partlyCut`  | some pieces in jobs the operator marked as cut                            |
+| `cut`        | at least the part's quantity in jobs marked as cut                        |
 
 "Sent" is recorded by **Process → POST PROCESS**: every NC program written (or downloaded) for a sheet of a
 saved job, with the pieces of each part on it (times the sheet's cut number). Post processing the same sheet
-again replaces its record; post processing every sheet replaces the job's records. GNEZDO does not know when
-a sheet is actually cut.
+again replaces its record; post processing every sheet replaces the job's records.
+
+"Cut" is the operator's: Job search → **Mark as cut** on a nested job (**Not cut** takes it back). The job's
+pieces count as cut: those sent to the machine, or its nested ones when nothing was recorded as sent. Each job
+line shows `isCut`, `cutAt` and `cutBy`; a part and a check line add up `cut`.
 
 Parts belong to a project (the order): the same drawing in two orders is two parts, so the numbers of one
 order never mix with another's. A part taken from an older project into a new job still counts for its own
@@ -56,9 +63,10 @@ Every part of the project.
     {
       "id": "512", "name": "1234-56-78_P2_3kos", "drawing": "1234-56-78", "position": "P2", "piecesPerDrawing": 3,
       "qty": 6, "material": "S235", "thicknessMm": 5, "importedAt": "…",
-      "inJobs": 6, "nested": 6, "sent": 3, "lastSentAt": "…", "status": "partlySent",
+      "inJobs": 6, "nested": 6, "sent": 3, "lastSentAt": "…", "cut": 0, "status": "partlySent",
       "jobs": [
-        { "id": "88", "name": "S235_5_1411", "machine": "laser", "qty": 6, "nested": 6, "sent": 3, "modifiedAt": "…",
+        { "id": "88", "name": "S235_5_1411", "machine": "laser", "qty": 6, "nested": 6, "sent": 3,
+          "isCut": false, "cutAt": null, "cutBy": "", "cut": 0, "modifiedAt": "…",
           "sheets": [ { "sheet": 1, "file": "S235_5_1411_1.nc", "machine": "laser", "pieces": 3, "sentAt": "…", "sentBy": "…" } ] }
       ]
     }
@@ -90,7 +98,7 @@ The order's laser drawings (from the BOM), each answered: found or missing, and 
   "project": "26-0412", "projectFound": true, "at": "…",
   "items": [
     { "drawing": "1234-56-78", "position": "P2", "needed": 6, "status": "partlySent", "mergedWithBase": null,
-      "inJobs": 6, "nested": 6, "sent": 3, "short": 3, "parts": [ … as above … ] },
+      "inJobs": 6, "nested": 6, "sent": 3, "cut": 0, "short": 3, "parts": [ … as above … ] },
     { "drawing": "1234-56-79", "position": "", "needed": 2, "status": "missing", "inJobs": 0, "nested": 0, "sent": 0, "short": null, "parts": [] }
   ],
   "notInList": ["1234-56-80_P1_1kos"]

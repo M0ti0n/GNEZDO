@@ -11,6 +11,20 @@ namespace Gnezdo.Api.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<DateTimeOffset>(
+                name: "CutAt",
+                table: "Jobs",
+                type: "datetimeoffset",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "CutBy",
+                table: "Jobs",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: false,
+                defaultValue: "");
+
             migrationBuilder.CreateTable(
                 name: "ApiKeys",
                 columns: table => new
@@ -69,6 +83,14 @@ namespace Gnezdo.Api.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "NcSent");
+
+            migrationBuilder.DropColumn(
+                name: "CutAt",
+                table: "Jobs");
+
+            migrationBuilder.DropColumn(
+                name: "CutBy",
+                table: "Jobs");
         }
     }
 }

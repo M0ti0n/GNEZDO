@@ -147,6 +147,20 @@ public sealed class StatusApiTests(ApiFixture api) : IClassFixture<ApiFixture>
         Assert.Equal("missing", items[1]!["status"]!.GetValue<string>());
         Assert.DoesNotContain(part.Name, c["notInList"]!.AsArray().Select(x => x!.GetValue<string>()));
 
+        // the operator marks the job as cut: its sent pieces count as cut; unmarked, they do not
+        var cut = await api.Client.PutAsJsonAsync($"/api/jobs/{jobId}/cut", new { cut = true, by = "Operator" });
+        Assert.Equal(HttpStatusCode.OK, cut.StatusCode);
+        Assert.Equal("cut", (await cut.Content.ReadFromJsonAsync<JsonObject>())!["status"]!.GetValue<string>());
+        async Task<JsonNode> PartNow() => JsonNode.Parse(await (await api.Client.SendAsync(WithKey(HttpMethod.Get, $"/api/v1/projects/{Uri.EscapeDataString(code)}", key))).Content.ReadAsStringAsync())!
+            ["parts"]!.AsArray().First(x => x!["id"]!.GetValue<string>() == part.Id)!;
+        var after = await PartNow();
+        Assert.Equal(3, after["cut"]!.GetValue<int>());
+        var cutLine = after["jobs"]!.AsArray().First(j => j!["id"]!.GetValue<string>() == jobId)!;
+        Assert.True(cutLine["isCut"]!.GetValue<bool>());
+        Assert.Equal("Operator", cutLine["cutBy"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.OK, (await api.Client.PutAsJsonAsync($"/api/jobs/{jobId}/cut", new { cut = false })).StatusCode);
+        Assert.Equal(0, (await PartNow())["cut"]!.GetValue<int>());
+
         // an unknown project: 404 for its status, every drawing missing in a check
         Assert.Equal(HttpStatusCode.NotFound, (await api.Client.SendAsync(WithKey(HttpMethod.Get, "/api/v1/projects/NO-SUCH-1", key))).StatusCode);
         var none = JsonNode.Parse(await (await api.Client.SendAsync(WithKey(HttpMethod.Post, "/api/v1/projects/NO-SUCH-1/check", key,

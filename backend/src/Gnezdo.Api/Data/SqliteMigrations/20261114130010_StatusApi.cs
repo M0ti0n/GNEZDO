@@ -11,6 +11,21 @@ namespace Gnezdo.Api.Data.SqliteMigrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<long>(
+                name: "CutAt",
+                table: "Jobs",
+                type: "INTEGER",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "CutBy",
+                table: "Jobs",
+                type: "TEXT",
+                maxLength: 100,
+                nullable: false,
+                defaultValue: "",
+                collation: "NOCASE");
+
             migrationBuilder.CreateTable(
                 name: "ApiKeys",
                 columns: table => new
@@ -69,6 +84,14 @@ namespace Gnezdo.Api.Data.SqliteMigrations
 
             migrationBuilder.DropTable(
                 name: "NcSent");
+
+            migrationBuilder.DropColumn(
+                name: "CutAt",
+                table: "Jobs");
+
+            migrationBuilder.DropColumn(
+                name: "CutBy",
+                table: "Jobs");
         }
     }
 }

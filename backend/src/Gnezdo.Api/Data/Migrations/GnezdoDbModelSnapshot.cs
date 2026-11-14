@@ -178,6 +178,14 @@ namespace Gnezdo.Api.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("CutAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CutBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("Machine")
                         .IsRequired()
                         .HasMaxLength(50)

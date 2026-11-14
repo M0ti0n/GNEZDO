@@ -15,6 +15,7 @@ public record SentSheet(int Sheet, string? File, Dictionary<string, int>? Parts)
 public record SentReport(string? Machine, bool All, IReadOnlyList<SentSheet>? Sheets, string? SentBy);
 public record CheckItem(string? Drawing, string? Position, int? Needed);
 public record CheckRequest(IReadOnlyList<CheckItem>? Drawings);
+public record JobCutRequest(bool Cut, string? By);
 
 /// <summary>
 /// The status API (/api/v1, read only): other apps (a BOM app, a workflow overview) see which parts of an
@@ -90,14 +91,17 @@ public static partial class StatusApi
     // ------------------------------------------------------------------ the status of a project's parts
 
     public sealed record SheetSent(int Sheet, string File, string Machine, int Pieces, DateTimeOffset SentAt, string SentBy);
-    public sealed record JobLine(string Id, string Name, string Machine, int Qty, int Nested, int Sent, DateTimeOffset ModifiedAt, IReadOnlyList<SheetSent> Sheets);
+    public sealed record JobLine(string Id, string Name, string Machine, int Qty, int Nested, int Sent,
+        /// <summary>marked as cut by the operator: its pieces (sent, else nested) count as cut</summary>
+        bool IsCut, DateTimeOffset? CutAt, string CutBy, int Cut, DateTimeOffset ModifiedAt, IReadOnlyList<SheetSent> Sheets);
     public sealed record PartStatus(
         string Id, string Name, string Drawing, string Position, int? PiecesPerDrawing, int Qty, string Material, decimal ThicknessMm,
-        DateTimeOffset ImportedAt, int InJobs, int Nested, int Sent, DateTimeOffset? LastSentAt,
-        /// <summary>imported | inJob | nested | partlySent | sent</summary>
+        DateTimeOffset ImportedAt, int InJobs, int Nested, int Sent, DateTimeOffset? LastSentAt, int Cut,
+        /// <summary>imported | inJob | nested | partlySent | sent | partlyCut | cut</summary>
         string Status, IReadOnlyList<JobLine> Jobs);
 
-    private static string StatusOf(int qty, int inJobs, int nested, int sent) =>
+    private static string StatusOf(int qty, int inJobs, int nested, int sent, int cut) =>
+        cut > 0 ? (cut >= Math.Max(1, qty) ? "cut" : "partlyCut") :
         sent > 0 ? (sent >= Math.Max(1, qty) ? "sent" : "partlySent") : nested > 0 ? "nested" : inJobs > 0 ? "inJob" : "imported";
 
     /// <summary>Every live part of the project with where it stands; null when there is no such project.</summary>
@@ -114,7 +118,7 @@ public static partial class StatusApi
             .Select(jp => new { jp.JobId, jp.PartId, jp.Qty }).ToListAsync(ct);
         var jobIds = jobParts.Select(j => j.JobId).Distinct().ToList();
         var jobs = (await db.Jobs.AsNoTracking().Where(j => jobIds.Contains(j.Id))
-            .Select(j => new { j.Id, j.Name, j.Machine, j.Nest, j.ModifiedAt }).ToListAsync(ct)).ToDictionary(j => j.Id);
+            .Select(j => new { j.Id, j.Name, j.Machine, j.Nest, j.ModifiedAt, j.CutAt, j.CutBy }).ToListAsync(ct)).ToDictionary(j => j.Id);
         var nested = jobs.ToDictionary(j => j.Key, j => NestedOf(j.Value.Nest));
         var sent = (await db.NcSent.AsNoTracking().Where(s => jobIds.Contains(s.JobId)).ToListAsync(ct))
             .Select(s => (Row: s, Parts: PartsOf(s.Parts))).ToList();
@@ -129,14 +133,15 @@ public static partial class StatusApi
                 if (!jobs.TryGetValue(jp.JobId, out var j)) continue;
                 var sheets = sent.Where(s => s.Row.JobId == j.Id && s.Parts.GetValueOrDefault(key) > 0).OrderBy(s => s.Row.Sheet)
                     .Select(s => new SheetSent(s.Row.Sheet, s.Row.File, s.Row.Machine, s.Parts[key], s.Row.SentAt, s.Row.SentBy)).ToList();
-                js.Add(new JobLine(j.Id.ToString(CultureInfo.InvariantCulture), j.Name, j.Machine, jp.Qty,
-                    nested[j.Id].GetValueOrDefault(key), sheets.Sum(s => s.Pieces), j.ModifiedAt, sheets));
+                int nestedN = nested[j.Id].GetValueOrDefault(key), sentN = sheets.Sum(s => s.Pieces);
+                js.Add(new JobLine(j.Id.ToString(CultureInfo.InvariantCulture), j.Name, j.Machine, jp.Qty, nestedN, sentN,
+                    j.CutAt is not null, j.CutAt, j.CutBy, j.CutAt is null ? 0 : sentN > 0 ? sentN : nestedN, j.ModifiedAt, sheets));
             }
             var n = ParseName(p.Name);
-            int inJobs = js.Sum(j => j.Qty), nest = js.Sum(j => j.Nested), sentN = js.Sum(j => j.Sent);
+            int inJobs = js.Sum(j => j.Qty), nest = js.Sum(j => j.Nested), sentT = js.Sum(j => j.Sent), cutT = js.Sum(j => j.Cut);
             var last = js.SelectMany(j => j.Sheets).Select(s => (DateTimeOffset?)s.SentAt).Max();
             list.Add(new PartStatus(key, p.Name, n.Drawing, n.Position, n.Pieces, p.Qty, p.Material, p.ThicknessMm, p.CreatedAt,
-                inJobs, nest, sentN, last, StatusOf(p.Qty, inJobs, nest, sentN), js));
+                inJobs, nest, sentT, last, cutT, StatusOf(p.Qty, inJobs, nest, sentT, cutT), js));
         }
         return (project, list);
     }
@@ -197,6 +202,27 @@ public static partial class StatusApi
             }
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { recorded = sheets.Count });
+        });
+
+        // ---- the operator marks a saved job as cut (or not): other apps see it
+        app.MapPut("/api/jobs/{id:int}/cut", async (int id, JobCutRequest r, HttpContext ctx, GnezdoDb db, TimeProvider clock, CancellationToken ct) =>
+        {
+            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
+            if (job is null) return Results.NotFound(new { message = "There is no such saved job." });
+            if (r.Cut)
+            {
+                job.CutAt ??= clock.GetUtcNow();
+                job.CutBy = Cut(ctx.User.Identity?.Name ?? (r.By ?? "").Trim(), 100);
+                job.Status = Data.JobStatus.Cut;
+            }
+            else
+            {
+                job.CutAt = null;
+                job.CutBy = "";
+                job.Status = job.SheetCount > 0 ? Data.JobStatus.Nested : Data.JobStatus.Draft;
+            }
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { id = job.Id.ToString(CultureInfo.InvariantCulture), status = job.Status.ToString().ToLowerInvariant(), cutAt = job.CutAt, cutBy = job.CutBy });
         });
 
         // ---- the status API itself: an API key for every call
@@ -262,8 +288,10 @@ public static partial class StatusApi
                     if (found.Count > 0) mergedWith = found[0].Drawing;
                 }
                 foreach (var f in found) used.Add(f.Id);
-                int sent = found.Sum(f => f.Sent), inJobs = found.Sum(f => f.InJobs), nested = found.Sum(f => f.Nested);
+                int sent = found.Sum(f => f.Sent), inJobs = found.Sum(f => f.InJobs), nested = found.Sum(f => f.Nested), cut = found.Sum(f => f.Cut);
                 var status = found.Count == 0 ? "missing"
+                    : found.All(f => f.Status == "cut") ? "cut"
+                    : found.Any(f => f.Cut > 0) ? "partlyCut"
                     : found.All(f => f.Status == "sent") ? "sent"
                     : found.Any(f => f.Sent > 0) ? "partlySent"
                     : found.Any(f => f.Nested > 0) ? "nested"
@@ -273,7 +301,7 @@ public static partial class StatusApi
                 items.Add(new
                 {
                     drawing = it.Drawing?.Trim(), position = it.Position?.Trim() ?? "", needed = it.Needed,
-                    status, mergedWithBase = mergedWith, inJobs, nested, sent, @short = shortBy, parts = found,
+                    status, mergedWithBase = mergedWith, inJobs, nested, sent, cut, @short = shortBy, parts = found,
                 });
             }
             return Results.Ok(new

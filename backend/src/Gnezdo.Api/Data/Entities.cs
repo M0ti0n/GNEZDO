@@ -156,6 +156,9 @@ public class Job
     /// <summary>The saved nest solution (sheets with placed parts, counts, mode, origin), JSON; empty = not nested.</summary>
     public string Nest { get; set; } = "";
     public DateTimeOffset? NestedAt { get; set; }
+    /// <summary>Marked as cut by the operator (Job search → Mark as cut); null = not cut. Other apps read it (status API).</summary>
+    public DateTimeOffset? CutAt { get; set; }
+    public string CutBy { get; set; } = "";
     public List<JobPart> Parts { get; set; } = [];
 }
 
