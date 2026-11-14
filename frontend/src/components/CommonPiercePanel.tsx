@@ -170,9 +170,11 @@ export function useCommonPierce({ index, single, sheets, parts, machine, origin,
             ))}
           </span>
         </div>
+        <label className="chk" title="Each outline starts at its corner nearest the pierce point, a straight lead from the point into it. Parts in a grid: SELECT them and JOIN, the pierce goes where their corners meet. Off: each keeps its own lead-in, an arc runs into it">
+          <input type="checkbox" checked={opt.toCorner} onChange={(e) => setOpt({ toCorner: e.target.checked })} /> Lead-ins to the nearest corner</label>
         <label className="chk" title="The joined outlines get the lead type with a gap like theirs (corner: corner in, gap out; perpendicular: with gap; corner at an angle: angled with gap) and the default gap (the Technology table's outline gap when it is negative, else −5 mm): the cut stops short and a bridge holds the part">
           <input type="checkbox" checked={opt.breakCut} onChange={(e) => setOpt({ breakCut: e.target.checked })} /> Apply a break cut</label>
-        <p className="rule-help ac-help">One pierce hole in the scrap for several parts' outlines: the first pierces it, the others start in it with a quick pierce. Each part keeps its own lead-in next to the outline; an arc from the pierce point runs into it (it must stay in the scrap); the lead-out stays its own. A group is cut from the outline nearest the machine's 0,0. The values here are for the next JOIN, PLACE or MOVE. Holes keep their own pierces.</p>
+        <p className="rule-help ac-help">One pierce hole in the scrap for several parts' outlines: the first pierces it, the others start in it with a quick pierce. Lead-ins to the nearest corner: each outline starts at its corner nearest the pierce point (a grid of equal parts: SELECT them, JOIN, and the pierce goes where their corners meet). Off: each part keeps its own lead-in next to the outline, an arc from the pierce point runs into it (it must stay in the scrap) and the lead-out stays its own. A group is cut from the outline nearest the machine's 0,0. The values here are for the next JOIN, PLACE or MOVE. Holes keep their own pierces.</p>
         {msg && <p className={`tech-msg ac-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}
       </div>
     </aside>

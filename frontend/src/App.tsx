@@ -740,6 +740,8 @@ export function App() {
   // Fast / Thorough / Custom: with a finished solution selected, the nest continues it (what is on
   // its sheets stays, the parts still missing are added); without one, or with fresh (Add new
   // solution), a new solution from blank
+  // Common cut on (the job toolbar) and the machine does it: every nest joins parts into blocks
+  const commonOn = (jobId: string) => !!commonSnap[jobId] && machineCan(machineFor(jobId), "commonCut");
   const startNest = async (jobId: string, mode: NestMode, custom?: CustomNestSettings, fresh = false) => {
     if (custom?.commonCut && !machineCan(machineFor(jobId), "commonCut")) custom = { ...custom, commonCut: false };
     const st = solsOf(jobId);
@@ -757,7 +759,7 @@ export function App() {
     });
     setJobScreen((m) => ({ ...m, [jobId]: "nest" }));
     try {
-      const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom, machineFor(jobId).origin);
+      const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom, machineFor(jobId).origin, commonOn(jobId));
       const run = await nestApi.start(req);
       diag("nest", `Nest ${run.id} started: ${mode}${custom ? ` ${custom.minutes ?? "until stopped"} min ${custom.blocks ? "blocks" : "standard"}${custom.commonCut ? " common cut" : ""}` : ""}, new solution ${no}`,
         { job: jobId, partTypes: req.parts.length, pieces: req.parts.reduce((n, p) => n + p.qty, 0), stockSheets: req.sheets.length });
@@ -789,7 +791,7 @@ export function App() {
     patchSol(jobId, base.id, (x) => ({ ...x, prev: x.run ?? undefined, base: sheets, run: null, mode, custom, startedAt: Date.now() }));
     setJobScreen((m) => ({ ...m, [jobId]: "nest" }));
     try {
-      const req = await buildRequest(missing, stock, mode, custom, base.origin ?? machineFor(jobId).origin);
+      const req = await buildRequest(missing, stock, mode, custom, base.origin ?? machineFor(jobId).origin, commonOn(jobId));
       req.fixedSheets = fixed;
       const run = await nestApi.start(req);
       diag("nest", `Nest ${run.id} started: ${mode}, continuing solution ${base.no} (${fixed.length} of its ${sheets.length} sheets open to more parts)`,

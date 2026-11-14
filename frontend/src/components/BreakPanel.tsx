@@ -98,7 +98,8 @@ export function useBreakCut({ index, single, sheets, parts, machine, onCut }: {
   const point = (x: number, y: number, scale: number) => {
     if (!cutPath || !ctx) return;
     const p: Pt = [x, y];
-    const reach = Math.max(1, 12 / scale);
+    // a lead is picked from about 10 mm around it (or 12 px, zoomed far out)
+    const reach = Math.max(10, 12 / scale);
     if (resetOn) {
       const parts = new Set([...live].filter((c) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.inline && !c.cp));
       const k = pickContour(cutPath, parts, p, reach);
@@ -139,7 +140,7 @@ export function useBreakCut({ index, single, sheets, parts, machine, onCut }: {
       else if (manual) setArmed({ what: "add" });
       return;
     }
-    const hit = leadNear(cutPath, live, p, reach);
+    const hit = leadNear(cutPath, live, p, reach, 1 / scale);
     if (armed?.what === "modify") {
       if (!hit) { setMsg({ text: "Click a lead (its pierce point) or a balloon", bad: true }); return; }
       if (run(hit.k, { op: "set", si: hit.si, type: draft.type, spec: draft.spec }, "Lead changed")) setArmed(null);

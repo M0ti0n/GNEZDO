@@ -1193,7 +1193,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .meas-line { stroke: var(--meas); stroke-width: 1.5; fill: none; }
 .meas-head { fill: var(--meas); }
 .meas-ext { stroke: var(--meas); stroke-width: 1; stroke-dasharray: 4 3; opacity: .8; fill: none; }
-.meas-text { font-size: 13px; font-weight: 700; fill: var(--meas); paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
+.meas-text { font-size: 21px; font-weight: 700; fill: var(--meas); paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
 .meas-first { fill: rgba(194, 65, 12, .2); stroke: #c2410c; stroke-width: 2; }
 .meas-pick { fill: none; stroke: #c2410c; stroke-width: 3.2; opacity: .75; }
 
@@ -2458,7 +2458,13 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 
 /* Process -> Movement */
 .mv-btn.is-del.is-on { background: #fde8e8; border-color: var(--red); color: var(--red); box-shadow: 0 0 0 2px #fde8e8; }
-.mv-btn > span { display: flex; flex-direction: column; justify-content: center; width: 100%; min-height: 2.4em; text-align: center; line-height: 1.2; }   /* one or two rows, the buttons the same height */
+/* Movement: the modes one under the other, a big icon and its name and hint beside it */
+.mv-modes { grid-template-columns: minmax(0, 1fr); }
+.mv-btn { flex-direction: row; align-items: center; gap: 12px; padding: 8px 12px; text-align: left; }
+.mv-btn img { width: 64px; height: 64px; flex: none; }
+.mv-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mv-text b { font-size: 13px; font-weight: 700; }
+.mv-text small { font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ink-3); line-height: 1.3; }
 
 /* Process -> Break cut */
 .bc-modes button { text-transform: uppercase; font-size: 13px; letter-spacing: .03em; }

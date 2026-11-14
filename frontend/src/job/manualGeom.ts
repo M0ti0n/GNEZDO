@@ -172,7 +172,9 @@ function closeness(a: Placed, b: Placed, gap: number): number {
  */
 export function problems(parts: Placed[], usable: Box, gap: number, outline?: Pt[][],
   /** pairs "i|j" (i < j) that share a common cut line: closer than the gap is right for them */
-  shared?: Set<string>): Set<number> {
+  shared?: Set<string>,
+  /** parts in one common cut block: closer than the gap is right for them too (only an overlap is wrong) */
+  block?: (i: number, j: number) => boolean): Set<number> {
   const bad = new Set<number>();
   const tol = 1.2;   // the samples are 2 mm apart: up to ~1 mm short of the truth
   parts.forEach((q, i) => {
@@ -186,7 +188,7 @@ export function problems(parts: Placed[], usable: Box, gap: number, outline?: Pt
       if (a.box.x0 > b.box.x1 + gap || b.box.x0 > a.box.x1 + gap || a.box.y0 > b.box.y1 + gap || b.box.y0 > a.box.y1 + gap) continue;
       if (shared?.has(`${i}|${j}`)) continue;   // the shared line was checked: facing, the kerf apart
       const inside = (a.loops[0] && inMaterial(b, ...a.loops[0][0])) || (b.loops[0] && inMaterial(a, ...b.loops[0][0]));
-      if (inside || closeness(a, b, gap) < gap - tol) { bad.add(i); bad.add(j); }
+      if (inside || (!block?.(i, j) && closeness(a, b, gap) < gap - tol)) { bad.add(i); bad.add(j); }
     }
   }
   return bad;

@@ -126,8 +126,12 @@ export function snapMove(moving: CommonEdge[], still: CommonEdge[], kerf: number
 export type Pose = { x: number; y: number; angle: number; mirror: boolean };
 const ID: Pose = { x: 0, y: 0, angle: 0, mirror: false };
 
-/** How copies of a part join: a row (one shift), a grid (two shifts) or a pair turned 180 degrees. */
-export interface CommonLayout { kind: "row" | "grid" | "pair"; t1: Pose; t2?: Pose }
+/**
+ * How copies of a part join: a row (one shift), a grid (two shifts), a chain (every other copy turned 180
+ * degrees, sharing one marked line and then another: trapezoids, triangles; t1 the turned copy, t2 the
+ * shift from a copy to the next one the same way round) or a pair turned 180 degrees.
+ */
+export interface CommonLayout { kind: "row" | "grid" | "chain" | "pair"; t1: Pose; t2?: Pose }
 
 function samples(loops: Pt[][], step = 2): Pt[] {
   const out: Pt[] = [];
@@ -187,11 +191,24 @@ export function commonLayout(path: string, edges: CommonEdge[], kerf: number, ga
       && [1, -1].every((k) => clear(path, { x: s1.x + k * t.x, y: s1.y + k * t.y, angle: 0, mirror: false }, gap, undefined, true)));
     out = s2 ? { kind: "grid", t1: s1, t2: s2.t } : { kind: "row", t1: s1 };
   } else {
-    for (const e of edges.slice().sort((p, q) => q.len - p.len)) {
-      const m: Pt = [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2];
-      const t: Pose = { x: 2 * m[0] + e.n[0] * kerf, y: 2 * m[1] + e.n[1] * kerf, angle: 180, mirror: false };
-      if (clear(path, t, gap, [e.a, e.b])) { out = { kind: "pair", t1: t }; break; }
+    // turned 180 degrees about a marked line's middle: a pair; two such lines: a chain of any length
+    const mid = (e: CommonEdge): Pt => [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2];
+    const turn = (e: CommonEdge): Pose => ({ x: 2 * mid(e)[0] + e.n[0] * kerf, y: 2 * mid(e)[1] + e.n[1] * kerf, angle: 180, mirror: false });
+    const turns = edges.slice().sort((p, q) => q.len - p.len).filter((e) => clear(path, turn(e), gap, [e.a, e.b]));
+    let best: { l: CommonLayout; len: number } | null = null;
+    for (const e1 of turns) for (const e2 of turns) {
+      if (e1 === e2) continue;
+      // the next copy the same way round: two half turns, one about each line
+      const m1 = mid(e1), m2 = mid(e2);
+      const T: Pose = { x: 2 * (m1[0] - m2[0]) + (e1.n[0] - e2.n[0]) * kerf, y: 2 * (m1[1] - m2[1]) + (e1.n[1] - e2.n[1]) * kerf, angle: 0, mirror: false };
+      if (Math.hypot(T.x, T.y) < 1) continue;
+      const t1 = turn(e1);
+      // copies that do not share a line keep the gap: one and the next the same way round (T), one and
+      // the turned copy after that (t1 + T); the neighbours share e1 / e2 (checked with the turns)
+      const ok = clear(path, T, gap) && clear(path, { ...t1, x: t1.x + T.x, y: t1.y + T.y }, gap);
+      if (ok && (!best || e1.len + e2.len > best.len)) best = { l: { kind: "chain", t1, t2: T }, len: e1.len + e2.len };
     }
+    out = best?.l ?? (turns[0] ? { kind: "pair", t1: turn(turns[0]) } : null);
   }
   layoutCache.set(key, out);
   return out;
@@ -200,6 +217,13 @@ export function commonLayout(path: string, edges: CommonEdge[], kerf: number, ga
 /** The copies of an a (x b) block, in the first copy's frame. */
 export function blockPoses(l: CommonLayout, a: number, b = 1): Pose[] {
   if (l.kind === "pair") return [ID, l.t1];
+  if (l.kind === "chain") {
+    const T = l.t2!;
+    return Array.from({ length: a }, (_, i) => {
+      const k = Math.floor(i / 2);
+      return i % 2 ? { ...l.t1, x: l.t1.x + k * T.x, y: l.t1.y + k * T.y } : { x: k * T.x, y: k * T.y, angle: 0, mirror: false };
+    });
+  }
   const t2 = l.t2 ?? ID;
   const out: Pose[] = [];
   for (let j = 0; j < (l.kind === "grid" ? b : 1); j++) for (let i = 0; i < a; i++)

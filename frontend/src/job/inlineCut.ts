@@ -3,8 +3,9 @@
 // X (snake: one way, then back on the next pass), then every pass along Y (or Y first). At the end
 // every side of every part is cut.
 //
-// A contour is split where its direction turns more than 45° from X to Y (or back) and where it turns
-// round along the pass: each stretch then runs one way along X (or Y), within 45° of it. Stretches
+// A contour is split at its corners only (never inside an arc or a circle): each stretch, corner to
+// corner, runs one way along X (or Y), within 45° of it. Circles, slots and contours with rounded
+// corners (a stretch turning from X to Y) are not cut inline: they are cut whole, as before. Stretches
 // whose cross extent fits in the corridor width and that do not overlap along the pass go in one
 // pass (one corridor). A contour is cut inline only when all its stretches fit a corridor; the
 // others stay as they were (holes before the passes, outlines after them), so a part never drops
@@ -64,37 +65,46 @@ interface Stretch {
 const A = (axis: InlineAxis) => (axis === "x" ? 0 : 1);
 const C = (axis: InlineAxis) => (axis === "x" ? 1 : 0);
 
-/** The loop in stretches: a new one where the direction turns to the other axis or back along it. */
-function stretchesOf(lp: Pt[], k: number): Stretch[] {
+/** Turns sharper than this (degrees) are corners: a stretch ends only there, never inside an arc. */
+const CORNER = 20;
+
+/**
+ * The loop in stretches, from corner to corner: each one runs one way along X or Y (within 45°). Arcs and
+ * circles are not broken up: a contour with no corners (a circle, a slot), or with a stretch that turns
+ * from one axis to the other between corners (a rounded corner), is not cut inline (null).
+ */
+function stretchesOf(lp: Pt[], k: number): Stretch[] | null {
   const n = lp.length;
-  if (n < 3) return [];
+  if (n < 3) return null;
   const seg = Array.from({ length: n }, (_, i) => {
     const a = lp[i], b = lp[(i + 1) % n];
     const dx = b[0] - a[0], dy = b[1] - a[1];
     const axis: InlineAxis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
-    return { axis, sign: Math.sign(axis === "x" ? dx : dy) };
+    return { axis, sign: Math.sign(axis === "x" ? dx : dy), ang: Math.atan2(dy, dx) };
   });
-  const same = (i: number, j: number) => seg[i].axis === seg[j].axis && seg[i].sign === seg[j].sign;
-  // start where a stretch starts (the whole loop one way along one axis cannot be: it is closed)
-  let s = -1;
-  for (let i = 0; i < n; i++) if (!same((i + n - 1) % n, i)) { s = i; break; }
-  if (s < 0) return [];
-  const out: Stretch[] = [];
-  let cur: Pt[] = [];
-  let axis = seg[s].axis;
-  const flush = () => {
-    if (cur.length < 2) return;
-    const ci = C(axis), ai = A(axis);
-    const cs = cur.map((p) => p[ci]), as = cur.map((p) => p[ai]);
-    out.push({ k, axis, pts: cur, lo: Math.min(...cs), hi: Math.max(...cs), a0: Math.min(...as), a1: Math.max(...as) });
+  const turn = (i: number) => {   // at lp[i]: from segment i-1 to segment i
+    let d = Math.abs(seg[i].ang - seg[(i + n - 1) % n].ang) * 180 / Math.PI;
+    if (d > 180) d = 360 - d;
+    return d;
   };
-  for (let t = 0; t < n; t++) {
-    const i = (s + t) % n;
-    if (t > 0 && !same((i + n - 1) % n, i)) { flush(); cur = []; }
-    if (!cur.length) { cur.push(lp[i]); axis = seg[i].axis; }
-    cur.push(lp[(i + 1) % n]);
+  const corners: number[] = [];
+  for (let i = 0; i < n; i++) if (turn(i) > CORNER) corners.push(i);
+  if (corners.length < 2) return null;
+  const out: Stretch[] = [];
+  for (let c = 0; c < corners.length; c++) {
+    const i0 = corners[c], i1 = corners[(c + 1) % corners.length];
+    const len = ((i1 - i0 + n) % n) || n;
+    const axis = seg[i0].axis, sign = seg[i0].sign;
+    const pts: Pt[] = [lp[i0]];
+    for (let t = 0; t < len; t++) {
+      const i = (i0 + t) % n;
+      if (seg[i].axis !== axis || seg[i].sign !== sign) return null;
+      pts.push(lp[(i + 1) % n]);
+    }
+    const ci = C(axis), ai = A(axis);
+    const cs = pts.map((p) => p[ci]), as = pts.map((p) => p[ai]);
+    out.push({ k, axis, pts, lo: Math.min(...cs), hi: Math.max(...cs), a0: Math.min(...as), a1: Math.max(...as) });
   }
-  flush();
   return out;
 }
 
@@ -141,11 +151,11 @@ export function inlineCut(cut: SheetCut, live: Set<CutContour>, parts: number[] 
   const ok: boolean[] = [];
   cand.forEach((_, k) => {
     const st = stretchesOf(loops[k], k);
-    ok[k] = st.length >= 2 && st.every((s) => s.hi - s.lo <= width + 1e-6);
-    if (ok[k]) all.push(...st);
+    ok[k] = !!st && st.length >= 2 && st.every((s) => s.hi - s.lo <= width + 1e-6);
+    if (ok[k] && st) all.push(...st);
   });
   const going = cand.filter((_, k) => ok[k]);
-  if (!going.length) return `No contour fits: every one has a stretch wider than ${width} mm across its pass (a bigger corridor width, or Auto cut for these)`;
+  if (!going.length) return `No contour fits: every one is round (arcs, circles: cut whole) or has a stretch wider than ${width} mm across its pass (a bigger corridor width, or Auto cut for these)`;
 
   // where the material is (a run-in must not go into a part): every part's outline less its holes
   const solids = new Map<number, { outer: Pt[][]; holes: Pt[][] }>();

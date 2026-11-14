@@ -4,7 +4,7 @@
 // size, efficiency, cut number.
 import type { JobPart } from "../api/types";
 import { checkGeometry, pointsAlong, roleOf, type Entity, type Pt, type Role } from "../import/geometry";
-import { download, drawingOfPart } from "../import/partFile";
+import { aidArcs, aidShapes, dimTexts, download, drawingOfPart } from "../import/partFile";
 import { sheetLoops } from "./stock";
 import { sheetStats, type NestedSheet, type PlacedPart } from "./nest";
 import { remnantArea } from "./remnant";
@@ -13,19 +13,27 @@ import type { Origin } from "./machine";
 const LAYERS: { name: string; color: number }[] = [
   { name: "CUT", color: 7 }, { name: "MARK", color: 3 }, { name: "OPEN_CUT", color: 1 },
   { name: "SHEET", color: 8 }, { name: "TRIM", color: 9 }, { name: "TEXT", color: 2 },
+  { name: "AID", color: 5 }, { name: "DIM", color: 4 },
 ];
 const ROLE_LAYER: Record<Role, string> = { cut: "CUT", trace: "MARK", openCut: "OPEN_CUT" };
 
 const num = (v: number) => (Math.abs(v) < 1e-9 ? "0" : String(+v.toFixed(4)));
 
-/** A part's drawing in its outline-path frame (mm, y down, top-left of the outer contour at 0,0). */
-interface PartDrawing { entities: Entity[]; minX: number; maxY: number }
+/** A part's drawing in its outline-path frame (mm, y down, top-left of the outer contour at 0,0); its aid
+ *  lines (layer AID: lines, arcs) and dimensions (layer DIM: lines and texts) go with it. */
+interface PartDrawing {
+  entities: Entity[]; minX: number; maxY: number;
+  aidLines?: { layer: "AID" | "DIM"; a: Pt; b: Pt }[]; aidArcs?: Entity[]; dimTexts?: { at: Pt; text: string }[];
+}
 
 async function partDrawing(jp: JobPart): Promise<PartDrawing> {
   const d = await drawingOfPart(jp.part);
   const report = checkGeometry(d.entities);
   const box = report.contours.find((c) => c.closed && c.outer)?.box ?? report.box;
-  return { entities: d.entities, minX: box.minX, maxY: box.maxY };
+  return {
+    entities: d.entities, minX: box.minX, maxY: box.maxY,
+    ...(d.aids?.length ? { aidLines: aidShapes(d), aidArcs: aidArcs(d), dimTexts: dimTexts(d) } : {}),
+  };
 }
 
 export interface ExportInput {
@@ -106,8 +114,8 @@ export function placePart(d: PartDrawing, p: PlacedPart, toDxf: (p: Pt) => Pt,
   // two y flips cancel out; a mirror makes arcs run the other way
   const flips = p.mirror;
   const deg = (o: Pt, q: Pt) => (Math.atan2(q.y - o.y, q.x - o.x) * 180) / Math.PI;
-  for (const e of d.entities) {
-    const layer = ROLE_LAYER[roleOf(e)];
+  const all = [...d.entities.map((e) => ({ e, layer: ROLE_LAYER[roleOf(e)] })), ...(d.aidArcs ?? []).map((e) => ({ e, layer: "AID" }))];
+  for (const { e, layer } of all) {
     if (e.kind === "line") line(layer, map(e.a), map(e.b));
     else if (e.kind === "circle") { const o = map(e.c); add("0", "CIRCLE", "8", layer, "10", o.x, "20", o.y, "30", 0, "40", e.r); }
     else if (e.kind === "arc") {
@@ -120,4 +128,6 @@ export function placePart(d: PartDrawing, p: PlacedPart, toDxf: (p: Pt) => Pt,
       for (let i = 0; i + 1 < pts.length; i++) line(layer, pts[i], pts[i + 1]);
     }
   }
+  for (const l of d.aidLines ?? []) line(l.layer, map(l.a), map(l.b));
+  for (const t of d.dimTexts ?? []) { const o = map(t.at); add("0", "TEXT", "8", "DIM", "10", o.x, "20", o.y, "30", 0, "40", 3.5, "1", t.text); }
 }

@@ -24,6 +24,9 @@ let clipboard: PlacedPart[] | null = null;
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 
 /** The sheet in Process (Auto cut): nothing moves; clicks pick parts (while picking), the panel on the right is the tool's. */
+/** Break cut / micro joint balloons: radius and how far up and to the side of their point [px]. */
+export const BALLOON_R = 10, BALLOON_OFF = 16;
+
 export interface CutMode {
   picking: boolean;
   /** picked parts in cutting order */
@@ -85,8 +88,10 @@ function arrowsAlong(pts: [number, number][], every: number, minLen: number): [[
   return out;
 }
 
-export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool, commonCut = false, cut }: {
+export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool, commonCut = false, cut, fixed }: {
   cut?: CutMode;
+  /** Process: the parts already processed (their cut path made) stay where they are */
+  fixed?: Set<number>;
   locked: boolean; onToggleLock: () => void;
   /** Common cut (Manual nest toolbar): Arrange makes blocks (snapping: the Common cut snapping key held while dragging) */
   commonCut?: boolean;
@@ -172,7 +177,12 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     // shared pairs in the numbering of the parts checked
     const at = new Map(idx.map((i, k) => [i, k]));
     const sh = new Set([...shared.pairs].map((key) => { const [i, j] = key.split("|").map(Number); const a = at.get(i)!, b = at.get(j)!; return a < b ? `${a}|${b}` : `${b}|${a}`; }));
-    const b = problems(idx.map((i) => geo[i]!), usable, gap, outline, sh);
+    // parts joined by common cut lines into one block (a grid: its corner neighbours meet only at a
+    // corner, closer than the gap): within a block only an overlap counts
+    const root = idx.map((_, k) => k);
+    const find = (k: number): number => (root[k] === k ? k : (root[k] = find(root[k])));
+    for (const key of sh) { const [a, b2] = key.split("|").map(Number); root[find(a)] = find(b2); }
+    const b = problems(idx.map((i) => geo[i]!), usable, gap, outline, sh, (a, b2) => find(a) === find(b2));
     return new Set([...b].map((k) => idx[k]));
   }, [geo, usable, gap, outline, shared]);
 
@@ -198,9 +208,12 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const k = s / v.s;
     let { tx, ty } = v;
     if (k !== 1) { tx = w / 2 - (w / 2 - tx) * k; ty = h / 2 - (h / 2 - ty) * k; }
-    // smaller than the view: kept wholly in it; bigger: the view stays on it
+    // smaller than the view: kept wholly in it; bigger: the view stays on it, with room past its edges
+    // (about a third of the view), so an edge can be brought to the middle when zoomed in
     const W0 = worldRef.current;
-    const ax = PAD - W0.x0 * s, bx = w - PAD - W0.x1 * s, ay = PAD - W0.y0 * s, by = h - PAD - W0.y1 * s;
+    const room = Math.max(PAD, Math.min(w, h) * 0.35);
+    const mx = (W0.x1 - W0.x0) * s > w - 2 * PAD ? room : PAD, my = (W0.y1 - W0.y0) * s > h - 2 * PAD ? room : PAD;
+    const ax = mx - W0.x0 * s, bx = w - mx - W0.x1 * s, ay = my - W0.y0 * s, by = h - my - W0.y1 * s;
     tx = Math.min(Math.max(ax, bx), Math.max(Math.min(ax, bx), tx));
     ty = Math.min(Math.max(ay, by), Math.max(Math.min(ay, by), ty));
     return { s, tx, ty };
@@ -255,8 +268,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   // locked parts keep their place and angle: drag, arrow keys, turning, slides, mirroring, Align edge
   // and Arrange leave them (copying, stacking and deleting still work)
   const moved = (list: PlacedPart[], ids: Set<number>, dx: number, dy: number) =>
-    list.map((p, i) => (ids.has(i) && !p.lock ? { ...p, x: p.x + dx, y: p.y + dy } : p));
-  const movable = (list: PlacedPart[], ids: Set<number>) => new Set([...ids].filter((i) => list[i] && !list[i].lock));
+    list.map((p, i) => (ids.has(i) && !p.lock && !fixed?.has(i) ? { ...p, x: p.x + dx, y: p.y + dy } : p));
+  const movable = (list: PlacedPart[], ids: Set<number>) => new Set([...ids].filter((i) => list[i] && !list[i].lock && !fixed?.has(i)));
   const geoOf = (list: PlacedPart[], i: number) => { const r = byId.get(list[i].partId); return r ? placed(r.path, list[i]) : null; };
   /** How far the selection can slide in a direction (to the next part or the edge, with the gaps). */
   const slide = (list: PlacedPart[], all: Set<number>, dir: Dir) => {
@@ -461,7 +474,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const p = local(e);
     if (e.button === 1 || e.button === 2) { pan.current = { x: e.clientX, y: e.clientY, from: { x: e.clientX, y: e.clientY }, button: e.button }; return; }
     if (e.button !== 0) return;
-    if (cut) {
+    // Process: a tool on picks parts or points; with none on, parts not processed yet can still be moved
+    if (cut && (cut.onPoint || cut.picking || !edit)) {
       if (cut.onPoint) { const [cx, cy] = toMm(p.x, p.y); cut.onPoint(cx, cy, view?.s ?? 1); }
       else if (cut.picking) { const [cx, cy] = toMm(p.x, p.y); const i = hit(cx, cy); if (i >= 0) cut.onPick(i); }
       return;
@@ -477,6 +491,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       if (ctrl) { if (!sel.has(i)) ids = new Set([...sel, i]); }
       else if (!sel.has(i)) ids = new Set([i]);
       setSel(ids);
+      if (edit && ids.has(i) && fixed?.has(i)) { setNote("Processed: it stays where it is (Delete cut path to move it)"); return; }
       if (edit && ids.has(i)) dragging.current = { start: [x, y], before: items, orig: items, ids, moved: false, px: p };
       return;
     }
@@ -503,8 +518,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       if (!d.moved) setMoving(true);
       d.moved = true;
       let dx = x - d.start[0], dy = y - d.start[1];
-      // the Common cut snapping key held: a marked line of the dragged parts snaps onto one of a still part
-      if (commonHeld() && edgesById.size && view) {
+      // Common cut on (toolbar), or its snapping key held: a marked line of the dragged parts snaps onto
+      // one of a still part (any part: copies of one part or different ones)
+      if ((commonCut || commonHeld()) && edgesById.size && view) {
         const trial = moved(d.before, d.ids, dx, dy);
         const mine = [...d.ids].flatMap((i) => edgesOf(trial, i));
         if (mine.length) {
@@ -711,7 +727,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     }
     return best;
   };
-  const isLocked = (i: number) => itemsRef.current[i]?.lock !== undefined;
+  const isLocked = (i: number) => itemsRef.current[i]?.lock !== undefined || !!fixed?.has(i);
   const alignClick = (pt: Pt) => {
     const al = alignRef.current;
     if (!al) return;
@@ -826,7 +842,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           if (!ed?.length || !path || ids.filter((i) => before[i].partId === id).length < 2) continue;
           const lay = commonLayout(path, ed, kerf, gap);
           // a turned pair needs the part to be allowed to turn 180 degrees
-          if (lay && !(lay.kind === "pair" && !(rules.get(id)?.rotations ?? []).some((r) => r > 0 && 180 % r === 0))) common.set(id, lay);
+          if (lay && !((lay.kind === "pair" || lay.kind === "chain") && !(rules.get(id)?.rotations ?? []).some((r) => r > 0 && 180 % r === 0))) common.set(id, lay);
         }
         // the note and the spinning ring show before the work starts (the ring keeps turning on its own while it runs)
         await new Promise((r) => window.setTimeout(r, 50));
@@ -1026,14 +1042,14 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                     {cut?.balloons?.map((b, j) => {
                       // a balloon up and right of its point, on a short leader
                       // (side -1: up and left, so a pair 1 / 2 does not overlap)
-                      const r = 5 / v.s, dx = 8 / v.s, cx = b.at[0] + (b.side ?? 1) * dx, cy = b.at[1] - dx;
+                      const r = BALLOON_R / v.s, dx = BALLOON_OFF / v.s, cx = b.at[0] + (b.side ?? 1) * dx, cy = b.at[1] - dx;
                       return (
                         <g key={`b${j}`} className={`bc-balloon${b.neg ? " is-neg" : ""}${b.mj ? " is-mj" : ""}${b.sel ? " is-sel" : ""}${b.float ? " is-float" : ""}`}>
                           {b.title && <title>{b.title}</title>}
-                          <line x1={b.at[0]} y1={b.at[1]} x2={cx} y2={cy} style={{ strokeWidth: 0.8 / v.s }} />
-                          <circle cx={b.at[0]} cy={b.at[1]} r={1.2 / v.s} className="bc-dot" />
-                          <circle cx={cx} cy={cy} r={r} style={{ strokeWidth: 1 / v.s }} />
-                          <text x={cx} y={cy} style={{ fontSize: (b.label.length > 3 ? 2.7 : b.label.length > 2 ? 3.2 : b.label.length > 1 ? 4.2 : 5.5) / v.s }}>{b.label}</text>
+                          <line x1={b.at[0]} y1={b.at[1]} x2={cx} y2={cy} style={{ strokeWidth: 1.2 / v.s }} />
+                          <circle cx={b.at[0]} cy={b.at[1]} r={2.2 / v.s} className="bc-dot" />
+                          <circle cx={cx} cy={cy} r={r} style={{ strokeWidth: 1.6 / v.s }} />
+                          <text x={cx} y={cy} style={{ fontSize: 2 * (b.label.length > 3 ? 2.7 : b.label.length > 2 ? 3.2 : b.label.length > 1 ? 4.2 : 5.5) / v.s }}>{b.label}</text>
                         </g>
                       );
                     })}

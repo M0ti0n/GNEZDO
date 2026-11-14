@@ -408,7 +408,8 @@ function PartMenu({ x, y, part, onClose, onProperties, onVersions }: {
   }, [onClose]);
   const pick = (f: () => void) => () => { onClose(); f(); };
   // Export with the part's dimensions and aid lines (kept for next time)
-  const [withAids, setWithAidsState] = useState(() => { try { return localStorage.getItem("gnezdo.exportAids") === "1"; } catch { return false; } });
+  // with dimensions and aid lines unless switched off
+  const [withAids, setWithAidsState] = useState(() => { try { return localStorage.getItem("gnezdo.exportAids") !== "0"; } catch { return true; } });
   const setWithAids = (v: boolean) => { setWithAidsState(v); try { localStorage.setItem("gnezdo.exportAids", v ? "1" : "0"); } catch { /* this session */ } };
   // keep the menu on screen
   const left = Math.min(x, window.innerWidth - 240), top = Math.min(y, window.innerHeight - 250);

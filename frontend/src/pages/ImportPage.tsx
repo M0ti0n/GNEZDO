@@ -1676,10 +1676,10 @@ function MeasureLayer({ measures, toScreen, first, snap }: {
     let deg = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
     if (deg > 90) deg -= 180; if (deg < -90) deg += 180;
     const at = (t: number) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-    const free = [0.5, 0.3, 0.7, 0.2, 0.8].map(at).find((q) => used.every((u) => Math.hypot(u.x - q.x, u.y - q.y) > 46)) ?? at(0.5);
+    const free = [0.5, 0.3, 0.7, 0.2, 0.8].map(at).find((q) => used.every((u) => Math.hypot(u.x - q.x, u.y - q.y) > 74)) ?? at(0.5);
     used.push(free);
     const mx = free.x, my = free.y;
-    return <text key={key} className="meas-text" transform={`translate(${mx} ${my}) rotate(${deg}) translate(0 -7)`} textAnchor="middle">{text}</text>;
+    return <text key={key} className="meas-text" transform={`translate(${mx} ${my}) rotate(${deg}) translate(0 -9)`} textAnchor="middle">{text}</text>;
   };
   const dashed = (ext: [Pt, Pt][], key: string) => ext.map(([p, q], i) => {
     const a = toScreen(p), b = toScreen(q);
@@ -1720,7 +1720,7 @@ function MeasureLayer({ measures, toScreen, first, snap }: {
         const sweep = m.u1.x * m.u2.y - m.u1.y * m.u2.x > 0 ? 0 : 1;   // counter-clockwise in the drawing = 0 on screen
         const bis = { x: m.u1.x + m.u2.x, y: m.u1.y + m.u2.y };
         const bl = Math.hypot(bis.x, bis.y) || 1;
-        const tx = at.x + (bis.x / bl) * (R + 16), ty = at.y - (bis.y / bl) * (R + 16) + 4;
+        const tx = at.x + (bis.x / bl) * (R + 22), ty = at.y - (bis.y / bl) * (R + 22) + 7;
         return (
           <g key={k}>
             {dashed(m.ext, k)}

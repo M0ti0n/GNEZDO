@@ -9,7 +9,9 @@ Ways to join copies of one part:
   shift  two marked edges facing opposite ways, of the same length (a strip's two long sides):
          the next copy is the same part moved across, so a row of any length can be made;
          two shifts that are not parallel give a grid (a rectangle marked on all four sides)
-  turn   one marked edge: the second copy turned 180 degrees about the edge's middle (a pair only)
+  turn   one marked edge: the second copy turned 180 degrees about the edge's middle (a pair)
+  chain  two marked edges a turn each: every other copy turned 180 degrees, sharing one edge and then
+         the other (trapezoids, triangles), so a row of any length can be made
 A join is kept only when the copies keep the part gap everywhere except along the shared edge.
 
 Block sizes: `share` of the largest block that fits a sheet (1: as big as fits; 0.5: half; ...);
@@ -31,9 +33,10 @@ SAME = 0.5           # edges this close in length and position are the same [mm]
 
 @dataclass
 class Join:
-    kind: str                     # shift | turn
+    kind: str                     # shift | turn | chain
     xf: Xf                        # a copy -> its neighbour
-    length: float                 # length of the shared line [mm]
+    length: float                 # length of the shared line [mm] (chain: both lines)
+    step: Xf | None = None        # chain: a copy -> the next one the same way round (a shift)
 
 
 def _unit(a, b):
@@ -156,20 +159,44 @@ def joins(poly: geom.PolyShape, edges: list, kerf: float, gap: float) -> list[Jo
         xf = Xf(180.0, False, float(2 * m[0] + n[0] * kerf), float(2 * m[1] + n[1] * kerf))
         if clear_of(poly, _place(poly, xf), gap, shared=(a, b)):
             out.append(Join("turn", xf, L))
-    out.sort(key=lambda j: (j.kind != "shift", -j.length))
+    # chains: two edges, a turn about each; the copy after next is the first one shifted
+    turns = [(a, b, n, L) for a, b, n, L in marked
+             if any(j.kind == "turn" and abs(j.xf.x - (a[0] + b[0] + n[0] * kerf)) < 1e-6
+                    and abs(j.xf.y - (a[1] + b[1] + n[1] * kerf)) < 1e-6 for j in out)]
+    for i, (a1, b1, n1, L1) in enumerate(turns):
+        for j, (a2, b2, n2, L2) in enumerate(turns):
+            if i == j:
+                continue
+            m1, m2 = (a1 + b1) / 2, (a2 + b2) / 2
+            T = 2 * (m1 - m2) + (n1 - n2) * kerf
+            if float(np.hypot(*T)) < 1.0:
+                continue
+            t1 = Xf(180.0, False, float(2 * m1[0] + n1[0] * kerf), float(2 * m1[1] + n1[1] * kerf))
+            step = Xf(0.0, False, float(T[0]), float(T[1]))
+            # copies that do not share a line keep the gap: the next one the same way round, and the
+            # turned one after it
+            if clear_of(poly, _place(poly, step), gap) and \
+               clear_of(poly, _place(poly, Xf(180.0, False, t1.x + step.x, t1.y + step.y)), gap):
+                out.append(Join("chain", t1, L1 + L2, step))
+    out.sort(key=lambda j: ({"shift": 0, "chain": 1}.get(j.kind, 2), -j.length))
     return out
 
 
 @dataclass
 class Layout:
-    """How copies of one part are joined: a row (one shift), a grid (two shifts) or a turned pair."""
-    kind: str                       # row | grid | pair
+    """How copies of one part are joined: a row (one shift), a grid (two shifts), a chain (every other
+    copy turned) or a turned pair."""
+    kind: str                       # row | grid | chain | pair
     steps: list                     # the joins used
 
     def offsets(self, a: int, b: int = 1) -> list[Xf]:
         """Transforms of the copies of an a (x b) block, in the first copy's frame."""
         if self.kind == "pair":
             return [Xf(), self.steps[0].xf]
+        if self.kind == "chain":
+            t1, T = self.steps[0].xf, self.steps[0].step
+            return [Xf(180.0, False, t1.x + (i // 2) * T.x, t1.y + (i // 2) * T.y) if i % 2
+                    else Xf(0.0, False, (i // 2) * T.x, (i // 2) * T.y) for i in range(a)]
         t1 = self.steps[0].xf
         t2 = self.steps[1].xf if self.kind == "grid" else Xf()
         return [Xf(0.0, False, i * t1.x + j * t2.x, i * t1.y + j * t2.y) for j in range(b) for i in range(a)]
@@ -177,6 +204,8 @@ class Layout:
     def shared_lines(self, a: int, b: int = 1) -> int:
         if self.kind == "pair":
             return 1
+        if self.kind == "chain":
+            return a - 1
         return (a - 1) * b + (a * (b - 1) if self.kind == "grid" else 0)
 
 
@@ -195,5 +224,8 @@ def layout_of(poly: geom.PolyShape, edges: list, kerf: float, gap: float) -> Lay
             if ok:
                 return Layout("grid", [s1, s2])
         return Layout("row", [s1])
+    chains = [j for j in js if j.kind == "chain"]
+    if chains:
+        return Layout("chain", [chains[0]])
     turns = [j for j in js if j.kind == "turn"]
     return Layout("pair", [turns[0]]) if turns else None
