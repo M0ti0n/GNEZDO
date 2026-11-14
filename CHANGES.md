@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D, **Rotate**: the lines that came with the file turn together. Click one of them (or window a few) and the whole part is picked, so it can no longer be pulled apart; lines drawn in Import 2D still turn on their own
+- Import 2D tabs show **2D** (as 3D Extractor tabs show 3D)
+- Drawing tool icons redrawn so they read better: **Arc** (three points), **Offset** (a line and its copy at a distance), **Radius** and **Chamfer** (the corner rounded or cut off in red)
+- Special tools: each fitting has its own button on the strip (no group to open)
 - The side rail: every section but Parts opens its own screen with its list. **Import 2D** opens the **New part** tab, an empty canvas (1000 × 700 mm, 0,0 at the lower left) to draw a part on; **3D Extractor** the part open last there, or its empty screen until a STEP file is dropped on its list; **Special tools**, **Jobs** and **Remnants** their screens. Pressed again on its own screen, a button closes the list (the screen stays). **New job** moved under Home
 - **New part** (also a button in the Import 2D list, beside Folder and File): one at a time; the Import 2D button comes back to it until it is saved or named. **PROCESS** saves a finished part (the tab closes); **Save to list** (Geometry check, at the top) names a part not finished yet and puts it in the import list to wait (a name already waiting there is pointed out); its tab takes the name. Closing the New part tab with something drawn asks: Discard, Cancel, Add to the list or Process
 - Files are taken only where they are dropped on a list (Import 2D: DXF, DWG, SVG, folders; 3D Extractor: STEP). Dropped anywhere else they are not taken: the list they belong on opens, with a note

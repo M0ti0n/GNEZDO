@@ -223,7 +223,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   /** A click picks one (again: unpicks it), a window adds all in it; without Ctrl that ends the picking. */
   const pickForRotate = (ids: string[], more: boolean) => {
     const next = new Set(rotSel);
-    if (ids.length === 1 && next.has(ids[0])) next.delete(ids[0]); else ids.forEach((id) => next.add(id));
+    // the lines that came with the file are locked together: one of them picked turns all of them (the part
+    // stays whole); lines drawn here turn on their own
+    const imported = drawing.entities.filter((e) => !e.drawn).map((e) => e.id);
+    const isImp = new Set(imported);
+    const group = ids.some((id) => isImp.has(id)) ? [...new Set([...ids, ...imported])] : ids;
+    if (ids.length === 1 && next.has(ids[0])) group.forEach((id) => next.delete(id)); else group.forEach((id) => next.add(id));
     setRotSel(next);
     if (!more && next.size) { rotDone(next); return; }
     setMessage({ text: next.size ? `${next.size} picked. Ctrl + click or window for more; let go of Ctrl (or Enter, right click) when done` : "Nothing picked" });

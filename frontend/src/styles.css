@@ -2662,8 +2662,8 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
    Import 2D -> FITTINGS: flat parts of fittings made from their values; the part picked in the list on
    the canvas, the values in boxes on a diagram (as the lead-in editor)
 ------------------------------------------------------------------- */
-.itool-group.is-fit .itool-box { border-color: #8cb9df; }
-.itool-pop.is-fit { background: #e3eef9; border-color: #8cb9df; }
+/* Special tools: each fitting its own button, room for its name */
+.fit .itool { width: 84px; }
 .import.fit { grid-template-columns: minmax(0, 1fr) 380px; }
 .fit > .itools-wrap { grid-column: 1 / -1; }
 .fit-pane { grid-row: 2; grid-column: 1; margin: 10px; position: relative; }
