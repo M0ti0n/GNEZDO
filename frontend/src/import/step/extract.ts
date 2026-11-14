@@ -2,7 +2,7 @@
 // sorted by kind. Nothing here goes to the database: a part's flat pattern is sent to IMPORT 2D, where it
 // is processed like any drawing.
 
-import { cross3, dot3, len3, sub3, unit3, type Solid, type V3 } from "./step";
+import { cross3, dot3, len3, lowHigh, sub3, unit3, type Solid, type V3 } from "./step";
 import { currentProfile, modelOf, newStepPart, profileOf, settingsFrom, type StepPart } from "./stepPart";
 import type { Unfolded } from "./unfold";
 
@@ -34,7 +34,8 @@ const HARDWARE_NAME = /\b(bolts?|screws?|nuts?|washers?|rivets?|pins?|studs?|dow
 const box = (s: Solid) => {
   const pts = s.faces.flatMap((f) => f.loops.flatMap((l) => l.edges.flatMap((e) => e.pts)));
   if (!pts.length) return { lo: [0, 0, 0] as V3, hi: [0, 0, 0] as V3, size: [0, 0, 0] };
-  const lo = [0, 1, 2].map((i) => Math.min(...pts.map((p) => p[i]))) as V3, hi = [0, 1, 2].map((i) => Math.max(...pts.map((p) => p[i]))) as V3;
+  const r = [0, 1, 2].map((i) => lowHigh(pts.map((p) => p[i])));
+  const lo = r.map((x) => x[0]) as V3, hi = r.map((x) => x[1]) as V3;
   return { lo, hi, size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]].sort((a, b) => b - a) };
 };
 
@@ -75,25 +76,29 @@ function longAxis(s: Solid): V3 | null {
 
 /** What a body is (for sorting; any part can still be opened and unfolded or stitched). */
 export function classify(name: string, s: Solid, surface: boolean, u: Unfolded | null): BodyKind {
-  if (HARDWARE_NAME.test(name)) return "hardware";
-  if (surface) return "surface";
   const b = box(s);
   const [L, M] = b.size;
+  const sheet = !!u && u.thickness !== null && u.outline.length > 0 && u.stats.openEnds === 0 && u.thickness <= 0.25 * Math.min(u.box.x1, u.box.y1);
+  // by its name (a standard part); not a bent or a bigger sheet part, whose name may quote a standard
+  if (HARDWARE_NAME.test(name) && (!sheet || (!u!.bends.length && L <= 80))) return "hardware";
+  if (surface) return "surface";
   // long with the same section: a tube (round, a wall) or a profile
   const ax = longAxis(s);
   if (ax && L > 3 * M) {
     const ext = s.faces.flatMap((f) => f.loops.flatMap((l) => l.edges.flatMap((e) => e.pts.map((p) => dot3(p, ax)))));
-    const along = Math.max(...ext) - Math.min(...ext);
+    const [e0, e1] = lowHigh(ext);
+    const along = e1 - e0;
     if (along > 0.9 * L) {
       const one = oneAxis(s);
       return one && one.radii.length >= 2 ? "tube" : "profile";
     }
   }
-  const sheet = !!u && u.thickness !== null && u.outline.length > 0 && u.stats.openEnds === 0 && u.thickness <= 0.25 * Math.min(u.box.x1, u.box.y1);
   if (sheet) {
-    // a washer: a flat ring, small
-    const circles = u!.outline.length === 2 && u!.outline.every((e) => e.arc && e.arc.a1 - e.arc.a0 >= 2 * Math.PI - 1e-6);
-    if (!u!.bends.length && circles && L <= 80) return "hardware";
+    // a washer: a flat ring (arcs only, around one center: circles may come split in halves), small
+    const o = u!.outline;
+    const c0 = o[0]?.arc?.c;
+    const ring = !!c0 && o.every((e) => e.arc && Math.hypot(e.arc.c[0] - c0[0], e.arc.c[1] - c0[1]) < 0.01) && new Set(o.map((e) => Math.round(e.arc!.r * 100))).size === 2;
+    if (!u!.bends.length && ring && L <= 80) return "hardware";
     return "sheet";
   }
   // small turned parts: bolts, nuts, pins, spacers
