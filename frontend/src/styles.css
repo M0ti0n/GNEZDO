@@ -2610,3 +2610,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .itool-pop.is-dim { background: #f9d3d3; border-color: #ec8f8f; }
 .itool-pop .itool-box { background: #fff; }
 @keyframes itool-pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.uf-hole { min-width: 76px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.uf-hole small { color: var(--ink-3); font-weight: 500; }
+.uf-holes select.field { flex: 1; min-width: 0; }
+.uf-auto { color: #b4561f !important; font-weight: 600; }
