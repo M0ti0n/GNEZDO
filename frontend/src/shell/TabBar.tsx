@@ -58,7 +58,7 @@ export function TabBar({ tabs, activeId, userName, onActivate, onClose, onSettin
               <button role="tab" aria-selected={active} className="tab-label" title={t.title}
                 onClick={() => onActivate(t.id)}
                 onAuxClick={(e) => e.button === 1 && onClose(t.id)}>
-                <span className="tab-badge">{t.drawingId?.startsWith("x3-") ? <span className="tab-i tab-3d">3D</span> : t.drawingId === "fittings" ? <span className="tab-i tab-3d tab-fit">FIT</span> : BADGE[t.kind]}</span>
+                <span className="tab-badge">{t.drawingId?.startsWith("x3-") ? <span className="tab-i tab-3d">3D</span> : BADGE[t.kind]}</span>
                 <span className="tab-title">{t.title}</span>
               </button>
               <button className="tab-close" aria-label={`Close ${t.title}`} onClick={() => onClose(t.id)}>

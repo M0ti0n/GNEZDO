@@ -9,10 +9,12 @@ interface Props {
   /** Closes the tab: the part goes back to how it was imported and its Undo history ends. */
   onDiscard: () => void;
   onCancel: () => void;
+  /** The New part (a sketch): name it and put it in the import list instead. */
+  onToList?: () => void;
 }
 
 // Asked when the tab of an edited part is closed before the part is saved to the database.
-export function CloseUnsavedDialog({ name, onProcess, canProcess, onDiscard, onCancel }: Props) {
+export function CloseUnsavedDialog({ name, onProcess, canProcess, onDiscard, onCancel, onToList }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
     window.addEventListener("keydown", onKey);
@@ -34,14 +36,17 @@ export function CloseUnsavedDialog({ name, onProcess, canProcess, onDiscard, onC
           </div>
         </header>
         <p id="cu-text" className="close-dlg-text">
-          This part has changes that are not saved in the database. If you close it without saving, the changes
-          are lost: the part goes back to how it was imported.
+          {onToList
+            ? <>What is drawn here is not saved anywhere yet. Add it to the import list (with a name) to finish it later, or throw it away.</>
+            : <>This part has changes that are not saved in the database. If you close it without saving, the changes
+              are lost: the part goes back to how it was imported.</>}
           {!canProcess && <><br /><b className="close-dlg-warn">Part still has geometry problems, so it cannot be processed yet.</b></>}
         </p>
         <footer className="dlg-foot">
-          <button type="button" className="btn btn-replace" onClick={onDiscard}>Close without saving</button>
+          <button type="button" className="btn btn-replace" onClick={onDiscard}>{onToList ? "Discard" : "Close without saving"}</button>
           <span className="proc-missing" />
           <button type="button" className="btn btn-plain" onClick={onCancel} autoFocus>Cancel</button>
+          {onToList && <button type="button" className="btn btn-plain" onClick={onToList}>Add to the list</button>}
           <button type="button" className="btn btn-save" onClick={onProcess} disabled={!canProcess}
             title={canProcess ? undefined : "Fix the geometry problems first (Geometry check)"}>Process</button>
         </footer>

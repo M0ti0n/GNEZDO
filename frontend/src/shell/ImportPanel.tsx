@@ -18,8 +18,8 @@ export interface ImportPanelProps {
   onProperties: (p: BatchProperties) => void;
   /** Files dropped or chosen; single import opens the part straight away. */
   onFiles: (files: File[], openFirst: boolean) => void;
-  /** FITTINGS: parts of sheet metal fittings made from their values. */
-  onFittings: () => void;
+  /** NEW PART: the empty canvas to draw a part on (one at a time). */
+  onNewPart: () => void;
   onCheckLines: () => void;
   /** Saves the green parts; red ones stay in the list. */
   onProcessAll: (project?: string) => void;
@@ -126,19 +126,21 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
             <svg className="imp-pick-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
               <path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5h-7.2L10.4 5H4.5A1.5 1.5 0 0 0 3 6.5Z" />
             </svg>
-            Folder import
+            Folder
           </button>
           <button type="button" className="btn imp-btn" onClick={() => input.current?.click()}
             title="Choose one or more DXF, DWG or SVG files (or drop them on the list); STEP files go to the 3D Extractor">
             <svg className="imp-pick-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
               <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M14 3v4h4" />
             </svg>
-            File import
+            File
           </button>
-          <button type="button" className="btn imp-btn imp-fittings" onClick={p.onFittings}
-            title="Fittings: flat parts of segmented elbows, transitions, branch reducers, flanges and screw flights, made from their values">
-            <span className="imp-pick-icon imp-fit-icon">{icon("fit-elbow")}</span>
-            Fittings
+          <button type="button" className="btn imp-btn" onClick={p.onNewPart}
+            title="New part: an empty canvas to draw a part on (one at a time). PROCESS saves it; Save to list (Geometry check) names it and puts it in the list">
+            <svg className="imp-pick-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 20l3.5-1 11-11-2.5-2.5-11 11z" /><path d="M14.5 6.5l2.5 2.5" /><path d="M16 17h5M18.5 14.5v5" />
+            </svg>
+            New part
           </button>
         </div>
 

@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import { ImportToolStrip, IMPORT_TOOLS, fitIcon } from "../import/ImportTools";
+import { ImportToolStrip, fitIcon } from "../import/ImportTools";
 import { Preview } from "../import/ProcessDialog";
 import { NumInput } from "../components/NumInput";
 import {
@@ -9,7 +9,7 @@ import {
 import { FLANGE_SIZES, THREADS, canDivide, flangeFor, isStandard, threadFlangeFor, threadSize } from "../import/fittings/flange";
 import { screwResult } from "../import/fittings/screw";
 
-// Import 2D -> FITTINGS: flat parts of sheet metal fittings made from their values (the HVAC Fittings
+// SPECIAL TOOLS -> FITTINGS: flat parts of sheet metal fittings made from their values (the HVAC Fittings
 // workbench). One part on the canvas at a time, picked in the list; PROCESS saves it like any imported
 // drawing, and "Add to the import list" puts them all in the Import 2D list to be saved there.
 
@@ -30,7 +30,6 @@ interface Props {
 }
 
 const COUNT_LABEL: Record<FittingKind, string> = { elbow: "Elbows", transition: "Fittings", branch: "Fittings", flange: "Flanges", thread: "Flanges", screw: "Screws" };
-const NOT_HERE = "add the parts to the import list and open one there to change its lines";
 
 export function FittingsPage({ session, onSession, stateOf, properties, onProperties, onAdd, onProcess }: Props) {
   const kind = session.kind;
@@ -46,7 +45,6 @@ export function FittingsPage({ session, onSession, stateOf, properties, onProper
   const set = <K extends FittingKind>(k: K, patch: Partial<FittingValues[K]>) =>
     onSession({ ...session, values: { ...session.values, [k]: { ...session.values[k], ...patch } } });
   const blocked: Record<string, string> = {};
-  for (const t of IMPORT_TOOLS) if (!t.id.startsWith("fit-") && t.id !== "process" && t.id !== "properties") blocked[t.id] = NOT_HERE;
   if (!shown) blocked.process = problems.length ? "fix the values first" : "no part";
   const onTool = (id: string) => {
     if (id.startsWith("fit-")) onSession({ ...session, kind: id.slice(4) as FittingKind });
@@ -57,7 +55,7 @@ export function FittingsPage({ session, onSession, stateOf, properties, onProper
 
   return (
     <div className="import uf fit">
-      <ImportToolStrip active={`fit-${kind}`} onTool={onTool} blocked={blocked} openGroup="fitGroup" />
+      <ImportToolStrip active={`fit-${kind}`} onTool={onTool} blocked={blocked} openGroup="fitGroup" strip={["properties", "fitGroup", "process"]} />
       <section className="uf-pane fit-pane" aria-label="Canvas">
         <h3>{shown ? <>{shown.name} <em>{shown.label} ×{shown.qty * count} · {fmt(shown.w)} × {fmt(shown.h)} mm{stateOf(sigs[pi]) === "saved" ? " · processed ✓" : stateOf(sigs[pi]) === "listed" ? " · in the import list" : ""}</em></> : FITTING_NAMES[kind]}</h3>
         {drawing ? <div className="fit-canvas"><Preview drawing={drawing} /></div>

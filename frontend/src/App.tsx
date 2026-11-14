@@ -5,16 +5,17 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api, demoMode } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
-import { UnfoldPage } from "./pages/UnfoldPage";
+import { ExtractEmpty, UnfoldPage } from "./pages/UnfoldPage";
 import { FittingsPage, type FitPartState } from "./pages/FittingsPage";
-import { FITTING_KINDS, newFitSession, type FitSession, type FittingKind, type FittingPart } from "./import/fittings";
+import { newFitSession, type FitSession, type FittingPart } from "./import/fittings";
 import { readExtract, type X3Part } from "./import/step/extract";
 import { flatDrawing, isStepName, unfoldPart } from "./import/step/stepPart";
 import { sampleDrawings } from "./import/sampleDrawing";
-import { isDrawingFile, itemProps, loadProperties, mirrorBlocked, mirrorFor, newItem, ownOf, readItem, saveProperties, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
-import { draggingFiles, droppedFiles, droppedFolder } from "./import/dropped";
+import { itemProps, loadProperties, mirrorBlocked, mirrorFor, newItem, ownOf, readItem, saveProperties, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
+import { draggingFiles } from "./import/dropped";
 import { ProcessDialog, type ProcessValues } from "./import/ProcessDialog";
 import { CloseUnsavedDialog } from "./import/CloseUnsavedDialog";
+import { SketchNameDialog } from "./import/SketchNameDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { partGeometry } from "./import/toPart";
@@ -32,7 +33,7 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { RemnantsPage } from "./pages/RemnantsPage";
 import type { RemnantFilter } from "./shell/RemnantsPanel";
 import type { SavedRemnant } from "./api/api";
-import { Drawer, type DrawerMode } from "./shell/Drawer";
+import { Drawer, type DrawerMode, type RailSection } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
 import { JobToolbar } from "./shell/JobToolbar";
@@ -56,8 +57,9 @@ import { ApiKeysDialog, PasswordDialog, UsersDialog } from "./components/UsersDi
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
 import type { Drawing } from "./import/geometry";
-import { FITTINGS_ID, VIEW_TITLE, drawingTab, fittingsTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
+import { VIEW_TITLE, drawingTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
 
+const NEW_PART = "New part";   // the tab of the empty canvas (Import 2D)
 const USER_NAME = "Fab"; // where there is no sign-in (the demo; the desktop build)
 
 /** What saving a job keeps, as text: the same text means nothing to save. */
@@ -220,7 +222,6 @@ export function App() {
     dispatch({ type: "open", tab: jobTab(id, name) });
   };
 
-  const openImport = () => setDrawer("import");
 
   // EDIT on a saved part (Part properties, right click in the part list): the part opens on the
   // importer canvas with its own properties; Process saves it back (replacing it, the old version kept).
@@ -256,15 +257,39 @@ export function App() {
     open(drawingTab(item.id, item.name));
   };
 
-  // A DXF / DWG (or a folder) dropped anywhere outside a drop area goes to the importer, as if dropped
-  // on its list. Without this the browser opens the file itself: the page turns into the DXF's text
-  // or, on a job, asks to leave the page and closes the job tab.
-  const addFilesRef = useRef<(files: File[], openFirst: boolean) => void>(() => {});
-  const addStepsRef = useRef<(files: File[]) => void>(() => {});
+  // NEW PART: one empty canvas to draw a part on (one at a time): saved (PROCESS) it leaves, named
+  // (Save to list) it waits in the import list; until then the Import 2D button comes back to it
+  const newPart = () => {
+    const ex = imports.find((i) => i.sketch);
+    setDrawer("import");
+    if (ex) { open(drawingTab(ex.id, NEW_PART)); return; }
+    const id = `imp-new-${Date.now().toString(36)}`;
+    const item: ImportItem = {
+      id, fileName: `${NEW_PART}.dxf`, name: "", qty: null, state: "ready",
+      drawing: { id, fileName: NEW_PART, entities: [] }, checked: true, processed: false, sketch: true,
+    };
+    setImports((l) => [...l, item]);
+    open(drawingTab(id, NEW_PART));
+    diag("import", "New part: an empty canvas");
+  };
+  /** Save to list: the New part, named, goes into the import list (its tab takes the name). */
+  const [naming, setNaming] = useState<{ id: string; close?: boolean } | null>(null);   // the sketch's item
+  const nameSketch = (id: string, name: string, close = false) => {
+    const n = name.trim();
+    patchItem(id, { sketch: false, name: n, fileName: `${n}.dxf`, qty: quantityFromName(n), drawing: { ...imports.find((i) => i.id === id)!.drawing!, fileName: n } });
+    dispatch({ type: "rename", id: `drawing:${id}`, title: n });
+    setNaming(null);
+    if (close) { history.forget(id); dispatch({ type: "close", id: `drawing:${id}` }); }
+    setToast(`${n} is in the import list, waiting to be processed`);
+  };
+
+  // Files go in only where they are dropped on a list (Import 2D, 3D Extractor) or another drop area. Dropped
+  // anywhere else they are caught (else the browser opens the file itself: the page turns into the DXF's
+  // text or, on a job, leaves the page) and the list they belong on opens, with a note.
   useEffect(() => {
     const over = (e: DragEvent) => {
       if (!draggingFiles(e.dataTransfer)) return;
-      if (!e.defaultPrevented) e.dataTransfer!.dropEffect = "copy";   // (a drop area sets its own)
+      if (!e.defaultPrevented) e.dataTransfer!.dropEffect = "none";   // (a drop area sets its own)
       e.preventDefault();   // the browser does not open it
     };
     const drop = (e: DragEvent) => {
@@ -272,18 +297,11 @@ export function App() {
       const handled = e.defaultPrevented;   // a drop area (the import list, the stock's DXF) took it
       e.preventDefault();
       if (handled) return;
-      const dt = e.dataTransfer!;
-      const folder = droppedFolder(dt);
-      void droppedFiles(dt).then((all) => {
-        // STEP parts and assemblies go to the 3D Extractor
-        const steps = all.filter((f) => isStepName(f.name));
-        if (steps.length) addStepsRef.current(steps);
-        const files = all.filter(isDrawingFile);
-        if (!files.length) { if (!steps.length) setToast("Only DXF, DWG, SVG and STEP files can be dropped into GNEZDO"); return; }
-        setDrawer("import");
-        addFilesRef.current(files, !folder && files.length === 1);
-        diag("import", `${files.length} ${files.length === 1 ? "file" : "files"} dropped outside the import list: sent to the importer`);
-      });
+      const names = [...(e.dataTransfer?.files ?? [])].map((f) => f.name);
+      const step = names.length > 0 && names.every((n) => isStepName(n));
+      setDrawer(step ? "extract" : "import");
+      setToast(step ? "Drop STEP files on the 3D Extractor list" : "Drop DXF, DWG or SVG files (or a folder) on the Import 2D list; STEP files on the 3D Extractor list");
+      diag("import", `${names.length} ${names.length === 1 ? "file" : "files"} dropped outside a list: not taken`);
     };
     window.addEventListener("dragover", over);
     window.addEventListener("drop", drop);
@@ -299,7 +317,6 @@ export function App() {
     const failed = read.filter((r) => r.state === "failed").length;
     if (failed) setToast(`${failed} ${failed === 1 ? "file" : "files"} could not be read`);
   };
-  addFilesRef.current = (f, o) => { void addFiles(f, o); };
 
   // 3D EXTRACTOR: parts read from STEP files; their flat patterns are sent to Import 2D (nothing saved here)
   const [extracts, setExtracts] = useState<X3Part[]>([]);
@@ -326,7 +343,6 @@ export function App() {
     if (files.length === 1 && added.length === 1) open(drawingTab(added[0].id, added[0].name));
     diag("extract", `${files.length} STEP ${files.length === 1 ? "file" : "files"}: ${added.length} parts`);
   };
-  addStepsRef.current = (f) => { void addSteps(f); };
   const patchPart = (id: string, patch: Partial<X3Part>) => setExtracts((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   /** Flat patterns into Import 2D, with their quantities; sent again: the item there is replaced. */
   const sendToImport = (ids: string[]) => {
@@ -380,11 +396,6 @@ export function App() {
   // Import 2D -> FITTINGS: fittings made from their values; their parts go into the import list
   const [fit, setFit] = useState<FitSession>(() => newFitSession());
   const [fitSaved, setFitSaved] = useState<Set<string>>(() => new Set());   // parts (sigs) saved to the database
-  const openFittings = (kind?: string) => {
-    if (kind && (FITTING_KINDS as string[]).includes(kind)) setFit((f) => ({ ...f, kind: kind as FittingKind }));
-    setDrawer("import");
-    open(fittingsTab());
-  };
   const fitState = (sig: string): FitPartState => (imports.some((i) => i.fitting === sig) ? "listed" : fitSaved.has(sig) ? "saved" : "new");
   /** Fitting parts into the import list (`count` fittings); one waiting there already is replaced. Their item ids. */
   const addFittings = (list: { part: FittingPart; sig: string }[], count: number, quiet = false): string[] => {
@@ -431,12 +442,13 @@ export function App() {
   });
 
   const importPanel = {
-    items: imports,
+    // the New part (a sketch) is not in the list until it is named
+    items: imports.filter((i) => !i.sketch),
     properties: importProps,
     rules,
     onProperties: setImportProps,
     onFiles: addFiles,
-    onFittings: () => openFittings(),
+    onNewPart: () => newPart(),
     onCheckLines: () => {
       setImports((list) => list.map((i) => (i.state === "ready" ? { ...i, checked: true } : i)));
       const next = imports.map((i) => statusOf({ ...i, checked: i.state === "ready" }));
@@ -447,7 +459,7 @@ export function App() {
     // Saves the green parts with the Properties; parts already in the database are not
     // replaced but marked, to be processed one by one.
     onProcessAll: async (project?: string) => {
-      const green = imports.filter((i) => statusOf(i).verdict === "ok" && i.drawing);
+      const green = imports.filter((i) => !i.sketch && statusOf(i).verdict === "ok" && i.drawing);
       if (!green.length) return;
       // every part is in a project: an empty project box offers the default project (Settings -> Projects and parts)
       const props = project ? { ...importProps, project } : importProps;
@@ -483,7 +495,7 @@ export function App() {
     onOpen: (id: string) => { const it = imports.find((i) => i.id === id); if (it) openItem(it); },
     // removing parts with unsaved changes asks first
     onRemove: (id: string) => askRemove([id]),
-    onClear: () => askRemove(imports.map((i) => i.id)),
+    onClear: () => askRemove(imports.filter((i) => !i.sketch).map((i) => i.id)),
     onSamples: () => setImports((list) => [...list, ...sampleDrawings
       .filter((d) => !list.some((i) => i.id === d.id))
       .map((d): ImportItem => ({
@@ -548,6 +560,8 @@ export function App() {
       return;
     }
     if (itemId) history.forget(itemId);
+    // an empty New part just goes
+    if (itemId && imports.some((i) => i.id === itemId && i.sketch)) setImports((l) => l.filter((i) => i.id !== itemId));
     const jid = t?.kind === "job" ? t.jobId : undefined;
     if (jid && !force && jobDirty(jid)) {
       dispatch({ type: "activate", id: tabId });
@@ -565,6 +579,15 @@ export function App() {
     dispatch({ type: "close", id: tabId });
   };
   const closeWithoutSaving = (itemId: string) => {
+    // the New part, thrown away
+    if (imports.some((i) => i.id === itemId && i.sketch)) {
+      history.forget(itemId);
+      setHistoryTick((n) => n + 1);
+      setClosing(null);
+      dispatch({ type: "close", id: `drawing:${itemId}` });
+      setImports((l) => l.filter((i) => i.id !== itemId));
+      return;
+    }
     const original = history.original(itemId);
     if (original) patchItem(itemId, { drawing: original, processed: false, applied: undefined });
     history.forget(itemId);
@@ -620,19 +643,43 @@ export function App() {
     );
   };
 
+  // The side rail's sections (all but Parts) open their own screen with their list; on their screen
+  // already, the button closes the list (the screen stays)
+  const sectionOf = (): RailSection | null => {
+    if (active.kind === "jobSearch") return "jobs";
+    if (active.kind === "remnants") return "remnants";
+    if (active.kind === "special") return "special";
+    if (active.kind === "extract") return "extract";
+    if (active.kind === "drawing") return active.drawingId?.startsWith("x3-") ? "extract" : "import";
+    return null;
+  };
+  const PANEL: Record<RailSection, DrawerMode> = { import: "import", extract: "extract", special: "import", jobs: "jobs", remnants: "remnants" };
+  const onRail = (m: RailSection) => {
+    const here = sectionOf() === m;
+    if (here && drawer === PANEL[m]) { setDrawer(null); return; }
+    setDrawer(PANEL[m]);
+    if (here) return;
+    if (m === "import") newPart();
+    else if (m === "extract") {
+      // the part open last, else the empty screen
+      const t = [...state.tabs].reverse().find((x) => x.kind === "drawing" && x.drawingId?.startsWith("x3-"));
+      if (t) dispatch({ type: "activate", id: t.id }); else showView("extract");
+    } else showView(m === "jobs" ? "jobSearch" : m);
+  };
+
   const onHome = (a: HomeAction) => {
     switch (a.kind) {
-      case "import": return openImport();
+      case "import": return onRail("import");
       case "newJob": return newJob();
       case "jobSearch": setDrawer("jobs"); return runJobSearch({}); // "All jobs"
       case "openJob": return openJob(a.job);
-      case "openImport": return showView("import");
+      case "openImport": return onRail("import");
     }
   };
 
   const onTool = (toolId: string) => {
     switch (toolId) {
-      case "import": return openImport();
+      case "import": return onRail("import");
       case "newJob": return newJob();
       case "jobSearch": setDrawer("jobs"); return showView("jobSearch");
       case "parts": case "addParts": return setDrawer("parts");
@@ -1251,6 +1298,8 @@ export function App() {
           remnant={{ selected: remnantSel, onChanged: (name) => { setRemnantPick(name); setRemnantSearch((s) => ({ ...s, run: s.run + 1 })); showView("remnants"); } }}
           machines={machines}
           homeActive={!activeTab && state.view === "home"}
+          onRail={onRail}
+          screen={sectionOf()}
           onHome={() => showView("home")}
           onNewJob={newJob}
           importPanel={importPanel}
@@ -1267,7 +1316,7 @@ export function App() {
             }} />
             : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && toolsFor(active.kind).length > 0 &&
               <ToolStrip tools={toolsFor(active.kind).map((t) => (t.id === "import" ? { ...t, count: importPanel.items.length } : t))} onTool={onTool} />}
-          <main className={`page${active.kind === "jobSearch" || active.kind === "remnants" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" ? " page-flush" : ""}`} aria-label={active.title}>
+          <main className={`page${active.kind === "jobSearch" || active.kind === "remnants" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" || active.kind === "extract" || active.kind === "special" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && jobScreen[job.id] === "nest" && (
               <NestPage
@@ -1431,7 +1480,7 @@ export function App() {
             {shownPart && (
               <ErrorBoundary key={shownPart.id} what={shownPart.name}>
               <UnfoldPage key={shownPart.id} name={shownPart.name} kind={shownPart.kind} qty={shownPart.qty} sent={!!shownPart.sentTo}
-                step={shownPart.step} material={shownPart.material || importProps.material} partMaterial={shownPart.material ?? ""}
+                step={shownPart.step} material={shownPart.material || importProps.material} partMaterial={shownPart.material ?? ""} fileMaterial={shownPart.fileMaterial}
                 onChange={(step) => patchPart(shownPart.id, { step })}
                 onSend={() => sendToImport([shownPart.id])}
                 onName={(name, qty, material) => renamePart(shownPart.id, name, qty, material)} />
@@ -1459,11 +1508,11 @@ export function App() {
                 fromDatabase={!!shownItem.source}
                 onEdit={(drawing, label) => editDrawing(shownItem.id, shownItem.drawing!, drawing, label)}
                 undone={undone}
-                onFitting={openFittings} />
+                onSaveToList={shownItem.sketch ? () => setNaming({ id: shownItem.id }) : undefined} />
               </ErrorBoundary>
             )}
-            {active.kind === "drawing" && active.drawingId === FITTINGS_ID && (
-              <ErrorBoundary key={FITTINGS_ID} what="Fittings">
+            {active.kind === "special" && (
+              <ErrorBoundary key="special" what="Special tools">
               <FittingsPage session={fit} onSession={setFit} stateOf={fitState}
                 properties={`${importProps.material || "no material"} · ${importProps.thicknessMm ? `${importProps.thicknessMm} mm` : "no thickness"} · ${importProps.project ? `project ${importProps.project}` : "no project"} (Properties)`}
                 onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
@@ -1477,7 +1526,8 @@ export function App() {
                 // a list that has not been touched yet follows the new defaults
                 if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller, commonCut: r.commonOnOutline }));
               }} onOpenJob={(id, name) => open(jobTab(id, name))} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
-            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "remnants" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && <PlaceholderPage tab={active} />}
+            {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "remnants" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && active.kind !== "extract" && active.kind !== "special" && <PlaceholderPage tab={active} />}
+            {active.kind === "extract" && <ExtractEmpty onPick={() => setDrawer("extract")} />}
           </main>
         </div>
       </div>
@@ -1502,8 +1552,13 @@ export function App() {
           }}
         />
       )}
+      {naming && (
+        <SketchNameDialog taken={new Set(imports.filter((i) => !i.sketch).map((i) => i.name.toLowerCase()))}
+          onCancel={() => setNaming(null)} onSave={(n) => nameSketch(naming.id, n, naming.close)} />
+      )}
       {closingItem && (
-        <CloseUnsavedDialog name={closingItem.name} canProcess={statusOf(closingItem).openContours === 0}
+        <CloseUnsavedDialog name={closingItem.sketch ? NEW_PART : closingItem.name} canProcess={statusOf(closingItem).openContours === 0}
+          onToList={closingItem.sketch ? () => { setClosing(null); setNaming({ id: closingItem.id, close: true }); } : undefined}
           onCancel={() => setClosing(null)}
           onDiscard={() => closeWithoutSaving(closingItem.id)}
           onProcess={() => { setClosing(null); setProcessing(closingItem.id); }} />

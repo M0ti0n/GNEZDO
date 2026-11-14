@@ -2,9 +2,11 @@
 // sorted by kind. Nothing here goes to the database: a part's flat pattern is sent to IMPORT 2D, where it
 // is processed like any drawing.
 
-import { cross3, dot3, len3, lowHigh, sub3, unit3, type Solid, type V3 } from "./step";
+import { cross3, dot3, len3, lowHigh, sub3, unit3, type RGB, type Solid, type V3 } from "./step";
 import { currentProfile, modelOf, newStepPart, profileOf, settingsFrom, type StepPart } from "./stepPart";
 import type { Unfolded } from "./unfold";
+import { loadLocalMachines } from "../../job/machine";
+import { techMaterials } from "../../job/technology";
 
 export type BodyKind = "sheet" | "surface" | "tube" | "profile" | "other" | "hardware";
 
@@ -24,8 +26,19 @@ export interface X3Part {
   step: StepPart;
   /** its flat pattern is in IMPORT 2D (that item's id) */
   sentTo?: string;
-  /** its own material (else the Import 2D properties' one) */
+  /** its own material (from the STEP file, or set here; else the Import 2D properties' one) */
   material?: string;
+  /** its color in the STEP file */
+  color?: RGB;
+  /** the material the STEP file names (used as its material when the Technology tables know it, or have none) */
+  fileMaterial?: string;
+}
+
+/** A material named in a STEP file, as the Technology tables spell it; with material tags there and no match: none. */
+function knownMaterial(m: string): string | undefined {
+  const mats = techMaterials(loadLocalMachines().list.map((x) => x.technologies));
+  if (!mats.length) return m.trim();
+  return mats.find((x) => x.toLowerCase() === m.trim().toLowerCase());
 }
 
 /** Standard parts by their names (English, Slovene, standards, thread sizes). */
@@ -124,13 +137,18 @@ export async function readExtract(file: File, material = ""): Promise<{ parts: X
     if (i % 4 === 3) await new Promise((r) => setTimeout(r, 0));
     let kind: BodyKind;
     let step: StepPart;
+    // the part's material from the file (its K-factor too), else the Import 2D one
+    const own = b.material ? knownMaterial(b.material) : undefined;
+    const mat = own ?? material;
+    let color: RGB | undefined;
     try {
       const s = b.solid;
+      color = s.color;
       if (b.kind === "surface") {
-        step = newStepPart(text, i, profile, material, true).part;
+        step = newStepPart(text, i, profile, mat, true).part;
         kind = classify(b.name, s, true, null);
       } else {
-        const { part, u } = newStepPart(text, i, profile, material);
+        const { part, u } = newStepPart(text, i, profile, mat);
         step = part;
         kind = classify(b.name, s, false, u);
       }
@@ -139,7 +157,7 @@ export async function readExtract(file: File, material = ""): Promise<{ parts: X
       step = { text, body: i, settings: settingsFrom(profile), info: { thickness: null, bends: 0, w: 0, h: 0, ok: false, problems: [(e as Error).message] } };
       kind = "other";
     }
-    parts.push({ id: `x3-${Date.now().toString(36)}-${++seq}`, fileName: file.name, name: model.bodies.length === 1 ? base : b.name || `${base} ${i + 1}`, qty: b.qty, kind, step });
+    parts.push({ id: `x3-${Date.now().toString(36)}-${++seq}`, fileName: file.name, name: model.bodies.length === 1 ? base : b.name || `${base} ${i + 1}`, qty: b.qty, kind, step, ...(own ? { material: own } : {}), ...(b.material ? { fileMaterial: b.material } : {}), ...(color ? { color } : {}) });
   }
   if (!parts.length) return { parts, error: `${file.name}: no solid or surface in it` };
   // the same name twice (bodies named Body1 in different parts): numbered

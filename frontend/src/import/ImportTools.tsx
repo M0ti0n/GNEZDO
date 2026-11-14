@@ -388,13 +388,13 @@ export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim" | "f
 /** The strip's order: single tools and groups (a group stands where its first tool stood). */
 const STRIP: string[] = ["properties", "extend", "trim", "drawGroup", "alignH", "alignV", "erase", "dimGroup",
   ...IMPORT_TOOLS.map((t) => t.id).filter((id) => !["properties", "extend", "trim", "alignH", "alignV", "erase", "process"].includes(id) && !TOOL_GROUPS.some((g) => g.tools.includes(id))),
-  "fitGroup", "process"];
+  "process"];
 
 /** blocked: tools that cannot be used now, with the reason shown on hover (greyed out). */
 /** lit: switches that are on besides the active tool (Check lines while the Geometry check panel is open). */
-/** openGroup: the group shown open at first (the Fittings tab: its fittings). */
-export function ImportToolStrip({ active, onTool, blocked = {}, lit = {}, openGroup = null }: {
-  active: string | null; onTool: (id: string) => void; blocked?: Record<string, string>; lit?: Record<string, boolean>; openGroup?: string | null;
+/** openGroup: the group shown open at first; strip: other tools and groups than Import 2D's (Special tools). */
+export function ImportToolStrip({ active, onTool, blocked = {}, lit = {}, openGroup = null, strip = STRIP }: {
+  active: string | null; onTool: (id: string) => void; blocked?: Record<string, string>; lit?: Record<string, boolean>; openGroup?: string | null; strip?: string[];
 }) {
   const [open, setOpen] = useState<string | null>(openGroup);
   const tool = (t: (typeof IMPORT_TOOLS)[number], onPick?: () => void) => (
@@ -410,7 +410,7 @@ export function ImportToolStrip({ active, onTool, blocked = {}, lit = {}, openGr
   // when not all tools fit (smaller screens) the strip scrolls sideways: arrows, wheel, drag, swipe
   return (
     <SideScroll className="itools" wrapClassName="itools-wrap" role="toolbar" label="Import tools" more="tools">
-      {STRIP.map((id) => {
+      {strip.map((id) => {
         const g = TOOL_GROUPS.find((x) => x.id === id);
         if (!g) { const t = IMPORT_TOOLS.find((x) => x.id === id); return t ? tool(t) : null; }
         return <ToolGroup key={g.id} group={g} active={active} open={open === g.id}

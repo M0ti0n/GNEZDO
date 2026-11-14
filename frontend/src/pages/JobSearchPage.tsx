@@ -99,6 +99,9 @@ function loadCols(): ColId[] {
 /** A sheet's parts sent to a job: each part and how many pieces the sheet holds (times its cut number). */
 export interface SheetParts { from: string; items: { part: PartSummary; qty: number }[] }
 
+/** The last search's results while GNEZDO is open (the screen is left and opened again). */
+let kept: { filter: JobFilter; run: number; sortKey: string; jobs: JobSummary[]; selectedId: string | null; scroll: number } | null = null;
+
 export function JobSearchPage({ filter, run, onOpenJob, onShowFilters, openJobs = [], onSendSheet, machines }: {
   /** the machines (names for the Machine column) */
   machines: MachineList;
@@ -110,9 +113,11 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters, openJobs 
   openJobs?: { id: string; title: string }[];
   onSendSheet?: (jobId: string, title: string, sheet: SheetParts) => void;
 }) {
-  const [jobs, setJobs] = useState<JobSummary[] | null>(null);
+  // back on this screen: the same search shows its results, the selection and where the list was
+  const same = !!kept && kept.filter === filter && kept.run === run;
+  const [jobs, setJobs] = useState<JobSummary[] | null>(same ? kept!.jobs : null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(same ? kept!.selectedId : null);
   const [sort, setSort] = useState<SortOrder>(() => loadSort("jobs", DEFAULT_SORT));
   const [cols, setCols] = useState<ColId[]>(loadCols);
   const listRef = useRef<HTMLDivElement>(null);
@@ -132,7 +137,8 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters, openJobs 
   useEffect(() => {
     if (!filter) return;
     let alive = true;
-    setJobs(null);
+    // the same search again (back on the screen): the list stays while it is read again (statuses change)
+    if (!(kept && kept.filter === filter && kept.run === run && kept.sortKey === `${sort.key}:${sort.dir}`)) setJobs(null);
     setError(null);
     api.searchJobs(filter, sort).then(
       (j) => {
@@ -147,6 +153,15 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters, openJobs 
   }, [filter, run, sort]);
 
   const selected = useMemo(() => jobs?.find((j) => j.id === selectedId) ?? null, [jobs, selectedId]);
+  useEffect(() => {
+    if (filter && jobs) kept = { filter, run, sortKey: `${sort.key}:${sort.dir}`, jobs, selectedId, scroll: kept?.filter === filter && kept.run === run ? kept.scroll : 0 };
+  }, [filter, run, sort, jobs, selectedId]);
+  // the list's scroll: kept when leaving, put back when coming back
+  useEffect(() => {
+    const el = listRef.current;
+    if (el && kept && kept.filter === filter && kept.run === run && kept.scroll) el.scrollTop = kept.scroll;
+    return () => { if (kept && el) kept.scroll = el.scrollTop; };
+  }, [jobs !== null]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // keep the selected row visible when moving with the keyboard
   useEffect(() => {
