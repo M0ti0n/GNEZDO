@@ -5,10 +5,11 @@ import { usePickLists } from "../components/pickLists";
 import { add3, len3, lowHigh, mul3, normalAt, sub3, type Solid, type V3 } from "../import/step/step";
 import { describe, edgePick, facePick, refPoint, relate, type MPick } from "../import/step/measure3d";
 import {
-  applyThreads, bendTexts, holeGroups, TAP_DRILLS, infoOf, kFor, loadProfiles, marksOf, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
+  applyThreads, bendTexts, holeGroups, TAP_DRILLS, infoOf, kFor, loadProfiles, marksOf, partSolid, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
   DEFAULT_PROFILE, type Grain, type MarkAs, type StepPart, type StepSettings, type UnfoldProfile,
 } from "../import/step/stepPart";
 import { KIND_LABEL, type BodyKind } from "../import/step/extract";
+import { cutProblem, keepPicks, type FaceCut } from "../import/step/split";
 import { flatDxf, type Unfolded, type V2 } from "../import/step/unfold";
 
 // 3D EXTRACTOR -> a part: the part and its flat pattern side by side, the Unfold panel on the right.
@@ -17,7 +18,7 @@ import { flatDxf, type Unfolded, type V2 } from "../import/step/unfold";
 // on the machine): foil / finish on it when marked; bend marks are traced on the bends coming up from it.
 // SEND TO IMPORT 2D puts the flat pattern into the import list (sent again: replaced there).
 
-type Pick = "base" | "top" | "stitch" | "one" | "measure3d" | "measure" | null;
+type Pick = "base" | "top" | "stitch" | "edge" | "one" | "measure3d" | "measure" | null;
 
 const K = "#1b1b1b", G = "#1d9641", R = "#e3262b", B = "#1d7fd0";
 const Ico = ({ children }: { children: ReactNode }) => (
@@ -27,6 +28,7 @@ const ICONS: Record<string, ReactNode> = {
   base: <Ico><path d="M6 32l16-8 20 8-16 8z" fill="#cfe3d4" stroke={K} strokeWidth="2.2" /><path d="M24 6v20" stroke={R} strokeWidth="2.6" /><circle cx="24" cy="7" r="3.5" fill={R} /></Ico>,
   top: <Ico><path d="M6 30l16-8 20 8-16 8z" fill="#fff" stroke={K} strokeWidth="2.2" /><path d="M6 24l16-8 20 8-16 8z" fill="#bfe3c8" stroke={G} strokeWidth="2.2" /><path d="M24 4v10M19 9l5-5 5 5" stroke={G} strokeWidth="2.4" /></Ico>,
   stitch: <Ico><path d="M4 30l12-6v-16l-12 6z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><path d="M16 24l14 6 14-6-14-6z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><path d="M16 8v16" stroke={B} strokeWidth="3" /><path d="M9 14l3 2M9 20l3 2" stroke={B} strokeWidth="2.2" /></Ico>,
+  edge: <Ico><path d="M3 26l21-13 21 13-21 13z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><path d="M14 26l10-6 10 6-10 6z" fill="#fff" stroke={K} strokeWidth="1.8" /><path d="M5 26h9M34 26h9" stroke="#22b14c" strokeWidth="3.2" /><circle cx="5" cy="26" r="3" fill={B} /><circle cx="14" cy="26" r="3" fill={B} /></Ico>,
   one: <Ico><path d="M4 34l20-10 20 10-20 10z" fill="#d6e8f8" stroke={B} strokeWidth="2.4" /><path d="M24 4v16M18 14l6 6 6-6" stroke={K} strokeWidth="2.4" /></Ico>,
   measure3d: <Ico><path d="M8 30l14-7 18 7-14 7z" fill="#eef3f4" stroke={K} strokeWidth="2" /><path d="M8 30v8l18 7v-8M26 37l14-7v8l-14 7" stroke={K} strokeWidth="2" fill="none" /><path d="M8 14l18 7M8 10v8M26 17v8" stroke={R} strokeWidth="2.2" /><circle cx="36" cy="12" r="5" stroke={R} strokeWidth="2.2" /></Ico>,
   measure: <Ico><path d="M6 26h36M6 18v16M42 18v16" stroke={K} strokeWidth="2.2" /><path d="M11 26l6-3.5v7zM37 26l-6-3.5v7z" fill={R} /></Ico>,
@@ -53,7 +55,25 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
 }) {
   const st = step.settings;
   const stitchMode = st.mode === "stitch";
-  const solid = useMemo(() => solidOf(step.text, step.body), [step.text, step.body]);
+  // with the edges added across its faces (stitch): what is seen, picked and stitched
+  const solid = useMemo(() => partSolid(step.text, step.body, st), [step.text, step.body, st.mode, st.cuts]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const cuts = useMemo(() => st.cuts ?? [], [st.cuts]);
+  const [edgeA, setEdgeA] = useState<V3 | null>(null);
+  /** the edges added change: faces split by the change (and their pieces) are picked again */
+  const setCuts = (next: FaceCut[], text: string) => {
+    const base = solidOf(step.text, step.body);
+    const picks = keepPicks(base, cuts, next, st.stitch);
+    set({ mode: "stitch", cuts: next, stitch: picks });
+    setMsg(picks.length < st.stitch.length ? `${text}: pick the faces of the split face again` : text);
+  };
+  const edgeCorner = (p: V3) => {
+    if (!edgeA) { setEdgeA(p); setMsg("Now click the second corner of the same flat face"); return; }
+    const c: FaceCut = [edgeA, p];
+    const why = cutProblem(solidOf(step.text, step.body), cuts, c);
+    if (why) { setMsg(why); if (len3(sub3(edgeA, p)) > 1e-3) setEdgeA(null); return; }
+    setEdgeA(null);
+    setCuts([...cuts, c], `Edge ${cuts.length + 1} added`);
+  };
   const u = useMemo(() => unfoldPart(step.text, st, step.body), [step.text, st, step.body]);
   const [pick, setPick] = useState<Pick>(stitchMode && !st.stitch.length ? "stitch" : null);
   const [profiles, setProfiles] = useState<UnfoldProfile[]>(loadProfiles);
@@ -83,7 +103,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
     set({ profile: p.name, kFactor: kFor(p, material, stitchMode ? (st.comp.t || null) : u.thickness), markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate, engraveText: !!p.engraveText, textMm: p.textMm ?? 6, foil: p.foil });
   };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPick(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setPick(null); setEdgeA(null); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -109,7 +129,8 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
     </button>
   );
   const hint = pick === "base" ? "click a flat face to unfold from" : pick === "top" ? "click a face on the top side"
-    : pick === "stitch" ? "click flat faces one next to the other (again: out)" : pick === "one" ? "click the flat face to send as it is"
+    : pick === "stitch" ? "click flat faces one next to the other (again: out)"
+    : pick === "edge" ? (edgeA ? "click the second corner of the same flat face" : "click a corner of a flat face, then another: the face is split along the line") : pick === "one" ? "click the flat face to send as it is"
     : pick === "measure3d" ? "click a face, an edge, a hole's edge or a corner; then a second one" : "drag: turn · wheel: zoom";
   const [meas, setMeas] = useState<MPick[]>([]);
   // the part and the flat pattern side by side, or one of them folded away to the side (kept for next time)
@@ -121,6 +142,8 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
     <div className="import uf">
       <div className="itools">
         {tool("stitch", "Stitch", stitchMode, toggleStitch, "Stitch faces (manual): click flat faces one next to the other; they are laid flat across the edges they share (a surface, or a part with sharp corners). Off: unfolded as sheet metal")}
+        {tool("edge", "Add edge", pick === "edge", () => { if (!stitchMode) set({ mode: "stitch" }); setEdgeA(null); setPick(pick === "edge" ? null : "edge"); },
+          "Stitch: add an edge across a flat face, between two of its corners (a flange running all round, cut at its corners: one piece per wall, each stitched to its own). The new edge is cut in the flat pattern")}
         {tool("base", "Fixed face", pick === "base", () => setPick(pick === "base" ? null : "base"), "Click a flat face of the part: the flat pattern is unfolded from it (else from the biggest)", stitchMode)}
         {tool("top", "Top side", stitchMode ? st.flip !== undefined : pick === "top", () => (stitchMode ? set({ flip: !(st.flip ?? isFlippedAuto(step)) }) : setPick(pick === "top" ? null : "top")),
           stitchMode ? "Turn the flat pattern over: the faces' other side up" : "Click a face on the side that lies up on the machine (the foil / finish side, or the inside of the bends to trace)")}
@@ -139,7 +162,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
             <PaneIcon dir="right" /><span>Part (3D)</span></button>
           <h3>Part <em>{hint}</em>
             <PaneButtons side="3d" panes={panes} onPanes={setPanes} /></h3>
-          <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick === "measure" ? null : pick}
+          <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick === "measure" ? null : pick} edgeA={edgeA} onCorner={edgeCorner}
             measure={pick === "measure3d" ? meas : []} onMeasure={(m) => setMeas((l) => (l.length >= 2 ? [m] : [...l, m]))}
             onPick={(f, k) => {
               if (pick === "one") {
@@ -221,6 +244,11 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
             <div className="uf-row"><span>Faces</span><span className="uf-val">{st.stitch.length}</span>
               <button type="button" className={`btn btn-plain uf-mini${pick === "stitch" ? " is-on" : ""}`} onClick={() => setPick(pick === "stitch" ? null : "stitch")}>{pick === "stitch" ? "Picking…" : "Pick"}</button>
               {st.stitch.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ stitch: [] })}>Clear</button>}</div>
+            <div className="uf-row"><span>Added edges</span><span className="uf-val">{cuts.length}</span>
+              <button type="button" className={`btn btn-plain uf-mini${pick === "edge" ? " is-on" : ""}`} title="Click two corners of a flat face: it is split along the line (a flange cut at its corners)"
+                onClick={() => { setEdgeA(null); setPick(pick === "edge" ? null : "edge"); }}>{pick === "edge" ? "Adding…" : "Add"}</button>
+              {cuts.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => setCuts(cuts.slice(0, -1), "Last edge taken away")}>Undo</button>}
+              {cuts.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => setCuts([], "Added edges cleared")}>Clear</button>}</div>
             <div className="uf-row"><span>Top side</span><span className="uf-val">{st.flip === undefined ? "inside of most bends" : "turned by hand"}</span>
               <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ flip: !(st.flip ?? isFlippedAuto(step)) })}>Turn over</button>
               {st.flip !== undefined && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ flip: undefined })}>Auto</button>}</div>
@@ -385,8 +413,11 @@ const fmt = (v: number, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleSt
 
 // ------------------------------------------------------------------ the part in 3D (shaded, faces picked)
 
-function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure }: {
-  solid: Solid; u: Unfolded; st: StepSettings; flip: boolean; pick: "base" | "top" | "stitch" | "one" | "measure3d" | null;
+function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, onCorner }: {
+  solid: Solid; u: Unfolded; st: StepSettings; flip: boolean; pick: "base" | "top" | "stitch" | "edge" | "one" | "measure3d" | null;
+  /** ADD EDGE: the first corner clicked; a corner clicked */
+  edgeA?: V3 | null;
+  onCorner?: (p: V3) => void;
   onPick: (face: number, kind: string) => void;
   /** MEASURE 3D: what is picked (up to two) */
   measure: MPick[];
@@ -462,6 +493,9 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure }: {
         g.beginPath();
         for (const l of it.f.loops) for (const e of l.edges) e.pts.forEach((p, j) => { const q = pr(p); if (j) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); });
         g.stroke();
+        // edges added across faces (ADD EDGE): green
+        g.strokeStyle = "#22b14c"; g.lineWidth = 2.6;
+        for (const l of it.f.loops) for (const e of l.edges) if (e.id <= -1_000_000) { const a = pr(e.pts[0]), b = pr(e.pts[e.pts.length - 1]); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
         out.push({ i: it.i, path });
       }
       shapes.current = out.reverse();   // nearest first, for picking
@@ -483,6 +517,16 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure }: {
         if (m.kind === "circle") { const q = pr(m.c); g.beginPath(); g.arc(q[0], q[1], 3, 0, 2 * Math.PI); g.fill(); }
       };
       if (hoverM && pick === "measure3d") mark(hoverM, "rgba(242,183,5,0.95)", 3.5);
+      // ADD EDGE: the corner under the pointer, the first corner and the line to come
+      if (pick === "edge") {
+        const hc = hoverM?.kind === "point" ? pr(hoverM.p) : null;
+        if (edgeA) {
+          const a = pr(edgeA);
+          if (hc) { g.strokeStyle = "#22b14c"; g.lineWidth = 2.2; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(hc[0], hc[1]); g.stroke(); g.setLineDash([]); }
+          g.fillStyle = "#1d7fd0"; g.beginPath(); g.arc(a[0], a[1], 5, 0, 2 * Math.PI); g.fill();
+        }
+        if (hc) { g.fillStyle = "rgba(242,183,5,0.95)"; g.beginPath(); g.arc(hc[0], hc[1], 5.5, 0, 2 * Math.PI); g.fill(); }
+      }
       for (const m of measure) mark(m, "#f07d1a", 3.5);
       if (measure.length === 2) {
         const a = pr(refPoint(measure[0])), b = pr(refPoint(measure[1]));
@@ -496,7 +540,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure }: {
     const ro = new ResizeObserver(draw);
     ro.observe(c);
     return () => ro.disconnect();
-  }, [solid, cam, skin, base, hover, pick, picked, stitchMode, measure, hoverM]);
+  }, [solid, cam, skin, base, hover, pick, picked, stitchMode, measure, hoverM, edgeA]);
 
   const faceAt = (x: number, y: number) => {
     const g = cv.current?.getContext("2d");
@@ -588,6 +632,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure }: {
             return;
           }
           if (pick === "measure3d") { const [x, y] = local(e); setHoverM(measureAt(x, y)); }
+          else if (pick === "edge") { const [x, y] = local(e); const m = measureAt(x, y); setHoverM(m?.kind === "point" ? m : null); }
           else if (pick) { const [x, y] = local(e); setHover(faceAt(x, y)); }
         }}
         onPointerUp={(e) => {
@@ -595,6 +640,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure }: {
           if (d?.moved || !pick) return;
           const [x, y] = local(e);
           if (pick === "measure3d") { const m = measureAt(x, y); if (m) onMeasure(m); return; }
+          if (pick === "edge") { const m = measureAt(x, y); if (m?.kind === "point") onCorner?.(m.p); return; }
           const f = faceAt(x, y);
           if (f !== null) onPick(f, solid.faces[f].surf.kind);
         }}
