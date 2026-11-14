@@ -265,7 +265,8 @@ export function blockPoses(l: CommonLayout, a: number, b = 1): Pose[] {
 
 /**
  * Blocks for k copies of a part that fit a w x h area (either way round): [a, b] per block, the
- * biggest blocks first; `share` of the biggest block that fits sets their size (1: as big as fits).
+ * biggest blocks first; `share` of the biggest block that fits sets their size (1: as big as fits;
+ * 0: the copies split evenly into as few blocks as fit: 8 copies when 5 fit make 4 + 4, not 5 + 3).
  */
 export function blockSizes(path: string, l: CommonLayout, k: number, w: number, h: number, share: number): [number, number][] {
   const loops = partLoops(path);
@@ -292,7 +293,7 @@ export function blockSizes(path: string, l: CommonLayout, k: number, w: number, 
     const sq = ([a, b]: [number, number]) => { const [bw, bh] = size(a, b); return Math.max(bw, bh) / Math.max(1e-9, Math.min(bw, bh)); };
     return c.reduce((p, q) => (q[0] * q[1] > p[0] * p[1] || (q[0] * q[1] === p[0] * p[1] && sq(q) < sq(p)) ? q : p));
   };
-  const first = best(Math.max(2, Math.ceil(kmax * share)));
+  const first = best(Math.max(2, share > 0 ? Math.ceil(kmax * share) : Math.ceil(k / Math.ceil(k / kmax))));
   if (!first) return [];
   const out: [number, number][] = [];
   let left = k;
