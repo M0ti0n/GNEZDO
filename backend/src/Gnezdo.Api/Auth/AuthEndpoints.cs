@@ -65,7 +65,7 @@ public static class AuthEndpoints
         builder.Services.AddAuthorization();
     }
 
-    /// <summary>Every /api call needs a signed-in user, but sign-in itself and the health check
+    /// <summary>Every /api call needs a signed-in user, but sign-in itself, the health check and the status API (its own keys)
     /// (after UseAuthentication and the diagnostic log, so a refused call is logged too).</summary>
     public static void UseGnezdoAuth(this WebApplication app)
     {
@@ -76,6 +76,7 @@ public static class AuthEndpoints
             var path = ctx.Request.Path;
             if (path.StartsWithSegments("/api") && ctx.User.Identity?.IsAuthenticated != true
                 && !path.StartsWithSegments("/api/auth") && !path.StartsWithSegments("/api/health")
+                && !path.StartsWithSegments("/api/v1")   // the status API: an API key instead (StatusApi)
                 && !(setup?.Pending == true && path.StartsWithSegments("/api/setup")))   // no users before there is a database
             {
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;

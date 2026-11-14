@@ -419,6 +419,9 @@ export const api = {
   checkFolder: (path: string): Promise<{ ok: boolean; message: string }> =>
     useApi ? post("/api/folders/check", { path }) : delay({ ok: false, message: "The demo has no server to write files." }),
   /** An NC program into the machine's NC folder; the full path written. */
+  /** POST PROCESS: the sheets whose NC programs were written, recorded with the saved job (the status API reads them). */
+  recordSent: (jobId: string, r: { machine: string; all: boolean; sheets: { sheet: number; file: string; parts: Record<string, number> }[] }): Promise<unknown> =>
+    useApi ? post(`/api/jobs/${encodeURIComponent(jobId)}/sent`, r) : Promise.resolve(null),
   writeNc: (machineId: string, name: string, content: string): Promise<{ path: string }> =>
     useApi ? post(`/api/machines/${encodeURIComponent(machineId)}/nc`, { name, content }) : Promise.reject(new Error("The demo has no server to write files.")),
   /** Is an NC program of this name in the machine's NC folder already? (false without a folder) */

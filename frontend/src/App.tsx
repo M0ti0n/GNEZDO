@@ -50,7 +50,7 @@ import { diag, flush, startDiag } from "./job/diag";
 import { auth, SIGN_IN_NEEDED, type AuthState, type Me } from "./api/auth";
 import { SignInPage } from "./components/SignInPage";
 import { DatabaseSetupPage } from "./components/DatabaseSetup";
-import { PasswordDialog, UsersDialog } from "./components/UsersDialog";
+import { ApiKeysDialog, PasswordDialog, UsersDialog } from "./components/UsersDialog";
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
 import type { Drawing } from "./import/geometry";
@@ -124,7 +124,7 @@ export function App() {
   // -- sign-in (server build) ------------------------------------------------------------------
   const [authState, setAuthState] = useState<AuthState | null>(demoMode ? { required: false, setupNeeded: false, user: null } : null);
   const [me, setMe] = useState<Me | null>(null);
-  const [accountDlg, setAccountDlg] = useState<"password" | "users" | null>(null);
+  const [accountDlg, setAccountDlg] = useState<"password" | "users" | "apikeys" | null>(null);
   useEffect(() => { void auth.state().then((s) => { setAuthState(s); setMe(s.user); }); }, []);
   // desktop build: the PC's user is the name on saves and in the log
   const [deskUser, setDeskUser] = useState<string | null>(null);
@@ -732,6 +732,8 @@ export function App() {
   // Saving a job (Work parts SAVE / SAVE AS; until those buttons exist, Ctrl+S): parts with their
   // quantities, the stock sheets and every finished solution. A new job gets its database id on the first save.
   const [jobServerId, setJobServerId] = useState<Record<string, string>>({});
+  // the same, at once (POST PROCESS saves the job and records what it sent in one go)
+  const serverIds = useRef<Record<string, string>>({});
   const [closingJob, setClosingJob] = useState<{ jobId: string; title: string } | null>(null);
   const [removingSol, setRemovingSol] = useState<{ jobId: string; id: string } | null>(null);
   // Work parts -> remove a part that is on nested sheets: asked first (not nested: removed at once)
@@ -755,6 +757,7 @@ export function App() {
     try {
       const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: userName, machine: machineFor(jobId).id });
       if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
+      serverIds.current[jobId] = r.id;
       setJobEdited((m) => ({ ...m, [jobId]: { by: userName, at: new Date().toISOString() } }));
       if (asNew) dispatch({ type: "rename", id: `job:${jobId}`, title });
       setSavedSnap((m) => ({ ...m, [jobId]: snapOf(parts, jobStock[jobId] ?? [], st.list, machineFor(jobId).id) }));
@@ -1184,6 +1187,7 @@ export function App() {
       {authState.required && !me && <div className="signin-over"><SignInPage setupNeeded={false} onSignedIn={signedIn} /></div>}
       {restoreRows && <RestoreDialog rows={restoreRows} onRestore={(ids) => void restoreDrafts(ids)} onDiscard={discardDrafts} onLater={() => setRestoreRows(null)} />}
       {accountDlg === "users" && me && <UsersDialog me={me} onMe={setMe} onClose={() => setAccountDlg(null)} />}
+      {accountDlg === "apikeys" && me && <ApiKeysDialog onClose={() => setAccountDlg(null)} />}
       {accountDlg === "password" && me && <PasswordDialog me={me} onMe={setMe} onClose={() => setAccountDlg(null)} />}
       <TabBar
         tabs={state.tabs}
@@ -1262,6 +1266,10 @@ export function App() {
                 needsSave={!(jobServerId[job.id] ?? (job.id.startsWith("new-") ? null : job.id))}
                 jobDirty={jobDirty(job.id)}
                 onSaveJob={() => saveJob(job.id, job.title)}
+                onSent={(r) => {
+                  const sid = serverIds.current[job.id] ?? jobServerId[job.id] ?? (job.id.startsWith("new-") ? null : job.id);
+                  if (sid) void api.recordSent(sid, r).catch((e) => diag("error", `Sent to the machine not recorded: ${(e as Error).message}`, { job: job.id }));
+                }}
               />
             )}
             {active.kind === "job" && job && (jobScreen[job.id] === "nestReport" || jobScreen[job.id] === "costReport") && (() => {

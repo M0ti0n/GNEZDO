@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { api } from "../api/api";
 import { diag } from "../job/diag";
 import { foldersOf, type Machine, type Origin } from "../job/machine";
-import type { NestedSheet } from "../job/nest";
+import { countsOf, type NestedSheet } from "../job/nest";
 import { liveContours, type CutContour } from "../job/cutPath";
 import { contourKind, pickContour } from "../job/manualCut";
 import { sheetProgram } from "../job/ncProgram";
@@ -107,10 +107,14 @@ export function useProcessDel({ index, single, sheets, partName, onClear }: {
 }
 
 interface Done { sheet: number; file?: string; error?: string }
+/** What POST PROCESS sent to the machine: the sheets written, pieces per part id on each (times its cut number). */
+export interface SentReport { machine: string; all: boolean; sheets: { sheet: number; file: string; parts: Record<string, number> }[] }
 
 /** POST PROCESS: the NC program of one sheet, or of every sheet (one file each: JOBNAME_#). */
-export function usePostProcess({ index, single = false, sheets, machine, origin, jobName, needsSave, dirty = false, onSave, onSheet, partName }: {
+export function usePostProcess({ index, single = false, sheets, machine, origin, jobName, needsSave, dirty = false, onSave, onSheet, partName, onSent }: {
   index: number; sheets: NestedSheet[]; machine: Machine; origin: Origin; jobName: string;
+  /** the NC programs written (or downloaded): recorded with the saved job as sent to the machine (status API) */
+  onSent?: (r: SentReport) => void;
   /** one sheet open (RESTART HELP: its contours are clicked) */
   single?: boolean;
   /** never saved: asked first (the files are named after the job) */
@@ -209,6 +213,10 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
     }
     setBusy(null);
     const good = out.filter((d) => d.file).length;
+    if (onSent && good) onSent({
+      machine: machine.id, all,
+      sheets: out.filter((d) => d.file).map((d) => ({ sheet: d.sheet, file: fileOf(d.sheet - 1), parts: countsOf([sheets[d.sheet - 1]]) })),
+    });
     diag("process", `Post process: ${good} of ${out.length}`, { job: jobName, errors: out.filter((d) => d.error).map((d) => `${d.sheet}: ${d.error}`) });
     setDone({ ok: good === out.length, text: good === out.length ? `POST PROCESS successful: ${good} NC ${good === 1 ? "file" : "files"}` : `${good} of ${out.length} written`, list: out });
   };

@@ -28,7 +28,7 @@ interface Props {
   /** SAVE / SAVE AS of the open job tab (missing: nothing to save). */
   save?: { onSave: () => void; onSaveAs: () => void } | null;
   /** Signed in (server build): the menu under the name; missing: just the name. */
-  account?: { isAdmin: boolean; hasPassword: boolean; onPick: (id: "password" | "users" | "signout") => void };
+  account?: { isAdmin: boolean; hasPassword: boolean; onPick: (id: "password" | "users" | "apikeys" | "signout") => void };
 }
 
 export function TabBar({ tabs, activeId, userName, onActivate, onClose, onSettings, undo, save, account }: Props) {
@@ -109,7 +109,7 @@ function UserMenu({ name, account }: { name: string; account: NonNullable<Props[
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
   }, [open]);
-  const pick = (id: "password" | "users" | "signout") => { setOpen(false); account.onPick(id); };
+  const pick = (id: "password" | "users" | "apikeys" | "signout") => { setOpen(false); account.onPick(id); };
   return (
     <div className="user-wrap" ref={ref}>
       <button type="button" className="user user-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}
@@ -118,6 +118,7 @@ function UserMenu({ name, account }: { name: string; account: NonNullable<Props[
         <div className="menu user-menu" role="menu">
           <button type="button" role="menuitem" className="menu-item" onClick={() => pick("password")}>{account.hasPassword ? "Change password" : "Set a password"}</button>
           {account.isAdmin && <button type="button" role="menuitem" className="menu-item" onClick={() => pick("users")}>Users</button>}
+          {account.isAdmin && <button type="button" role="menuitem" className="menu-item" onClick={() => pick("apikeys")}>Status API keys</button>}
           <button type="button" role="menuitem" className="menu-item" onClick={() => pick("signout")}>Sign out</button>
         </div>
       )}
