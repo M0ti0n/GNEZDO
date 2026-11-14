@@ -255,10 +255,10 @@ export function nestProblem(parts: JobPart[] | undefined, stock: StockSheet[]): 
 }
 
 /** The request for a job: parts with their nesting rules (fetched per part), the stock sheets. */
-/** commonCut: Common cut on (the job toolbar): Fast and Thorough join parts into blocks too (Custom: its own setting). */
-export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: NestMode, custom?: CustomNestSettings, origin: Origin = "top-left", commonCut = false): Promise<NestRequest> {
+/** Common cut blocks only in Custom nest with its Common cut box ticked (Fast and Thorough: never). */
+export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: NestMode, custom?: CustomNestSettings, origin: Origin = "top-left"): Promise<NestRequest> {
   const withQty = parts.filter((jp) => jp.qty > 0);
-  const common = mode === "custom" ? !!custom?.commonCut || commonCut : commonCut;
+  const common = mode === "custom" && !!custom?.commonCut;
   const details = await Promise.all(withQty.map((jp) =>
     api.part(jp.part.id).then(async (d) => ({
       rotations: d.rotations, mirror: d.mirror,

@@ -88,13 +88,11 @@ function arrowsAlong(pts: [number, number][], every: number, minLen: number): [[
   return out;
 }
 
-export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool, commonCut = false, cut, fixed }: {
+export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, origin, counts, onIndex, onClose, onChange, onInfo, locked, onToggleLock, tool, cut, fixed }: {
   cut?: CutMode;
   /** Process: the parts already processed (their cut path made) stay where they are */
   fixed?: Set<number>;
   locked: boolean; onToggleLock: () => void;
-  /** Common cut (Manual nest toolbar): Arrange makes blocks (snapping: the Common cut snapping key held while dragging) */
-  commonCut?: boolean;
   /** a Manual nest tool clicked on the toolbar (a new n each click) */
   tool?: { tool: string; n: number };
   sol: Solution; index: number; sheets: NestedSheet[]; jobParts: JobPart[]; parts: Map<string, PartRef>;
@@ -518,9 +516,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       if (!d.moved) setMoving(true);
       d.moved = true;
       let dx = x - d.start[0], dy = y - d.start[1];
-      // Common cut on (toolbar), or its snapping key held: a marked line of the dragged parts snaps onto
-      // one of a still part (any part: copies of one part or different ones)
-      if ((commonCut || commonHeld()) && edgesById.size && view) {
+      // the Common cut snapping key held: a marked line of the dragged parts snaps onto one of a still
+      // part (any part: copies of one part or different ones)
+      if (commonHeld() && edgesById.size && view) {
         const trial = moved(d.before, d.ids, dx, dy);
         const mine = [...d.ids].flatMap((i) => edgesOf(trial, i));
         if (mine.length) {
@@ -795,7 +793,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const before = itemsRef.current;
     const ids = [...selRef.current].filter((i) => before[i] && partPath(before[i].partId)).sort((a, b) => a - b);
     if (!ids.length) { setNote("Select parts first: click a part, or drag a window."); return; }
-    if (t === "mirrorV" || t === "mirrorH" || t === "arrange") {
+    if (t === "mirrorV" || t === "mirrorH" || t === "arrange" || t === "commonCut") {
       // locked parts are left as they are; the others go on (Arrange works around the locked ones)
       const free = ids.filter((i) => !before[i].lock);
       if (!free.length) { setNote("Locked parts stay as they are: unlock them first."); return; }
@@ -821,29 +819,60 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       setNote(`${r.added} ${r.added === 1 ? "copy" : "copies"} added${r.full ? ": required number reached" : ""}`);
       return;
     }
-    if (t === "arrange") {
+    if (t === "arrange" || t === "commonCut") {
+      // Common cut: Arrange that joins the selected copies of a part into blocks along their marked lines
+      const join = t === "commonCut";
+      // the blocks already joined (parts sharing a marked line): a part picked brings its whole block
+      // (Arrange moves it as one piece); Common cut joins its copies afresh
+      const blocks: number[][] = [];
+      if (edgesById.size) {
+        const at = before.map((_, i) => i).filter((i) => geoOf(before, i));
+        const sh = sharedLines(at.map((i) => ({ edges: edgesOf(before, i), box: geoOf(before, i)!.box })), kerf);
+        const root = at.map((_, k) => k);
+        const find = (k: number): number => (root[k] === k ? k : (root[k] = find(root[k])));
+        for (const key of sh.pairs) { const [a, b] = key.split("|").map(Number); root[find(a)] = find(b); }
+        const groups = new Map<number, number[]>();
+        at.forEach((i, k) => groups.set(find(k), [...(groups.get(find(k)) ?? []), i]));
+        const picked = new Set(ids);
+        for (const g of groups.values()) {
+          if (g.length < 2 || !g.some((i) => picked.has(i)) || g.some((i) => before[i].lock)) continue;
+          for (const i of g) if (!picked.has(i)) { picked.add(i); ids.push(i); }
+          blocks.push(g);
+        }
+        ids.sort((a, b) => a - b);
+      }
+      for (const id of new Set(ids.map((i) => before[i].partId))) if (!uniq.includes(id)) uniq.push(id);
       // a small nest: up to 20 parts in 1.5 s, up to 50 in 3 s; more is a job for Automatic nest
-      if (ids.length > 50) { setNote(`Arrange takes up to 50 parts (${ids.length} selected): select fewer, or use Automatic nest.`); return; }
+      if (ids.length > 50) { setNote(`${join ? "Common cut" : "Arrange"} takes up to 50 parts (${ids.length} selected): select fewer, or use Automatic nest.`); return; }
       const limit = ids.length <= 20 ? 1500 : 3000;
       // the same parts again, nothing changed since: the search goes on from this layout
       const key = ids.join(",");
       const memo = arrangeMemo.current;
-      const again = memo && memo.key === key && memo.items === before ? memo.round + 1 : 0;
+      const again = !join && memo && memo.key === key && memo.items === before ? memo.round + 1 : 0;
       const t0 = performance.now();
       setWorking(true);
-      setNote(`Arranging ${ids.length} ${ids.length === 1 ? "part" : "parts"}…`);
+      setNote(`${join ? "Joining" : "Arranging"} ${ids.length} ${ids.length === 1 ? "part" : "parts"}…`);
       try {
         const got = await Promise.all(uniq.map(partRules));
         const rules = new Map<string, PartRules>(uniq.map((id, k) => [id, got[k]]));
-        // Common cut on: the kinds that join become blocks
+        // Common cut: the kinds that join become blocks (what does not, and why)
         const common = new Map<string, CommonLayout>();
-        if (commonCut) for (const id of uniq) {
+        const why: string[] = [];
+        if (join) for (const id of uniq) {
           const ed = edgesById.get(id), path = partPath(id);
-          if (!ed?.length || !path || ids.filter((i) => before[i].partId === id).length < 2) continue;
+          const n = ids.filter((i) => before[i].partId === id).length;
+          if (!path) continue;
+          if (!ed?.length) { why.push(`${nameOf(id)}: no common cut lines marked`); continue; }
+          if (n < 2) { why.push(`${nameOf(id)}: only 1 selected`); continue; }
           const lay = commonLayout(path, ed, kerf, gap);
+          if (!lay) { why.push(`${nameOf(id)}: its marked lines cannot meet`); continue; }
           // a turned pair needs the part to be allowed to turn 180 degrees
-          if (lay && !((lay.kind === "pair" || lay.kind === "chain") && !(rules.get(id)?.rotations ?? []).some((r) => r > 0 && 180 % r === 0))) common.set(id, lay);
+          if ((lay.kind === "pair" || lay.kind === "chain") && !(rules.get(id)?.rotations ?? []).some((r) => r > 0 && 180 % r === 0)) { why.push(`${nameOf(id)}: may not turn 180° (part settings)`); continue; }
+          common.set(id, lay);
         }
+        if (join && !common.size) { setNote(`Nothing to join. ${why.join("; ")}.`); return; }
+        // the copies Common cut joins afresh leave their old blocks
+        const kept = blocks.filter((b) => !b.some((i) => common.has(before[i].partId)));
         // the note and the spinning ring show before the work starts (the ring keeps turning on its own while it runs)
         await new Promise((r) => window.setTimeout(r, 50));
         if (itemsRef.current !== before) { setNote(null); return; }
@@ -858,13 +887,13 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           };
         }
         const input = { list: before, ids, pathOf: partPath, rules, lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, usable: area, outline, edgeGap, gap, origin,
-          budgetMs: limit - 60 - (performance.now() - t0), common: common.size ? common : undefined };
-        // Arrange again moves parts one by one: blocks are arranged afresh instead
+          budgetMs: limit - 60 - (performance.now() - t0), common: common.size ? common : undefined, blocks: kept.length ? kept : undefined };
+        // Arrange again moves parts one by one: with blocks, it arranges afresh instead
         const out = !(area.x1 > area.x0 && area.y1 > area.y0) ? null
-          : again && !common.size ? await arrangeAgain({ ...input, round: again }) : await arrange(input);
+          : again && !common.size && !kept.length ? await arrangeAgain({ ...input, round: again }) : await arrange(input);
         // left the sheet, or it changed meanwhile: not used
         if (!alive.current || alive.current.index !== index || itemsRef.current !== before) { setNote(null); return; }
-        if (!out) { setNote(toOrigin ? "No room to arrange these parts on this sheet." : "No room to arrange these parts where they are."); return; }
+        if (!out) { setNote(`No room to ${join ? "join" : "arrange"} these parts ${toOrigin ? "on this sheet" : "where they are"}.`); return; }
         if (out === before) {
           arrangeMemo.current = { key, items: before, round: again };
           setNote(`Try ${again + 1}: nothing better found, kept as it is`);
@@ -873,6 +902,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
         commit(out, before);
         arrangeMemo.current = { key, items: out, round: again };
         const boxArea = (l: PlacedPart[]) => { const u = unionBox(ids.map((i) => geoOf(l, i)!.box)); return (u.x1 - u.x0) * (u.y1 - u.y0); };
+        if (join) { const n = ids.filter((i) => common.has(before[i].partId)).length; setNote(`Joined ${n} parts into common cut blocks${why.length ? `. Not joined: ${why.join("; ")}` : ""}`); return; }
         setNote(again ? `Try ${again + 1}: box ${(100 * (1 - boxArea(out) / boxArea(before))).toFixed(1)} % smaller` : `Arranged ${ids.length} ${ids.length === 1 ? "part" : "parts"} (Arrange again to try for better)`);
       } finally {
         setWorking(false);

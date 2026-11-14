@@ -225,6 +225,14 @@ function lastTaken(occ: Uint8Array, na: number, nb: number, out: Int32Array) {
 type Pose = { x: number; y: number; angle: number; mirror: boolean };
 const ID: Pose = { x: 0, y: 0, angle: 0, mirror: false };
 
+/** The pose that undoes p: compose(invert(p), p) is no move. */
+function invert(p: Pose): Pose {
+  const a = (p.angle * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+  // a point x on the sheet: back in p's frame M(R(-a)(x - t)); mirrored, M R(-a) = R(a) M
+  if (p.mirror) return { x: -(-p.x * c - p.y * s), y: -(-p.x * s + p.y * c), angle: norm(p.angle), mirror: true };
+  return { x: -(p.x * c + p.y * s), y: -(-p.x * s + p.y * c), angle: norm(-p.angle), mirror: false };
+}
+
 /** Pose q (in a piece's frame) seen from outside a piece placed at p. */
 function compose(p: Pose, q: Pose): Pose {
   const a = (p.angle * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
@@ -380,9 +388,11 @@ export interface ArrangeInput {
   budgetMs?: number;
   /** without the pairing prepass (to compare) */
   noPairs?: boolean;
-  /** Common cut on: parts that join along their common cut lines, by part id; their copies are
-   * arranged as blocks (as big as fit, split evenly, or half that; the tighter wins) */
+  /** Common cut (the Manual nest tool): parts that join along their common cut lines, by part id; their
+   * copies are arranged as blocks (as big as fit, split evenly, or half that; the tighter wins) */
   common?: Map<string, CommonLayout>;
+  /** Parts already joined into common cut blocks (indices into list, all in ids): each moves as one piece */
+  blocks?: number[][];
 }
 
 /** What the packer places: one part, or a pair of the same part placed as one. */
@@ -402,7 +412,8 @@ function breather(ms = 50) {
 /** Runs in steps, giving the page a moment between them (the busy ring turns, the pointer moves). */
 export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
   const pause = breather();
-  const { list, ids, pathOf, rules, lengthMm: L, widthMm: W, usable, outline, edgeGap, gap, origin } = inp;
+  const { list, ids, pathOf, lengthMm: L, widthMm: W, usable, outline, edgeGap, gap, origin } = inp;
+  const rules = new Map(inp.rules);   // with the rules of the joined blocks added
   const t0 = performance.now(), budget = inp.budgetMs ?? 1500;
   const right = origin.endsWith("right"), bottom = origin.startsWith("bottom");
   // u, v: from the machine's 0,0 inwards
@@ -411,12 +422,16 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
   const k = Math.ceil(gap / c) + 1;   // how far the growth reaches [cells]
   const sel = new Set(ids);
   const others = list.filter((_, i) => !sel.has(i));
-  const chosen = ids.filter((i) => pathOf(list[i].partId));
-  if (!chosen.length) return null;
+  const all = ids.filter((i) => pathOf(list[i].partId));
+  if (!all.length) return null;
+  // blocks already joined (common cut) are pieces of their own; the other parts are chosen one by one
+  const blocks = (inp.blocks ?? []).map((b) => b.filter((i) => all.includes(i))).filter((b) => b.length >= 2);
+  const inBlock = new Set(blocks.flat());
+  const chosen = all.filter((i) => !inBlock.has(i));
   const ruleOf = (id: string) => rules.get(id) ?? { rotations: [90], mirror: false };
   // the time: the prepass up to a third; the packing until the end less what the last steps take
   const pairEnd = t0 + budget * 0.33;
-  const packEnd = t0 + budget - Math.min(budget * 0.15, 60 + 6 * chosen.length);
+  const packEnd = t0 + budget - Math.min(budget * 0.15, 60 + 6 * all.length);
 
   // -- the pieces: every part alone, and (when pairs save room) the parts of a kind two by two -------
   const singles: Piece[] = chosen.map((li) => ({ key: list[li].partId, partId: list[li].partId, members: [{ li, rel: ID }], pose0: list[li] }));
@@ -477,6 +492,20 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
       if (sig && !seen.has(sig)) { seen.add(sig); blockSets.push(ps); }
     }
     if (blockSets.length) { sets.length = 0; sets.push(...blockSets); }
+  }
+  // the blocks already joined go into every set as they are (turned only as a whole: the rules of every
+  // part in them allow it)
+  if (blocks.length) {
+    const blockPieces: Piece[] = blocks.map((b) => {
+      const back = invert(list[b[0]]);
+      const ids = [...new Set(b.map((i) => list[i].partId))];
+      const rs = ids.map(ruleOf);
+      const id = `blk:${b[0]}`;
+      rules.set(id, { ...rs[0], rotations: rs[0].rotations.filter((r) => rs.every((q) => q.rotations.includes(r))), mirror: rs.every((q) => q.mirror) });
+      return { key: id, partId: id, members: b.map((li) => ({ li, rel: compose(back, list[li]) })), pose0: list[b[0]] };
+    });
+    if (!sets.length) sets.push([]);
+    for (const set of sets) set.push(...blockPieces);
   }
 
   // the allowed poses of a piece: its rotations (and mirrored when allowed); a part alone also the pose it has now
@@ -744,7 +773,7 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
   plans[win.set].pieces.forEach((pc, j) => {
     const a = win.at[j];
     if (!a) return;
-    if (pc.key.startsWith("cc:")) { const lis = pc.members.map((m) => m.li); for (const li of lis) unitOf.set(li, lis); }
+    if (pc.key.startsWith("cc:") || pc.key.startsWith("blk:")) { const lis = pc.members.map((m) => m.li); for (const li of lis) unitOf.set(li, lis); }
     const da = a.ia * c - a.m.offA, db = a.ib * c - a.m.offB;
     const [du, dv] = win.axis === "u" ? [da, db] : [db, da];
     const pose: Pose = { x: right ? -du : du, y: bottom ? -dv : dv, angle: a.m.angle, mirror: a.m.mirror };

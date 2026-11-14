@@ -42,7 +42,6 @@ import { buildRequest, commonCutNote, continuedSheets, countsOf, isFinished, mis
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type ProcessTool, type NestSelection } from "./components/NestView";
 import { EDIT_PART_EVENT, drawingOfPart } from "./import/partFile";
-import { keyLabel, loadKeys } from "./job/manualKeys";
 import { gapsFor, loadLocalMachines, machineCan, machineOf, normalizeMachines, saveLocalMachines, type MachineList, type Origin } from "./job/machine";
 import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
 import { hasJobNames, suggestJobName } from "./job/jobName";
@@ -756,8 +755,6 @@ export function App() {
   // Fast / Thorough / Custom: with a finished solution selected, the nest continues it (what is on
   // its sheets stays, the parts still missing are added); without one, or with fresh (Add new
   // solution), a new solution from blank
-  // Common cut on (the job toolbar) and the machine does it: every nest joins parts into blocks
-  const commonOn = (jobId: string) => !!commonSnap[jobId] && machineCan(machineFor(jobId), "commonCut");
   const startNest = async (jobId: string, mode: NestMode, custom?: CustomNestSettings, fresh = false) => {
     if (custom?.commonCut && !machineCan(machineFor(jobId), "commonCut")) custom = { ...custom, commonCut: false };
     const st = solsOf(jobId);
@@ -775,7 +772,7 @@ export function App() {
     });
     setJobScreen((m) => ({ ...m, [jobId]: "nest" }));
     try {
-      const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom, machineFor(jobId).origin, commonOn(jobId));
+      const req = await buildRequest(jobParts[jobId] ?? [], jobStock[jobId] ?? [], mode, custom, machineFor(jobId).origin);
       const run = await nestApi.start(req);
       diag("nest", `Nest ${run.id} started: ${mode}${custom ? ` ${custom.minutes ?? "until stopped"} min ${custom.blocks ? "blocks" : "standard"}${custom.commonCut ? " common cut" : ""}` : ""}, new solution ${no}`,
         { job: jobId, partTypes: req.parts.length, pieces: req.parts.reduce((n, p) => n + p.qty, 0), stockSheets: req.sheets.length });
@@ -807,7 +804,7 @@ export function App() {
     patchSol(jobId, base.id, (x) => ({ ...x, prev: x.run ?? undefined, base: sheets, run: null, mode, custom, startedAt: Date.now() }));
     setJobScreen((m) => ({ ...m, [jobId]: "nest" }));
     try {
-      const req = await buildRequest(missing, stock, mode, custom, base.origin ?? machineFor(jobId).origin, commonOn(jobId));
+      const req = await buildRequest(missing, stock, mode, custom, base.origin ?? machineFor(jobId).origin);
       req.fixedSheets = fixed;
       const run = await nestApi.start(req);
       diag("nest", `Nest ${run.id} started: ${mode}, continuing solution ${base.no} (${fixed.length} of its ${sheets.length} sheets open to more parts)`,
@@ -1104,8 +1101,6 @@ export function App() {
   const [leaveManual, setLeaveManual] = useState(0);
   // Manual nest tools: to the sheet open in manual nest (a new n each click)
   const [manualTool, setManualTool] = useState<{ tool: string; n: number }>({ tool: "", n: 0 });
-  // Manual nest -> Common cut, per job (not kept: off when GNEZDO is opened again)
-  const [commonSnap, setCommonSnap] = useState<Record<string, boolean>>({});
   // -- Manual nest: Add sheet / Delete sheet ------------------------------------------------------
   const [addSheetFor, setAddSheetFor] = useState<{ jobId: string; sheet: StockSheet } | null>(null);
   const [deleteAsk, setDeleteAsk] = useState<{ jobId: string; solId: string; index: number; parts: number } | null>(null);
@@ -1245,12 +1240,10 @@ export function App() {
     diag("tool", `${section}: ${tool}`, { job: job.id, custom });
     if (section === "manual" && tool === "addSheet") { askAddSheet(job.id); return; }
     if (section === "manual" && tool === "commonCut") {
-      // a switch for this job (off when the job is opened again): snapping and Arrange blocks
+      // an action, as Arrange: the selected parts join into common cut blocks (when the machine does it)
       const jm = machineFor(job.id);
-      if (!commonSnap[job.id] && !machineCan(jm, "commonCut")) { setToast(`${jm.name} does not do common cut (Settings > Machines)`); return; }
-      const on = !commonSnap[job.id];
-      setCommonSnap((m) => ({ ...m, [job.id]: on }));
-      setToast(on ? `Common cut on: Arrange makes blocks (hold ${keyLabel(loadKeys().commonSnap.find(Boolean) ?? "")} while dragging to snap marked lines; Settings → Shortcuts)` : "Common cut off");
+      if (!machineCan(jm, "commonCut")) { setToast(`${jm.name} does not do common cut (Settings > Machines)`); return; }
+      setManualTool((t) => ({ tool, n: t.n + 1 }));
       return;
     }
     if (section === "manual") { setManualTool((t) => ({ tool, n: t.n + 1 })); return; }
@@ -1324,7 +1317,7 @@ export function App() {
           extractPanel={{ ...extractPanel, openId: shownPart?.id ?? null }}
         />
         <div className="workspace">
-          {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq} lit={{ commonCut: !!(job && commonSnap[job.id]) }}
+          {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq}
             onSection={(sec) => {
               if (job) setProcessOn((m) => ({ ...m, [job.id]: sec === "process" ? lastProcess.current[job.id] ?? "autoCut" : false }));
               // Automatic nest (and Work parts) go back to the sheets; Manual nest and Process keep the view as it is
@@ -1345,7 +1338,6 @@ export function App() {
                 onManualOpened={() => setOpenManual((o) => ({ ...o, sheet: -1 }))}
                 onDeleteSheet={(solId, i) => askDeleteSheet(job.id, solId, i)}
                 manualTool={manualTool}
-                commonCut={!!commonSnap[job.id]}
                 parts={jobParts[job.id] ?? []}
                 solutions={solsOf(job.id).list}
                 selected={solsOf(job.id).sel}

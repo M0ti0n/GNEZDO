@@ -4,8 +4,12 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-- Common cut, Arrange: the copies can also be split evenly into blocks (8 copies of a part where 5 fit in a row: two rows of 4, not 5 + 3)
-- Common cut, **chain** and **pair** blocks (Arrange, Automatic nest): the tightest block is taken, not the one with the longest shared lines. A trapezoid with every straight line marked (the import rule) now chains along its slanted sides, every other copy turned 180°, side by side; before, it turned about its long and short sides into a tall stack, or (2 copies) a pair joined on the long side that did not interlock. Triangles make chains too (copies in a row may meet at their base corners)
+- **Common cut** (Manual nest) is now an action, not an on / off switch: select parts and press it, and the copies of each part join into the tightest block (a row, a grid, or every other one turned 180°) sharing their marked lines. A note says which parts were not joined and why (no marked lines, only one selected, lines that cannot meet, may not turn 180°). Nothing stays switched on
+  - Marked common cut lines are otherwise ordinary cut lines: **Fast**, **Thorough** and **Arrange** never join parts; **Custom** joins them only with its own Common cut box ticked
+  - **Arrange** moves a joined block as one piece (a part picked brings its whole block); drag a part out of a block to take it out
+  - Snapping marked lines together while dragging: only with the Common cut snapping key held (Shift unless changed in Settings → Shortcuts)
+- Common cut: the copies can also be split evenly into blocks (8 copies of a part where 5 fit in a row: two rows of 4, not 5 + 3)
+- Common cut, **chain** and **pair** blocks (Manual nest, Custom nest): the tightest block is taken, not the one with the longest shared lines. A trapezoid with every straight line marked (the import rule) now chains along its slanted sides, every other copy turned 180°, side by side; before, it turned about its long and short sides into a tall stack, or (2 copies) a pair joined on the long side that did not interlock. Triangles make chains too (copies in a row may meet at their base corners)
 - Import 2D, Geometry check: **Save as remnant** (at the top): the drawing's outline (its biggest closed cutting contour, the closed ones inside it as holes) goes to the saved remnants, after the remnant dialog (name REM_<part>, material, thickness, pieces, note). For a remnant sketched on the New part canvas, or a damaged part whose good area can still take smaller parts
 - Drawing icons: **Arc** centered; **Offset** with its new line in blue and the clicked point red; **Radius** and **Chamfer** in blue
 - Import 2D: dimension numbers 60 % bigger
@@ -16,10 +20,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Break cut: a lead is picked from about 10 mm around it, along its whole length (not only at the pierce point), and a balloon also on the balloon itself; break cut and micro joint balloons are twice as big
 - Movement: the modes one under the other, bigger icons with their name and what they do beside them
 - Common cut:
-  - **Common cut on** (job toolbar) now works for **Automatic nest** too (Fast, Thorough: the biggest blocks; Custom as before, with its trials). Custom with Common cut ticked often made no blocks: its trials kept the nest without blocks when it took the same sheets with a slightly shorter last sheet. Now the blocks are kept unless the nest without them takes fewer sheets
-  - Manual nest: with Common cut on, a dragged part snaps its marked line onto another part's (any part, not only copies of the same one) without holding a key
+  - Custom with Common cut ticked often made no blocks: its trials kept the nest without blocks when it took the same sheets with a slightly shorter last sheet. Now the blocks are kept unless the nest without them takes fewer sheets
+  - Manual nest: a dragged part snaps its marked line onto another part's (any part, not only copies of the same one)
   - parts joined into one block (a grid of squares) no longer show as overlapping where their corners meet
-  - new **chain** blocks (Arrange and Automatic nest): every other copy turned 180°, sharing one marked line and then the other, so trapezoids and triangles make rows of any length (before: pairs only)
+  - new **chain** blocks (Manual nest and Custom nest): every other copy turned 180°, sharing one marked line and then the other, so trapezoids and triangles make rows of any length (before: pairs only)
 - Common pierce: **Lead-ins to the nearest corner** (on by default): each outline starts at its corner nearest the pierce point, a straight lead from the point. A grid of equal parts: SELECT them and JOIN, and the pierce goes where their corners meet
 - Import 2D, **Rotate**: the lines that came with the file turn together. Click one of them (or window a few) and the whole part is picked, so it can no longer be pulled apart; lines drawn in Import 2D still turn on their own
 - Import 2D tabs show **2D** (as 3D Extractor tabs show 3D)
