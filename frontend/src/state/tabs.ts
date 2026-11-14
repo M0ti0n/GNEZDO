@@ -54,6 +54,10 @@ export const drawingTab = (drawingId: string, fileName: string): Tab => ({
   drawingId,
 });
 
+/** Import 2D -> FITTINGS: one tab, the fittings made from their values. */
+export const FITTINGS_ID = "fittings";
+export const fittingsTab = (): Tab => ({ id: `drawing:${FITTINGS_ID}`, kind: "drawing", title: "Fittings", drawingId: FITTINGS_ID });
+
 export function shellReducer(state: ShellState, action: ShellAction): ShellState {
   switch (action.type) {
     case "view":

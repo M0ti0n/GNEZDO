@@ -4,7 +4,13 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- Import 2D, **FITTINGS** (new tool group beside Process, and a **Fittings** button in the Import 2D list): flat parts of sheet metal fittings made from their values, ported from the HVAC Fittings workbench for FreeCAD. It opens a Fittings tab: the values in boxes on a diagram (as the lead-in editor), the fitting's parts in a list, and the part picked in the list on the canvas. **PROCESS** saves the picked part like an imported drawing (its box in the list gets a check mark once saved); **Add to the import list** puts all its parts in the Import 2D list, waiting to be processed there (FIT ×pieces; the same part again replaces the one waiting). Material, thickness and project come from the Import 2D Properties. Every curve is arcs and lines within 0.01 mm (no splines); fold marks and X marks are tracing lines
+  - **Elbow** (segmented): D, R, A, N middle sections; the seam always at the side. **Separate sections** (middle ×N, end ×2) or **Stacked in one rectangle**: every other section turned round, so they fit into one rectangle with open cuts between them. Fold marks (how many around, length, gap from the edge)
+  - **Rect. → round** transition: A, B, E, F (the rectangle around the round's center), D, H, sections per quarter; **Combined**, **Short side**, **Long side** pieces; seam on the longer side; fold marks at the round edge
+  - **Branch reducer**: a reducer D2 → D1 (H1 high; D1 = D2: a straight pipe) with a branch D3 at A, meeting the side at H2, L long. The hole and the branch's edge are their exact intersection; the reducer's seam runs through the hole, the branch's on its shortest line
+  - **Flange**: 44 standard sizes (A80 … A820) or your own A, B, M, E, N; arc slots 25 mm long. **Divided** (over A100): three 120° sections, the first cut between two slots (one section ×3, or section A ×2 and B ×1)
+  - **Threaded flange**: its own size table, thread M3 … M16 (tap drill shown); only the ring is cut, an X marks each hole to drill and tap; Combined or Divided
+  - **Screw flight**: OD, ID, P, L, gap; the blank of one pitch (Ri, Ro, calculated and blank angle shown), ceil(L / P) pieces per screw
 
 ## Build 14 Nov 2026 (`ca1cfba`)
 
