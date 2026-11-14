@@ -156,6 +156,9 @@ public class Job
     /// <summary>The saved nest solution (sheets with placed parts, counts, mode, origin), JSON; empty = not nested.</summary>
     public string Nest { get; set; } = "";
     public DateTimeOffset? NestedAt { get; set; }
+    /// <summary>Marked as cut by the operator (Job search → Mark as cut); null = not cut. Other apps read it (status API).</summary>
+    public DateTimeOffset? CutAt { get; set; }
+    public string CutBy { get; set; } = "";
     public List<JobPart> Parts { get; set; } = [];
 }
 
@@ -200,3 +203,41 @@ public class Draft
     public DateTimeOffset SavedAt { get; set; }
 }
 
+/// <summary>
+/// A key another app (a BOM or workflow app) uses to read GNEZDO's status API (/api/v1, read only).
+/// Only its SHA-256 hash is kept: the key itself is shown once, when the admin makes it.
+/// </summary>
+public class ApiKey
+{
+    public int Id { get; set; }
+    /// <summary>Who uses it, e.g. "BOM app".</summary>
+    public required string Name { get; set; }
+    /// <summary>SHA-256 of the key, hex.</summary>
+    public required string Hash { get; set; }
+    /// <summary>The key's first characters, to tell keys apart in the list.</summary>
+    public string Prefix { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public string CreatedBy { get; set; } = "";
+    public DateTimeOffset? LastUsedAt { get; set; }
+}
+
+/// <summary>
+/// An NC program written for one sheet of a saved job (Process -> POST PROCESS): what was sent to the
+/// machine. Written again for the same job and sheet, it replaces the record before it.
+/// </summary>
+public class NcSent
+{
+    public int Id { get; set; }
+    public int JobId { get; set; }
+    public string JobName { get; set; } = "";
+    /// <summary>The sheet's number in the job (1, 2, ...).</summary>
+    public int Sheet { get; set; }
+    /// <summary>The machine's id (the "machines" setting).</summary>
+    public string Machine { get; set; } = "";
+    /// <summary>The NC file's name.</summary>
+    public string File { get; set; } = "";
+    /// <summary>Pieces per part id on the sheet (times its cut number), JSON: {"12": 4, "15": 1}.</summary>
+    public string Parts { get; set; } = "";
+    public DateTimeOffset SentAt { get; set; }
+    public string SentBy { get; set; } = "";
+}

@@ -226,6 +226,7 @@ export function JobSearchPage({ filter, run, onOpenJob, onShowFilters, openJobs 
         {/* ---- selected job preview ---- */}
         <section className="pane preview-pane" aria-label="Selected job">
           {selected ? <JobPreview job={selected} onOpen={() => onOpenJob(selected)}
+            onStatus={(status) => setJobs((list) => list && list.map((x) => (x.id === selected.id ? { ...x, status } : x)))}
             targets={openJobs.filter((j) => j.id !== selected.id)} onSend={onSendSheet} />
             : <p className="state">{jobs?.length ? "Select a job to see it here." : ""}</p>}
         </section>
@@ -260,8 +261,10 @@ function ColsToggle({ cols, onChange }: { cols: 1 | 2; onChange: (c: 1 | 2) => v
   );
 }
 
-function JobPreview({ job, onOpen, targets, onSend }: {
+function JobPreview({ job, onOpen, targets, onSend, onStatus }: {
   job: JobSummary; onOpen: () => void;
+  /** marked as cut (or not): the job's new status */
+  onStatus?: (status: JobStatus) => void;
   targets: { id: string; title: string }[];
   onSend?: (jobId: string, title: string, sheet: SheetParts) => void;
 }) {
@@ -275,7 +278,17 @@ function JobPreview({ job, onOpen, targets, onSend }: {
   const [cols, setColsState] = useState<1 | 2>(loadGrid);
   const setCols = (c: 1 | 2) => { setColsState(c); try { localStorage.setItem(GRID_KEY, String(c)); } catch { /* not kept */ } };
 
-  useEffect(() => { setPicked(null); setMenu(false); }, [job.id]);
+  useEffect(() => { setPicked(null); setMenu(false); setCutError(null); }, [job.id]);
+  // the operator marks the job as cut (other apps see it through the status API)
+  const [cutBusy, setCutBusy] = useState(false);
+  const [cutError, setCutError] = useState<string | null>(null);
+  const markCut = async (cut: boolean) => {
+    setCutBusy(true);
+    setCutError(null);
+    try { onStatus?.((await api.setJobCut(job.id, cut)).status); }
+    catch (e) { setCutError((e as Error).message); }
+    finally { setCutBusy(false); }
+  };
   useEffect(() => {
     let alive = true;
     setParts(null);
@@ -337,6 +350,12 @@ function JobPreview({ job, onOpen, targets, onSend }: {
             )}
           </span>
         )}
+        {cutError && <span className="proc-missing" role="alert">{cutError}</span>}
+        {job.status === "cut"
+          ? <button type="button" className="btn btn-plain" disabled={cutBusy} onClick={() => void markCut(false)}
+              title="Not cut after all: other apps see it as not cut">Not cut</button>
+          : <button type="button" className="btn btn-plain" disabled={cutBusy || job.sheetCount === 0} onClick={() => void markCut(true)}
+              title={job.sheetCount ? "The operator has cut this job: other apps (status API) see it as cut" : "Nest the job first"}>Mark as cut</button>}
         <button className="btn btn-primary" onClick={onOpen}>Open job</button>
       </div>
 

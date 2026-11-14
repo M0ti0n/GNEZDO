@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { auth, type Me, type UserRow } from "../api/auth";
+import { auth, type ApiKeyRow, type Me, type UserRow } from "../api/auth";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 function Dialog({ title, sub, onClose, children, foot, wide = false }: { title: string; sub?: string; onClose: () => void; children: ReactNode; foot?: ReactNode; wide?: boolean }) {
@@ -141,6 +141,84 @@ export function PasswordDialog({ me, onClose, onMe }: { me: Me; onClose: () => v
           <input className="field" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" autoFocus={!me.hasPassword} /></label>
         <label className="signin-field"><span>New password again</span>
           <input className="field" type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" /></label>
+      </div>
+    </Dialog>
+  );
+}
+
+// User menu -> Status API keys (admin): keys for other apps (a BOM app, a workflow overview) to read which
+// parts of an order are in GNEZDO, in jobs, nested and sent to a machine. Read only; docs/STATUS-API.md.
+export function ApiKeysDialog({ onClose }: { onClose: () => void }) {
+  const [rows, setRows] = useState<ApiKeyRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [made, setMade] = useState<{ name: string; key: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [removing, setRemoving] = useState<ApiKeyRow | null>(null);
+  const load = () => auth.apiKeys().then(setRows).catch((e) => setError((e as Error).message));
+  useEffect(() => { void load(); }, []);
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setError(null);
+    try {
+      const r = await auth.addApiKey(name.trim());
+      setMade({ name: r.info.name, key: r.key });
+      setCopied(false);
+      setName("");
+      await load();
+    } catch (er) { setError((er as Error).message); }
+  };
+  const copy = async () => {
+    if (!made) return;
+    try { await navigator.clipboard.writeText(made.key); setCopied(true); } catch { setCopied(false); }
+  };
+  const base = `${window.location.origin}/api/v1`;
+  return (
+    <Dialog title="Status API keys" sub="Other apps read which parts of an order are in GNEZDO, nested and sent to a machine (read only)" onClose={onClose} wide
+      foot={<><span className="proc-missing">{error}</span><button type="button" className="btn btn-plain" onClick={onClose}>Close</button></>}>
+      {made && (
+        <div className="apikey-made" role="status">
+          <p>The key for <b>{made.name}</b>. Copy it now: GNEZDO does not keep it and cannot show it again.</p>
+          <div className="apikey-row">
+            <input className="field apikey-key" readOnly value={made.key} onFocus={(e) => e.target.select()} aria-label={`API key for ${made.name}`} />
+            <button type="button" className="btn btn-save" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</button>
+          </div>
+        </div>
+      )}
+      <table className="users-table">
+        <thead><tr><th>App</th><th>Key starts with</th><th>Made</th><th>Last used</th><th /></tr></thead>
+        <tbody>
+          {(rows ?? []).map((k) => (
+            <tr key={k.id}>
+              <td className="users-name">{k.name}</td>
+              <td><code>{k.prefix}…</code></td>
+              <td className="users-when">{when(k.createdAt)}{k.createdBy && <small> · {k.createdBy}</small>}</td>
+              <td className="users-when">{when(k.lastUsedAt)}</td>
+              <td><button type="button" className="btn btn-plain users-del" onClick={() => setRemoving(k)} title={`Remove: ${k.name} can no longer read the status`}>Remove</button></td>
+            </tr>
+          ))}
+          {rows !== null && rows.length === 0 && <tr><td colSpan={5}>No keys yet.</td></tr>}
+          {rows === null && !error && <tr><td colSpan={5}>Loading…</td></tr>}
+        </tbody>
+      </table>
+      <form className="users-add" onSubmit={(e) => void add(e)}>
+        <h3>Make a key</h3>
+        <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="The app that uses it, e.g. BOM app" maxLength={100} aria-label="Name of the app" />
+        <button type="submit" className="btn btn-save" disabled={!name.trim()}>Make key</button>
+      </form>
+      {removing && (
+        <ConfirmDialog title={`Remove the key for ${removing.name}?`} confirmLabel="Remove"
+          onCancel={() => setRemoving(null)} onConfirm={() => { const k = removing; setRemoving(null); setError(null); void auth.removeApiKey(k.id).then(load).catch((e) => setError((e as Error).message)); }}>
+          {removing.name} can no longer read GNEZDO's status. Make a new key to let it again.
+        </ConfirmDialog>
+      )}
+      <div className="rule-help apikey-help">
+        <p>The app sends the key in the header <code>X-Api-Key</code>. Nothing can be changed with it.</p>
+        <p><code>GET {base}/projects/26-0412</code>: every part of the project, in jobs, nested and sent to a machine.</p>
+        <p><code>POST {base}/projects/26-0412/check</code> with the order's drawings
+          (<code>{'{"drawings":[{"drawing":"1234-56-78","position":"P2","needed":6}]}'}</code>): each one found, or missing (never imported).</p>
+        <p>Part names are read as drawing_position_pieces (1234-56-78_P2_3kos). More in docs/STATUS-API.md in GNEZDO's repository.</p>
       </div>
     </Dialog>
   );

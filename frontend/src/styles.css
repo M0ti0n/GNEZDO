@@ -2636,3 +2636,11 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .dyn-field input { padding-right: 26px !important; }
 .dyn-field input::placeholder { font-size: 11px; }
 .dyn-field.is-active .dyn-label { color: var(--blue); }
+
+/* Status API keys */
+.apikey-made { margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--green-tint, #e6f5ea); border: 1px solid #9fd3ad; }
+.apikey-made p { margin: 0 0 8px; }
+.apikey-row { display: flex; gap: 8px; }
+.apikey-key { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.apikey-help p { margin: 6px 0; }
+.apikey-help code { overflow-wrap: anywhere; }

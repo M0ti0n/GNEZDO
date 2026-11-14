@@ -10,7 +10,7 @@ import type { StockSheet } from "../job/stock";
 import { ManualNest } from "./ManualNest";
 import { useAutoCut } from "./CutView";
 import { useRemnant } from "./RemnantPanel";
-import { usePostProcess, useProcessDel } from "./ProcessPanels";
+import { usePostProcess, useProcessDel, type SentReport } from "./ProcessPanels";
 import { useLeadInOut } from "./LeadPanel";
 import { useSimulation } from "./SimPanel";
 import { useManualCut } from "./ManualCutPanel";
@@ -79,6 +79,8 @@ interface Props {
   /** the job has changes not saved yet */
   jobDirty?: boolean;
   onSaveJob?: () => Promise<boolean>;
+  /** POST PROCESS wrote NC programs: recorded as sent to the machine */
+  onSent?: (r: SentReport) => void;
 }
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
@@ -125,7 +127,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false, process = false, needsSave = false, jobDirty = false, onSaveJob, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS }: Props) {
+export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, commonCut = false, process = false, needsSave = false, jobDirty = false, onSaveJob, onSent, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -171,7 +173,7 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
     partName: (sh, i) => byId.get(sh.parts[i]?.partId ?? "")?.name,
   });
   const post = usePostProcess({
-    index: curIndex, single: full !== null && process === "postProcess", sheets, machine, origin: sol?.origin ?? machine.origin, jobName, needsSave, dirty: jobDirty, onSave: onSaveJob ?? (async () => true),
+    index: curIndex, single: full !== null && process === "postProcess", sheets, machine, origin: sol?.origin ?? machine.origin, jobName, needsSave, dirty: jobDirty, onSave: onSaveJob ?? (async () => true), onSent,
     onSheet: (k, patch) => sol && onEditSheet(sol.id, k, patch),
     partName: (sh, i) => byId.get(sh.parts[i]?.partId ?? "")?.name,
   });

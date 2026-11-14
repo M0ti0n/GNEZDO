@@ -141,6 +141,7 @@ if (!demo)
     app.MapRemnantEndpoints();
     app.MapDraftEndpoints();
     app.MapDwgEndpoints();
+    app.MapStatusApi();
 }
 
 // Windows build: the web pages are next to the program (wwwroot uses the database,

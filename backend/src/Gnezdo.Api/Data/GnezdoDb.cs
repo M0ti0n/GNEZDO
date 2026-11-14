@@ -20,6 +20,8 @@ public class GnezdoDb : DbContext
     public DbSet<AppSetting> Settings => Set<AppSetting>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Draft> Drafts => Set<Draft>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<NcSent> NcSent => Set<NcSent>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -83,6 +85,7 @@ public class GnezdoDb : DbContext
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.ModifiedBy).HasMaxLength(100);
             e.Property(x => x.Machine).HasMaxLength(50);
+            e.Property(x => x.CutBy).HasMaxLength(100);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => x.ModifiedAt);
@@ -103,6 +106,25 @@ public class GnezdoDb : DbContext
             e.Property(x => x.Browser).HasMaxLength(40);
             e.Property(x => x.Name).HasMaxLength(200);
             e.HasIndex(x => x.User);
+        });
+
+        b.Entity<ApiKey>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Hash).HasMaxLength(64);
+            e.Property(x => x.Prefix).HasMaxLength(16);
+            e.Property(x => x.CreatedBy).HasMaxLength(100);
+            e.HasIndex(x => x.Hash).IsUnique();
+        });
+
+        b.Entity<NcSent>(e =>
+        {
+            e.ToTable("NcSent");
+            e.Property(x => x.JobName).HasMaxLength(200);
+            e.Property(x => x.Machine).HasMaxLength(50);
+            e.Property(x => x.File).HasMaxLength(260);
+            e.Property(x => x.SentBy).HasMaxLength(100);
+            e.HasIndex(x => x.JobId);
         });
 
         b.Entity<AppSetting>(e =>

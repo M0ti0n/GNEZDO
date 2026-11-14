@@ -5,6 +5,8 @@ import { diagHeaders } from "../job/diag";
 
 export interface Me { id: number; name: string; isAdmin: boolean; hasPassword: boolean }
 export interface UserRow extends Me { createdAt: string; lastSignInAt: string | null }
+/** A key of the status API (another app reads GNEZDO's status with it); the key itself is shown once. */
+export interface ApiKeyRow { id: number; name: string; prefix: string; createdAt: string; createdBy: string; lastUsedAt: string | null }
 export interface AuthState {
   required: boolean; setupNeeded: boolean; user: Me | null;
   /** The server has no database yet: "Set up the database" comes first. */
@@ -44,6 +46,9 @@ export const auth = {
   addUser: (name: string, password: string, isAdmin: boolean) => call<UserRow>("/api/users", "POST", { name, password: password || null, isAdmin }),
   updateUser: (id: number, patch: { name?: string; password?: string; clearPassword?: boolean; isAdmin?: boolean }) => call<UserRow>(`/api/users/${id}`, "PUT", patch),
   removeUser: (id: number) => call<void>(`/api/users/${id}`, "DELETE"),
+  apiKeys: () => call<ApiKeyRow[]>("/api/apikeys"),
+  addApiKey: (name: string) => call<{ key: string; info: ApiKeyRow }>("/api/apikeys", "POST", { name }),
+  removeApiKey: (id: number) => call<void>(`/api/apikeys/${id}`, "DELETE"),
 };
 
 /** A call came back "sign in first" (the sign-in ended): the app shows the sign-in page. */
