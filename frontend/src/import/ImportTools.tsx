@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { SideScroll } from "../components/SideScroll";
 
@@ -297,7 +297,7 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
   },
 ];
 
-/** Tools shown together under one button: it opens them below the strip. */
+/** Tools shown together under one button: it opens them below the strip (open until another group or this one is clicked). */
 export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim"; tools: string[]; icon: ReactNode }[] = [
   {
     id: "drawGroup", label: "Drawing", tone: "draw", tools: ["line", "circle", "arc", "rect", "slot", "xline", "offset", "fillet", "chamfer"],
@@ -344,13 +344,14 @@ export function ImportToolStrip({ active, onTool, blocked = {}, lit = {} }: {
         const g = TOOL_GROUPS.find((x) => x.id === id);
         if (!g) { const t = IMPORT_TOOLS.find((x) => x.id === id); return t ? tool(t) : null; }
         return <ToolGroup key={g.id} group={g} active={active} open={open === g.id}
-          onOpen={(v) => setOpen(v ? g.id : null)} renderTool={(t) => tool(t, () => setOpen(null))} />;
+          onOpen={(v) => setOpen(v ? g.id : null)} renderTool={(t) => tool(t)} />;
       })}
     </SideScroll>
   );
 }
 
-/** A group's button: lit while one of its tools is on (showing that tool's icon); a click opens its tools below. */
+/** A group's button: lit while one of its tools is on (showing that tool's icon). A click opens its tools below,
+ *  and they stay open while tools are picked and used; another group's button or this one again closes them. */
 function ToolGroup({ group, active, open, onOpen, renderTool }: {
   group: (typeof TOOL_GROUPS)[number]; active: string | null; open: boolean;
   onOpen: (v: boolean) => void; renderTool: (t: (typeof IMPORT_TOOLS)[number]) => ReactNode;
@@ -359,23 +360,20 @@ function ToolGroup({ group, active, open, onOpen, renderTool }: {
   const pop = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
   const cur = group.tools.includes(active ?? "") ? IMPORT_TOOLS.find((t) => t.id === active) : undefined;
+  // kept below its button: also when the strip scrolls sideways or the window is resized
   useLayoutEffect(() => {
-    if (!open || !btn.current) return;
-    const r = btn.current.getBoundingClientRect();
-    const w = pop.current?.offsetWidth ?? 0;
-    setAt({ left: Math.max(8, Math.min(r.left, window.innerWidth - w - 8)), top: r.bottom + 6 });
-  }, [open]);
-  // closed by a click elsewhere, Esc, scrolling or resizing
-  useEffect(() => {
     if (!open) return;
-    const away = (e: Event) => { if (!pop.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) onOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onOpen(false); } };
-    const close = () => onOpen(false);
-    document.addEventListener("pointerdown", away, true);
-    window.addEventListener("keydown", esc, true);
-    window.addEventListener("resize", close);
-    return () => { document.removeEventListener("pointerdown", away, true); window.removeEventListener("keydown", esc, true); window.removeEventListener("resize", close); };
-  }, [open, onOpen]);
+    const place = () => {
+      if (!btn.current) return;
+      const r = btn.current.getBoundingClientRect();
+      const w = pop.current?.offsetWidth ?? 0;
+      setAt({ left: Math.max(8, Math.min(r.left, window.innerWidth - w - 8)), top: r.bottom + 6 });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [open]);
   return (
     <>
       <button ref={btn} className={`itool itool-group is-${group.tone}${cur ? " is-on" : ""}${open ? " is-open" : ""}`}
