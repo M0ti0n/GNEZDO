@@ -168,6 +168,28 @@ function clear(path: string, pose: Pose, gap: number, shared?: [Pt, Pt], onlyOve
   return true;
 }
 
+/** The smallest rectangle (at any angle) around copies of the part at these poses: its area. */
+function blockRect(path: string, poses: Pose[]): number {
+  const outer = partLoops(path)[0] ?? [];
+  const pts: Pt[] = [];
+  for (const p of poses) { const f = transform(p); for (const q of outer) pts.push(f(q)); }
+  // the smallest rectangle has a side along an edge of the points' hull: try each edge's direction
+  const dirs = new Set<number>();
+  for (let k = 0; k < poses.length; k++) for (let i = 0; i < outer.length; i++) {
+    const a = pts[k * outer.length + i], b = pts[k * outer.length + ((i + 1) % outer.length)];
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 0.5) dirs.add(Math.round(((Math.atan2(b[1] - a[1], b[0] - a[0]) % Math.PI) + Math.PI) % Math.PI * 1000) / 1000);
+  }
+  if (!dirs.size) dirs.add(0);
+  let best = Infinity;
+  for (const t of dirs) {
+    const c = Math.cos(t), s = Math.sin(t);
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const [x, y] of pts) { const u = x * c + y * s, v = -x * s + y * c; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+    best = Math.min(best, (u1 - u0) * (v1 - v0));
+  }
+  return best;
+}
+
 const layoutCache = new Map<string, CommonLayout | null>();
 /** How copies of the part join along its common cut lines (null: they do not). */
 export function commonLayout(path: string, edges: CommonEdge[], kerf: number, gap: number): CommonLayout | null {
@@ -195,7 +217,10 @@ export function commonLayout(path: string, edges: CommonEdge[], kerf: number, ga
     const mid = (e: CommonEdge): Pt => [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2];
     const turn = (e: CommonEdge): Pose => ({ x: 2 * mid(e)[0] + e.n[0] * kerf, y: 2 * mid(e)[1] + e.n[1] * kerf, angle: 180, mirror: false });
     const turns = edges.slice().sort((p, q) => q.len - p.len).filter((e) => clear(path, turn(e), gap, [e.a, e.b]));
-    let best: { l: CommonLayout; len: number } | null = null;
+    // the tightest chain wins (a block of 4 in the smallest rectangle), not the longest lines: a
+    // trapezoid with every line marked chains along its slanted sides, side by side, rather than
+    // turning about its long and short sides into a tall stack
+    let best: { l: CommonLayout; rect: number } | null = null;
     for (const e1 of turns) for (const e2 of turns) {
       if (e1 === e2) continue;
       // the next copy the same way round: two half turns, one about each line
@@ -203,12 +228,19 @@ export function commonLayout(path: string, edges: CommonEdge[], kerf: number, ga
       const T: Pose = { x: 2 * (m1[0] - m2[0]) + (e1.n[0] - e2.n[0]) * kerf, y: 2 * (m1[1] - m2[1]) + (e1.n[1] - e2.n[1]) * kerf, angle: 0, mirror: false };
       if (Math.hypot(T.x, T.y) < 1) continue;
       const t1 = turn(e1);
-      // copies that do not share a line keep the gap: one and the next the same way round (T), one and
-      // the turned copy after that (t1 + T); the neighbours share e1 / e2 (checked with the turns)
-      const ok = clear(path, T, gap) && clear(path, { ...t1, x: t1.x + T.x, y: t1.y + T.y }, gap);
-      if (ok && (!best || e1.len + e2.len > best.len)) best = { l: { kind: "chain", t1, t2: T }, len: e1.len + e2.len };
+      // copies that do not share a line keep the gap: one and the next the same way round (T; it may
+      // touch the first at the end of e1, as triangles in a row do at their base corners), one and the
+      // turned copy after that (t1 + T); the neighbours share e1 / e2 (checked with the turns)
+      const ok = clear(path, T, gap, [e1.a, e1.b]) && clear(path, { ...t1, x: t1.x + T.x, y: t1.y + T.y }, gap);
+      if (!ok) continue;
+      const l: CommonLayout = { kind: "chain", t1, t2: T };
+      const rect = blockRect(path, blockPoses(l, 4));
+      if (!best || rect < best.rect - 0.5) best = { l, rect };
     }
-    out = best?.l ?? (turns[0] ? { kind: "pair", t1: turn(turns[0]) } : null);
+    // no chain: the tightest pair
+    const pair = turns.map((e) => ({ l: { kind: "pair", t1: turn(e) } as CommonLayout, rect: blockRect(path, [ID, turn(e)]) }))
+      .reduce<{ l: CommonLayout; rect: number } | null>((p, q) => (!p || q.rect < p.rect - 0.5 ? q : p), null);
+    out = best?.l ?? pair?.l ?? null;
   }
   layoutCache.set(key, out);
   return out;
