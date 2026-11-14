@@ -45,6 +45,9 @@ export interface StepSettings {
   /** threaded holes by their diameter ("6.80"): the thread (M8: marked with a cross and M8, not cut) or
    *  "cut"; a diameter not listed: as its tap drill says (6.8 -> M8), else cut */
   threads?: Record<string, string>;
+  /** a threaded hole's cross (overall, mm) and its M# text height (capitals, mm) */
+  threadCross?: number;
+  threadText?: number;
   /** stitch: bend compensation; the faces are the sheet's top or bottom side (none: as they are) */
   comp: { side: "none" | "top" | "bottom"; t: number; r: number };
 }
@@ -239,10 +242,11 @@ export function applyThreads(u: Unfolded, st: StepSettings): { u: Unfolded; line
     if (!t) continue;
     h.edges.forEach((i) => drop.add(i));
     const [x, y] = h.c;
-    const a = Math.max(1.5, h.r * 0.8);
+    // big enough to find and read on the part: 15 mm by default
+    const a = (st.threadCross ?? 15) / 2;
     lines.push([[x - a, y], [x + a, y]], [[x, y - a], [x, y + a]]);
-    const cap = Math.min(5, Math.max(2.5, h.r * 1.1));
-    lines.push(...textLines(t, { at: [x + a + cap * 0.35, y], align: "left", valign: "middle", capMm: cap }));
+    const cap = st.threadText ?? 15;
+    lines.push(...textLines(t, { at: [x + a + cap * 0.25, y + a * 0.15], align: "left", valign: "baseline", capMm: cap }));
   }
   return { u: { ...u, outline: u.outline.filter((_, i) => !drop.has(i)) }, lines };
 }

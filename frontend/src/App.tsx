@@ -1415,6 +1415,7 @@ export function App() {
                   ? patchItem(shownItem.id, { source: { ...shownItem.source, rotations: r.rotations, mirror: r.mirror, filler: r.filler, commonCut: r.commonCut } })
                   : setImportProps((p) => ({ ...p, rotations: r.rotations, mirror: r.mirror, filler: r.filler, commonCut: r.commonCut }))}
                 mirrorBlocked={mirrorBlocked(shownItem, rules)}
+                snaps={rules.snaps}
                 fromDatabase={!!shownItem.source}
                 onEdit={(drawing, label) => editDrawing(shownItem.id, shownItem.drawing!, drawing, label)}
                 undone={undone} />

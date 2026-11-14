@@ -2614,3 +2614,22 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .uf-hole small { color: var(--ink-3); font-weight: 500; }
 .uf-holes select.field { flex: 1; min-width: 0; }
 .uf-auto { color: #b4561f !important; font-weight: 600; }
+.ctx-check { display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+
+/* Import drawing: snap marks, aid lines, corners, dynamic input with fields */
+.snap-glyph rect, .snap-glyph path, .snap-glyph circle { fill: rgba(31, 168, 58, .12); stroke: #1fa83a; stroke-width: 2; }
+.snap-glyph.is-intersection path, .snap-glyph.is-perpendicular path { fill: none; }
+.snap-glyph.is-tangent path { fill: none; }
+.snap-label { font-family: var(--font-cond); font-size: 11.5px; font-weight: 700; fill: #1a7f31; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.aid-line { fill: none; stroke: #1ea0e6; stroke-width: 1.1; stroke-dasharray: 8 5; opacity: .85; }
+.aid-line.is-cline { stroke-dasharray: 10 4 2 4; }
+.aid-line.is-rubber { stroke-width: 1.3; opacity: 1; }
+.corner-mark { fill: rgba(242, 183, 5, .25); stroke: var(--yellow-ink); stroke-width: 2; }
+.corner-mark.is-on { fill: rgba(242, 183, 5, .7); }
+.dyn-in.dyn-fields { flex-direction: row; width: auto; gap: 6px; }
+.dyn-field { display: flex; flex-direction: column; gap: 3px; width: 104px; }
+.dyn-field .dyn-box { position: relative; display: block; }
+.dyn-field .dyn-box i { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); font-style: normal; font-size: 12px; color: var(--ink-3); pointer-events: none; }
+.dyn-field input { padding-right: 26px !important; }
+.dyn-field input::placeholder { font-size: 11px; }
+.dyn-field.is-active .dyn-label { color: var(--blue); }
