@@ -9,7 +9,10 @@ import type { Entity, Pt } from "./geometry";
 /** Something that helps drawing: an endless aid line, a center line (a slot's), or a dimension. */
 export type Aid =
   | { id: string; kind: "xline"; p: Pt; d: Pt }
-  | { id: string; kind: "cline"; a: Pt; b: Pt }
+  /** a straight piece: a slot's center line (dash-dot), or a line turned into an aid line (dash: dashed) */
+  | { id: string; kind: "cline"; a: Pt; b: Pt; dash?: boolean }
+  /** an arc or a circle (start 0, end 360) turned into an aid line, degrees counterclockwise */
+  | { id: string; kind: "carc"; c: Pt; r: number; start: number; end: number }
   | { id: string; kind: "dim"; m: Measure };
 
 export type SnapKind = "end" | "mid" | "center" | "quadrant" | "intersection" | "perpendicular" | "tangent" | "ortho";
@@ -60,6 +63,7 @@ function curvesOf(ents: Entity[], aids: Aid[]): Curve[] {
   for (const a of aids) {
     if (a.kind === "xline") out.push({ t: "inf", p: a.p, d: a.d });
     else if (a.kind === "cline") out.push({ t: "seg", a: a.a, b: a.b });
+    else if (a.kind === "carc") out.push(a.end - a.start >= 360 ? { t: "circle", c: a.c, r: a.r } : { t: "arc", c: a.c, r: a.r, start: a.start, end: a.end });
   }
   return out;
 }
@@ -152,7 +156,15 @@ export function findSnap(p: Pt, tol: number, ents: Entity[], aids: Aid[], allowe
       for (const q of [0, 90, 180, 270]) take(on(e.c, e.r, q), "quadrant");
     } else { take(e.fit[0], "end"); take(e.fit[e.fit.length - 1], "end"); }
   }
-  for (const a of aids) if (a.kind === "cline") { take(a.a, "end"); take(a.b, "end"); take(mul(add(a.a, a.b), 0.5), "mid"); }
+  for (const a of aids) {
+    if (a.kind === "cline") { take(a.a, "end"); take(a.b, "end"); take(mul(add(a.a, a.b), 0.5), "mid"); }
+    else if (a.kind === "carc") {
+      const full = a.end - a.start >= 360;
+      take(a.c, "center");
+      if (!full) { take(on(a.c, a.r, a.start), "end"); take(on(a.c, a.r, a.end), "end"); take(on(a.c, a.r, a.start + norm360(a.end - a.start) / 2), "mid"); }
+      for (const q of [0, 90, 180, 270]) if (full || onArc(q, a.start, a.end)) take(on(a.c, a.r, q), "quadrant");
+    }
+  }
   // crossings among what passes near the pointer
   const curves = curvesOf(ents, aids);
   const near = curves.filter((c) => curveDist(c, p) <= tol);
@@ -440,4 +452,65 @@ export function handAngle(c: Pt, p: Pt, exact: boolean): number | null {
   if (exact) return Math.round(a * 1000) / 1000;
   const k = Math.round(a / 45) * 45;
   return Math.abs(a - k) <= 3 ? k : Math.round(a);
+}
+
+// ------------------------------------------------------------------ lines turned into aid lines
+
+/** A line, an arc or a circle as an aid line (dashed, kept with the part, never cut); a spline: null. */
+export function toAid(e: Entity): Aid | null {
+  if (e.kind === "line") return { id: aidId(), kind: "cline", a: e.a, b: e.b, dash: true };
+  if (e.kind === "circle") return { id: aidId(), kind: "carc", c: e.c, r: e.r, start: 0, end: 360 };
+  if (e.kind === "arc") return { id: aidId(), kind: "carc", c: e.c, r: e.r, start: e.start, end: e.end };
+  return null;
+}
+
+/** An aid arc / circle as an entity (to draw it). */
+export const carcEnt = (a: Extract<Aid, { kind: "carc" }>): Entity =>
+  a.end - a.start >= 360 ? { id: a.id, kind: "circle", c: a.c, r: a.r } : { id: a.id, kind: "arc", c: a.c, r: a.r, start: a.start, end: a.end };
+
+// ------------------------------------------------------------------ grips (lines drawn in the importer)
+
+/** a, b: a line's ends; mid: its middle (moves it); c: a center (moves it); r: on the circle / arc (its
+ *  radius); s, e: an arc's ends (along its circle). */
+export type GripKind = "a" | "b" | "mid" | "c" | "r" | "s" | "e";
+
+/** The grips of a line, circle or arc (a spline has none). */
+export function gripsOf(e: Entity): { g: GripKind; p: Pt }[] {
+  if (e.kind === "line") return [{ g: "a", p: e.a }, { g: "b", p: e.b }, { g: "mid", p: mul(add(e.a, e.b), 0.5) }];
+  if (e.kind === "circle") return [{ g: "c", p: e.c }, ...[0, 90, 180, 270].map((q) => ({ g: "r" as const, p: on(e.c, e.r, q) }))];
+  if (e.kind === "arc") return [
+    { g: "c", p: e.c }, { g: "s", p: on(e.c, e.r, e.start) }, { g: "e", p: on(e.c, e.r, e.end) },
+    { g: "r", p: on(e.c, e.r, e.start + norm360(e.end - e.start) / 2) },
+  ];
+  return [];
+}
+
+/** The grip of a drawn entity nearest p (within tol). */
+export function gripAt(ents: Entity[], p: Pt, tol: number): { id: string; g: GripKind; p: Pt } | null {
+  let best: { id: string; g: GripKind; p: Pt; d: number } | null = null;
+  for (const e of ents) for (const q of gripsOf(e)) {
+    const d = dist(q.p, p);
+    if (d <= tol && (!best || d < best.d)) best = { id: e.id, g: q.g, p: q.p, d };
+  }
+  return best && { id: best.id, g: best.g, p: best.p };
+}
+
+/** The entity with grip g (first at `from`) dragged to `to`; null when it would vanish. */
+export function dragGrip(e: Entity, g: GripKind, from: Pt, to: Pt): Entity | null {
+  const d = sub(to, from);
+  if (e.kind === "line") {
+    const n = g === "a" ? { ...e, a: to } : g === "b" ? { ...e, b: to } : { ...e, a: add(e.a, d), b: add(e.b, d) };
+    return dist(n.a, n.b) > 1e-6 ? n : null;
+  }
+  if (e.kind === "circle" || e.kind === "arc") {
+    if (g === "c") return { ...e, c: add(e.c, d) };
+    if (g === "r") { const r = dist(to, e.c); return r > 1e-6 ? { ...e, r } : null; }
+    if (e.kind === "arc" && (g === "s" || g === "e")) {
+      if (dist(to, e.c) < 1e-9) return null;
+      const a = norm360(deg(Math.atan2(to.y - e.c.y, to.x - e.c.x)));
+      const n = g === "s" ? { ...e, start: a, end: norm360(e.end) } : { ...e, start: norm360(e.start), end: a };
+      return norm360(n.end - n.start) > 0.01 ? n : null;
+    }
+  }
+  return null;
 }

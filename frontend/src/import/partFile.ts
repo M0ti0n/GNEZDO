@@ -2,7 +2,7 @@
 import { api } from "../api/api";
 import type { PartSummary } from "../api/types";
 import { pointsAlong, roleOf, type Drawing, type Entity, type Pt, type Role } from "./geometry";
-import { clipLine } from "./draw";
+import { carcEnt, clipLine } from "./draw";
 
 /**
  * The part's drawing as saved (lines, arcs, circles with their roles, mm, y up). Parts saved without
@@ -52,6 +52,7 @@ function aidShapes(d: Drawing): { layer: "AID" | "DIM"; a: Pt; b: Pt }[] {
   for (const a of d.aids ?? []) {
     if (a.kind === "xline") { const c = clipLine(a.p, a.d, box); if (c) out.push({ layer: "AID", a: c[0], b: c[1] }); }
     else if (a.kind === "cline") out.push({ layer: "AID", a: a.a, b: a.b });
+    else if (a.kind === "carc") continue;          // written as arcs / circles (aidArcs)
     else {
       const m = a.m;
       if (m.kind === "distance") { out.push({ layer: "DIM", a: m.from, b: m.to }); for (const [p, q] of m.ext) out.push({ layer: "DIM", a: p, b: q }); }
@@ -62,6 +63,8 @@ function aidShapes(d: Drawing): { layer: "AID" | "DIM"; a: Pt; b: Pt }[] {
   }
   return out;
 }
+/** Aid arcs and circles (lines, arcs and circles turned into aid lines): layer AID. */
+const aidArcs = (d: Drawing): Entity[] => (d.aids ?? []).flatMap((a) => (a.kind === "carc" ? [carcEnt(a)] : []));
 /** The dimensions' texts and where they stand. */
 function dimTexts(d: Drawing): { at: Pt; text: string }[] {
   const n2 = (v: number) => String(Math.round(v * 100) / 100);
@@ -96,6 +99,10 @@ export function toDxf(d: Drawing, withAids = false): string {
   }
   if (withAids) {
     for (const s of aidShapes(d)) add("0", "LINE", "8", s.layer, "10", s.a.x, "20", s.a.y, "30", 0, "11", s.b.x, "21", s.b.y, "31", 0);
+    for (const e of aidArcs(d)) {
+      if (e.kind === "circle") add("0", "CIRCLE", "8", "AID", "10", e.c.x, "20", e.c.y, "30", 0, "40", e.r);
+      else if (e.kind === "arc") add("0", "ARC", "8", "AID", "10", e.c.x, "20", e.c.y, "30", 0, "40", e.r, "50", e.start, "51", e.end);
+    }
     for (const t of dimTexts(d)) add("0", "TEXT", "8", "DIM", "10", t.at.x, "20", t.at.y, "30", 0, "40", 3.5, "1", t.text);
   }
   add("0", "ENDSEC", "0", "EOF");
@@ -131,7 +138,8 @@ export function toSvg(d: Drawing, withAids = false): string {
     return paths.length ? `  <g id="${LAYER[role].name}" fill="none" stroke="${SVG_STROKE[role]}" stroke-width="0.25">\n${paths.join("\n")}\n  </g>` : "";
   }).filter(Boolean);
   if (withAids && d.aids?.length) {
-    const ln = aidShapes(d).map((s) => `    <path d="M${X(s.a.x)} ${Y(s.a.y)}L${X(s.b.x)} ${Y(s.b.y)}"${s.layer === "AID" ? ' stroke-dasharray="2 1.5"' : ""}/>`);
+    const ln = aidShapes(d).map((s) => `    <path d="M${X(s.a.x)} ${Y(s.a.y)}L${X(s.b.x)} ${Y(s.b.y)}"${s.layer === "AID" ? ' stroke-dasharray="2 1.5"' : ""}/>`)
+      .concat(aidArcs(d).map((e) => `    <path d="${pathOf(e)}" stroke-dasharray="2 1.5"/>`));
     const tx = dimTexts(d).map((t) => `    <text x="${X(t.at.x)}" y="${Y(t.at.y)}" font-size="3.5">${t.text.replace("%%c", "Ø").replace("%%d", "°")}</text>`);
     groups.push(`  <g id="AID_DIM" fill="none" stroke="#2f80d0" stroke-width="0.18">\n${ln.join("\n")}\n  </g>\n  <g fill="#2f80d0">\n${tx.join("\n")}\n  </g>`);
   }
