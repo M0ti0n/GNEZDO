@@ -18,9 +18,27 @@ import { flatDxf, type Unfolded, type V2 } from "../import/step/unfold";
 // on the machine): foil / finish on it when marked; bend marks are traced on the bends coming up from it.
 // SEND TO IMPORT 2D puts the flat pattern into the import list (sent again: replaced there).
 
-type Pick = "base" | "top" | "stitch" | "edge" | "one" | "measure3d" | "measure" | null;
+type Pick = "base" | "top" | "stitch" | "edge" | "one" | "measure3d" | "measure" | "look" | null;
 
 const K = "#1b1b1b", G = "#1d9641", R = "#e3262b", B = "#1d7fd0";
+
+/** How the part is shown in 3D (kept for next time, on this computer). */
+interface ViewPrefs {
+  /** edge lines: their width, × */
+  edge: number;
+  wire: boolean;
+  /** face colors: by what unfolding does with them, the STEP file's colors, or the material's color */
+  colors: "roles" | "file" | "material";
+  /** material (lower case) -> color */
+  matColors: Record<string, string>;
+}
+const VIEW_KEY = "gnezdo.x3.view";
+const VIEW0: ViewPrefs = { edge: 1, wire: false, colors: "roles", matColors: {} };
+function loadView(): ViewPrefs {
+  try { const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "null"); return v ? { ...VIEW0, ...v } : VIEW0; } catch { return VIEW0; }
+}
+const hexOf = (c: [number, number, number]) => "#" + c.map((x) => Math.round(Math.max(0, Math.min(1, x)) * 255).toString(16).padStart(2, "0")).join("");
+const rgbOf = (h: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
 const Ico = ({ children }: { children: ReactNode }) => (
   <svg viewBox="0 0 48 48" width={48} height={48} fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 );
@@ -32,11 +50,12 @@ const ICONS: Record<string, ReactNode> = {
   one: <Ico><path d="M4 34l20-10 20 10-20 10z" fill="#d6e8f8" stroke={B} strokeWidth="2.4" /><path d="M24 4v16M18 14l6 6 6-6" stroke={K} strokeWidth="2.4" /></Ico>,
   measure3d: <Ico><path d="M8 30l14-7 18 7-14 7z" fill="#eef3f4" stroke={K} strokeWidth="2" /><path d="M8 30v8l18 7v-8M26 37l14-7v8l-14 7" stroke={K} strokeWidth="2" fill="none" /><path d="M8 14l18 7M8 10v8M26 17v8" stroke={R} strokeWidth="2.2" /><circle cx="36" cy="12" r="5" stroke={R} strokeWidth="2.2" /></Ico>,
   measure: <Ico><path d="M6 26h36M6 18v16M42 18v16" stroke={K} strokeWidth="2.2" /><path d="M11 26l6-3.5v7zM37 26l-6-3.5v7z" fill={R} /></Ico>,
+  look: <Ico><path d="M10 12h28v24H10z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><circle cx="24" cy="24" r="6" stroke={B} strokeWidth="2.6" /><circle cx="24" cy="24" r="2" fill={B} /><path d="M24 4v6M24 38v6M4 24h6M38 24h6" stroke={R} strokeWidth="2.2" /></Ico>,
   send: <Ico><rect x="4" y="10" width="26" height="28" stroke={K} strokeWidth="2.2" /><path d="M4 24h26" stroke={G} strokeWidth="2.4" strokeDasharray="5 4" /><path d="M28 24h16M38 18l6 6-6 6" stroke={G} strokeWidth="3" /></Ico>,
   dxf: <Ico><path d="M10 4h18l10 10v30H10z" stroke={K} strokeWidth="2.2" /><path d="M24 18v16M18 28l6 6 6-6" stroke={G} strokeWidth="2.6" /></Ico>,
 };
 
-export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial, onChange, onSend, onName }: {
+export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial, fileMaterial = "", onChange, onSend, onName }: {
   name: string;
   kind: BodyKind;
   qty: number;
@@ -52,7 +71,17 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   onName: (name: string, qty: number, material: string) => void;
   /** its own material ("": the Import 2D properties' one) */
   partMaterial: string;
+  /** the material the STEP file names ("": none) */
+  fileMaterial?: string;
 }) {
+  // how the part is shown in 3D (kept for next time)
+  const [view, setViewState] = useState<ViewPrefs>(loadView);
+  const setView = (patch: Partial<ViewPrefs>) => setViewState((v) => {
+    const n = { ...v, ...patch };
+    try { localStorage.setItem(VIEW_KEY, JSON.stringify(n)); } catch { /* this session */ }
+    return n;
+  });
+  const [viewOpen, setViewOpen] = useState(false);
   const st = step.settings;
   const stitchMode = st.mode === "stitch";
   // with the edges added across its faces (stitch): what is seen, picked and stitched
@@ -141,7 +170,8 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
     : pick === "stitch" ? "click flat faces one next to the other (again: out)"
     : pick === "edge" ? (edgeA ? "click the second point of the same flat face (corners and middles snap; Ctrl: square to the edge); along an edge: a seam" : "click a corner or an edge's middle, then a second one: across a flat face it is split; along an edge (its two ends) that edge is a seam")
     : pick === "one" ? "click the flat face to send as it is"
-    : pick === "measure3d" ? "click a face, an edge, a hole's edge or a corner; then a second one" : "drag: turn · wheel: zoom";
+    : pick === "measure3d" ? "click a face, an edge, a hole's edge or a corner; then a second one"
+    : pick === "look" ? "click a face: the view looks straight at it" : "drag: turn · right drag: move · wheel: zoom where the pointer is";
   const [meas, setMeas] = useState<MPick[]>([]);
   // the part and the flat pattern side by side, or one of them folded away to the side (kept for next time)
   const [panes, setPanesState] = useState<Panes>(loadPanes);
@@ -159,6 +189,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
           stitchMode ? "Turn the flat pattern over: the faces' other side up" : "Click a face on the side that lies up on the machine (the foil / finish side, or the inside of the bends to trace)")}
         {tool("one", "One face", pick === "one", () => setPick(pick === "one" ? null : "one"), "Click one flat face: its outline (with its holes) is the flat pattern, as it is (Stitch with one face)")}
         {tool("measure3d", "Measure 3D", pick === "measure3d", () => { setPick(pick === "measure3d" ? null : "measure3d"); setMeas([]); }, "Measure the part: click a face, an edge, a hole's edge or a corner, then a second one: offset between faces, hole sizes, distance between holes, angles")}
+        {tool("look", "Face view", pick === "look", () => setPick(pick === "look" ? null : "look"), "Click a face of the part: the view turns to look straight at it")}
         {tool("measure", "Flat distance", pick === "measure", () => setPick(pick === "measure" ? null : "measure"), "Click two points of the flat pattern (corners and hole centers snap)")}
         <span className="uf-sep" />
         {tool("send", sent ? "Send again" : "Send to Import 2D", false, onSend, step.info.ok
@@ -171,8 +202,14 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
           <button type="button" className="uf-strip" onClick={() => setPanes("both")} title="Show the part (3D) again">
             <PaneIcon dir="right" /><span>Part (3D)</span></button>
           <h3>Part <em>{hint}</em>
+            <button type="button" className={`icon-btn uf-view-btn${viewOpen ? " is-on" : ""}`} aria-expanded={viewOpen} onClick={() => setViewOpen(!viewOpen)} title="View options: edge lines, solid or wireframe, colors">
+              <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" /><circle cx="5" cy="4" r="1.6" fill="#fff" /><circle cx="11" cy="8" r="1.6" fill="#fff" /><circle cx="7" cy="12" r="1.6" fill="#fff" /></svg>
+            </button>
             <PaneButtons side="3d" panes={panes} onPanes={setPanes} /></h3>
+          {viewOpen && <ViewOptions view={view} onView={setView} onClose={() => setViewOpen(false)}
+            material={(partMaterial || fileMaterial || material).trim()} fileColor={solid.color} />}
           <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick === "measure" ? null : pick} edgeA={edgeA} onCorner={edgeCorner}
+            view={view} material={(partMaterial || fileMaterial || material).trim().toLowerCase()} onLooked={() => setPick(null)}
             measure={pick === "measure3d" ? meas : []} onMeasure={(m) => setMeas((l) => (l.length >= 2 ? [m] : [...l, m]))}
             onPick={(f, k) => {
               if (pick === "one") {
@@ -229,6 +266,10 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
             </div>
           </div>
           <p className="uf-note uf-name-note">Its name, pieces and material in Import 2D (the name usually the drawing's number). No material: the Import 2D properties' one.</p>
+          {fileMaterial && fileMaterial.toLowerCase() !== partMaterial.trim().toLowerCase() && (
+            <p className="uf-note">The STEP file says: <b>{fileMaterial}</b>{lists.strict && !lists.techMaterials.some((o) => o.value.toLowerCase() === fileMaterial.toLowerCase()) ? " (not in the Technology tables)" : ""}{" "}
+              {(!lists.strict || lists.techMaterials.some((o) => o.value.toLowerCase() === fileMaterial.toLowerCase())) && <button type="button" className="link" onClick={() => setMaterial(lists.techMaterials.find((o) => o.value.toLowerCase() === fileMaterial.toLowerCase())?.value ?? fileMaterial)}>use it</button>}</p>
+          )}
           <div className="uf-row">
             <span>Mode</span>
             <span className="cols-toggle uf-seg" role="radiogroup" aria-label="How it is laid flat">
@@ -425,8 +466,14 @@ const fmt = (v: number, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleSt
 
 // ------------------------------------------------------------------ the part in 3D (shaded, faces picked)
 
-function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, onCorner }: {
-  solid: Solid; u: Unfolded; st: StepSettings; flip: boolean; pick: "base" | "top" | "stitch" | "edge" | "one" | "measure3d" | null;
+function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, onCorner, view, material, onLooked }: {
+  solid: Solid; u: Unfolded; st: StepSettings; flip: boolean; pick: "base" | "top" | "stitch" | "edge" | "one" | "measure3d" | "look" | null;
+  /** how it is shown: edge lines, wireframe, colors */
+  view: ViewPrefs;
+  /** its material (lower case), for its color */
+  material: string;
+  /** FACE VIEW: the view turned to a face */
+  onLooked: () => void;
   /** ADD EDGE: the first corner clicked; a corner clicked */
   edgeA?: V3 | null;
   onCorner?: (p: V3) => void;
@@ -436,7 +483,8 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
   onMeasure: (m: MPick) => void;
 }) {
   const cv = useRef<HTMLCanvasElement>(null);
-  const [cam, setCam] = useState({ yaw: -0.7, pitch: 0.5, zoom: 1 });
+  // turned (yaw, pitch), zoomed and moved (ox, oy: screen pixels off the middle)
+  const [cam, setCam] = useState({ yaw: -0.7, pitch: 0.5, zoom: 1, ox: 0, oy: 0 });
   const [hover, setHover] = useState<number | null>(null);
   const shapes = useRef<{ i: number; path: Path2D }[]>([]);
   const proj = useRef<((p: V3) => [number, number, number]) | null>(null);
@@ -445,7 +493,8 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
   // ADD EDGE: the point the pointer snaps to
   const [hoverP, setHoverP] = useState<{ p: V3; kind: "corner" | "mid" | "perp" } | null>(null);
   const seamSet = useMemo(() => new Set(st.seams ?? []), [st.seams]);
-  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean; pan: boolean } | null>(null);
+  const rotNRef = useRef<((n: V3) => V3) | null>(null);
   const skin = useMemo(() => new Set(u.skinFaces), [u]);
   // the fixed face: picked, else the biggest flat face of the unfolded side
   const stitchMode = st.mode === "stitch";
@@ -473,9 +522,19 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
       const pr = (p: V3): [number, number, number] => {
         const x = p[0] - ctr[0], y = p[1] - ctr[1], z = p[2] - ctr[2];
         const x1 = cy * x - sy * y, y1 = sy * x + cy * y;
-        return [W / 2 + x1 * s, H / 2 - (sp * y1 + cp * z) * s, cp * y1 - sp * z];
+          return [W / 2 + cam.ox + x1 * s, H / 2 + cam.oy - (sp * y1 + cp * z) * s, cp * y1 - sp * z];
       };
       const rotN = (n: V3): V3 => { const x1 = cy * n[0] - sy * n[1], y1 = sy * n[0] + cy * n[1]; return [x1, cp * y1 - sp * n[2], sp * y1 + cp * n[2]]; };
+      rotNRef.current = rotN;
+      // the part's own color: the material's (set in View options), else the file's
+      const matHex = view.matColors[material];
+      const own = (fid: number): number[] | null => {
+        const fc = solid.faceColor?.[fid];
+        const file = fc ?? solid.color;
+        const m = matHex ? rgbOf(matHex).map((x) => x / 255) : null;
+        const c = view.colors === "material" ? m ?? file : view.colors === "file" ? file ?? m : null;
+        return c ? c.map((x) => x * 255) : null;
+      };
       const L: V3 = [-0.29, -0.83, 0.48];
       const items = solid.faces.map((f, i) => {
         const pts = f.loops.flatMap((l) => l.edges.flatMap((e) => e.pts));
@@ -493,7 +552,10 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
       const out: { i: number; path: Path2D }[] = [];
       for (const it of items) {
         const k = it.i === base ? "base" : stitchMode ? (picked.has(it.i) ? "stitch" : "side") : solid.faces[it.i].surf.kind === "other" ? "bad" : skin.has(it.i) ? "skin" : "side";
-        const rgb = k === "bad" ? [214, 90, 70] : k === "base" ? [120, 196, 140] : k === "skin" ? [200, 228, 208] : k === "stitch" ? [150, 196, 238] : [178, 192, 196];
+        const roleRgb = k === "bad" ? [214, 90, 70] : k === "base" ? [120, 196, 140] : k === "skin" ? [200, 228, 208] : k === "stitch" ? [150, 196, 238] : [178, 192, 196];
+        // part colors: the face's own color; what is picked (fixed face, stitched faces) keeps its color
+        const mine = view.colors !== "roles" && k !== "base" && k !== "stitch" && k !== "bad" ? own(it.f.id) : null;
+        const rgb = mine ?? (view.colors !== "roles" && k === "skin" ? [178, 192, 196] : roleRgb);
         const c2 = rgb.map((v) => Math.round(v * it.lit));
         const path = new Path2D();
         for (const l of it.f.loops) {
@@ -501,10 +563,15 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
           for (const e of l.edges) for (const p of e.pts) { const q = pr(p); if (first) { path.moveTo(q[0], q[1]); first = false; } else path.lineTo(q[0], q[1]); }
           path.closePath();
         }
-        g.fillStyle = hover === it.i && pick && pick !== "measure3d" ? "rgba(242,183,5,0.9)" : `rgba(${c2[0]},${c2[1]},${c2[2]},0.94)`;
-        g.fill(path, "evenodd");
-        g.strokeStyle = k === "skin" || k === "base" ? "#1d9641" : k === "stitch" ? "#1d7fd0" : k === "bad" ? "#c2412d" : "#7f9296";
-        g.lineWidth = k === "side" ? 0.9 : 1.2;
+        const hot = hover === it.i && pick && pick !== "measure3d";
+        // wireframe: only the edges (a face under the pointer still shows)
+        if (!view.wire || hot) {
+          g.fillStyle = hot ? "rgba(242,183,5,0.9)" : `rgba(${c2[0]},${c2[1]},${c2[2]},0.94)`;
+          g.fill(path, "evenodd");
+        }
+        g.strokeStyle = view.wire ? (k === "base" ? "#1d9641" : k === "stitch" ? "#1d7fd0" : k === "bad" ? "#c2412d" : "#33464c")
+          : mine ? "#3c4a4e" : k === "skin" || k === "base" ? "#1d9641" : k === "stitch" ? "#1d7fd0" : k === "bad" ? "#c2412d" : "#7f9296";
+        g.lineWidth = (k === "side" ? 0.9 : 1.2) * view.edge;
         g.beginPath();
         for (const l of it.f.loops) for (const e of l.edges) e.pts.forEach((p, j) => { const q = pr(p); if (j) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); });
         g.stroke();
@@ -512,7 +579,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
         for (const l of it.f.loops) for (const e of l.edges) {
           const col = seamSet.has(e.id) ? "#e3262b" : e.id <= -1_000_000 ? "#22b14c" : null;
           if (!col) continue;
-          g.strokeStyle = col; g.lineWidth = 2.8;
+          g.strokeStyle = col; g.lineWidth = 2.8 * Math.max(1, view.edge);
           g.setLineDash(seamSet.has(e.id) ? [7, 4] : []);
           g.beginPath(); e.pts.forEach((p, j) => { const q = pr(p); if (j) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); }); g.stroke();
           g.setLineDash([]);
@@ -570,7 +637,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
     const ro = new ResizeObserver(draw);
     ro.observe(c);
     return () => ro.disconnect();
-  }, [solid, cam, skin, base, hover, pick, picked, stitchMode, measure, hoverM, edgeA, hoverP, seamSet]);
+  }, [solid, cam, skin, base, hover, pick, picked, stitchMode, measure, hoverM, edgeA, hoverP, seamSet, view, material]);
 
   const faceAt = (x: number, y: number) => {
     const g = cv.current?.getContext("2d");
@@ -727,17 +794,39 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
     if (h) return edgePick(solid, h.face, h.id);
     return f === null ? null : facePick(solid, f);
   };
-  const local = (e: React.PointerEvent) => { const r = cv.current!.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] as const; };
+  const local = (e: React.PointerEvent | React.MouseEvent) => { const r = cv.current!.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] as const; };
+  /** FACE VIEW: turned to look straight at the face, from the side it is seen (the part in the middle again) */
+  const lookAt = (fi: number) => {
+    const f = solid.faces[fi];
+    const pts = f.loops.flatMap((l) => l.edges.flatMap((e) => e.pts));
+    let n = normalAt(f, pts[Math.floor(pts.length / 2)] ?? [0, 0, 0]);
+    if (!n && f.loops[0]) {
+      const lp = f.loops[0].edges.flatMap((e) => e.pts), nw: V3 = [0, 0, 0];
+      for (let k = 0; k < lp.length; k++) { const a = lp[k], b = lp[(k + 1) % lp.length]; nw[0] += (a[1] - b[1]) * (a[2] + b[2]); nw[1] += (a[2] - b[2]) * (a[0] + b[0]); nw[2] += (a[0] - b[0]) * (a[1] + b[1]); }
+      const k = Math.hypot(...nw); n = k ? [nw[0] / k, nw[1] / k, nw[2] / k] : null;
+    }
+    if (!n) return;
+    // the side seen now: the normal toward the viewer
+    const r = rotNRef.current;
+    if (r && r(n)[1] > 0) n = [-n[0], -n[1], -n[2]];
+    const h = Math.hypot(n[0], n[1]);
+    setCam((c) => ({ ...c, yaw: h > 1e-9 ? Math.atan2(n![0], n![1]) + Math.PI : c.yaw, pitch: Math.asin(Math.max(-1, Math.min(1, n![2]))), ox: 0, oy: 0 }));
+  };
   return (
     <div className="uf-canvas">
       <canvas ref={cv} className={pick ? "is-pick" : ""}
-        onPointerDown={(e) => { drag.current = { x: e.clientX, y: e.clientY, moved: false }; (e.target as Element).setPointerCapture(e.pointerId); }}
+        // left button: turn; right or middle button (or Shift): move
+        onPointerDown={(e) => { drag.current = { x: e.clientX, y: e.clientY, moved: false, pan: e.button !== 0 || e.shiftKey }; (e.target as Element).setPointerCapture(e.pointerId); }}
+        onContextMenu={(e) => e.preventDefault()}
         onPointerMove={(e) => {
           const d = drag.current;
           if (d && (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 3 || d.moved)) {
             d.moved = true;
-            setCam((c) => ({ ...c, yaw: c.yaw + (e.clientX - d.x) * 0.01, pitch: Math.max(-1.55, Math.min(1.55, c.pitch + (e.clientY - d.y) * 0.01)) }));
+            // the step is taken now: the state updates later, when d has moved on
+            const dx = e.clientX - d.x, dy = e.clientY - d.y;
             d.x = e.clientX; d.y = e.clientY;
+            if (d.pan) setCam((c) => ({ ...c, ox: c.ox + dx, oy: c.oy + dy }));
+            else setCam((c) => ({ ...c, yaw: c.yaw + dx * 0.01, pitch: Math.max(-1.55, Math.min(1.55, c.pitch + dy * 0.01)) }));
             return;
           }
           if (pick === "measure3d") { const [x, y] = local(e); setHoverM(measureAt(x, y)); }
@@ -746,17 +835,110 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
         }}
         onPointerUp={(e) => {
           const d = drag.current; drag.current = null;
-          if (d?.moved || !pick) return;
+          if (d?.moved || !pick || e.button !== 0) return;
           const [x, y] = local(e);
           if (pick === "measure3d") { const m = measureAt(x, y); if (m) onMeasure(m); return; }
           if (pick === "edge") { const sp = edgePointAt(x, y, e.ctrlKey || e.metaKey); if (sp) onCorner?.(sp.p); return; }
           const f = faceAt(x, y);
-          if (f !== null) onPick(f, solid.faces[f].surf.kind);
+          if (f === null) return;
+          if (pick === "look") { lookAt(f); onLooked(); return; }
+          onPick(f, solid.faces[f].surf.kind);
         }}
+        onDoubleClick={(e) => { if (pick) return; const [x, y] = local(e); const f = faceAt(x, y); if (f !== null) lookAt(f); }}
         onPointerLeave={() => { setHover(null); setHoverM(null); setHoverP(null); }}
-        onWheel={(e) => setCam((c) => ({ ...c, zoom: Math.max(0.2, Math.min(10, c.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12))) }))}
+        // zoom where the pointer is: the point under it stays there
+        onWheel={(e) => {
+          const c0 = cv.current;
+          if (!c0) return;
+          const [mx, my] = local(e as unknown as React.PointerEvent);
+          const W = c0.clientWidth, H = c0.clientHeight;
+          setCam((c) => {
+            const zoom = Math.max(0.2, Math.min(40, c.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12))), k = zoom / c.zoom;
+            return { ...c, zoom, ox: mx - W / 2 - (mx - W / 2 - c.ox) * k, oy: my - H / 2 - (my - H / 2 - c.oy) * k };
+          });
+        }}
       />
       {!stitchMode && <span className="uf-top">{flip ? "Top side: the other side (grey)" : "Top side: the green side"}</span>}
+    </div>
+  );
+}
+
+/** The 3D Extractor with no part open: its tools and panes, empty until a STEP file is dropped on its list. */
+export function ExtractEmpty({ onPick }: { onPick: () => void }) {
+  const tools: [string, string][] = [["stitch", "Stitch"], ["edge", "Add edge"], ["base", "Fixed face"], ["top", "Top side"], ["one", "One face"],
+    ["measure3d", "Measure 3D"], ["look", "Face view"], ["measure", "Flat distance"]];
+  const t = ([id, label]: [string, string]) => (
+    <button key={id} type="button" className="itool" aria-disabled title={`${label}: open a part first`}>
+      <span className="itool-box">{ICONS[id]}</span><span className="itool-label">{label}</span>
+    </button>
+  );
+  return (
+    <div className="import uf uf-none">
+      <div className="itools">
+        {tools.map(t)}
+        <span className="uf-sep" />
+        {([["send", "Send to Import 2D"], ["dxf", "Flat DXF"]] as [string, string][]).map(t)}
+      </div>
+      <div className="uf-panes is-both">
+        <section className="uf-pane"><h3>Part</h3>
+          <div className="uf-empty"><p><b>No part open.</b><br />Drop STEP files (parts or assemblies) on the 3D Extractor list on the left,<br />then pick a part there.</p>
+            <button type="button" className="btn btn-plain" onClick={onPick}>Show the list</button></div>
+        </section>
+        <section className="uf-pane"><h3>Flat pattern</h3><div className="uf-empty">The flat pattern shows here.</div></section>
+      </div>
+      <aside className="uf-panel" aria-label="Unfold"><header><h2>No part</h2></header>
+        <div className="uf-body"><p className="uf-note">Its name, pieces, material and how it is unfolded show here once a part is open.</p></div></aside>
+    </div>
+  );
+}
+
+/** The 3D view's options: edge lines, solid or wireframe, face colors (a color per material). */
+function ViewOptions({ view, onView, onClose, material, fileColor }: {
+  view: ViewPrefs; onView: (p: Partial<ViewPrefs>) => void; onClose: () => void;
+  /** the part's material, its color set here; and the file's own color */
+  material: string; fileColor?: [number, number, number];
+}) {
+  const m = material.toLowerCase();
+  const mats = [...new Set([...(m ? [m] : []), ...Object.keys(view.matColors)])];
+  const setMat = (k: string, hex: string | null) => {
+    const next = { ...view.matColors };
+    if (hex) next[k] = hex; else delete next[k];
+    onView({ matColors: next });
+  };
+  return (
+    <div className="uf-viewopts" role="dialog" aria-label="View options">
+      <div className="uf-vo-head"><b>View</b><button type="button" className="icon-btn" onClick={onClose} aria-label="Close">×</button></div>
+      <div className="uf-row">
+        <span>Show</span>
+        <span className="cols-toggle uf-seg" role="radiogroup" aria-label="Solid or wireframe">
+          <button type="button" role="radio" aria-checked={!view.wire} className={!view.wire ? "is-on" : ""} onClick={() => onView({ wire: false })}>Solid</button>
+          <button type="button" role="radio" aria-checked={view.wire} className={view.wire ? "is-on" : ""} onClick={() => onView({ wire: true })}>Wireframe</button>
+        </span>
+      </div>
+      <div className="uf-row">
+        <label htmlFor="uf-edge">Edge lines</label>
+        <input id="uf-edge" type="range" min={0.5} max={4} step={0.25} value={view.edge} onChange={(e) => onView({ edge: Number(e.target.value) })} />
+        <span className="uf-val">{view.edge}×</span>
+      </div>
+      <div className="uf-row">
+        <span>Colors</span>
+        <span className="cols-toggle uf-seg" role="radiogroup" aria-label="Face colors">
+          {([["roles", "Unfold"], ["file", "STEP file"], ["material", "Material"]] as const).map(([k, l]) => (
+            <button key={k} type="button" role="radio" aria-checked={view.colors === k} className={view.colors === k ? "is-on" : ""} onClick={() => onView({ colors: k })}
+              title={k === "roles" ? "What unfolding does with each face (unfolded side, fixed face, stitched)" : k === "file" ? "The colors the STEP file gives the part (else its material's)" : "A color for each material, set below (else the file's)"}>{l}</button>
+          ))}
+        </span>
+      </div>
+      <p className="uf-note">{fileColor ? <>The STEP file colors this part <i className="uf-swatch" style={{ background: hexOf(fileColor) }} /> {hexOf(fileColor)}.</> : "The STEP file gives this part no color."}</p>
+      <div className="uf-lbl">Material colors</div>
+      {!mats.length && <p className="uf-note">No material: set the part's material (or the Import 2D one) to give it a color.</p>}
+      {mats.map((k) => (
+        <div className="uf-row uf-matcolor" key={k}>
+          <input type="color" value={view.matColors[k] ?? (fileColor ? hexOf(fileColor) : "#b2c0c4")} onChange={(e) => setMat(k, e.target.value)} aria-label={`Color of ${k}`} />
+          <span className="uf-val">{k}{k === m && <small> · this part</small>}</span>
+          {view.matColors[k] && <button type="button" className="link" onClick={() => setMat(k, null)}>Remove</button>}
+        </div>
+      ))}
     </div>
   );
 }

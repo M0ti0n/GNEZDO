@@ -26,6 +26,8 @@ export interface ImportItem {
   applied?: { rotations: Rotation[]; mirror: boolean; filler: boolean; commonCut: boolean };
   /** A flat pattern sent from the 3D Extractor: that part's id there. */
   from3d?: string;
+  /** The New part tab: drawn on an empty canvas, not in the list until it is named (Save to list) or saved. */
+  sketch?: boolean;
   /** A part made in Import 2D -> FITTINGS: which fitting, values and piece (the same again replaces it). */
   fitting?: string;
   /** What the part itself asks of nesting and saving (a flat pattern from 3D: its thickness, foil, grain). */

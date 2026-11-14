@@ -55,6 +55,9 @@ export function RemnantDialog({ title = "Edit remnant", r, names, fresh = false,
 
 const day = (iso?: string) => (iso ? new Date(iso).toLocaleDateString() : "");
 
+/** The remnants read last (while GNEZDO is open). */
+let keptRemnants: SavedRemnant[] | null = null;
+
 export function RemnantsPage({ filter, run, onShowFilters, selected, onSelect, onFresh }: {
   filter: RemnantFilter | null; run: number; onShowFilters: () => void;
   /** the remnant picked (its details show in the Remnant search panel) */
@@ -62,11 +65,12 @@ export function RemnantsPage({ filter, run, onShowFilters, selected, onSelect, o
   /** the picked remnant as loaded again (changed, or null: gone) */
   onFresh: (r: SavedRemnant | null) => void;
 }) {
-  const [all, setAll] = useState<SavedRemnant[] | null>(null);
+  // back on this screen: the remnants read last show at once while they are read again
+  const [all, setAll] = useState<SavedRemnant[] | null>(keptRemnants);
   const [error, setError] = useState<string | null>(null);
   const [edit, setEdit] = useState<SavedRemnant | null>(null);
   const [del, setDel] = useState<SavedRemnant | null>(null);
-  const load = () => api.remnants().then((l) => { setAll(l); setError(null); }, (e: Error) => setError(e.message));
+  const load = () => api.remnants().then((l) => { keptRemnants = l; setAll(l); setError(null); }, (e: Error) => setError(e.message));
   useEffect(() => { void load(); }, [run]);
   // the picked remnant as it is now (changed or deleted)
   useEffect(() => { if (all && selected) onFresh(all.find((r) => r.name === selected) ?? null); }, [all]);   // eslint-disable-line react-hooks/exhaustive-deps

@@ -1,7 +1,7 @@
 // The main area shows either a *view* (Home, Job search, Import, Settings ...), chosen from the
 // side rail or the GNEZDO menu, or an open *document tab* (a job, later a part) from the green bar.
 
-export type ViewKind = "home" | "jobSearch" | "remnants" | "import" | "projects" | "settings" | "rules" | "stock" | "technology";
+export type ViewKind = "home" | "jobSearch" | "remnants" | "import" | "projects" | "settings" | "rules" | "stock" | "technology" | "extract" | "special";
 export type TabKind = "job" | "part" | "drawing";   // drawing = an imported file being checked
 export type PageKind = ViewKind | TabKind;
 
@@ -38,6 +38,8 @@ export const VIEW_TITLE: Record<ViewKind, string> = {
   rules: "Rules",
   stock: "Stock & remnants",
   technology: "Technology table",
+  extract: "3D Extractor",
+  special: "Special tools",
 };
 
 export const jobTab = (jobId: string, name: string): Tab => ({
@@ -53,10 +55,6 @@ export const drawingTab = (drawingId: string, fileName: string): Tab => ({
   title: fileName,
   drawingId,
 });
-
-/** Import 2D -> FITTINGS: one tab, the fittings made from their values. */
-export const FITTINGS_ID = "fittings";
-export const fittingsTab = (): Tab => ({ id: `drawing:${FITTINGS_ID}`, kind: "drawing", title: "Fittings", drawingId: FITTINGS_ID });
 
 export function shellReducer(state: ShellState, action: ShellAction): ShellState {
   switch (action.type) {

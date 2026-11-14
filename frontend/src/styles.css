@@ -149,9 +149,12 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 .drawer-panel { display: flex; flex-direction: column; width: var(--panel-w); min-height: 0; }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 10px 8px 16px; }
 .drawer-head h2 { font-size: 19px; }
-.filters { display: grid; gap: 7px; padding: 0 16px 12px; }
+.filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 0 16px 12px; }
+/* a long machine or material name in a list must not push the panel wider */
+.filters > *, .filters .field { min-width: 0; }
+.filters select.field { width: 100%; }
 .filters .field { height: 32px; }
-.filter-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.filter-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 7px; }
 .badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--green); color: #fff; font-size: 11.5px; font-weight: 600; }
 
 .date-line { display: flex; align-items: center; gap: 8px; }
@@ -663,6 +666,10 @@ th.num .th-sort { flex-direction: row-reverse; }
   background-image: radial-gradient(var(--dot) 1px, transparent 1.2px);
 }
 .canvas:active { cursor: grabbing; }
+.canvas.is-picking, .canvas.is-picking:active { cursor: default; }
+/* dragging on the canvas never selects the page's text (the Geometry check panel's) */
+.canvas { user-select: none; -webkit-user-select: none; }
+.canvas input, .canvas textarea { user-select: text; -webkit-user-select: text; }
 .drawing { position: absolute; inset: 0; display: block; }
 .ent { fill: none; stroke: var(--ink); stroke-width: 1.6; }
 .ent.is-spline { stroke-dasharray: 7 4; }
@@ -737,7 +744,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .imp-choose b { font-size: 15px; }
 .imp-choose span { font-size: 13px; color: var(--ink-2); }
 .imp-empty-note { display: block; font-size: 12.5px; }
-.imp-props { display: grid; gap: 7px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.imp-props { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; padding-top: 10px; border-top: 1px dashed var(--line); }
 .imp-props h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
 .imp-props-icon svg { width: 34px; height: 21px; }
 .imp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px 10px; }
@@ -781,8 +788,9 @@ th.num .th-sort { flex-direction: row-reverse; }
 /* Rules inside the import Properties */
 .imp-rules { display: grid; gap: 6px; padding: 8px 10px; border-radius: 8px; background: var(--sheet); }
 .imp-rules-title { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
-.imp-rules-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
-.imp-rules-label { width: 68px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.imp-rules-row { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding-left: 74px; min-height: 22px; }
+/* the label on the left; boxes that wrap stay in their column */
+.imp-rules-label { position: absolute; left: 0; top: 2px; width: 68px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .imp-rules-note { font-size: 12px; color: var(--ink-3); }
 .chk { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-variant-numeric: tabular-nums; cursor: pointer; }
 .chk input { width: 16px; height: 16px; margin: 0; accent-color: var(--green); }
@@ -1927,7 +1935,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .seg.colour-kind button { white-space: nowrap; padding-left: 12px; padding-right: 12px; }
 
 /* Import: Folder import / File import open the chooser (drop on the list works for both) */
-.imp-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.imp-pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .imp-pick .imp-btn { gap: 8px; }
 .imp-pick-icon { flex: none; }
 
@@ -2694,5 +2702,30 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .fit-box.is-done { border-color: var(--green); background: var(--green); }
 .fit-count .fit-props { flex: 1; min-width: 0; text-align: left; font-size: 13px; color: var(--ink-2); }
 .fit-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px 14px; border-top: 1px solid var(--line); }
-.imp-fittings { grid-column: 1 / -1; }
-.imp-fit-icon svg { width: 26px; height: 26px; }
+
+/* 3D Extractor: the 3D view's options */
+.uf-pane { position: relative; }
+.uf-view-btn.is-on { background: var(--yellow-tint); }
+.uf-viewopts { position: absolute; z-index: 6; right: 8px; top: 42px; width: 300px; max-height: calc(100% - 56px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(27,42,48,.18); }
+.uf-vo-head { display: flex; align-items: center; justify-content: space-between; font-size: 15px; }
+.uf-viewopts .uf-row > label, .uf-viewopts .uf-row > span:first-child { min-width: 70px; }
+.uf-viewopts input[type="range"] { flex: 1; min-width: 0; }
+.uf-matcolor input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: #fff; cursor: pointer; }
+.uf-matcolor small { color: var(--ink-3); font-weight: 400; }
+.uf-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.3); vertical-align: -1px; }
+.uf-view-btn { position: absolute; right: 68px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; display: grid; place-items: center; color: var(--ink-2); border-radius: 6px; }
+.uf-view-btn:hover { background: var(--sheet); color: var(--ink); }
+.uf-3d h3 { padding-right: 104px; }
+
+/* Save to list: the New part's name */
+.sketch-dlg { width: min(440px, calc(100vw - 32px)); }
+.sketch-body { display: grid; gap: 6px; padding: 4px 20px 14px; }
+.sketch-body label { font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.sketch-warn { margin: 0; font-size: 13px; color: #b54708; }
+.sketch-note { margin: 0; font-size: 12.5px; color: var(--ink-3); }
+.gc-save { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--blue-tint); }
+.gc-save-btn { height: 32px; padding: 0 12px; border: 1.5px solid var(--blue); background: #fff; color: var(--blue-ink); flex: none; }
+.gc-save-btn:hover:not(:disabled) { background: var(--blue); color: #fff; }
+.gc-save span { font-size: 12.5px; color: var(--blue-ink); line-height: 1.3; }
+.uf-none .itool { opacity: .45; cursor: default; }
+.uf-none .uf-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }

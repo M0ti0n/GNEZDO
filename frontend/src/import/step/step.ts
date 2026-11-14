@@ -109,7 +109,11 @@ export interface Face {
   loops: { outer: boolean; edges: Edge[] }[];
 }
 
-export interface Solid { faces: Face[]; unitMm: number; name: string; problems: string[] }
+/** A color, 0..1 each. */
+export type RGB = [number, number, number];
+
+/** color: the body's color in the STEP file (if it has one); faceColor: faces colored on their own */
+export interface Solid { faces: Face[]; unitMm: number; name: string; problems: string[]; color?: RGB; faceColor?: Record<number, RGB> }
 
 const SEG = 0.4;   // max mm between sampled points along a curve
 
@@ -339,6 +343,9 @@ export function readStep(text: string): StepModel {
     }
     return null;
   };
+  // colors (STYLED_ITEM -> ... -> COLOUR_RGB) on bodies, shells and faces; materials on parts
+  const looks = stepLooks(E);
+  const shellIds = (b: { shells: Val[] }) => b.shells.filter(isRef).map((r) => r.ref);
   const perPD = new Map<number, number>();
   const withPD = raw.map((b) => { const pd = pdOfBody(b.id); if (pd !== null) perPD.set(pd, (perPD.get(pd) ?? 0) + 1); return { ...b, pd }; });
   const nth = new Map<number, number>();
@@ -352,12 +359,23 @@ export function readStep(text: string): StepModel {
     let solid: Solid | null = null;
     return {
       id: b.id, name: name.trim(), kind: b.kind, qty: b.pd !== null ? qtyOf(b.pd) : 1,
+      ...(b.pd !== null && looks.material.get(b.pd) ? { material: looks.material.get(b.pd) } : {}),
       get solid() {
         if (!solid) {
           const problems: string[] = [];
           let faces: Face[] = [];
           try { faces = facesOf(b.shells); } catch (e) { problems.push((e as Error).message); }
-          solid = { faces, unitMm, name: name.trim(), problems };
+          // the body's own color, its shell's, else the color most of its faces have
+          let color = looks.color.get(b.id) ?? shellIds(b).map((id) => looks.color.get(id)).find(Boolean);
+          const faceColor: Record<number, RGB> = {};
+          for (const f of faces) { const c = looks.color.get(f.id); if (c) faceColor[f.id] = c; }
+          if (!color) {
+            const n = new Map<string, number>();
+            for (const c of Object.values(faceColor)) n.set(c.join(), (n.get(c.join()) ?? 0) + 1);
+            const top = [...n.entries()].sort((x, y) => y[1] - x[1])[0];
+            if (top && top[1] * 2 >= faces.length) color = top[0].split(",").map(Number) as RGB;
+          }
+          solid = { faces, unitMm, name: name.trim(), problems, ...(color ? { color } : {}), ...(Object.keys(faceColor).length ? { faceColor } : {}) };
         }
         return solid;
       },
@@ -367,7 +385,7 @@ export function readStep(text: string): StepModel {
 }
 
 /** One body of a STEP file: a solid or a surface body, with its part's name and how many the assembly has. */
-export interface StepBody { id: number; name: string; kind: "solid" | "surface"; qty: number; readonly solid: Solid }
+export interface StepBody { id: number; name: string; kind: "solid" | "surface"; qty: number; readonly solid: Solid; /** its part's material, when the file has it */ material?: string }
 export interface StepModel { bodies: StepBody[]; unitMm: number }
 
 /** The first body of a STEP file (one part). */
@@ -384,4 +402,74 @@ export function normalAt(f: Face, p: V3): V3 | null {
   if (s.kind === "plane") return mul3(s.n, k);
   if (s.kind === "cyl") { const v = sub3(p, s.a); return mul3(unit3(sub3(v, mul3(s.d, dot3(v, s.d)))), k); }
   return null;
+}
+
+const NAMED: Record<string, RGB> = {
+  red: [1, 0, 0], green: [0, 1, 0], blue: [0, 0, 1], yellow: [1, 1, 0], magenta: [1, 0, 1], cyan: [0, 1, 1], black: [0, 0, 0], white: [1, 1, 1],
+};
+
+/**
+ * What a STEP file says about how its parts look and what they are made of:
+ *  - colors: STYLED_ITEM / OVER_RIDING_STYLED_ITEM (styles -> ... -> COLOUR_RGB or a predefined color) by the item
+ *    they color (a body, a shell, a face); the surface's fill color, not the edges' (curve style);
+ *  - materials, by product definition: MATERIAL_DESIGNATION, or a "material" property (PROPERTY_DEFINITION ->
+ *    PROPERTY_DEFINITION_REPRESENTATION -> DESCRIPTIVE_REPRESENTATION_ITEM), as SolidWorks and others write it.
+ */
+function stepLooks(E: Map<number, Entity>): { color: Map<number, RGB>; material: Map<number, string> } {
+  const color = new Map<number, RGB>();
+  const colorOf = (v: Val, depth: number): RGB | null => {
+    if (depth > 10) return null;
+    if (Array.isArray(v)) { for (const x of v) { const c = colorOf(x, depth); if (c) return c; } return null; }
+    if (!isRef(v)) return null;
+    const e = E.get(v.ref);
+    if (!e || e.type === "CURVE_STYLE" || e.type === "POINT_STYLE" || e.type === "TEXT_STYLE") return null;
+    if (e.type === "COLOUR_RGB") return [Number(e.args[1]), Number(e.args[2]), Number(e.args[3])];
+    if (e.type === "DRAUGHTING_PRE_DEFINED_COLOUR") return NAMED[String(e.args[0]).toLowerCase()] ?? null;
+    for (const a of e.args) { const c = colorOf(a, depth + 1); if (c) return c; }
+    return null;
+  };
+  const overriding: [number, RGB][] = [];
+  for (const e of E.values()) {
+    if (e.type !== "STYLED_ITEM" && e.type !== "OVER_RIDING_STYLED_ITEM") continue;
+    const item = e.args[2];
+    if (!isRef(item)) continue;
+    const c = colorOf(e.args[1], 0);
+    if (!c || c.some((x) => !Number.isFinite(x))) continue;
+    if (e.type === "OVER_RIDING_STYLED_ITEM") overriding.push([item.ref, c]); else if (!color.has(item.ref)) color.set(item.ref, c);
+  }
+  for (const [id, c] of overriding) color.set(id, c);
+
+  // materials: by product definition (a PRODUCT_DEFINITION_SHAPE points to its definition)
+  const material = new Map<number, string>();
+  const pdOf = (v: Val): number | null => {
+    if (!isRef(v)) return null;
+    const e = E.get(v.ref);
+    if (!e) return null;
+    if (e.type === "PRODUCT_DEFINITION" || e.type === "PRODUCT_DEFINITION_WITH_ASSOCIATED_DOCUMENTS") return v.ref;
+    if (e.type === "PRODUCT_DEFINITION_SHAPE") return pdOf(e.args[2]);
+    return null;
+  };
+  const clean = (x: Val) => (typeof x === "string" ? x.trim() : "");
+  for (const e of E.values()) if (e.type === "MATERIAL_DESIGNATION" && clean(e.args[0])) {
+    const items = Array.isArray(e.args[1]) ? e.args[1] : [e.args[1]];
+    for (const it of items) { const pd = pdOf(it); if (pd !== null && !material.has(pd)) material.set(pd, clean(e.args[0])); }
+  }
+  const repOfProp = new Map<number, number>();
+  for (const e of E.values()) if (e.type === "PROPERTY_DEFINITION_REPRESENTATION" && isRef(e.args[0]) && isRef(e.args[1])) repOfProp.set(e.args[0].ref, e.args[1].ref);
+  for (const [id, e] of E) {
+    if (e.type !== "PROPERTY_DEFINITION" || /density|mass/i.test(clean(e.args[1])) || !/material/i.test(clean(e.args[1]) || clean(e.args[0]))) continue;
+    const pd = pdOf(e.args[2]);
+    const rep = repOfProp.get(id);
+    if (pd === null || rep === undefined || material.has(pd)) continue;
+    const r = E.get(rep);
+    const items = r && Array.isArray(r.args[1]) ? r.args[1] : [];
+    for (const it of items) {
+      const d = isRef(it) ? E.get(it.ref) : undefined;
+      if (d?.type !== "DESCRIPTIVE_REPRESENTATION_ITEM") continue;
+      // ('material name', 'AISI 304') or ('AISI 304', 'AISI 304'): the description is the material
+      const m = clean(d.args[1]) || clean(d.args[0]);
+      if (m && !/^(material( name)?|density)$/i.test(m)) { material.set(pd, m); break; }
+    }
+  }
+  return { color, material };
 }

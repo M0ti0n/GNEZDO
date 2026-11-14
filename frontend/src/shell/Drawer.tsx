@@ -42,11 +42,17 @@ interface Props {
   extractPanel: ExtractPanelProps;
   /** Show the number of pieces from the file name (import rule). */
   showQty: boolean;
+  /** A section's button (all but Parts): its own screen, with its list (again on its screen: the list closes) */
+  onRail: (m: RailSection) => void;
+  /** the section whose screen is shown */
+  screen: RailSection | null;
 }
+
+export type RailSection = "import" | "extract" | "special" | "jobs" | "remnants";
 
 // Left side: a rail that opens a docked panel for finding imported parts
 // (to drag into a job), searching jobs, or importing new drawings.
-export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRemnantSearch, remnant, homeActive, onHome, onNewJob, importPanel, extractPanel, showQty, machines }: Props) {
+export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRemnantSearch, remnant, homeActive, onHome, onNewJob, importPanel, extractPanel, showQty, machines, onRail, screen }: Props) {
   const waiting = importPanel.items.filter((i) => !i.processed).length;
   const toggle = (m: DrawerMode) => onMode(mode === m ? null : m);
   return (
@@ -56,29 +62,33 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRem
           aria-current={homeActive ? "page" : undefined}>
           <IconHome /><span>Home</span>
         </button>
-        <button role="tab" aria-selected={mode === "import"} className={`rail-btn${mode === "import" ? " is-on" : ""}`}
-          onClick={() => toggle("import")} title="Import 2D: DXF, DWG or SVG drawings (and flat patterns from the 3D Extractor) into the parts library">
+        <button className="rail-btn" onClick={onNewJob} title="New job">
+          <IconNewJob /><span>New job</span>
+        </button>
+        <button role="tab" aria-selected={mode === "import"} className={`rail-btn${mode === "import" || screen === "import" ? " is-on" : ""}`}
+          onClick={() => onRail("import")} title="Import 2D: DXF, DWG or SVG drawings (and flat patterns from the 3D Extractor) into the parts library; an empty canvas (New part) to draw one">
           <IconImport /><span>Import 2D</span>
           {waiting > 0 && <span className="rail-count" title={`${waiting} waiting to be processed`}>{waiting}</span>}
         </button>
-        <button role="tab" aria-selected={mode === "extract"} className={`rail-btn${mode === "extract" ? " is-on" : ""}`}
-          onClick={() => toggle("extract")} title="3D Extractor: flat patterns out of STEP parts and assemblies, sent to Import 2D">
+        <button role="tab" aria-selected={mode === "extract"} className={`rail-btn${mode === "extract" || screen === "extract" ? " is-on" : ""}`}
+          onClick={() => onRail("extract")} title="3D Extractor: flat patterns out of STEP parts and assemblies, sent to Import 2D">
           <Icon3d /><span>3D Extractor</span>
           {extractPanel.parts.length > 0 && <span className="rail-count is-3d">{extractPanel.parts.filter((x) => x.kind !== "hardware").length}</span>}
         </button>
-        <button className="rail-btn" onClick={onNewJob} title="New job">
-          <IconNewJob /><span>New job</span>
+        <button role="tab" aria-selected={screen === "special"} className={`rail-btn${screen === "special" ? " is-on" : ""}`}
+          onClick={() => onRail("special")} title="Special tools: parts made from their values (fittings: elbows, transitions, branch reducers, flanges, screw flights); into the Import 2D list">
+          <IconSpecial /><span>Special tools</span>
         </button>
         <button role="tab" aria-selected={mode === "parts"} className={`rail-btn${mode === "parts" ? " is-on" : ""}`}
           onClick={() => toggle("parts")} title="Imported parts">
           <IconLibrary /><span>Parts</span>
         </button>
-        <button role="tab" aria-selected={mode === "jobs"} className={`rail-btn${mode === "jobs" ? " is-on" : ""}`}
-          onClick={() => toggle("jobs")} title="Job search">
+        <button role="tab" aria-selected={mode === "jobs"} className={`rail-btn${mode === "jobs" || screen === "jobs" ? " is-on" : ""}`}
+          onClick={() => onRail("jobs")} title="Job search">
           <IconSearch /><span>Jobs</span>
         </button>
-        <button role="tab" aria-selected={mode === "remnants"} className={`rail-btn${mode === "remnants" ? " is-on" : ""}`}
-          onClick={() => toggle("remnants")} title="Remnant search">
+        <button role="tab" aria-selected={mode === "remnants"} className={`rail-btn${mode === "remnants" || screen === "remnants" ? " is-on" : ""}`}
+          onClick={() => onRail("remnants")} title="Remnant search">
           <IconRemnant /><span>Remnants</span>
         </button>
         <ServerLoad />
@@ -95,6 +105,14 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRem
     </aside>
   );
 }
+
+/** A pipe elbow made of sections, with a ruler (Special tools: parts made from their values). */
+const IconSpecial = () => (
+  <svg viewBox="0 0 36 36" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
+    <path d="M5 31V22l3-7 5-5 7-3h11v9h-9l-4 2-3 3-1 4v6z" />
+    <path d="M8 15l6 4M13 10l4 6M20 7l1 7" />
+  </svg>
+);
 
 /** A sheet metal part in 3D with an arrow out of it (3D Extractor). */
 const Icon3d = () => (

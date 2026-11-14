@@ -117,11 +117,11 @@ interface Props {
   mirrorBlocked?: boolean;
   /** What drawing snaps to (Settings → Rules); missing: everything. */
   snaps?: SnapKind[];
-  /** A fitting picked in the FITTINGS group: the Fittings tab opens with it. */
-  onFitting?: (kind: string) => void;
+  /** The New part (an empty canvas to draw on): Save to list names it and puts it in the import list. */
+  onSaveToList?: () => void;
 }
 
-export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false, fromDatabase = false, snaps, onFitting }: Props) {
+export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false, fromDatabase = false, snaps, onSaveToList }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
   const [tool, setTool] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -564,8 +564,11 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   }, [size.w, size.h]);
 
   // loose points count for "show everything", so stray points far away are not missed
-  const fitAll = useCallback(() => fit((drawing.points ?? []).reduce((b, { p }) => union(b, { minX: p.x, minY: p.y, maxX: p.x, maxY: p.y }), report.box)),
-    [fit, report.box, drawing.points]);
+  // an empty canvas (New part): 1000 × 700 mm, 0,0 at the lower left
+  const empty = !drawing.entities.length && !(drawing.aids ?? []).length && !(drawing.points ?? []).length;
+  const fitAll = useCallback(() => fit(empty ? { minX: 0, minY: 0, maxX: 1000, maxY: 700 }
+    : (drawing.points ?? []).reduce((b, { p }) => union(b, { minX: p.x, minY: p.y, maxX: p.x, maxY: p.y }), report.box)),
+    [fit, report.box, drawing.points, empty]);
   useEffect(() => { if (!view) fitAll(); }, [view, fitAll]);
 
   // Wheel zooms around the cursor (non-passive so the page does not scroll).
@@ -585,8 +588,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // Right and middle buttons always pan; the left button pans too unless a marking tool is on.
-  // With Trace / Open cut the left button clicks a line or drags a selection box:
+  // Right and middle buttons always pan; the left button pans too while drawing and editing tools are on.
+  // With no tool (picking) and with Trace / Open cut and the like, the left button clicks a line or drags a selection box:
   //   left to right = window (lines fully inside), right to left = crossing (lines touched).
   const drag = useRef<{ x: number; y: number } | null>(null);
   const press = useRef<{ x: number; y: number; button: number } | null>(null);
@@ -612,6 +615,14 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut" || tool === "scale" || (tool === "rotate" && rotStage === 0))) {
       const p = local(e);
       setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+      return;
+    }
+    // no tool on: a drag picks with a window (left to right: lines fully inside; right to left: lines it touches);
+    // the middle or right button pans
+    if (e.button === 0 && !tool) {
+      const p = local(e);
+      setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+      press.current = { x: e.clientX, y: e.clientY, button: 0 };
       return;
     }
     drag.current = { x: e.clientX, y: e.clientY };
@@ -682,7 +693,18 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       setMessage({ text: pickText(next) });
       return;
     }
+    if (!tool && pr?.button === 0 && box && !isClick && view) {
+      const b = box;
+      setBox(null);
+      const ids = idsInBox(b, view, drawing.entities);
+      const more = e.ctrlKey || e.metaKey;
+      const next = new Set<string>(more ? [...pick, ...ids] : ids);
+      setPick(next);
+      setMessage(next.size ? { text: pickText(next) } : { text: b.x1 < b.x0 ? "No line touches the box" : "No line is fully inside the box" });
+      return;
+    }
     if (isClick && !tool && pr!.button === 0) {
+      setBox(null);
       const id = lineUnder(e.clientX, e.clientY);
       const en = id && !id.startsWith("aid:") ? drawing.entities.find((x) => x.id === id) : undefined;
       if (!en) { if (pick.size) { setPick(new Set()); setMessage(null); } return; }
@@ -1036,7 +1058,6 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
 
   const onTool = (id: string) => {
-    if (id.startsWith("fit-")) { onFitting?.(id.slice(4)); return; }
     // lines picked (no tool on), then Aid line: they become aid lines
     if (id === "xline" && !tool && pick.size) {
       const items = drawing.entities.filter((e) => pick.has(e.id));
@@ -1172,10 +1193,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   return (
     <div className="import">
       <ImportToolStrip active={tool} onTool={onTool} lit={{ checkLines: checkOpen }}
-        blocked={problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
+        blocked={!drawing.entities.length ? { process: "draw the part first" } : problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
-        className={`canvas${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || DRAWING_TOOLS.has(tool) || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale" || tool === "rotate") ? " is-marking" : ""}`}
+        className={`canvas${!tool ? " is-picking" : ""}${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || DRAWING_TOOLS.has(tool) || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale" || tool === "rotate") ? " is-marking" : ""}`}
         onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -1445,13 +1466,20 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
             <span className="gc-head-icon" aria-hidden="true">{IMPORT_TOOLS.find((t) => t.id === "checkLines")?.icon}</span>
             <h2>Geometry check</h2>
             <span className={`gc-pill ${problems ? "is-bad" : "is-ok"}`}>
-              {problems ? `${problems} to fix` : processed ? "Processed" : "Ready"}
+              {!drawing.entities.length ? "Empty" : problems ? `${problems} to fix` : processed ? "Processed" : "Ready"}
             </span>
             <button type="button" className="gc-toggle" onClick={() => setCheckOpen((o) => !o)}
               aria-expanded={checkOpen} title={checkOpen ? "Collapse" : "Expand"}>
               <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           </header>
+          {onSaveToList && (
+            <div className="gc-save">
+              <button type="button" className="btn gc-save-btn" onClick={onSaveToList} disabled={!drawing.entities.length}
+                title="Give the part a name and put it in the import list, to finish it later (problems and all)">Save to list</button>
+              <span>{problems ? "Not finished? Name it and it waits in the list." : "Finished: PROCESS saves it."}</span>
+            </div>
+          )}
           {checkOpen && <div className="gc-body">
           <ul className="gc-checks">
             {report.checks.map((c) => (
