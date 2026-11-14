@@ -11,9 +11,41 @@ const TOL = 1e-3;   // mm: points this close are the same corner
 /** A cut: the two corners (in the part, mm). */
 export type FaceCut = [V3, V3];
 
-/** The corners of a face (ends of its edges). */
-const cornersOf = (f: Face): V3[] => f.loops.flatMap((l) => l.edges.flatMap((e) => [e.pts[0], e.pts[e.pts.length - 1]]));
 const near = (a: V3, b: V3) => len3(sub3(a, b)) < TOL;
+const ON = 0.01;    // mm: a point this close to an edge is on it
+
+/** Where p lies along the polyline (its segment and how far along it), or null when not on it. */
+function along(pts: V3[], p: V3): { k: number; t: number } | null {
+  for (let k = 1; k < pts.length; k++) {
+    const a = pts[k - 1], d = sub3(pts[k], a), L2 = dot3(d, d);
+    if (L2 < 1e-18) continue;
+    const t = Math.max(0, Math.min(1, dot3(sub3(p, a), d) / L2));
+    if (len3(sub3(p, [a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t])) < ON) return { k, t };
+  }
+  return null;
+}
+/** Is p on the face's outline (a corner or on an edge)? */
+const onOutline = (f: Face, p: V3) => f.loops.some((l) => l.edges.some((e) => along(e.pts, p)));
+
+/** An edge cut in pieces where points lie inside it (the pieces keep its number: shared with its neighbor). */
+function splitEdge(e: Edge, ps: V3[]): Edge[] {
+  const ends = [e.pts[0], e.pts[e.pts.length - 1]];
+  const at = ps.filter((p) => !ends.some((q) => near(p, q))).flatMap((p) => { const a = along(e.pts, p); return a ? [{ ...a, p }] : []; })
+    .sort((x, y) => x.k - y.k || x.t - y.t);
+  if (!at.length) return [e];
+  const out: Edge[] = [];
+  let cur: V3[] = [e.pts[0]];
+  let k = 1;
+  for (const c of at) {
+    for (; k < c.k; k++) cur.push(e.pts[k]);
+    if (!near(cur[cur.length - 1], c.p)) cur.push(c.p);
+    if (cur.length > 1) out.push({ ...e, pts: cur });
+    cur = [c.p];
+  }
+  for (; k < e.pts.length; k++) if (!near(cur[cur.length - 1], e.pts[k])) cur.push(e.pts[k]);
+  if (cur.length > 1) out.push({ ...e, pts: cur });
+  return out;
+}
 
 /** Is p inside the polygon (even-odd)? */
 function inPoly(p: P2, poly: P2[]): boolean {
@@ -33,11 +65,10 @@ function frameOf(f: Face) {
   return (p: V3): P2 => { const w = sub3(p, s.o); return [dot3(w, u), dot3(w, v)]; };
 }
 
-/** Does the line a..b run across the face: both its corners, inside it (not along an edge, not out of it)? */
+/** Does the line a..b run across the face: both ends on its outline (corners or edges), the line inside it (not along an edge, not out of it)? */
 export function cutsAcross(f: Face, a: V3, b: V3): boolean {
   if (f.surf.kind !== "plane" || near(a, b)) return false;
-  const cs = cornersOf(f);
-  if (!cs.some((q) => near(q, a)) || !cs.some((q) => near(q, b))) return false;
+  if (!onOutline(f, a) || !onOutline(f, b)) return false;
   const to2 = frameOf(f);
   const loops2 = f.loops.map((l) => l.edges.flatMap((e) => e.pts.map(to2)));
   const inFace = (p: P2) => loops2.reduce((ins, poly) => (inPoly(p, poly) ? !ins : ins), false);
@@ -56,7 +87,10 @@ export function cutsAcross(f: Face, a: V3, b: V3): boolean {
  * The face split along its cuts (each between two of its corners, across it): the pieces, the first in the
  * face's place. One piece when the cuts only open a ring (a flange cut once).
  */
-export function splitFace(f: Face, cuts: { a: V3; b: V3; no: number }[]): Face[] {
+export function splitFace(face: Face, cuts: { a: V3; b: V3; no: number }[]): Face[] {
+  // the edges the cuts end in the middle of: in pieces there
+  const ends = cuts.flatMap((c) => [c.a, c.b]);
+  const f: Face = { ...face, loops: face.loops.map((l) => ({ ...l, edges: l.edges.flatMap((e) => splitEdge(e, ends)) })) };
   const to2 = frameOf(f);
   const loops2 = f.loops.map((l) => l.edges.flatMap((e) => e.pts.map(to2)));
   const inFace = (p: P2) => loops2.reduce((ins, poly) => (inPoly(p, poly) ? !ins : ins), false);
@@ -116,7 +150,7 @@ export function splitFace(f: Face, cuts: { a: V3; b: V3; no: number }[]): Face[]
   // pieces: counterclockwise cycles with material inside; holes: clockwise cycles with material beside them
   const pieces = cycles.filter((c) => area(polyOf(c)) > 0 && inFace(leftOf(c)));
   const holes = cycles.filter((c) => area(polyOf(c)) < 0 && inFace(leftOf(c)));
-  if (!pieces.length) return [f];
+  if (!pieces.length) return [face];
   const edgeOf = (h: Half): Edge => {
     const g = edges[h.k];
     if (g.cut) {
@@ -181,9 +215,9 @@ export function keepPicks(base: Solid, oldCuts: FaceCut[], newCuts: FaceCut[], p
 /** Why the cut cannot be added (null: it can): it must run across one flat face, between two of its
  *  corners, and not cross an edge added before on that face. */
 export function cutProblem(base: Solid, cuts: FaceCut[], c: FaceCut): string | null {
-  if (near(c[0], c[1])) return "Click a second, different corner";
+  if (near(c[0], c[1])) return "Click a second, different point";
   const i = faceOfCut(base, c);
-  if (i < 0) return "Both corners must be on one flat face, with the line between them across the face (not along an edge)";
+  if (i < 0) return "Both points must be on the outline of one flat face, with the line between them across the face (not along an edge)";
   const k = JSON.stringify;
   if (cuts.some((o) => k(o) === k(c) || k([o[1], o[0]]) === k(c))) return "That edge is added already";
   const to2 = frameOf(base.faces[i]);

@@ -4,7 +4,8 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-- 3D Extractor, Stitch: **Add edge** (new tool, also in the panel: Added edges · Add / Undo / Clear). Click two corners of a flat face: it is split along the line between them (green). A flange running all round a part, cut at its corners, becomes one piece per wall, each stitched to its own; the new edges are cut in the flat pattern (a corner gap). The line must run across one flat face, not along an edge, and not cross an edge added before. The edges are kept with the part; a face split by a change (and its pieces) is picked again
+- 3D Extractor, Stitch: **Seam** (new tool, also in the panel: Seams · Pick / Clear). Click an edge: it is not stitched across but cut in the flat pattern (red dashed), so a tube or any closed shape opens where you want; again: stitched. A seam in the middle of a face: Add edge from the middle of one edge to the other
+- 3D Extractor, Stitch: **Add edge** (new tool, also in the panel: Added edges · Add / Undo / Clear). Click two points of a flat face's outline: it is split along the line between them (green). Corners and the middles of edges snap; hold **Ctrl** for the second point square to the edge under the pointer. A flange running all round a part, cut at its corners, becomes one piece per wall, each stitched to its own; the new edges are cut in the flat pattern (a corner gap). The line must run across one flat face, not along an edge, and not cross an edge added before. The edges are kept with the part; a face split by a change (and its pieces) is picked again
 
 ## Build 14 Nov 2026 (`e9646ee`)
 

@@ -18,7 +18,7 @@ import { flatDxf, type Unfolded, type V2 } from "../import/step/unfold";
 // on the machine): foil / finish on it when marked; bend marks are traced on the bends coming up from it.
 // SEND TO IMPORT 2D puts the flat pattern into the import list (sent again: replaced there).
 
-type Pick = "base" | "top" | "stitch" | "edge" | "one" | "measure3d" | "measure" | null;
+type Pick = "base" | "top" | "stitch" | "edge" | "seam" | "one" | "measure3d" | "measure" | null;
 
 const K = "#1b1b1b", G = "#1d9641", R = "#e3262b", B = "#1d7fd0";
 const Ico = ({ children }: { children: ReactNode }) => (
@@ -29,6 +29,7 @@ const ICONS: Record<string, ReactNode> = {
   top: <Ico><path d="M6 30l16-8 20 8-16 8z" fill="#fff" stroke={K} strokeWidth="2.2" /><path d="M6 24l16-8 20 8-16 8z" fill="#bfe3c8" stroke={G} strokeWidth="2.2" /><path d="M24 4v10M19 9l5-5 5 5" stroke={G} strokeWidth="2.4" /></Ico>,
   stitch: <Ico><path d="M4 30l12-6v-16l-12 6z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><path d="M16 24l14 6 14-6-14-6z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><path d="M16 8v16" stroke={B} strokeWidth="3" /><path d="M9 14l3 2M9 20l3 2" stroke={B} strokeWidth="2.2" /></Ico>,
   edge: <Ico><path d="M3 26l21-13 21 13-21 13z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><path d="M14 26l10-6 10 6-10 6z" fill="#fff" stroke={K} strokeWidth="1.8" /><path d="M5 26h9M34 26h9" stroke="#22b14c" strokeWidth="3.2" /><circle cx="5" cy="26" r="3" fill={B} /><circle cx="14" cy="26" r="3" fill={B} /></Ico>,
+  seam: <Ico><path d="M3 31l12-6V9L3 15z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><path d="M21 25l13 6 11-5-13-6z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><path d="M18 7v20" stroke={R} strokeWidth="3" strokeDasharray="4 3" /><path d="M14 36l4-4 4 4" stroke={R} strokeWidth="2.2" /></Ico>,
   one: <Ico><path d="M4 34l20-10 20 10-20 10z" fill="#d6e8f8" stroke={B} strokeWidth="2.4" /><path d="M24 4v16M18 14l6 6 6-6" stroke={K} strokeWidth="2.4" /></Ico>,
   measure3d: <Ico><path d="M8 30l14-7 18 7-14 7z" fill="#eef3f4" stroke={K} strokeWidth="2" /><path d="M8 30v8l18 7v-8M26 37l14-7v8l-14 7" stroke={K} strokeWidth="2" fill="none" /><path d="M8 14l18 7M8 10v8M26 17v8" stroke={R} strokeWidth="2.2" /><circle cx="36" cy="12" r="5" stroke={R} strokeWidth="2.2" /></Ico>,
   measure: <Ico><path d="M6 26h36M6 18v16M42 18v16" stroke={K} strokeWidth="2.2" /><path d="M11 26l6-3.5v7zM37 26l-6-3.5v7z" fill={R} /></Ico>,
@@ -66,8 +67,14 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
     set({ mode: "stitch", cuts: next, stitch: picks });
     setMsg(picks.length < st.stitch.length ? `${text}: pick the faces of the split face again` : text);
   };
+  const seams = st.seams ?? [];
+  const toggleSeam = (id: number) => {
+    const on = seams.includes(id);
+    set({ mode: "stitch", seams: on ? seams.filter((x) => x !== id) : [...seams, id] });
+    setMsg(on ? "Seam taken away: the edge is stitched again" : "Seam: this edge is not stitched (cut in the flat pattern)");
+  };
   const edgeCorner = (p: V3) => {
-    if (!edgeA) { setEdgeA(p); setMsg("Now click the second corner of the same flat face"); return; }
+    if (!edgeA) { setEdgeA(p); setMsg("Now click the second point on the outline of the same flat face (Ctrl: square to the edge)"); return; }
     const c: FaceCut = [edgeA, p];
     const why = cutProblem(solidOf(step.text, step.body), cuts, c);
     if (why) { setMsg(why); if (len3(sub3(edgeA, p)) > 1e-3) setEdgeA(null); return; }
@@ -130,7 +137,8 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   );
   const hint = pick === "base" ? "click a flat face to unfold from" : pick === "top" ? "click a face on the top side"
     : pick === "stitch" ? "click flat faces one next to the other (again: out)"
-    : pick === "edge" ? (edgeA ? "click the second corner of the same flat face" : "click a corner of a flat face, then another: the face is split along the line") : pick === "one" ? "click the flat face to send as it is"
+    : pick === "edge" ? (edgeA ? "click the second point of the same flat face (corners and middles snap; Ctrl: square to the edge)" : "click a corner or an edge's middle of a flat face, then a second one: the face is split along the line")
+    : pick === "seam" ? "click an edge: it is not stitched (cut); again: stitched" : pick === "one" ? "click the flat face to send as it is"
     : pick === "measure3d" ? "click a face, an edge, a hole's edge or a corner; then a second one" : "drag: turn · wheel: zoom";
   const [meas, setMeas] = useState<MPick[]>([]);
   // the part and the flat pattern side by side, or one of them folded away to the side (kept for next time)
@@ -143,7 +151,9 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
       <div className="itools">
         {tool("stitch", "Stitch", stitchMode, toggleStitch, "Stitch faces (manual): click flat faces one next to the other; they are laid flat across the edges they share (a surface, or a part with sharp corners). Off: unfolded as sheet metal")}
         {tool("edge", "Add edge", pick === "edge", () => { if (!stitchMode) set({ mode: "stitch" }); setEdgeA(null); setPick(pick === "edge" ? null : "edge"); },
-          "Stitch: add an edge across a flat face, between two of its corners (a flange running all round, cut at its corners: one piece per wall, each stitched to its own). The new edge is cut in the flat pattern")}
+          "Stitch: add an edge across a flat face between two points of its outline: corners and edge middles snap, hold Ctrl for the second point square to the edge (a flange running all round, cut at its corners: one piece per wall; a seam in the middle of a face). The new edge is cut in the flat pattern")}
+        {tool("seam", "Seam", pick === "seam", () => { if (!stitchMode) set({ mode: "stitch" }); setEdgeA(null); setPick(pick === "seam" ? null : "seam"); },
+          "Stitch: click an edge that is not stitched across, cut in the flat pattern (where a tube or a closed shape opens); again: stitched")}
         {tool("base", "Fixed face", pick === "base", () => setPick(pick === "base" ? null : "base"), "Click a flat face of the part: the flat pattern is unfolded from it (else from the biggest)", stitchMode)}
         {tool("top", "Top side", stitchMode ? st.flip !== undefined : pick === "top", () => (stitchMode ? set({ flip: !(st.flip ?? isFlippedAuto(step)) }) : setPick(pick === "top" ? null : "top")),
           stitchMode ? "Turn the flat pattern over: the faces' other side up" : "Click a face on the side that lies up on the machine (the foil / finish side, or the inside of the bends to trace)")}
@@ -162,7 +172,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
             <PaneIcon dir="right" /><span>Part (3D)</span></button>
           <h3>Part <em>{hint}</em>
             <PaneButtons side="3d" panes={panes} onPanes={setPanes} /></h3>
-          <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick === "measure" ? null : pick} edgeA={edgeA} onCorner={edgeCorner}
+          <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick === "measure" ? null : pick} edgeA={edgeA} onCorner={edgeCorner} onSeam={toggleSeam}
             measure={pick === "measure3d" ? meas : []} onMeasure={(m) => setMeas((l) => (l.length >= 2 ? [m] : [...l, m]))}
             onPick={(f, k) => {
               if (pick === "one") {
@@ -249,6 +259,10 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
                 onClick={() => { setEdgeA(null); setPick(pick === "edge" ? null : "edge"); }}>{pick === "edge" ? "Adding…" : "Add"}</button>
               {cuts.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => setCuts(cuts.slice(0, -1), "Last edge taken away")}>Undo</button>}
               {cuts.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => setCuts([], "Added edges cleared")}>Clear</button>}</div>
+            <div className="uf-row"><span>Seams</span><span className="uf-val">{seams.length}</span>
+              <button type="button" className={`btn btn-plain uf-mini${pick === "seam" ? " is-on" : ""}`} title="Click edges not to stitch across: cut in the flat pattern (where a tube opens)"
+                onClick={() => { setEdgeA(null); setPick(pick === "seam" ? null : "seam"); }}>{pick === "seam" ? "Picking…" : "Pick"}</button>
+              {seams.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ seams: [] })}>Clear</button>}</div>
             <div className="uf-row"><span>Top side</span><span className="uf-val">{st.flip === undefined ? "inside of most bends" : "turned by hand"}</span>
               <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ flip: !(st.flip ?? isFlippedAuto(step)) })}>Turn over</button>
               {st.flip !== undefined && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ flip: undefined })}>Auto</button>}</div>
@@ -413,8 +427,10 @@ const fmt = (v: number, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleSt
 
 // ------------------------------------------------------------------ the part in 3D (shaded, faces picked)
 
-function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, onCorner }: {
-  solid: Solid; u: Unfolded; st: StepSettings; flip: boolean; pick: "base" | "top" | "stitch" | "edge" | "one" | "measure3d" | null;
+function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, onCorner, onSeam }: {
+  solid: Solid; u: Unfolded; st: StepSettings; flip: boolean; pick: "base" | "top" | "stitch" | "edge" | "seam" | "one" | "measure3d" | null;
+  /** SEAM: an edge clicked (its number) */
+  onSeam?: (edge: number) => void;
   /** ADD EDGE: the first corner clicked; a corner clicked */
   edgeA?: V3 | null;
   onCorner?: (p: V3) => void;
@@ -430,6 +446,10 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
   const proj = useRef<((p: V3) => [number, number, number]) | null>(null);
   const sizeRef = useRef(1);
   const [hoverM, setHoverM] = useState<MPick | null>(null);
+  // ADD EDGE: the point the pointer snaps to; SEAM: the edge under it
+  const [hoverP, setHoverP] = useState<{ p: V3; kind: "corner" | "mid" | "perp" } | null>(null);
+  const [hoverE, setHoverE] = useState<number | null>(null);
+  const seamSet = useMemo(() => new Set(st.seams ?? []), [st.seams]);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const skin = useMemo(() => new Set(u.skinFaces), [u]);
   // the fixed face: picked, else the biggest flat face of the unfolded side
@@ -493,9 +513,15 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
         g.beginPath();
         for (const l of it.f.loops) for (const e of l.edges) e.pts.forEach((p, j) => { const q = pr(p); if (j) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); });
         g.stroke();
-        // edges added across faces (ADD EDGE): green
-        g.strokeStyle = "#22b14c"; g.lineWidth = 2.6;
-        for (const l of it.f.loops) for (const e of l.edges) if (e.id <= -1_000_000) { const a = pr(e.pts[0]), b = pr(e.pts[e.pts.length - 1]); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
+        // edges added across faces (ADD EDGE): green; seams: red dashed; the edge under the pointer (SEAM): yellow
+        for (const l of it.f.loops) for (const e of l.edges) {
+          const col = e.id === hoverE && pick === "seam" ? "rgba(242,183,5,0.95)" : seamSet.has(e.id) ? "#e3262b" : e.id <= -1_000_000 ? "#22b14c" : null;
+          if (!col) continue;
+          g.strokeStyle = col; g.lineWidth = 2.8;
+          g.setLineDash(seamSet.has(e.id) && col === "#e3262b" ? [7, 4] : []);
+          g.beginPath(); e.pts.forEach((p, j) => { const q = pr(p); if (j) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); }); g.stroke();
+          g.setLineDash([]);
+        }
         out.push({ i: it.i, path });
       }
       shapes.current = out.reverse();   // nearest first, for picking
@@ -519,13 +545,22 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
       if (hoverM && pick === "measure3d") mark(hoverM, "rgba(242,183,5,0.95)", 3.5);
       // ADD EDGE: the corner under the pointer, the first corner and the line to come
       if (pick === "edge") {
-        const hc = hoverM?.kind === "point" ? pr(hoverM.p) : null;
+        const hc = hoverP ? pr(hoverP.p) : null;
         if (edgeA) {
           const a = pr(edgeA);
           if (hc) { g.strokeStyle = "#22b14c"; g.lineWidth = 2.2; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(hc[0], hc[1]); g.stroke(); g.setLineDash([]); }
           g.fillStyle = "#1d7fd0"; g.beginPath(); g.arc(a[0], a[1], 5, 0, 2 * Math.PI); g.fill();
         }
-        if (hc) { g.fillStyle = "rgba(242,183,5,0.95)"; g.beginPath(); g.arc(hc[0], hc[1], 5.5, 0, 2 * Math.PI); g.fill(); }
+        if (hc && hoverP) {
+          g.fillStyle = "rgba(242,183,5,0.95)"; g.strokeStyle = "#8a6200"; g.lineWidth = 1.5;
+          g.beginPath();
+          if (hoverP.kind === "mid") { g.moveTo(hc[0], hc[1] - 7); g.lineTo(hc[0] + 7, hc[1] + 5); g.lineTo(hc[0] - 7, hc[1] + 5); g.closePath(); }
+          else if (hoverP.kind === "perp") { g.rect(hc[0] - 6, hc[1] - 6, 12, 12); }
+          else g.arc(hc[0], hc[1], 5.5, 0, 2 * Math.PI);
+          g.fill(); g.stroke();
+          g.font = "600 11px system-ui, sans-serif"; g.fillStyle = "#6b4d00";
+          g.fillText(hoverP.kind === "corner" ? "Corner" : hoverP.kind === "mid" ? "Middle" : "Square to edge", hc[0] + 10, hc[1] + 18);
+        }
       }
       for (const m of measure) mark(m, "#f07d1a", 3.5);
       if (measure.length === 2) {
@@ -540,7 +575,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
     const ro = new ResizeObserver(draw);
     ro.observe(c);
     return () => ro.disconnect();
-  }, [solid, cam, skin, base, hover, pick, picked, stitchMode, measure, hoverM, edgeA]);
+  }, [solid, cam, skin, base, hover, pick, picked, stitchMode, measure, hoverM, edgeA, hoverP, hoverE, seamSet]);
 
   const faceAt = (x: number, y: number) => {
     const g = cv.current?.getContext("2d");
@@ -552,6 +587,85 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
   };
   // MEASURE 3D, what the pointer is on: a corner (9 px), an edge (8 px), inside a hole (its circle), else
   // the face. Only what is not hidden behind the face under the pointer.
+  /** the depth of the face under the pointer there (flat: exact; round: its nearest point), Infinity: none */
+  const frontAt = (x: number, y: number, f: number | null): number => {
+    const pr = proj.current;
+    if (!pr || f === null) return Infinity;
+    let front = Infinity;
+    const q = solid.faces[f].loops.flatMap((l) => l.edges.flatMap((e) => e.pts)).map((p) => pr(p));
+    const sf = solid.faces[f].surf;
+    if (sf.kind === "plane" && q.length >= 3) {
+      const p0 = q[0];
+      let p1 = q[1], far = 0;
+      for (const r of q) { const d = Math.hypot(r[0] - p0[0], r[1] - p0[1]); if (d > far) { far = d; p1 = r; } }
+      let p2 = q[2], area = 0;
+      for (const r of q) { const ar = Math.abs((p1[0] - p0[0]) * (r[1] - p0[1]) - (p1[1] - p0[1]) * (r[0] - p0[0])); if (ar > area) { area = ar; p2 = r; } }
+      const det = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1]);
+      if (Math.abs(det) > 1e-9) {
+        const A = ((p1[2] - p0[2]) * (p2[1] - p0[1]) - (p2[2] - p0[2]) * (p1[1] - p0[1])) / det;
+        const B = ((p2[2] - p0[2]) * (p1[0] - p0[0]) - (p1[2] - p0[2]) * (p2[0] - p0[0])) / det;
+        front = p0[2] + A * (x - p0[0]) + B * (y - p0[1]);
+      }
+    }
+    if (front === Infinity && q.length) front = q.reduce((b, r) => (Math.hypot(r[0] - x, r[1] - y) < Math.hypot(b[0] - x, b[1] - y) ? r : b), q[0])[2];
+    return front;
+  };
+  /** the edge seen nearest the pointer (8 px): its face, its number, the 3D segment and where along it */
+  const edgeNear = (x: number, y: number) => {
+    const pr = proj.current;
+    if (!pr) return null;
+    const front = frontAt(x, y, faceAt(x, y)), eps = sizeRef.current * 0.01;
+    let best: { d: number; z: number; id: number; a: V3; b: V3 } | null = null;
+    for (const fc of solid.faces) for (const l of fc.loops) for (const e of l.edges) {
+      const q = e.pts.map((p) => pr(p));
+      for (let k = 1; k < q.length; k++) {
+        const [ax, ay, az] = q[k - 1], [bx, by, bz] = q[k];
+        const vx = bx - ax, vy = by - ay, L2 = vx * vx + vy * vy || 1;
+        const t = Math.max(0, Math.min(1, ((x - ax) * vx + (y - ay) * vy) / L2));
+        const d = Math.hypot(ax + vx * t - x, ay + vy * t - y), z = az + (bz - az) * t;
+        if (d < 8 && z <= front + eps && (!best || d < best.d - 0.5 || (Math.abs(d - best.d) <= 0.5 && z < best.z))) best = { d, z, id: e.id, a: e.pts[k - 1], b: e.pts[k] };
+      }
+    }
+    return best;
+  };
+  /** ADD EDGE: a corner, an edge's middle (10 px), or with Ctrl after the first point: square onto the edge under the pointer */
+  const edgePointAt = (x: number, y: number, ctrl: boolean): { p: V3; kind: "corner" | "mid" | "perp" } | null => {
+    const pr = proj.current;
+    if (!pr) return null;
+    if (ctrl && edgeA) {
+      const n = edgeNear(x, y);
+      if (n) {
+        const d = sub3(n.b, n.a), L2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2] || 1;
+        const t = Math.max(0, Math.min(1, ((edgeA[0] - n.a[0]) * d[0] + (edgeA[1] - n.a[1]) * d[1] + (edgeA[2] - n.a[2]) * d[2]) / L2));
+        return { p: add3(n.a, mul3(d, t)), kind: "perp" };
+      }
+    }
+    const front = frontAt(x, y, faceAt(x, y)), eps = sizeRef.current * 0.01;
+    let best: { d: number; p: V3; kind: "corner" | "mid" } | null = null;
+    const take = (p: V3, kind: "corner" | "mid") => {
+      const q = pr(p), d = Math.hypot(q[0] - x, q[1] - y);
+      if (d >= 10 || q[2] > front + eps) return;
+      // a corner wins over a middle a little nearer
+      const score = d - (kind === "corner" ? 3 : 0);
+      if (!best || score < best.d) best = { d: score, p, kind };
+    };
+    for (const fc of solid.faces) for (const l of fc.loops) for (const e of l.edges) {
+      if (e.pts.length < 2) continue;
+      take(e.pts[0], "corner"); take(e.pts[e.pts.length - 1], "corner");
+      if (len3(sub3(e.pts[0], e.pts[e.pts.length - 1])) < 1e-6) continue;
+      // the middle along it
+      let total = 0;
+      for (let k = 1; k < e.pts.length; k++) total += len3(sub3(e.pts[k], e.pts[k - 1]));
+      let run = 0;
+      for (let k = 1; k < e.pts.length; k++) {
+        const s0 = len3(sub3(e.pts[k], e.pts[k - 1]));
+        if (run + s0 >= total / 2) { const t = (total / 2 - run) / (s0 || 1); take(add3(e.pts[k - 1], mul3(sub3(e.pts[k], e.pts[k - 1]), t)), "mid"); break; }
+        run += s0;
+      }
+    }
+    const b = best as { p: V3; kind: "corner" | "mid" } | null;
+    return b ? { p: b.p, kind: b.kind } : null;
+  };
   const measureAt = (x: number, y: number): MPick | null => {
     const pr = proj.current;
     if (!pr) return null;
@@ -632,7 +746,8 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
             return;
           }
           if (pick === "measure3d") { const [x, y] = local(e); setHoverM(measureAt(x, y)); }
-          else if (pick === "edge") { const [x, y] = local(e); const m = measureAt(x, y); setHoverM(m?.kind === "point" ? m : null); }
+          else if (pick === "edge") { const [x, y] = local(e); setHoverP(edgePointAt(x, y, e.ctrlKey || e.metaKey)); }
+          else if (pick === "seam") { const [x, y] = local(e); setHoverE(edgeNear(x, y)?.id ?? null); }
           else if (pick) { const [x, y] = local(e); setHover(faceAt(x, y)); }
         }}
         onPointerUp={(e) => {
@@ -640,11 +755,12 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
           if (d?.moved || !pick) return;
           const [x, y] = local(e);
           if (pick === "measure3d") { const m = measureAt(x, y); if (m) onMeasure(m); return; }
-          if (pick === "edge") { const m = measureAt(x, y); if (m?.kind === "point") onCorner?.(m.p); return; }
+          if (pick === "edge") { const sp = edgePointAt(x, y, e.ctrlKey || e.metaKey); if (sp) onCorner?.(sp.p); return; }
+          if (pick === "seam") { const n = edgeNear(x, y); if (n) onSeam?.(n.id); return; }
           const f = faceAt(x, y);
           if (f !== null) onPick(f, solid.faces[f].surf.kind);
         }}
-        onPointerLeave={() => { setHover(null); setHoverM(null); }}
+        onPointerLeave={() => { setHover(null); setHoverM(null); setHoverP(null); setHoverE(null); }}
         onWheel={(e) => setCam((c) => ({ ...c, zoom: Math.max(0.2, Math.min(10, c.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12))) }))}
       />
       {!stitchMode && <span className="uf-top">{flip ? "Top side: the other side (grey)" : "Top side: the green side"}</span>}
