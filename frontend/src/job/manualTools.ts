@@ -381,7 +381,7 @@ export interface ArrangeInput {
   /** without the pairing prepass (to compare) */
   noPairs?: boolean;
   /** Common cut on: parts that join along their common cut lines, by part id; their copies are
-   * arranged as blocks (as big as fit, or half that; the tighter wins) */
+   * arranged as blocks (as big as fit, split evenly, or half that; the tighter wins) */
   common?: Map<string, CommonLayout>;
 }
 
@@ -459,7 +459,7 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
     const uw = usable.x1 - usable.x0, uh = usable.y1 - usable.y0;
     const blockSets: Piece[][] = [];
     const seen = new Set<string>();
-    for (const share of [1, 0.5]) {
+    for (const share of [1, 0, 0.5]) {
       const ps: Piece[] = [];
       let sig = "";
       for (const [id, l] of byPart) {

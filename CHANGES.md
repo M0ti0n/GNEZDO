@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Common cut, Arrange: the copies can also be split evenly into blocks (8 copies of a part where 5 fit in a row: two rows of 4, not 5 + 3)
 - Common cut, **chain** and **pair** blocks (Arrange, Automatic nest): the tightest block is taken, not the one with the longest shared lines. A trapezoid with every straight line marked (the import rule) now chains along its slanted sides, every other copy turned 180°, side by side; before, it turned about its long and short sides into a tall stack, or (2 copies) a pair joined on the long side that did not interlock. Triangles make chains too (copies in a row may meet at their base corners)
 - Import 2D, Geometry check: **Save as remnant** (at the top): the drawing's outline (its biggest closed cutting contour, the closed ones inside it as holes) goes to the saved remnants, after the remnant dialog (name REM_<part>, material, thickness, pieces, note). For a remnant sketched on the New part canvas, or a damaged part whose good area can still take smaller parts
 - Drawing icons: **Arc** centered; **Offset** with its new line in blue and the clicked point red; **Radius** and **Chamfer** in blue
