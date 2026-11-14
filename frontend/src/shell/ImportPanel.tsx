@@ -18,6 +18,8 @@ export interface ImportPanelProps {
   onProperties: (p: BatchProperties) => void;
   /** Files dropped or chosen; single import opens the part straight away. */
   onFiles: (files: File[], openFirst: boolean) => void;
+  /** FITTINGS: parts of sheet metal fittings made from their values. */
+  onFittings: () => void;
   onCheckLines: () => void;
   /** Saves the green parts; red ones stay in the list. */
   onProcessAll: (project?: string) => void;
@@ -132,6 +134,11 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
               <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M14 3v4h4" />
             </svg>
             File import
+          </button>
+          <button type="button" className="btn imp-btn imp-fittings" onClick={p.onFittings}
+            title="Fittings: flat parts of segmented elbows, transitions, branch reducers, flanges and screw flights, made from their values">
+            <span className="imp-pick-icon imp-fit-icon">{icon("fit-elbow")}</span>
+            Fittings
           </button>
         </div>
 
@@ -282,6 +289,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                 title={item.state === "ready" ? `${TITLE[st.verdict]} · double-click to open` : TITLE[st.verdict]}>
                 <span className="imp-status" aria-label={TITLE[st.verdict]}>{ICON[st.verdict]}</span>
                 <span className="imp-name">{item.name}</span>
+                {item.fitting && <span className="imp-3d" title={`Made in Fittings${item.qty ? `, ${item.qty} pieces` : ""}`}>FIT{item.qty ? ` ×${item.qty}` : ""}</span>}
                 {item.from3d && <span className="imp-3d" title={`A flat pattern from the 3D Extractor${item.qty ? `, ${item.qty} pieces in the assembly` : ""}`}>3D{item.qty ? ` ×${item.qty}` : ""}</span>}
                 {notes.length > 0 && <span className="imp-notes">{notes.join(" · ")}</span>}
               </button>

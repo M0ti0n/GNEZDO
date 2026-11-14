@@ -2649,3 +2649,50 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .sheet-state { margin-left: 6px; padding: 0 6px; border-radius: 8px; font-style: normal; font-size: 11px; font-weight: 700; background: #e3f0fb; color: #1d6fa8; }
 .sheet-state.is-cut { background: var(--green-tint); color: var(--green-ink); }
 .sheet-tile.is-cut { opacity: .75; }
+
+/* -------------------------------------------------------------------
+   Import 2D -> FITTINGS: flat parts of fittings made from their values; the part picked in the list on
+   the canvas, the values in boxes on a diagram (as the lead-in editor)
+------------------------------------------------------------------- */
+.itool-group.is-fit .itool-box { border-color: #8cb9df; }
+.itool-pop.is-fit { background: #e3eef9; border-color: #8cb9df; }
+.import.fit { grid-template-columns: minmax(0, 1fr) 380px; }
+.fit > .itools-wrap { grid-column: 1 / -1; }
+.fit-pane { grid-row: 2; grid-column: 1; margin: 10px; position: relative; }
+.fit-canvas { flex: 1; min-height: 0; display: flex; }
+.fit-canvas .proc-svg { flex: 1; width: 100%; height: 100%; min-height: 0; border-radius: 0; background-size: 22px 22px; }
+.fit-hint { margin: 0; padding: 7px 12px; border-top: 1px solid var(--line); background: var(--yellow-tint); font-size: 13.5px; color: #3d2d00; }
+.fit-panel { overflow: hidden; }
+.fit-panel .uf-body { flex: 1; min-height: 0; }
+.fit-title { display: flex; align-items: center; gap: 10px; }
+.fit-title-ic { display: grid; place-items: center; width: 38px; height: 38px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; }
+.fit-title-ic svg { width: 30px; height: 30px; }
+.fit-diagram { border: 1px solid #e3ebeb; border-radius: 10px; background: #fbfdfd; }
+.fit-val b { font-family: var(--font-cond); font-size: 12px; font-weight: 600; padding-left: 5px; }
+.fit-val .li-num { padding-left: 3px; width: 40px; }
+.fit-val .li-num.is-wide { width: 48px; }
+.fit-val .fit-thread { height: 24px; border: 0; background: transparent; font: inherit; font-size: 14px; font-weight: 600; padding: 0 2px; }
+.fit-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fit-chip { display: inline-flex; align-items: center; padding: 5px 10px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; font-size: 13.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.fit-chip.is-on { border-color: var(--yellow); background: var(--yellow-tint); box-shadow: 0 0 0 1px var(--yellow); }
+.fit-chip:disabled { opacity: .45; cursor: default; }
+.fit-check { display: inline-flex; align-items: center; gap: 6px; min-width: 0 !important; color: var(--ink) !important; }
+.fit-sub { color: var(--ink-2); }
+.fit-facts { gap: 4px 16px; color: var(--ink-2); font-size: 13.5px; }
+.fit-facts b { color: var(--ink); }
+.fit-res { grid-template-columns: auto 1fr auto 1fr; }
+.fit-size { width: 110px; flex: none !important; }
+.fit-panel .uf-num { width: 58px; }
+.uf-lbl small { font-family: var(--font); letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--ink-3); margin-left: 4px; }
+.fit-parts { display: flex; flex-direction: column; gap: 6px; }
+.fit-part { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 8px; background: #fbfdfd; font-size: 13.5px; color: var(--ink); text-align: left; cursor: pointer; }
+.fit-part.is-pick { border-color: var(--yellow); background: var(--yellow-tint); box-shadow: 0 0 0 1px var(--yellow); }
+.fit-part-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fit-part-name em { font-style: normal; font-size: 12px; color: var(--blue-ink); background: var(--blue-tint); border-radius: 4px; padding: 0 5px; margin-left: 4px; }
+.fit-part-qty { color: var(--ink-2); }
+.fit-box { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; box-sizing: border-box; border: 1.5px solid #7b8c92; border-radius: 4px; background: #fff; }
+.fit-box.is-done { border-color: var(--green); background: var(--green); }
+.fit-count .fit-props { flex: 1; min-width: 0; text-align: left; font-size: 13px; color: var(--ink-2); }
+.fit-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px 14px; border-top: 1px solid var(--line); }
+.imp-fittings { grid-column: 1 / -1; }
+.imp-fit-icon svg { width: 26px; height: 26px; }

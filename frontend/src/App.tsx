@@ -6,6 +6,8 @@ import { api, demoMode } from "./api/api";
 import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
 import { UnfoldPage } from "./pages/UnfoldPage";
+import { FittingsPage, type FitPartState } from "./pages/FittingsPage";
+import { FITTING_KINDS, newFitSession, type FitSession, type FittingKind, type FittingPart } from "./import/fittings";
 import { readExtract, type X3Part } from "./import/step/extract";
 import { flatDrawing, isStepName, unfoldPart } from "./import/step/stepPart";
 import { sampleDrawings } from "./import/sampleDrawing";
@@ -54,7 +56,7 @@ import { ApiKeysDialog, PasswordDialog, UsersDialog } from "./components/UsersDi
 import { SettingsPage } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
 import type { Drawing } from "./import/geometry";
-import { VIEW_TITLE, drawingTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
+import { FITTINGS_ID, VIEW_TITLE, drawingTab, fittingsTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
 
 const USER_NAME = "Fab"; // where there is no sign-in (the demo; the desktop build)
 
@@ -375,6 +377,33 @@ export function App() {
     openId: null as string | null,
   };
 
+  // Import 2D -> FITTINGS: fittings made from their values; their parts go into the import list
+  const [fit, setFit] = useState<FitSession>(() => newFitSession());
+  const [fitSaved, setFitSaved] = useState<Set<string>>(() => new Set());   // parts (sigs) saved to the database
+  const openFittings = (kind?: string) => {
+    if (kind && (FITTING_KINDS as string[]).includes(kind)) setFit((f) => ({ ...f, kind: kind as FittingKind }));
+    setDrawer("import");
+    open(fittingsTab());
+  };
+  const fitState = (sig: string): FitPartState => (imports.some((i) => i.fitting === sig) ? "listed" : fitSaved.has(sig) ? "saved" : "new");
+  /** Fitting parts into the import list (`count` fittings); one waiting there already is replaced. Their item ids. */
+  const addFittings = (list: { part: FittingPart; sig: string }[], count: number, quiet = false): string[] => {
+    const stamp = Date.now().toString(36);
+    const items: ImportItem[] = list.map(({ part, sig }, k) => {
+      const prev = imports.find((i) => i.fitting === sig && !i.processed);
+      const id = prev?.id ?? `imp-fit-${stamp}-${k}`;
+      return {
+        id, fileName: `${part.name}.dxf`, name: part.name, qty: part.qty * count, state: "ready",
+        drawing: { id, fileName: part.name, entities: part.entities }, checked: true, processed: false, fitting: sig,
+      };
+    });
+    for (const it of items) history.forget(it.id);
+    setImports((l) => [...l.filter((i) => !items.some((n) => n.id === i.id)), ...items]);
+    if (!quiet) setToast(`${items.length === 1 ? items[0].name : `${items.length} parts`} added to the import list`);
+    diag("fittings", `${list.length} ${list.length === 1 ? "part" : "parts"} into the import list: ${items.map((i) => `${i.name} x${i.qty}`).join(", ")}`);
+    return items.map((i) => i.id);
+  };
+
   /** Parts leave the import list: their tabs close and their Undo history ends. */
   const closeTabs = (ids: string[]) => ids.forEach((id) => { history.forget(id); dispatch({ type: "close", id: `drawing:${id}` }); });
 
@@ -385,6 +414,8 @@ export function App() {
 
   /** Saved parts leave the import list and their tabs close. */
   const dropSaved = (ids: string[]) => {
+    const sigs = imports.filter((i) => ids.includes(i.id) && i.fitting).map((i) => i.fitting!);
+    if (sigs.length) setFitSaved((s) => new Set([...s, ...sigs]));
     closeTabs(ids);
     setImports((list) => list.filter((i) => !ids.includes(i.id)));
   };
@@ -396,7 +427,7 @@ export function App() {
     ...partGeometry(i.drawing!, i.own),
     sourceFile: i.fileName, replace,
     // a flat pattern from 3D brings the assembly's quantity
-    qty: i.from3d ? i.qty ?? 0 : rules.qtyFromName ? i.qty ?? 0 : 0,
+    qty: i.from3d || i.fitting ? i.qty ?? 0 : rules.qtyFromName ? i.qty ?? 0 : 0,
   });
 
   const importPanel = {
@@ -405,6 +436,7 @@ export function App() {
     rules,
     onProperties: setImportProps,
     onFiles: addFiles,
+    onFittings: () => openFittings(),
     onCheckLines: () => {
       setImports((list) => list.map((i) => (i.state === "ready" ? { ...i, checked: true } : i)));
       const next = imports.map((i) => statusOf({ ...i, checked: i.state === "ready" }));
@@ -1426,7 +1458,17 @@ export function App() {
                 snaps={rules.snaps}
                 fromDatabase={!!shownItem.source}
                 onEdit={(drawing, label) => editDrawing(shownItem.id, shownItem.drawing!, drawing, label)}
-                undone={undone} />
+                undone={undone}
+                onFitting={openFittings} />
+              </ErrorBoundary>
+            )}
+            {active.kind === "drawing" && active.drawingId === FITTINGS_ID && (
+              <ErrorBoundary key={FITTINGS_ID} what="Fittings">
+              <FittingsPage session={fit} onSession={setFit} stateOf={fitState}
+                properties={`${importProps.material || "no material"} · ${importProps.thicknessMm ? `${importProps.thicknessMm} mm` : "no thickness"} · ${importProps.project ? `project ${importProps.project}` : "no project"} (Properties)`}
+                onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
+                onAdd={(list, count) => { addFittings(list, count); }}
+                onProcess={(part, sig, count) => { const [id] = addFittings([{ part, sig }], count, true); setProcessing(id); }} />
               </ErrorBoundary>
             )}
             {(active.kind === "settings" || active.kind === "rules") && <SettingsPage onClose={() => showView("home")} startSection={active.kind === "rules" ? "rules" : undefined}

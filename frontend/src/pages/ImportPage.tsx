@@ -117,9 +117,11 @@ interface Props {
   mirrorBlocked?: boolean;
   /** What drawing snaps to (Settings → Rules); missing: everything. */
   snaps?: SnapKind[];
+  /** A fitting picked in the FITTINGS group: the Fittings tab opens with it. */
+  onFitting?: (kind: string) => void;
 }
 
-export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false, fromDatabase = false, snaps }: Props) {
+export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false, fromDatabase = false, snaps, onFitting }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
   const [tool, setTool] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -1034,6 +1036,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
 
   const onTool = (id: string) => {
+    if (id.startsWith("fit-")) { onFitting?.(id.slice(4)); return; }
     // lines picked (no tool on), then Aid line: they become aid lines
     if (id === "xline" && !tool && pick.size) {
       const items = drawing.entities.filter((e) => pick.has(e.id));

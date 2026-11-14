@@ -41,6 +41,60 @@ const Nozzle = ({ beam }: { beam: string }) => (
   </>
 );
 
+/** FITTINGS: flat parts of sheet metal fittings, drawn from their values (light blue: the part). */
+const FB = "#d6e8f8";
+const FIT_ICON: Record<string, ReactNode> = {
+  elbow: (
+    <Ico>
+      <path d="M6 42V31l4-10 7-8 9-5 16-2v12l-12 2-6 3-4 5-2 7v8z" fill={FB} />
+      <path d="M6 42V31l4-10 7-8 9-5 16-2 M18 42v-8l2-7 4-5 6-3 12-2 M6 42h12 M42 6v12" stroke={K} strokeWidth="2.8" />
+      <path d="M6 31l12 3 M10 21l10 6 M17 13l7 9 M26 8l4 11" stroke="#1e8db5" strokeWidth="2.2" />
+    </Ico>
+  ),
+  transition: (
+    <Ico>
+      <path d="M6 12 28 5l15 7-22 7z" fill={FB} stroke={K} strokeWidth="2.6" />
+      <ellipse cx="25" cy="39" rx="11" ry="4" stroke={K} strokeWidth="2.6" />
+      <path d="M6 12l8 27 M43 12l-7 27 M21 19l4 24" stroke={K} strokeWidth="2.2" />
+      <path d="M14 39 28 5" stroke="#1e8db5" strokeWidth="1.8" strokeDasharray="3 2" />
+    </Ico>
+  ),
+  branch: (
+    <Ico>
+      <path d="M12 5h22l-5 38H17z" fill={FB} stroke={K} strokeWidth="2.6" />
+      <path d="M31 18l12-7 4 9-15 7" fill={FB} stroke={K} strokeWidth="2.6" />
+      <ellipse cx="23" cy="5" rx="11" ry="2.5" stroke="#1e8db5" strokeWidth="1.8" />
+    </Ico>
+  ),
+  flange: (
+    <Ico>
+      <circle cx="24" cy="24" r="19" fill={FB} stroke={K} strokeWidth="2.6" />
+      <circle cx="24" cy="24" r="10" fill="#fff" stroke={K} strokeWidth="2.6" />
+      <path d="M20 9.6a14.5 14.5 0 0 1 8 0 M38.4 20a14.5 14.5 0 0 1 0 8 M28 38.4a14.5 14.5 0 0 1-8 0 M9.6 28a14.5 14.5 0 0 1 0-8" stroke="#1e8db5" strokeWidth="3.2" />
+    </Ico>
+  ),
+  thread: (
+    <Ico>
+      <circle cx="24" cy="24" r="19" fill={FB} stroke={K} strokeWidth="2.6" />
+      <circle cx="24" cy="24" r="10" fill="#fff" stroke={K} strokeWidth="2.6" />
+      <path d="M21 7l6 6 M27 7l-6 6 M21 35l6 6 M27 35l-6 6 M7 21l6 6 M13 21l-6 6 M35 21l6 6 M41 21l-6 6" stroke="#c2412d" strokeWidth="2.2" />
+    </Ico>
+  ),
+  screw: (
+    <Ico>
+      <path d="M27 4.2A20 20 0 1 1 21 4.2L22 13.2A11 11 0 1 0 26 13.2z" fill="#fde7c8" stroke={K} strokeWidth="2.6" />
+      <path d="M22 13.2 21 4.2 M26 13.2 27 4.2" stroke="#e98a15" strokeWidth="2.6" />
+    </Ico>
+  ),
+};
+export const FIT_TOOLS: { id: string; label: string }[] = [
+  { id: "fit-elbow", label: "Elbow" }, { id: "fit-transition", label: "Rect. → round" },
+  { id: "fit-branch", label: "Branch reducer" }, { id: "fit-flange", label: "Flange" },
+  { id: "fit-thread", label: "Threaded flange" }, { id: "fit-screw", label: "Screw flight" },
+];
+/** The fitting's icon (also the Fittings panel's heading). */
+export const fitIcon = (kind: string) => FIT_ICON[kind];
+
 export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: ReactNode }[] = [
   {
     id: "properties", label: "Properties",
@@ -307,10 +361,11 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
       </Ico>
     ),
   },
+  ...FIT_TOOLS.map((t) => ({ ...t, icon: FIT_ICON[t.id.slice(4)] })),
 ];
 
 /** Tools shown together under one button: it opens them below the strip (open until another group or this one is clicked). */
-export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim"; tools: string[]; icon: ReactNode }[] = [
+export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim" | "fit"; tools: string[]; icon: ReactNode }[] = [
   {
     id: "drawGroup", label: "Drawing", tone: "draw", tools: ["line", "circle", "arc", "rect", "slot", "xline", "offset", "fillet", "chamfer"],
     icon: <Ico><path d="M12 10L37 37" stroke={K} strokeWidth="3.4" /><circle cx="12" cy="10" r="3.8" fill={BL} /><circle cx="37" cy="37" r="3.8" fill={BL} /></Ico>,
@@ -327,18 +382,21 @@ export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim"; too
       </Ico>
     ),
   },
+  { id: "fitGroup", label: "Fittings", tone: "fit", tools: FIT_TOOLS.map((t) => t.id), icon: FIT_ICON.elbow },
 ];
 
 /** The strip's order: single tools and groups (a group stands where its first tool stood). */
 const STRIP: string[] = ["properties", "extend", "trim", "drawGroup", "alignH", "alignV", "erase", "dimGroup",
-  ...IMPORT_TOOLS.map((t) => t.id).filter((id) => !["properties", "extend", "trim", "alignH", "alignV", "erase"].includes(id) && !TOOL_GROUPS.some((g) => g.tools.includes(id)))];
+  ...IMPORT_TOOLS.map((t) => t.id).filter((id) => !["properties", "extend", "trim", "alignH", "alignV", "erase", "process"].includes(id) && !TOOL_GROUPS.some((g) => g.tools.includes(id))),
+  "fitGroup", "process"];
 
 /** blocked: tools that cannot be used now, with the reason shown on hover (greyed out). */
 /** lit: switches that are on besides the active tool (Check lines while the Geometry check panel is open). */
-export function ImportToolStrip({ active, onTool, blocked = {}, lit = {} }: {
-  active: string | null; onTool: (id: string) => void; blocked?: Record<string, string>; lit?: Record<string, boolean>;
+/** openGroup: the group shown open at first (the Fittings tab: its fittings). */
+export function ImportToolStrip({ active, onTool, blocked = {}, lit = {}, openGroup = null }: {
+  active: string | null; onTool: (id: string) => void; blocked?: Record<string, string>; lit?: Record<string, boolean>; openGroup?: string | null;
 }) {
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(openGroup);
   const tool = (t: (typeof IMPORT_TOOLS)[number], onPick?: () => void) => (
     <button key={t.id} className={`itool${t.wide ? " is-wide" : ""}${active === t.id || lit[t.id] ? " is-on" : ""}`}
       aria-pressed={active === t.id || !!lit[t.id]} aria-disabled={blocked[t.id] ? true : undefined}
