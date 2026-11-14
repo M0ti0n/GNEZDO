@@ -233,3 +233,13 @@ export function cutProblem(base: Solid, cuts: FaceCut[], c: FaceCut): string | n
   }
   return null;
 }
+
+/** The edge both points lie along (with the line between them on it too): its number, else null. Add edge
+ *  along an existing edge makes it a seam. */
+export function edgeAlong(s: Solid, a: V3, b: V3): number | null {
+  if (near(a, b)) return null;
+  const m: V3 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+  for (const f of s.faces) for (const l of f.loops) for (const e of l.edges)
+    if (along(e.pts, a) && along(e.pts, b) && along(e.pts, m)) return e.id;
+  return null;
+}
