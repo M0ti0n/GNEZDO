@@ -173,9 +173,10 @@ def joins(poly: geom.PolyShape, edges: list, kerf: float, gap: float) -> list[Jo
                 continue
             t1 = Xf(180.0, False, float(2 * m1[0] + n1[0] * kerf), float(2 * m1[1] + n1[1] * kerf))
             step = Xf(0.0, False, float(T[0]), float(T[1]))
-            # copies that do not share a line keep the gap: the next one the same way round, and the
-            # turned one after it
-            if clear_of(poly, _place(poly, step), gap) and \
+            # copies that do not share a line keep the gap: the next one the same way round (it may touch
+            # the first at the end of the first shared line, as triangles in a row do at their base
+            # corners), and the turned one after it
+            if clear_of(poly, _place(poly, step), gap, shared=(a1, b1)) and \
                clear_of(poly, _place(poly, Xf(180.0, False, t1.x + step.x, t1.y + step.y)), gap):
                 out.append(Join("chain", t1, L1 + L2, step))
     out.sort(key=lambda j: ({"shift": 0, "chain": 1}.get(j.kind, 2), -j.length))
@@ -209,6 +210,25 @@ class Layout:
         return (a - 1) * b + (a * (b - 1) if self.kind == "grid" else 0)
 
 
+def _block_rect(poly: geom.PolyShape, xfs: list) -> float:
+    """The smallest rectangle (at any angle) around copies of the part at these transforms: its area."""
+    pts = np.vstack([np.array([xf.apply(x, y) for x, y in poly.outer]) for xf in xfs])
+    n = len(poly.outer)
+    best = float("inf")
+    angles = set()
+    for k in range(len(xfs)):
+        for i in range(n):
+            a, b = pts[k * n + i], pts[k * n + (i + 1) % n]
+            if float(np.hypot(*(b - a))) > 0.5:
+                angles.add(round(float(np.arctan2(b[1] - a[1], b[0] - a[0])) % np.pi, 3))
+    for t in angles or {0.0}:
+        c, s = np.cos(t), np.sin(t)
+        u = pts[:, 0] * c + pts[:, 1] * s
+        v = -pts[:, 0] * s + pts[:, 1] * c
+        best = min(best, float((u.max() - u.min()) * (v.max() - v.min())))
+    return best
+
+
 def layout_of(poly: geom.PolyShape, edges: list, kerf: float, gap: float) -> Layout | None:
     js = joins(poly, edges, kerf, gap)
     shifts = [j for j in js if j.kind == "shift"]
@@ -224,8 +244,12 @@ def layout_of(poly: geom.PolyShape, edges: list, kerf: float, gap: float) -> Lay
             if ok:
                 return Layout("grid", [s1, s2])
         return Layout("row", [s1])
-    chains = [j for j in js if j.kind == "chain"]
+    # the tightest chain (a block of 4 in the smallest rectangle), not the longest lines: a trapezoid with
+    # every line marked chains along its slanted sides rather than stacking on its long and short sides
+    chains = [Layout("chain", [j]) for j in js if j.kind == "chain"]
     if chains:
-        return Layout("chain", [chains[0]])
+        return min(chains, key=lambda l: _block_rect(poly, l.offsets(4)))
     turns = [j for j in js if j.kind == "turn"]
-    return Layout("pair", [turns[0]]) if turns else None
+    if not turns:
+        return None
+    return min((Layout("pair", [j]) for j in turns), key=lambda l: _block_rect(poly, l.offsets(2)))
