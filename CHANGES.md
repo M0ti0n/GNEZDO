@@ -4,6 +4,8 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D, **Rotate** (new, beside Scale): click a line, an arc or a circle, or drag a window, to pick what to turn (hold **Ctrl** to pick more, then let go; Enter or a right click also ends the picking; **Ctrl+A**: the whole part). Then click the point to turn around (ends, middles and centers snap), and turn by hand (0° = to the right; whole degrees, caught within 3° of every 45°) or type the angle + Enter (+ counterclockwise, − clockwise). The result is previewed before it is placed. Esc steps back
+- Import 2D, **Line**, **Aid line** and **Slot**: within 3° of horizontal or vertical the line snaps exactly horizontal or vertical (a dashed guide shows it). It can be turned off in Settings → Rules → Snapping while drawing ("Horizontal / vertical")
 - Import 2D tool groups (**Drawing**, **Dimension**) stay open while you pick and use their tools, so all of them stay in view. Another group's button closes it, and so does a second click on its own button. Single tools on the strip, clicks on the canvas and Esc leave it open
 - 3D Extractor, **Holes**: the flat pattern's round holes by size (Ø, how many). A size can be **Cut** or a **thread** (M2 … M24): a threaded hole is not cut; a small traced cross with its thread beside it (M8, single-line text) marks it for drilling and tapping after cutting. Holes the size of a tap drill (Ø6.8 → M8, Ø8.5 → M10 …, metric coarse) are set to their thread by themselves and marked "probably"; any size can be changed. Into Import 2D as tracing lines, into the flat DXF on layer THREAD
 - Thread marks bigger: the cross 15 mm and its M# text 15 mm high by default; both sizes can be set in the Holes section

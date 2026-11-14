@@ -207,6 +207,18 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     ),
   },
   {
+    id: "rotate", label: "Rotate",
+    icon: (
+      <Ico>
+        <path d="M12 38H40V26H12" stroke={R} strokeWidth="2" strokeDasharray="3 3" strokeLinecap="butt" />
+        <path d="M12 38L33.4 20L25.7 10.8L4.3 28.8Z" stroke={K} strokeWidth="3.2" strokeLinejoin="miter" />
+        <path d="M45.7 33.3A34 34 0 0 0 41.6 21.3" stroke="#22b14c" strokeWidth="2.6" strokeLinecap="butt" />
+        <path d="M38.7 16.6L44.6 19.4L38.6 23.2Z" fill="#22b14c" stroke="#22b14c" strokeWidth="1" />
+        <circle cx="12" cy="38" r="3.8" fill={BL} />
+      </Ico>
+    ),
+  },
+  {
     id: "trace", label: "Trace",
     icon: <Ico><Nozzle beam={G} /><path d="M7 33L42 41" stroke={G} strokeWidth="4" /></Ico>,
   },

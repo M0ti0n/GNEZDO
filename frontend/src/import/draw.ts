@@ -12,7 +12,7 @@ export type Aid =
   | { id: string; kind: "cline"; a: Pt; b: Pt }
   | { id: string; kind: "dim"; m: Measure };
 
-export type SnapKind = "end" | "mid" | "center" | "quadrant" | "intersection" | "perpendicular" | "tangent";
+export type SnapKind = "end" | "mid" | "center" | "quadrant" | "intersection" | "perpendicular" | "tangent" | "ortho";
 export const SNAP_KINDS: { id: SnapKind; label: string; tip: string }[] = [
   { id: "end", label: "End points", tip: "Ends of lines and arcs" },
   { id: "mid", label: "Midpoints", tip: "The middle of lines, arcs and slot center lines" },
@@ -21,6 +21,7 @@ export const SNAP_KINDS: { id: SnapKind; label: string; tip: string }[] = [
   { id: "intersection", label: "Intersections", tip: "Where lines, arcs, circles and aid lines cross" },
   { id: "perpendicular", label: "Perpendicular", tip: "From the last point square onto a line (or straight onto a circle)" },
   { id: "tangent", label: "Tangent", tip: "From the last point, touching a circle or an arc" },
+  { id: "ortho", label: "Horizontal / vertical", tip: "Line, Aid line and Slot: within 3° of horizontal or vertical, made exactly horizontal or vertical" },
 ];
 export const ALL_SNAPS: SnapKind[] = SNAP_KINDS.map((s) => s.id);
 
@@ -123,7 +124,7 @@ function circleCircle(c1: Pt, r1: number, c2: Pt, r2: number): Pt[] {
 }
 
 /** Lower is preferred when two snaps are about as near. */
-const RANK: Record<SnapKind, number> = { end: 0, intersection: 1, center: 2, mid: 2, quadrant: 2, perpendicular: 3, tangent: 3 };
+const RANK: Record<SnapKind, number> = { end: 0, intersection: 1, center: 2, mid: 2, quadrant: 2, perpendicular: 3, tangent: 3, ortho: 4 };
 
 /**
  * The snap nearest the pointer (within tol mm), of the kinds allowed. `from` is the last point placed
@@ -398,4 +399,45 @@ export function joinLines(ents: Entity[], id1: string, p1: Pt, id2: string, p2: 
   const n1 = fix(l1, p1), n2 = fix(l2, p2);
   if (dist(n1.a, n1.b) < TOL || dist(n2.a, n2.b) < TOL) return { ok: false, message: "A line would vanish: click on the parts to keep" };
   return { ok: true, entities: ents.map((e) => (e.id === id1 ? n1 : e.id === id2 ? n2 : e)), message: "Lines joined at their crossing" };
+}
+
+/** Within maxDeg of horizontal or vertical seen from `from`: the point put exactly level ("h") or plumb ("v"). */
+export function orthoSnap(from: Pt, p: Pt, maxDeg = 3): { p: Pt; dir: "h" | "v" } | null {
+  const dx = p.x - from.x, dy = p.y - from.y;
+  if (Math.hypot(dx, dy) < 1e-9) return null;
+  const a = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);   // 0 … 180
+  if (Math.min(a, 180 - a) <= maxDeg) return { p: { x: p.x, y: from.y }, dir: "h" };
+  if (Math.abs(90 - a) <= maxDeg) return { p: { x: from.x, y: p.y }, dir: "v" };
+  return null;
+}
+
+/** A point turned around c by deg (counterclockwise; negative: clockwise). */
+export function rotPt(p: Pt, c: Pt, deg: number): Pt {
+  const r = (deg * Math.PI) / 180, co = Math.cos(r), si = Math.sin(r);
+  const x = p.x - c.x, y = p.y - c.y;
+  return { x: c.x + x * co - y * si, y: c.y + x * si + y * co };
+}
+
+/** A line, arc, circle or spline turned around c by deg (counterclockwise; negative: clockwise). */
+export function rotateEnt(e: Entity, c: Pt, deg: number): Entity {
+  switch (e.kind) {
+    case "line": return { ...e, a: rotPt(e.a, c, deg), b: rotPt(e.b, c, deg) };
+    case "circle": return { ...e, c: rotPt(e.c, c, deg) };
+    case "spline": return { ...e, fit: e.fit.map((q) => rotPt(q, c, deg)) };
+    case "arc": {
+      const start = norm360(e.start + deg);
+      return { ...e, c: rotPt(e.c, c, deg), start, end: e.end - e.start >= 360 ? start + 360 : norm360(e.end + deg) };
+    }
+  }
+}
+
+/** The angle typed or shown by hand: from c to p, degrees counterclockwise from the right (0°); by hand it
+ *  goes in whole degrees and is caught within 3° of every 45°. */
+export function handAngle(c: Pt, p: Pt, exact: boolean): number | null {
+  const dx = p.x - c.x, dy = p.y - c.y;
+  if (Math.hypot(dx, dy) < 1e-9) return null;
+  const a = (Math.atan2(dy, dx) * 180) / Math.PI;
+  if (exact) return Math.round(a * 1000) / 1000;
+  const k = Math.round(a / 45) * 45;
+  return Math.abs(a - k) <= 3 ? k : Math.round(a);
 }
