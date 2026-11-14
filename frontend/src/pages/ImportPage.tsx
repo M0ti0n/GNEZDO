@@ -10,8 +10,8 @@ import type { BatchProperties } from "../import/batch";
 import { DynamicInput } from "../components/DynamicInput";
 import { DynFields } from "../components/DynFields";
 import {
-  ALL_SNAPS, aidId, angleOf as dirAngle, chamferAt, clipLine, cornerAt, dirAt, filletAt, findSnap, handAngle, joinLines, offsetOf, offsetSide,
-  orthoSnap, rotateEnt, rotPt, slotOf, slotRadius, typed, xlineAt, xlineMiddle, xlineThrough, type Aid, type Corner, type SnapKind,
+  ALL_SNAPS, aidId, angleOf as dirAngle, carcEnt, chamferAt, clipLine, cornerAt, dirAt, dragGrip, filletAt, findSnap, gripAt, gripsOf, handAngle, joinLines, offsetOf, offsetSide,
+  orthoSnap, rotateEnt, rotPt, slotOf, slotRadius, toAid, typed, xlineAt, xlineMiddle, xlineThrough, type Aid, type Corner, type GripKind, type SnapKind,
 } from "../import/draw";
 import { factorFor, factorText, parseScale, scalePart, sizeOf } from "../import/scale";
 import {
@@ -191,6 +191,23 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setScaleAt(at);
     setMessage(null);
   };
+  // No tool on: lines picked with a click (Ctrl: more). Aid line turns them into aid lines; lines drawn here
+  // show grips (also on hover) to drag: the ends stretch a line, its middle moves it; a center moves a circle
+  // or an arc, a point on it sets its radius, an arc's ends lengthen it. Lines from the file stay where they are.
+  const [pick, setPick] = useState<Set<string>>(new Set());
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const [grip, setGrip] = useState<{ id: string; g: GripKind; p: Pt; orig: Entity; now: Entity | null } | null>(null);
+  const pickText = (ids: Set<string>): string => {
+    if (!ids.size) return "";
+    if (ids.size > 1) return `${ids.size} picked (Ctrl + click for more, Esc to clear). Aid line turns them into aid lines`;
+    const e = drawing.entities.find((x) => ids.has(x.id));
+    if (!e) return "";
+    if (!e.drawn) return "From the file: locked in place (the tools still work on it). Aid line turns it into an aid line";
+    return e.kind === "line" ? "Drawn line: drag an end to stretch it, the middle to move it. Aid line turns it into an aid line"
+      : e.kind === "circle" ? "Drawn circle: drag the center to move it, a point on it to change its size. Aid line turns it into an aid line"
+      : "Drawn arc: drag the center to move it, an end to lengthen it, the middle for its radius. Aid line turns it into an aid line";
+  };
+
   // Rotate: the items picked (stage 0), then the point turned around (1), then the angle (2)
   const [rotSel, setRotSel] = useState<Set<string>>(new Set());
   const [rotStage, setRotStage] = useState<0 | 1 | 2>(0);
@@ -292,6 +309,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       text = `Rectangle ${num(w)} × ${num(h)} mm added`;
     }
     if (!add.length) return;
+    add = add.map((e) => ({ ...e, drawn: true }));
     commit({ ...drawing, entities: [...drawing.entities, ...add] }, kind === "rect" ? "Rectangle" : kind === "arc" ? "Arc" : "Circle");
     setSelected(null);
     setShapePts([]);
@@ -302,7 +320,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const addSlot = (a: Pt, b: Pt, r: number) => {
     const sl = slotOf(a, b, r, () => newId());
     if (!sl) { setMessage({ text: "A slot needs two different centers and a radius", bad: true }); return; }
-    commit({ ...drawing, entities: [...drawing.entities, ...sl.ents], aids: [...aids, sl.center] }, "Slot");
+    commit({ ...drawing, entities: [...drawing.entities, ...sl.ents.map((e) => ({ ...e, drawn: true }))], aids: [...aids, sl.center] }, "Slot");
     setSelected(null);
     setShapePts([]);
     resetDyn();
@@ -311,7 +329,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   /** A line to p from the last point (the line goes on from there). */
   const addLineTo = (p: Pt) => {
     if (!lineStart || Math.hypot(p.x - lineStart.x, p.y - lineStart.y) < 1e-6) return;
-    const line: Entity = { id: newId("ln"), kind: "line", a: lineStart, b: p, role: "cut" };
+    const line: Entity = { id: newId("ln"), kind: "line", a: lineStart, b: p, role: "cut", drawn: true };
     commit({ ...drawing, entities: [...drawing.entities, line] }, "Line");
     setSelected(null);
     setLineStart(p);                                    // go on from the end, like AutoCAD
@@ -414,9 +432,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if ((tool === "fillet" || tool === "chamfer") && corner) {
       const a = v(0), b = v(1) ?? a;
       if (!a) { setMessage({ text: tool === "fillet" ? "Type the radius (mm)" : "Type the first distance (mm)", bad: true }); return; }
-      const r = tool === "fillet" ? filletAt(drawing.entities, corner, a, newId("ar")) : chamferAt(drawing.entities, corner, corner.first, a, b!, newId("ln"));
+      const nid = newId(tool === "fillet" ? "ar" : "ln");
+      const r = tool === "fillet" ? filletAt(drawing.entities, corner, a, nid) : chamferAt(drawing.entities, corner, corner.first, a, b!, nid);
       if (!r.ok) { setMessage({ text: r.message, bad: true }); return; }
-      commit({ ...drawing, entities: r.entities }, tool === "fillet" ? "Radius" : "Chamfer");
+      commit({ ...drawing, entities: r.entities.map((e) => (e.id === nid ? { ...e, drawn: true } : e)) }, tool === "fillet" ? "Radius" : "Chamfer");
       setSelected(null);
       setCorner(null);
       setMessage({ text: `${r.message}. Next corner, or Esc` });
@@ -440,7 +459,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     const sd = toward ? offsetSide(e, toward) : null;
     const made = offsetOf(e, d, sd?.side ?? 1, newId());
     if (!made) { setMessage({ text: "Too far inside: the circle or arc would vanish", bad: true }); return; }
-    commit({ ...drawing, entities: [...drawing.entities, made] }, "Offset");
+    commit({ ...drawing, entities: [...drawing.entities, { ...made, drawn: true }] }, "Offset");
     setSelected(null);
     setOffPick(null);
     setMessage({ text: `Offset ${num(d)} mm. Click the next line, or Esc` });
@@ -474,6 +493,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         }
         if (!typing && e.key === "Enter") { rotDone(); return; }
       }
+      if (e.key === "Escape" && !tool && pick.size && !document.querySelector(".dlg-backdrop")) { setPick(new Set()); setMessage(null); return; }
       if (e.key !== "Escape" || !tool) return;
       // a pop-up on top gets the Esc, not the tool under it
       if (document.querySelector(".dlg-backdrop")) return;
@@ -577,6 +597,16 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     if ((e.target as Element).closest(".gcheck, .canvas-ui, .dyn-in")) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    // no tool on: a grip of a line drawn here is dragged (lines from the file have none)
+    if (e.button === 0 && !tool && view) {
+      const gr = gripAt(drawing.entities.filter((x) => x.drawn), toModel(e.clientX, e.clientY, view), SNAP_PX / view.s);
+      const orig = gr && drawing.entities.find((x) => x.id === gr.id);
+      if (gr && orig) {
+        setGrip({ ...gr, orig, now: orig });
+        press.current = { x: e.clientX, y: e.clientY, button: 0 };
+        return;
+      }
+    }
     if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut" || tool === "scale" || (tool === "rotate" && rotStage === 0))) {
       const p = local(e);
       setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
@@ -586,9 +616,29 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     press.current = { x: e.clientX, y: e.clientY, button: e.button };
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    if (grip && view) {
+      // the grip follows the pointer; points snap (not to the line itself), an end also horizontal / vertical
+      const p = toModel(e.clientX, e.clientY, view);
+      const others = drawing.entities.filter((x) => x.id !== grip.id);
+      const o0 = grip.orig;
+      const from = o0.kind === "line" && (grip.g === "a" || grip.g === "b") ? (grip.g === "a" ? o0.b : o0.a) : null;
+      const sn = findSnap(p, SNAP_PX / view.s, others, aids, snapSet, from);
+      const o = !sn && from && snapSet.has("ortho") ? orthoSnap(from, p) : null;
+      const q = sn?.p ?? o?.p ?? p;
+      setCursor({ p: q, snapped: !!(sn || o), kind: sn?.kind ?? (o ? "ortho" : undefined), dir: o?.dir });
+      setGrip({ ...grip, now: dragGrip(o0, grip.g, grip.p, q) });
+      return;
+    }
     if (box) { const p = local(e); setBox((b) => b && { ...b, x1: p.x, y1: p.y }); return; }
     const d = drag.current;
     if (!d) {
+      if (!tool) {
+        // a line drawn here under the pointer shows its grips
+        const id = lineUnder(e.clientX, e.clientY);
+        const en = id && !id.startsWith("aid:") ? drawing.entities.find((x) => x.id === id) : undefined;
+        setHoverId(en?.drawn ? en.id : null);
+        return;
+      }
       if ((tool === "fillet" || tool === "chamfer") && view) { setCornerHover(corner ? null : cornerAt(drawing.entities, toModel(e.clientX, e.clientY, view), SNAP_PX / view.s)?.at ?? null); return; }
       if ((tool && DRAWING_TOOLS.has(tool) || tool === "dimension") && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
       if (tool === "rotate" && rotStage > 0 && view) { setCursor(snapAt(e.clientX, e.clientY, view, null)); return; }
@@ -612,6 +662,35 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     const pr = press.current;
     press.current = null;
     const isClick = !!pr && Math.hypot(e.clientX - pr.x, e.clientY - pr.y) <= 4;
+    if (grip) {
+      const g = grip;
+      setGrip(null);
+      setCursor(null);
+      if (!isClick && g.now && g.now !== g.orig) {
+        const n = g.now;
+        const what = n.kind === "line" ? (g.g === "mid" ? "Move line" : "Stretch line") : g.g === "c" ? `Move ${n.kind}` : g.g === "r" ? "Radius" : "Lengthen arc";
+        commit({ ...drawing, entities: drawing.entities.map((x) => (x.id === g.id ? n : x)) }, what);
+        setSelected(null);
+        setMessage({ text: n.kind === "line" ? `Line ${fmtMm(Math.hypot(n.b.x - n.a.x, n.b.y - n.a.y))}` : n.kind === "circle" ? `Circle Ø ${num(2 * n.r)} mm` : n.kind === "arc" ? `Arc R ${num(n.r)} mm` : what });
+        return;
+      }
+      // a click on a grip picks its line
+      const next = new Set([g.id]);
+      setPick(next);
+      setMessage({ text: pickText(next) });
+      return;
+    }
+    if (isClick && !tool && pr!.button === 0) {
+      const id = lineUnder(e.clientX, e.clientY);
+      const en = id && !id.startsWith("aid:") ? drawing.entities.find((x) => x.id === id) : undefined;
+      if (!en) { if (pick.size) { setPick(new Set()); setMessage(null); } return; }
+      const more = e.ctrlKey || e.metaKey;
+      const next = new Set<string>(more ? pick : []);
+      if (more && pick.has(en.id)) next.delete(en.id); else next.add(en.id);
+      setPick(next);
+      setMessage(next.size ? { text: pickText(next) } : null);
+      return;
+    }
     if (isClick && tool === "rotate" && view && (rotStage > 0 || pr!.button === 2)) {
       if (rotStage === 0) { rotDone(); return; }                 // right click ends the picking
       if (pr!.button !== 0) return;
@@ -955,6 +1034,20 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
 
   const onTool = (id: string) => {
+    // lines picked (no tool on), then Aid line: they become aid lines
+    if (id === "xline" && !tool && pick.size) {
+      const items = drawing.entities.filter((e) => pick.has(e.id));
+      const made = items.flatMap((e) => { const a = toAid(e); return a ? [{ id: e.id, a }] : []; });
+      if (!made.length) { setMessage({ text: "Splines cannot become aid lines", bad: true }); return; }
+      const gone = new Set(made.map((m) => m.id));
+      commit({ ...drawing, entities: drawing.entities.filter((e) => !gone.has(e.id)), aids: [...aids, ...made.map((m) => m.a)] }, "To aid lines");
+      setPick(new Set());
+      setHoverId(null);
+      setSelected(null);
+      const n = made.length;
+      setMessage({ text: `${n === 1 ? "Turned into an aid line" : `${n} turned into aid lines`} (dashed): kept with the part, never cut. Erase removes ${n === 1 ? "it" : "them"}${n < items.length ? " (splines left as they are)" : ""}` });
+      return;
+    }
     if (id === "sweep" && tool !== "sweep" && sweptIds.size + swept.points.length === 0) {
       setTool(null);
       setMessage({ text: "Nothing to sweep: no lines on top of other lines, no lines outside the part, no loose points" });
@@ -997,6 +1090,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setRotSel(new Set());
     setRotStage(0);
     setRotPivot(null);
+    setPick(new Set());
+    setHoverId(null);
+    setGrip(null);
     setTool((t) => (t === id ? null : id));
   };
 
@@ -1106,6 +1202,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {tool === "sweep" && drawing.entities.filter((e) => sweptIds.has(e.id)).map((e) => (
                 <path key={`sw-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={keep.has(e.id) ? "sweep-keep" : "sweep-hl"} />
               ))}
+              {!tool && drawing.entities.filter((e) => pick.has(e.id)).map((e) => (
+                <path key={`pk-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="scale-sel" />
+              ))}
+              {grip?.now && <path d={pathOf(grip.now)} vectorEffect="non-scaling-stroke" className="pv-add" />}
               {tool === "rotate" && rotItems.map((e) => (
                 <path key={`ro-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="scale-sel" />
               ))}
@@ -1116,7 +1216,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {tool === "scale" && scaleItems.map((e) => (
                 <path key={`sc-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="scale-sel" />
               ))}
-              {tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale" || tool === "rotate" || tool === "xline" || tool === "offset") && drawing.entities.map((e) => (
+              {(!tool || MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale" || tool === "rotate" || tool === "xline" || tool === "offset") && drawing.entities.map((e) => (
                 <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
               {/* aid lines and dimensions: picked by Erase (and aid lines by Aid line / Offset) */}
@@ -1129,7 +1229,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {aids.map((a) => {
                 if (a.kind === "dim") return null;
                 const d = aidPath(a, view, size);
-                return d ? <path key={`aid-${a.id}`} d={d} vectorEffect="non-scaling-stroke" className={`aid-line is-${a.kind}`} /> : null;
+                return d ? <path key={`aid-${a.id}`} d={d} vectorEffect="non-scaling-stroke" className={`aid-line is-${a.kind}${a.kind === "cline" && a.dash ? " is-dash" : ""}`} /> : null;
               })}
               {joinFirst && (() => { const en = drawing.entities.find((x) => x.id === joinFirst.id); return en ? <path d={pathOf(en)} vectorEffect="non-scaling-stroke" className="meas-pick" /> : null; })()}
               {offPick?.ent && <path d={pathOf(offPick.ent)} vectorEffect="non-scaling-stroke" className="meas-pick" />}
@@ -1215,6 +1315,18 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   {d && <path d={d} className="aid-line is-rubber" />}
                   {xPts[0] && (() => { const q = toScreen(xPts[0], view); return <circle cx={q.x} cy={q.y} r={3.5} className="line-start" />; })()}
                   <SnapMark c={c} kind={cursor.snapped ? cursor.kind : undefined} dir={cursor.dir} />
+                </g>
+              );
+            })()}
+            {!tool && (() => {
+              // grips of the lines drawn here: picked or under the pointer (and the one dragged, where it goes)
+              const ids = new Set([...pick, ...(hoverId ? [hoverId] : [])]);
+              const shown = drawing.entities.filter((e) => e.drawn && ids.has(e.id) && e.id !== grip?.id);
+              if (grip?.now) shown.push(grip.now);
+              return (
+                <g pointerEvents="none">
+                  {shown.flatMap((e) => gripsOf(e).map((q, i) => { const c = toScreen(q.p, view); return <rect key={`gr-${e.id}-${i}`} x={c.x - 4.5} y={c.y - 4.5} width={9} height={9} className="grip" />; }))}
+                  {grip && cursor && <SnapMark c={toScreen(cursor.p, view)} kind={cursor.snapped ? cursor.kind : undefined} dir={cursor.dir} />}
                 </g>
               );
             })()}
@@ -1610,6 +1722,7 @@ function aidPath(a: Aid, v: View, size: { w: number; h: number }, screen = false
     return c ? out(c[0], c[1]) : null;
   }
   if (a.kind === "cline") return out(a.a, a.b);
+  if (a.kind === "carc") return pathOf(carcEnt(a));
   const m = a.m;
   if (m.kind === "distance") return out(m.from, m.to);
   if (m.kind === "diameter") return out(m.a, m.b);

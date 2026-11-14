@@ -30,6 +30,8 @@ export type Entity = (
    * closed cutting contours keep it (commonCutOk).
    */
   common?: boolean;
+  /** Drawn in the importer (not from the file): can be dragged by its grips. Lines from the file stay where they are. */
+  drawn?: boolean;
   /** The role the line got on import (from its layer / color); while it still has it, it shows its DXF color. */
   fileRole?: Role;
   layer?: string;
