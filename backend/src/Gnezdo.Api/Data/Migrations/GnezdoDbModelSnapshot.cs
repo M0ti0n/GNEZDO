@@ -293,6 +293,14 @@ namespace Gnezdo.Api.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTimeOffset?>("CutAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CutBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("File")
                         .IsRequired()
                         .HasMaxLength(260)
