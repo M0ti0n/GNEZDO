@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D: **Delete key** erases the lines picked (no tool on: click, Ctrl + click or a window, then Delete); Undo brings them back. In a text box it deletes text, as before
 - 3D Extractor:
   - **Solid / wireframe** is its own button beside View (the cube; lit: wireframe); View keeps edge lines and colors. The View pop-up's **×** is bigger
   - the **arrows** in the Part and Flat pattern titles now make **that** pane bigger (they point the way it grows; the other one folds away to the side); made bigger, the button puts them side by side again
