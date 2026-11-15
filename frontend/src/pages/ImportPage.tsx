@@ -1510,6 +1510,18 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               return <rect x={q.x - 7} y={q.y - 7} width={14} height={14} transform={`rotate(45 ${q.x} ${q.y})`} className={`corner-mark${corner ? " is-on" : ""}`} pointerEvents="none" />;
             })()}
             {tool === "offset" && cursor && <SnapMark c={toScreen(cursor.p, view)} kind={cursor.snapped ? cursor.kind : undefined} dir={cursor.dir} />}
+            {/* Offset: the distance next to the pointer, like the size of a rectangle being drawn */}
+            {tool === "offset" && offPick && cur && cursor && (() => {
+              const D = typed(dyn[0] ?? "");
+              let d: number | null = null;
+              if (offPick.aid?.kind === "xline") {
+                const x = offPick.aid, n = { x: -x.d.y, y: x.d.x };
+                d = D ?? Math.abs((cur.x - x.p.x) * n.x + (cur.y - x.p.y) * n.y);
+              } else if (offPick.ent) d = D ?? offsetSide(offPick.ent, cur)?.d ?? null;
+              if (d === null || !Number.isFinite(d)) return null;
+              const c = toScreen(cursor.p, view);
+              return <text x={c.x + 12} y={c.y - 10} className="line-len" pointerEvents="none">{num(d)}</text>;
+            })()}
             {tool && SHAPES[tool] && cursor && (() => {
               const c = toScreen(cursor.p, view);
               const P = shapePts.map((p) => toScreen(p, view));
