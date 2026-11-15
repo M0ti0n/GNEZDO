@@ -671,6 +671,18 @@ export function App() {
     return null;
   };
   const PANEL: Record<RailSection, DrawerMode> = { import: "import", extract: "extract", special: "import", jobs: "jobs", remnants: "remnants" };
+  // An open side panel follows the tab or screen shown: Import 2D's for a 2D part, the 3D extractor's for
+  // a 3D part, Parts for a job, Jobs / Remnants for their lists; a screen without a panel of its own
+  // (Home, Settings, …) closes it. A closed panel stays closed.
+  const screenKey = activeTab ? `tab:${activeTab.id}` : `view:${state.view}`;
+  const lastScreen = useRef(screenKey);
+  useEffect(() => {
+    if (lastScreen.current === screenKey) return;
+    lastScreen.current = screenKey;
+    const sec = sectionOf();
+    const want: DrawerMode | null = active.kind === "job" ? "parts" : sec ? PANEL[sec] : null;
+    setDrawer((d) => (d === null ? d : want));
+  }, [screenKey]);   // eslint-disable-line react-hooks/exhaustive-deps
   const onRail = (m: RailSection) => {
     const here = sectionOf() === m;
     if (here && drawer === PANEL[m]) { setDrawer(null); return; }
