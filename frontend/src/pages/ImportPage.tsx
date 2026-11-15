@@ -136,7 +136,6 @@ interface Props {
   /** Process tool on a part without problems: opens the save pop-up. */
   onProcess: () => void;
   /** Properties tool: opens the part's properties. */
-  onProperties: () => void;
   /** Nesting rules changed here: they are the list's Properties. */
   onNestRules?: (r: NestRules) => void;
   /** Mirror is not allowed for this part (open cut lines and the rule says so). */
@@ -152,7 +151,7 @@ interface Props {
   manualCheck?: boolean;
 }
 
-export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false, fromDatabase = false, snaps, onSaveToList, onSaveRemnant, manualCheck = false }: Props) {
+export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onNestRules, mirrorBlocked = false, fromDatabase = false, snaps, onSaveToList, onSaveRemnant, manualCheck = false }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
   // A part drawn here: checked from CHECK on (and while its problems are being fixed), until a drawing tool is
   // taken again; a part from a file: always
@@ -1202,7 +1201,6 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       setMessage({ text: "Nothing to sweep: no lines on top of other lines, no lines outside the part, no loose points" });
       return;
     }
-    if (id === "properties") { setTool(null); setMessage(null); onProperties(); return; }
     if (id === "colourLines") { setTool(null); setMessage(null); setColouring(true); return; }
     // Check lines = the Geometry check panel: shows or hides it, with the result in the hint
     if (id === "checkLines") {
