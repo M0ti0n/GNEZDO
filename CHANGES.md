@@ -12,6 +12,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Import 2D: the drawing tools' number boxes (dynamic input) no longer take the keyboard while a pop-up is open or another field is being typed in
 - Import 2D: **only the middle mouse button pans the canvas**; a left- or right-button drag no longer moves the view (the right button still ends a line or a rotation's picking)
 - Import 2D: **the number boxes show the live value in grey** while you draw: length and angle of a line, X and Y of a rectangle, a circle's diameter, a slot's distance, radius and angle, an offset's distance, the angle of an aid line or a rotation. Typed in, the box takes over as before
+- Import 2D, **Offset**: the distance stands next to the pointer while you pick the side, as the size of a rectangle being drawn does (the typed value once one is typed)
 - Import 2D, a part **drawn in Import 2D** (New part, also once named): the Geometry check no longer runs while it is being drawn (a half-drawn part is all open lines: red lines and balloons everywhere). A green **CHECK** button stands in the status's place; pressed, the part is checked and stays checked while its problems are fixed; taking a drawing tool again puts the check away. **PROCESS needs it**. Parts from files are checked all the time, as before
 - Import 2D, **Arc**: the dashed preview now goes through the second point (it bulged to the other side)
 
