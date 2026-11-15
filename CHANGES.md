@@ -7,6 +7,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - **Special tools only make the fittings; Import 2D processes them** (as the 3D extractor's flat patterns):
   - no more **Properties** and **Process** in Special tools; the fitting's panel has **Name** (its parts are named after it, -A, -B, … where it has several; empty: the fitting's own name, as before), its **pieces**, **material** and **thickness** (a flange: its recommended thickness until another is chosen), as the 3D extractor's parts
   - **Send to Import 2D** puts the parts in the import list with their quantity, material and thickness (none: the Import 2D properties'); sent again, the part waiting there is replaced
+- Import 2D: the **Properties** button is gone from the tool strip (it only opened the Import 2D side panel, as its icon on the left rail does)
 - Import 2D: the six fitting buttons no longer show in its tool strip (they did nothing there)
 - Import 2D: **an open tool group (Drawing, Dimension) closes** when any other button of the strip is pressed, and when a pop-up opens (PROCESS, Properties, …); before, it stayed open over the pop-up. Picking a tool inside the group keeps it open, as before
 - Import 2D: the drawing tools' number boxes (dynamic input) no longer take the keyboard while a pop-up is open or another field is being typed in

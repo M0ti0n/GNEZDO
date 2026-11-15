@@ -399,7 +399,7 @@ export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim"; too
 ];
 
 /** The strip's order: single tools and groups (a group stands where its first tool stood). */
-const STRIP: string[] = ["properties", "extend", "trim", "drawGroup", "alignH", "alignV", "erase", "dimGroup", "annotate",
+const STRIP: string[] = ["extend", "trim", "drawGroup", "alignH", "alignV", "erase", "dimGroup", "annotate",
   // (the fittings are Special tools' own: not in Import 2D)
   ...IMPORT_TOOLS.map((t) => t.id).filter((id) => !["properties", "extend", "trim", "alignH", "alignV", "erase", "annotate", "process"].includes(id) && !id.startsWith("fit-") && !TOOL_GROUPS.some((g) => g.tools.includes(id))),
   "process"];

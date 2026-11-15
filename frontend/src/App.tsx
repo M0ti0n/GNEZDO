@@ -1521,7 +1521,6 @@ export function App() {
                   ? { rotations: shownItem.source.rotations, mirror: shownItem.source.mirror, filler: shownItem.source.filler, commonCut: shownItem.source.commonCut }
                   : (({ rotations, mirror, filler, commonCut }) => ({ rotations, mirror, filler, commonCut }))(itemProps(shownItem, importProps))}
                 onProcess={() => setProcessing(shownItem.id)}
-                onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
                 onNestRules={(r) => shownItem.source
                   // a part from the database: its own rules change, not the batch's
                   ? patchItem(shownItem.id, { source: { ...shownItem.source, rotations: r.rotations, mirror: r.mirror, filler: r.filler, commonCut: r.commonCut } })
