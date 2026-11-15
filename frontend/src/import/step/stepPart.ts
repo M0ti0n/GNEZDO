@@ -49,8 +49,9 @@ export interface StepSettings {
   /** a threaded hole's cross (overall, mm) and its M# text height (capitals, mm) */
   threadCross?: number;
   threadText?: number;
-  /** stitch: bend compensation; the faces are the sheet's top or bottom side (none: as they are) */
-  comp: { side: "none" | "top" | "bottom"; t: number; r: number };
+  /** stitch: bend compensation; the faces are the sheet's top or bottom side (none: as they are; direct:
+   *  the faces are the top side, each down bend takes the thickness off both faces) */
+  comp: { side: "none" | "top" | "bottom" | "direct"; t: number; r: number };
   /** stitch: edges added across flat faces (two corners each), splitting them (a flange cut at its corners) */
   cuts?: FaceCut[];
   /** stitch: edges (their numbers) not stitched across: cut in the flat pattern (where a tube opens) */

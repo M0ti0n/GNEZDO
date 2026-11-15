@@ -361,7 +361,7 @@ export interface StitchOptions {
   /** the flat pattern seen from the other side of the faces */
   flip?: boolean;
   /** bend compensation: the faces are the sheet's top or bottom side (none: laid flat as they are) */
-  comp?: { side: "none" | "top" | "bottom"; t: number; r: number; k: number };
+  comp?: { side: "none" | "top" | "bottom" | "direct"; t: number; r: number; k: number };
   /** edges never stitched across (seams, cut): where a closed shape (a tube) opens */
   seams?: number[];
 }
@@ -435,7 +435,11 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
         const L = t1 - t0;
         if (phi > 0.5 * Math.PI / 180) {
           let innerR = 0;
-          if (comp) {
+          if (comp?.side === "direct") {
+            // DIRECT: the faces are the top side; bent down, the top side is the outside, wider by the
+            // thickness on each face (at 90°; t × tan(angle / 2) at others): both faces lose it. Up: as they are
+            if (!up) shift = mul3(intoI, 2 * comp.t * Math.tan(phi / 2));
+          } else if (comp) {
             // the faces on the inner side of this bend: a top-side face bent up, a bottom-side face bent down
             const faceInner = (comp.side === "top") === up;
             const sb = (comp.r + (faceInner ? 0 : comp.t)) * Math.tan(phi / 2);

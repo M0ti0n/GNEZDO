@@ -2491,7 +2491,11 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .uf-canvas canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 .uf-canvas canvas.is-pick { cursor: crosshair; }
 .uf-top { position: absolute; left: 10px; bottom: 8px; font-size: 12.5px; color: var(--ink-2); background: rgba(255,255,255,.85); padding: 2px 6px; border-radius: 4px; }
-.uf-svg { flex: 1; min-height: 0; width: 100%; }
+.uf-flatwrap { position: relative; flex: 1; min-height: 0; display: flex; }
+.uf-svg { flex: 1; min-height: 0; width: 100%; touch-action: none; }
+.uf-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+.uf-zoom .icon-btn { width: 32px; height: 32px; display: grid; place-items: center; font-size: 20px; font-weight: 600; line-height: 1; color: var(--ink-2); background: #fff; border: 1px solid var(--line); border-radius: 7px; box-shadow: 0 1px 3px rgba(27,42,48,.12); }
+.uf-zoom .icon-btn:hover { background: var(--sheet); color: var(--ink); }
 .uf-svg.is-measure { cursor: crosshair; }
 .uf-svg .uf-o { fill: none; stroke: #1b1b1b; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 .uf-svg .uf-b { fill: none; stroke: #8aa0a4; stroke-width: 1; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
@@ -2532,7 +2536,6 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .x3-kind { grid-row: span 2; display: grid; place-items: center; width: 24px; height: 24px; color: var(--ink-2); }
 .x3-kind.is-sent { border-radius: 50%; background: #1fa83a; color: #fff; font-size: 13px; font-weight: 700; width: 22px; height: 22px; }
 .x3-row.is-sent .imp-name { color: var(--ink-2); }
-.rail-count.is-3d { background: var(--ink-3); }
 .uf-leg i.is-mark { height: 0; border: 0; border-top: 3px solid #1d7fd0; border-radius: 0; }
 .uf-leg i.is-bend { height: 0; border: 0; border-top: 1.5px dashed #8aa0a4; border-radius: 0; }
 .uf-up, .uf-down { font-family: var(--font-cond); font-weight: 700; font-size: 12px; letter-spacing: .03em; padding: 0 5px; border-radius: 3px; }
@@ -2577,7 +2580,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .uf-ktable .field { width: 100%; min-width: 0; }
 .uf-panes.is-3d { grid-template-columns: minmax(0, 1fr) 34px; }
 .uf-panes.is-flat { grid-template-columns: 34px minmax(0, 1fr); }
-.uf-pane h3 { position: relative; padding-right: 70px; }
+.uf-pane h3 { position: relative; padding-right: 42px; }
 .uf-pane-btns { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; }
 .uf-pane-btns .icon-btn { width: 28px; height: 28px; display: grid; place-items: center; color: var(--ink-2); border-radius: 6px; }
 .uf-pane-btns .icon-btn:hover { background: var(--sheet); color: var(--ink); }
@@ -2730,9 +2733,13 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .uf-matcolor input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: #fff; cursor: pointer; }
 .uf-matcolor small { color: var(--ink-3); font-weight: 400; }
 .uf-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.3); vertical-align: -1px; }
-.uf-view-btn { position: absolute; right: 68px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; display: grid; place-items: center; color: var(--ink-2); border-radius: 6px; }
-.uf-view-btn:hover { background: var(--sheet); color: var(--ink); }
-.uf-3d h3 { padding-right: 104px; }
+.uf-view-btn, .uf-wire-btn { position: absolute; right: 38px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; display: grid; place-items: center; color: var(--ink-2); border-radius: 6px; }
+.uf-wire-btn { right: 70px; }
+.uf-wire-btn.is-on { background: var(--blue-tint); color: var(--ink); }
+.uf-view-btn:hover, .uf-wire-btn:hover { background: var(--sheet); color: var(--ink); }
+.uf-3d h3 { padding-right: 106px; }
+.uf-vo-close.icon-btn { width: 34px; height: 34px; margin: -6px -6px -6px 0; font-size: 28px; line-height: 1; color: var(--ink-2); border-radius: 8px; }
+.uf-vo-close.icon-btn:hover { background: var(--sheet); color: var(--ink); }
 
 /* Save to list: the New part's name */
 .sketch-dlg { width: min(440px, calc(100vw - 32px)); }
