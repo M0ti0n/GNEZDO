@@ -68,9 +68,9 @@ Coming:
 
 **Future stages**
 
-- [ ] Import 3D parts from STEP files with a sheet unfolder
+- [x] Import 3D parts from STEP files with a sheet unfolder
 - [ ] Tube and profile nesting with STEP import and database
-- [ ] 2D drawing environment
+- [x] 2D drawing environment (added to importer 2d for now)
 
 ## Screenshots
 
