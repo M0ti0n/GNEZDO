@@ -266,7 +266,7 @@ export function App() {
     const id = `imp-new-${Date.now().toString(36)}`;
     const item: ImportItem = {
       id, fileName: `${NEW_PART}.dxf`, name: "", qty: null, state: "ready",
-      drawing: { id, fileName: NEW_PART, entities: [] }, checked: true, processed: false, sketch: true,
+      drawing: { id, fileName: NEW_PART, entities: [] }, checked: true, processed: false, sketch: true, drawnHere: true,
     };
     setImports((l) => [...l, item]);
     open(drawingTab(id, NEW_PART));
@@ -1513,6 +1513,7 @@ export function App() {
               {shownItem.from3d && extracts.some((x) => x.id === shownItem.from3d) && (
                 <button type="button" className="btn btn-plain uf-back" onClick={() => { const x = extracts.find((p) => p.id === shownItem.from3d)!; setDrawer("extract"); open(drawingTab(x.id, x.name)); }}>Open in 3D Extractor</button>)}
               <ImportPage key={shownItem.id}
+                manualCheck={!!shownItem.drawnHere}
                 drawing={shownItem.drawing}
                 processed={shownItem.processed}
                 properties={shownItem.source ? { ...importProps, ...shownItem.source } : itemProps(shownItem, importProps)}

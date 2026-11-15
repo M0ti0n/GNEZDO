@@ -147,10 +147,17 @@ interface Props {
   onSaveToList?: () => void;
   /** Save as remnant: the drawing (a remnant sketched, a damaged part) into the saved remnants. */
   onSaveRemnant?: () => void;
+  /** A part drawn here: the Geometry check runs when CHECK is pressed (a half-drawn part is all open lines),
+   *  and it must have been checked before PROCESS. A part from a file is checked all the time. */
+  manualCheck?: boolean;
 }
 
-export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false, fromDatabase = false, snaps, onSaveToList, onSaveRemnant }: Props) {
+export function ImportPage({ drawing, processed, properties, nestRules, onEdit, undone, onProcess, onProperties, onNestRules, mirrorBlocked = false, fromDatabase = false, snaps, onSaveToList, onSaveRemnant, manualCheck = false }: Props) {
   const report = useMemo(() => checkGeometry(drawing.entities), [drawing]);
+  // A part drawn here: checked from CHECK on (and while its problems are being fixed), until a drawing tool is
+  // taken again; a part from a file: always
+  const [checking, setChecking] = useState(false);
+  const live = !manualCheck || checking;
   const [tool, setTool] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
   const [selected, setSelected] = useState<CheckId | null>(null);
@@ -710,7 +717,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       press.current = { x: e.clientX, y: e.clientY, button: 0 };
       return;
     }
-    drag.current = { x: e.clientX, y: e.clientY };
+    // only the middle or right button pans: the left one clicks for the tool (dragged, it does nothing)
+    if (e.button !== 0) drag.current = { x: e.clientX, y: e.clientY };
     press.current = { x: e.clientX, y: e.clientY, button: e.button };
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -1155,6 +1163,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
 
   const onTool = (id: string) => {
+    // drawing again: the part is checked again when CHECK is pressed
+    if (manualCheck && (DRAWING_TOOLS.has(id) || id === "annotate")) setChecking(false);
     // another tool, or the same one again: the text being typed is placed
     if (annot) placeAnnot();
     // lines picked (no tool on), then Aid line: they become aid lines
@@ -1181,6 +1191,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     // Check lines = the Geometry check panel: shows or hides it, with the result in the hint
     if (id === "checkLines") {
       setTool(null);
+      if (manualCheck && !live) { runCheck(); return; }
       const open = !checkOpen;
       setCheckOpen(open);
       setMessage(open ? { text: problems ? `${problems} ${problems === 1 ? "problem" : "problems"} to fix: see Geometry check` : "All contours are closed: ready to process", bad: !!problems } : null);
@@ -1188,6 +1199,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     }
     if (id === "process") {
       setTool(null);
+      if (manualCheck && !live) { setCheckOpen(true); setMessage({ text: "Press CHECK (Geometry check) first: a part drawn here is checked before it is processed", bad: true }); return; }
       if (problems) setMessage({ text: "Fix the red problems before processing", bad: true });
       else { setMessage(null); onProcess(); }
       return;
@@ -1220,7 +1232,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
 
   const check = report.checks.find((c) => c.id === selected) ?? null;
-  const flagged = useMemo(() => new Set(report.checks.flatMap((c) => c.entityIds)), [report]);
+  const flagged = useMemo(() => new Set(live ? report.checks.flatMap((c) => c.entityIds) : []), [report, live]);
   const highlighted = useMemo(() => new Set(check?.entityIds ?? []), [check]);
 
   const choose = (id: CheckId) => {
@@ -1236,10 +1248,17 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const toScreen = (p: Pt, v: View) => ({ x: p.x * v.s + v.tx, y: -p.y * v.s + v.ty });
   // Open contours block processing; splines only warn (they will be converted).
   const problems = report.checks.filter((c) => c.count > 0 && c.id !== "splines").length;
+  /** CHECK: the part drawn here is checked now, and stays checked while its problems are fixed. */
+  const runCheck = () => {
+    setChecking(true);
+    setCheckOpen(true);
+    setSelected(null);
+    setMessage(problems ? { text: `${problems} ${problems === 1 ? "problem" : "problems"} to fix: see Geometry check`, bad: true } : { text: "All contours are closed: ready to process" });
+  };
 
   // Loose ends of open contours, sorted into "line past a corner", "gap" and "loose end", with fixes.
-  const issues = useMemo(() => diagnoseEnds(drawing.entities,
-    report.checks.filter((c) => c.id === "insideOpen" || c.id === "outsideOpen").flatMap((c) => c.points)), [drawing, report]);
+  const issues = useMemo(() => (live ? diagnoseEnds(drawing.entities,
+    report.checks.filter((c) => c.id === "insideOpen" || c.id === "outsideOpen").flatMap((c) => c.points)) : []), [drawing, report, live]);
   const [hoverIssue, setHoverIssue] = useState<number | null>(null);
   const [checkOpen, setCheckOpen] = useState(true);
   const fixIssue = (i: EndIssue) => {
@@ -1507,8 +1526,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   const s0 = toScreen({ x: a.c.x + a.r * Math.cos((a.start * Math.PI) / 180), y: a.c.y + a.r * Math.sin((a.start * Math.PI) / 180) }, view);
                   const s1 = toScreen({ x: a.c.x + a.r * Math.cos((a.end * Math.PI) / 180), y: a.c.y + a.r * Math.sin((a.end * Math.PI) / 180) }, view);
                   const sweep = ((a.end - a.start) % 360 + 360) % 360;
-                  // screen y points down: counter-clockwise in the drawing is clockwise on screen (sweep flag 1)
-                  shape = <path d={`M${s0.x} ${s0.y}A${a.r * view.s} ${a.r * view.s} 0 ${sweep > 180 ? 1 : 0} 1 ${s1.x} ${s1.y}`} className="line-rubber" />;
+                  // screen y points down: counter-clockwise in the drawing goes the other way on screen, which
+                  // is SVG's negative direction (sweep flag 0; with 1 it bulged to the wrong side of its points)
+                  shape = <path d={`M${s0.x} ${s0.y}A${a.r * view.s} ${a.r * view.s} 0 ${sweep > 180 ? 1 : 0} 0 ${s1.x} ${s1.y}`} className="line-rubber" />;
                   label = `R ${num(a.r)}`;
                 } else shape = <line x1={P[P.length - 1].x} y1={P[P.length - 1].y} x2={c.x} y2={c.y} className="line-rubber is-thin" />;
               }
@@ -1611,9 +1631,14 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
           <header className="gc-head">
             <span className="gc-head-icon" aria-hidden="true">{IMPORT_TOOLS.find((t) => t.id === "checkLines")?.icon}</span>
             <h2>Geometry check</h2>
-            <span className={`gc-pill ${problems ? "is-bad" : "is-ok"}`}>
-              {!drawing.entities.length ? "Empty" : problems ? `${problems} to fix` : processed ? "Processed" : "Ready"}
-            </span>
+            {live || !drawing.entities.length ? (
+              <span className={`gc-pill ${problems ? "is-bad" : "is-ok"}`}>
+                {!drawing.entities.length ? "Empty" : problems ? `${problems} to fix` : processed ? "Processed" : "Ready"}
+              </span>
+            ) : (
+              <button type="button" className="gc-check-btn" onClick={runCheck}
+                title="Check the part drawn here (a part being drawn is all open lines, so it is not checked while you draw); PROCESS needs it">CHECK</button>
+            )}
             <button type="button" className="gc-toggle" onClick={() => setCheckOpen((o) => !o)}
               aria-expanded={checkOpen} title={checkOpen ? "Collapse" : "Expand"}>
               <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -1634,6 +1659,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
             </div>
           )}
           {checkOpen && <div className="gc-body">
+          {!live ? (
+            <p className="gc-sum gc-manual">{drawing.entities.length ? <>Drawn here: not checked while you draw. Press <b>CHECK</b> when the part is finished; PROCESS needs it. Taking a drawing tool again puts the check away.</> : "Draw the part, then press CHECK."}</p>
+          ) : <>
           <ul className="gc-checks">
             {report.checks.map((c) => (
               <li key={c.id}>
@@ -1686,6 +1714,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
             {problems ? `Fix ${problems === 1 ? "this" : "these"} before processing.`
               : processed ? "Processed." : "All contours are closed: ready to process."}
           </p>
+          </>}
           <h3 className="gc-sec">Lines</h3>
           <ul className="legend" aria-label="Line colors">
             <li><i className="sw sw-cut" />Cutting</li>
