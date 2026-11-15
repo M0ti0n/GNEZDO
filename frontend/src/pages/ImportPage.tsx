@@ -445,19 +445,35 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (X === null && Y === null) return at;
     return { x: p0.x + (X ?? (at ? at.x - p0.x : 0)), y: p0.y + (Y ?? (at ? at.y - p0.y : 0)) };
   };
-  /** What the dynamic input asks for now (none: no boxes). */
+  /** What the dynamic input asks for now (none: no boxes). An empty box shows, in grey, the value the pointer
+   *  gives now (the size as it is dragged); what is typed takes over. */
   const dynFields = (): { label: string; placeholder?: string; unit?: string }[] => {
     if (!tool) return [];
-    if (tool === "line" && lineStart) return [{ label: "Length", unit: "mm" }, { label: "Angle", unit: "°", placeholder: "+ ccw / − cw" }];
-    if (tool === "circle" && shapePts.length === 1) return [{ label: "Diameter", unit: "mm" }];
-    if (tool === "rect" && shapePts.length === 1) return [{ label: "X", unit: "mm", placeholder: "− left" }, { label: "Y", unit: "mm", placeholder: "− down" }];
-    if (tool === "slot" && shapePts.length === 1) return [{ label: "Distance", unit: "mm", placeholder: "centers" }, { label: "Radius", unit: "mm" }, { label: "Angle", unit: "°" }];
-    if (tool === "slot" && shapePts.length === 2) return [{ label: "Radius", unit: "mm" }];
-    if (tool === "xline" && xPts.length === 1) return [{ label: "Angle", unit: "°", placeholder: "+ ccw / − cw" }];
-    if (tool === "offset" && offPick) return [{ label: "Distance", unit: "mm" }];
+    const live = (v: number | null | undefined, fallback?: string) => (v === null || v === undefined || !Number.isFinite(v) ? fallback : num(Math.abs(v) < 0.005 ? 0 : v));
+    const lenTo = (a: Pt | null | undefined) => (a && cur ? Math.hypot(cur.x - a.x, cur.y - a.y) : null);
+    // 0° = to the right, + counterclockwise (−180 … 180)
+    const angTo = (a: Pt | null | undefined) => (a && cur && (cur.x !== a.x || cur.y !== a.y) ? (Math.atan2(cur.y - a.y, cur.x - a.x) * 180) / Math.PI : null);
+    if (tool === "line" && lineStart) return [{ label: "Length", unit: "mm", placeholder: live(lenTo(lineStart)) }, { label: "Angle", unit: "°", placeholder: live(angTo(lineStart), "+ ccw / − cw") }];
+    if (tool === "circle" && shapePts.length === 1) { const r = lenTo(shapePts[0]); return [{ label: "Diameter", unit: "mm", placeholder: live(r === null ? null : 2 * r) }]; }
+    if (tool === "rect" && shapePts.length === 1) return [
+      { label: "X", unit: "mm", placeholder: live(cur ? cur.x - shapePts[0].x : null, "− left") },
+      { label: "Y", unit: "mm", placeholder: live(cur ? cur.y - shapePts[0].y : null, "− down") }];
+    if (tool === "slot" && shapePts.length === 1) return [{ label: "Distance", unit: "mm", placeholder: live(lenTo(shapePts[0]), "centers") }, { label: "Radius", unit: "mm" }, { label: "Angle", unit: "°", placeholder: live(angTo(shapePts[0])) }];
+    if (tool === "slot" && shapePts.length === 2) {
+      // the pointer's distance from the line between the two centers
+      const [a, b] = shapePts, L = Math.hypot(b.x - a.x, b.y - a.y);
+      const r = cur && L > 0 ? Math.abs((cur.x - a.x) * (b.y - a.y) - (cur.y - a.y) * (b.x - a.x)) / L : null;
+      return [{ label: "Radius", unit: "mm", placeholder: live(r) }];
+    }
+    if (tool === "xline" && xPts.length === 1) return [{ label: "Angle", unit: "°", placeholder: live(angTo(xPts[0]), "+ ccw / − cw") }];
+    if (tool === "offset" && offPick) {
+      const x = offPick.aid?.kind === "xline" ? offPick.aid : null;
+      const d = !cur ? null : x ? Math.abs((cur.x - x.p.x) * -x.d.y + (cur.y - x.p.y) * x.d.x) : offPick.ent ? offsetSide(offPick.ent, cur)?.d ?? null : null;
+      return [{ label: "Distance", unit: "mm", placeholder: live(d) }];
+    }
     if (tool === "fillet" && corner) return [{ label: "Radius", unit: "mm" }];
     if (tool === "chamfer" && corner) return [{ label: "Distance 1", unit: "mm" }, { label: "Distance 2", unit: "mm", placeholder: "= 1" }];
-    if (tool === "rotate" && rotStage === 2) return [{ label: "Angle", unit: "°", placeholder: "+ ccw / − cw" }];
+    if (tool === "rotate" && rotStage === 2) return [{ label: "Angle", unit: "°", placeholder: live(angTo(rotPivot), "+ ccw / − cw") }];
     return [];
   };
   /** Where the dynamic input boxes stand (drawing mm). */
@@ -678,7 +694,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // Right and middle buttons always pan; the left button pans too while drawing and editing tools are on.
+  // Only the middle button pans (the left and right ones click: the right one ends a line, a rotation's picking).
   // With no tool (picking) and with Trace / Open cut and the like, the left button clicks a line or drags a selection box:
   //   left to right = window (lines fully inside), right to left = crossing (lines touched).
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -710,15 +726,15 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       return;
     }
     // no tool on: a drag picks with a window (left to right: lines fully inside; right to left: lines it touches);
-    // the middle or right button pans
+    // the middle button pans
     if (e.button === 0 && !tool) {
       const p = local(e);
       setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
       press.current = { x: e.clientX, y: e.clientY, button: 0 };
       return;
     }
-    // only the middle or right button pans: the left one clicks for the tool (dragged, it does nothing)
-    if (e.button !== 0) drag.current = { x: e.clientX, y: e.clientY };
+    // only the middle button pans: the left and right ones click for the tool (dragged, they do nothing)
+    if (e.button === 1) drag.current = { x: e.clientX, y: e.clientY };
     press.current = { x: e.clientX, y: e.clientY, button: e.button };
   };
   const onPointerMove = (e: React.PointerEvent) => {
