@@ -296,7 +296,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const [grip, setGrip] = useState<{ id: string; g: GripKind; p: Pt; orig: Entity; now: Entity | null } | null>(null);
   const pickText = (ids: Set<string>): string => {
     if (!ids.size) return "";
-    if (ids.size > 1) return `${ids.size} picked (Ctrl + click for more, Esc to clear). Ctrl+C copies them; Aid line turns them into aid lines`;
+    if (ids.size > 1) return `${ids.size} picked (Ctrl + click for more, Esc to clear). Ctrl+C copies them, Delete erases them; Aid line turns them into aid lines`;
     const e = drawing.entities.find((x) => ids.has(x.id));
     if (!e) return "";
     if (!e.drawn) return "From the file: locked in place (the tools still work on it). Aid line turns it into an aid line";
@@ -680,6 +680,20 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         if (!typing && !annot && k === "v") { e.preventDefault(); startPaste(); return; }
       }
       if (e.key === "Escape" && paste && !document.querySelector(".dlg-backdrop")) { endPaste(); return; }
+      // Delete: the lines picked are erased (not while typing: there it deletes text)
+      if (e.key === "Delete" && !tool && pick.size && !annot && !document.querySelector(".dlg-backdrop")) {
+        const t = e.target as HTMLElement | null;
+        if (!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))) {
+          e.preventDefault();
+          const n = drawing.entities.filter((x) => pick.has(x.id)).length;
+          commit({ ...drawing, entities: drawing.entities.filter((x) => !pick.has(x.id)) }, "Delete");
+          setPick(new Set());
+          setHoverId(null);
+          setSelected(null);
+          setMessage({ text: `${n} ${n === 1 ? "line" : "lines"} deleted (Undo brings ${n === 1 ? "it" : "them"} back)` });
+          return;
+        }
+      }
       // Scale: Ctrl+A picks the whole part (not while typing in a field other than the scale box)
       if (tool === "scale" && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && !document.querySelector(".dlg-backdrop")) {
         const t = e.target as HTMLElement | null;
