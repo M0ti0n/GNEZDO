@@ -3,7 +3,7 @@ import { IconClose } from "../components/Icons";
 import { api } from "../api/api";
 import { Combobox, type ComboOption } from "../components/Combobox";
 import { usePickLists } from "../components/pickLists";
-import { checkGeometry, isCommon, pathOf, roleOf, type Drawing } from "./geometry";
+import { checkGeometry, isNoCommon, pathOf, roleOf, type Drawing } from "./geometry";
 import { ROTATIONS, type Rotation } from "./rules";
 import { FILLER_TIP } from "./filler";
 import { COMMON_CUT_TIP } from "./commonCut";
@@ -248,7 +248,7 @@ export function Preview({ drawing }: { drawing: Drawing }) {
       <g transform="scale(1 -1)">
         {fill && <path className="proc-fill" d={fill} fillRule="evenodd" />}
         {drawing.entities.map((e) => (
-          <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}${isCommon(e) ? " is-common" : ""}`} />
+          <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}${isNoCommon(e) ? " is-nocommon" : ""}`} />
         ))}
       </g>
     </svg>

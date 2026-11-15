@@ -16,7 +16,7 @@ import {
 import { factorFor, factorText, parseScale, scalePart, sizeOf } from "../import/scale";
 import {
 
-  boxOf, checkGeometry, commonCutOk, isCommon, keepMarkRules, markRulesText, pathOf, pointsAlong, roleOf, union,
+  boxOf, checkGeometry, commonCutOk, keepMarkRules, markRulesText, pathOf, pointsAlong, roleOf, union,
   type Box, type CheckId, type Drawing, type Entity, type Pt, type Role,
 } from "../import/geometry";
 
@@ -38,7 +38,7 @@ const MARKING: Record<string, { role: Role; hint: string }> = {
 /** Pixels within which a point snaps to the end of a line. */
 const SNAP_PX = 12;
 const HOLE_HINT = "Click a closed cutting contour, or drag a window, to mark it as a hole: cut at slower speed by machines that can (e.g. plasma). Again to unmark.";
-const COMMON_HINT = "Common cut: a straight line of a closed cutting contour (the outside or a window) shared with a neighbouring part, cut once. Click a line, or drag a window, to mark it; again to unmark.";
+const COMMON_HINT = "Common cut: with Common cut ticked (Properties), every straight line of the outline may be shared with a neighbouring part and cut once (blue). Click a line, or drag a window, to leave it out (it is cut on its own, dashed); again to take it back.";
 const SWEEP_HINT = "Highlighted: lines on top of other lines (within 0.1 mm), lines outside the part outline and loose points. Click a line to keep it; Delete removes the rest.";
 const SCALE_HINT = "Click a line, an arc or a circle (or drag a window, Ctrl+A for all), then type a size with a unit (200mm: one item gets that size) or a scale factor (2). Enter scales the whole part.";
 const LINE_HINT = "Click the start point, then the end point (or type length [Tab] angle + Enter; angle + counter-clockwise, − clockwise); the line goes on from there. Points snap. Esc or right click finishes.";
@@ -976,22 +976,24 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     toggleHoles(hit);
   };
 
-  // Common cut: straight lines of closed cutting contours, line by line; again unmarks.
+  // Common cut (the part's tick box): every straight line of the outline; this tool leaves lines out of
+  // it, line by line; again takes them back.
+  const commonTicked = !!(nestRules?.commonCut ?? properties?.commonCut);
   const commonOk = useMemo(() => commonCutOk(drawing.entities), [drawing.entities]);
   const toggleCommon = (ids: string[]) => {
     const set = new Set(ids);
-    const all = drawing.entities.filter((e) => set.has(e.id)).every((e) => e.common);
-    commit({ ...drawing, entities: drawing.entities.map((e) => (set.has(e.id) ? { ...e, common: all ? undefined : true } : e)) }, all ? "Unmark common cut" : "Mark common cut");
+    const all = drawing.entities.filter((e) => set.has(e.id)).every((e) => e.noCommon);
+    commit({ ...drawing, entities: drawing.entities.map((e) => (set.has(e.id) ? { ...e, common: undefined, noCommon: all ? undefined : true } : e)) }, all ? "Back to common cut" : "Leave out of common cut");
     setSelected(null);
-    const n = set.size;
-    setMessage({ text: all ? `${n} ${n === 1 ? "line" : "lines"} unmarked (plain cutting)` : `${n} ${n === 1 ? "line" : "lines"} → common cut` });
+    const n = set.size, lines = `${n} ${n === 1 ? "line" : "lines"}`;
+    setMessage({ text: (all ? `${lines} back to common cut` : `${lines} left out of common cut (cut on their own)`) + (commonTicked ? "" : ". Common cut is not ticked for this part (Properties): no line is shared until it is") });
   };
   const commonAt = (id: string) => {
     const e = drawing.entities.find((x) => x.id === id);
     if (!e) return;
-    if (roleOf(e) !== "cut") { setMessage({ text: "Only cutting lines can be common cut (this line is tracing or open cut)", bad: true }); return; }
-    if (e.kind !== "line") { setMessage({ text: "Only straight lines can be common cut", bad: true }); return; }
-    if (!commonOk.has(id)) { setMessage({ text: "This contour is not closed: close it first (see Geometry check)", bad: true }); return; }
+    if (roleOf(e) !== "cut") { setMessage({ text: "Only cutting lines are common cut (this line is tracing or open cut)", bad: true }); return; }
+    if (e.kind !== "line") { setMessage({ text: "Only straight lines are common cut", bad: true }); return; }
+    if (!commonOk.has(id)) { setMessage({ text: "Only the outline's lines are common cut (holes are not; an outline that is not closed: see Geometry check)", bad: true }); return; }
     toggleCommon([id]);
   };
   const commonBox = (b: { x0: number; y0: number; x1: number; y1: number }, v: View) => {
@@ -1004,7 +1006,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       const pts = pointsAlong(e);
       return crossing ? touchesRect(pts, rect) : pts.every((p) => inRect(p, rect));
     }).map((e) => e.id);
-    if (!ids.length) { setMessage({ text: `No straight line of a closed cutting contour is ${crossing ? "touching" : "fully inside"} the box` }); return; }
+    if (!ids.length) { setMessage({ text: `No straight line of the outline is ${crossing ? "touching" : "fully inside"} the box` }); return; }
     toggleCommon(ids);
   };
 
@@ -1221,7 +1223,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   from the color rules, a layer, or marked by hand - not the drawing's own color */}
               {drawing.entities.map((e) => (
                 <path key={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke"
-                  className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}${isCommon(e) ? " is-common" : ""}${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
+                  className={`ent role-${roleOf(e)}${e.slow ? " is-slow" : ""}${commonOk.has(e.id) && roleOf(e) === "cut" ? (e.noCommon ? (commonTicked || tool === "commonCut" ? " is-nocommon" : "") : commonTicked ? " is-common" : "") : ""}${flagged.has(e.id) ? " is-flagged" : ""}${highlighted.has(e.id) ? " is-hl" : ""}${e.kind === "spline" ? " is-spline" : ""}`} />
               ))}
               {/* wide invisible strokes so thin lines are easy to click */}
               {preview?.removed.map((e) => <path key={`rm-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="pv-remove" />)}

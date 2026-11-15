@@ -1,5 +1,5 @@
 import type { SnapKind } from "./draw";
-import { dropBadCommon, markOutlineCommon, type Entity, type Role } from "./geometry";
+import { dropBadCommon, type Entity, type Role } from "./geometry";
 
 // Settings -> Rules -> Import rules.
 // Kept in this browser for now; they move to the server with user settings.
@@ -17,7 +17,7 @@ export interface ImportRules {
   defaultRotations: Rotation[];
   /** New import lists start with Filler ticked. */
   defaultFiller: boolean;
-  /** Common cut: every straight line of a part's outline is a common cut line, and Common cut is ticked for new imports. */
+  /** Common cut ticked for new imports (every straight line of the outline is then common cut, but those left out). Off by default. */
   commonOnOutline: boolean;
   /** One layer: every line starts as cutting; tracing and open cut are marked by hand. */
   allLayersAsOne: boolean;
@@ -26,7 +26,7 @@ export interface ImportRules {
   openCutLayers: string;
   /** Line colors decide what the laser does (the lists below). */
   coloursAsCuts: boolean;
-  /** Which colors mean cutting, tracing, open cut and common cut. */
+  /** Which colors mean cutting, tracing, open cut, and no common cut (outline lines left out of common cut). */
   colours: ColourRules;
   /** What drawing on the importer canvas snaps to (missing: everything). */
   snaps?: SnapKind[];
@@ -48,10 +48,10 @@ export type ColourEntry =
 
 export type LineRole = "cut" | "trace" | "openCut";
 export const LINE_ROLES: LineRole[] = ["cut", "trace", "openCut"];
-/** The color lists: the three roles, and common cut (cutting lines shared with a neighbouring part). */
+/** The color lists: the three roles, and no common cut (outline lines always cut on their own; saved as "common"). */
 export type ColourList = LineRole | "common";
 export const COLOUR_LISTS: ColourList[] = ["cut", "trace", "openCut", "common"];
-export const LIST_NAME: Record<ColourList, string> = { cut: "Cut contour", trace: "Trace", openCut: "Open cut", common: "Common cut" };
+export const LIST_NAME: Record<ColourList, string> = { cut: "Cut contour", trace: "Trace", openCut: "Open cut", common: "No common cut" };
 
 export interface ColourRules {
   cut: ColourEntry[];
@@ -268,14 +268,14 @@ export function roleFromRules(e: Entity, rules: ImportRules): ColourList {
   return "cut";
 }
 
-/** Roles from the rules; a common cut color marks only straight lines of closed cutting contours (the rest cut). */
+/** Roles from the rules; a no common cut color leaves straight lines of the outline out of common cut (they cut). */
 export const applyRules = (entities: Entity[], rules: ImportRules): Entity[] => {
   const roled = entities.map((e) => {
     const list = roleFromRules(e, rules);
     const role: Role = list === "common" ? "cut" : list;
-    return { ...e, role, fileRole: role, common: list === "common" ? true : undefined };
+    return { ...e, role, fileRole: role, common: undefined, noCommon: list === "common" ? true : undefined };
   });
-  return dropBadCommon(rules.commonOnOutline ? markOutlineCommon(roled) : roled);
+  return dropBadCommon(roled);
 };
 
 /** The DXF color as #rrggbb for the light canvas (white shows black; very light colors a little darker). */

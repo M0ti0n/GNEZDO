@@ -1239,9 +1239,11 @@ th.num .th-sort { flex-direction: row-reverse; }
 .ent.is-slow, .is-processed .ent.is-slow { stroke: var(--ln-hole); stroke-width: 2.4; }
 .sw-hole { background: var(--ln-hole); }
 
-/* Common cut: a straight cutting line shared with a neighbouring part (blue, before and after processing) */
+/* Common cut: a straight line of the outline that may be shared with a neighbouring part (blue, before
+   and after processing; with the part's Common cut ticked); one left out of it: dashed */
 :root { --ln-common: #045efd; }
 .ent.is-common, .is-processed .ent.is-common { stroke: var(--ln-common); stroke-width: 2.4; }
+.ent.is-nocommon, .is-processed .ent.is-nocommon { stroke-dasharray: 7 5; stroke-width: 2.4; }
 .sw-common { background: var(--ln-common); }
 
 /* Colour lines pop-up */
