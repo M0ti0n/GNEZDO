@@ -40,7 +40,7 @@ const MARKING: Record<string, { role: Role; hint: string }> = {
 const SNAP_PX = 12;
 const HOLE_HINT = "Click a closed cutting contour, or drag a window, to mark it as a hole: cut at slower speed by machines that can (e.g. plasma). Again to unmark.";
 const COMMON_HINT = "Common cut: with Common cut ticked (Properties), every straight line of the outline may be shared with a neighbouring part and cut once (blue). Click a line, or drag a window, to leave it out (it is cut on its own, dashed); again to take it back.";
-const ANNOT_HINT = "Annotation: drag a box (or click) and type; the text is in the single-line font and is traced (engraved) on the part. Its height is set above the box; Enter starts a new line. Click outside the box or OK to place it, Esc to drop it.";
+const ANNOT_HINT = "Annotation: drag a box (or click) and type; the text is in the single-line font and is traced (engraved) on the part. Its height is set above the box; Enter starts a new line. Until it is placed, drag the box's frame to move it, its handles to resize it. Click outside the box or OK to place it, Esc to drop it.";
 /** Annotation: the text's lines laid out in the box (mm): words wrap at the box's width, Enter starts a line. */
 const ANNOT_PAD = 0.3, ANNOT_LEAD = 1.6;
 function annotRows(text: string, cap: number, width: number): string[] {
@@ -165,6 +165,29 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const [annotCap, setAnnotCap] = useState<number>(() => { try { return Number(localStorage.getItem("gnezdo.annot.cap")) || 10; } catch { return 10; } });
   const [annotCapText, setAnnotCapText] = useState(String(annotCap));
   const annotInput = useRef<HTMLTextAreaElement | null>(null);
+  // the box moved by its frame or resized by its handles (as in Paint) until it is placed
+  const annotDrag = useRef<{ kind: string; x: number; y: number; a: NonNullable<typeof annot>; bottom: number } | null>(null);
+  const annotGrab = (kind: string, bottom: number) => (e: React.PointerEvent) => {
+    if (e.button !== 0 || !annot) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    annotDrag.current = { kind, x: e.clientX, y: e.clientY, a: annot, bottom };
+  };
+  const annotMove = (e: React.PointerEvent) => {
+    const d = annotDrag.current;
+    if (!d || !view) return;
+    const dx = (e.clientX - d.x) / view.s, dy = -(e.clientY - d.y) / view.s;
+    const a = d.a, min = annotCap * 1.2;
+    if (d.kind === "move") { setAnnot({ ...a, minX: a.minX + dx, maxX: a.maxX + dx, minY: d.bottom + dy, maxY: a.maxY + dy }); return; }
+    let { minX, maxX, maxY } = a, minY = d.bottom;
+    if (d.kind.includes("w")) minX = Math.min(a.minX + dx, a.maxX - min);
+    if (d.kind.includes("e")) maxX = Math.max(a.maxX + dx, a.minX + min);
+    if (d.kind.includes("n")) maxY = Math.max(a.maxY + dy, d.bottom + min);
+    if (d.kind.includes("s")) minY = Math.min(d.bottom + dy, a.maxY - min);
+    setAnnot({ ...a, minX, maxX, minY, maxY });
+  };
+  const annotDrop = () => { annotDrag.current = null; annotInput.current?.focus({ preventScroll: true }); };
   const annotLines = (a: NonNullable<typeof annot>, cap: number) =>
     annotRows(a.text, cap, a.maxX - a.minX).flatMap((row, i) =>
       textLines(row, { at: [a.minX + ANNOT_PAD * cap, a.maxY - cap * (ANNOT_PAD + 1 + i * ANNOT_LEAD)], capMm: cap }));
@@ -960,7 +983,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       // a click (no box dragged): a box for about 12 letters from there
       if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) <= 4) q = { x: p.x + Math.max(annotCap * 12, 120 / view.s), y: p.y - annotCap * 1.9 };
       setAnnot({ minX: p.x, maxX: q.x, minY: q.y, maxY: p.y, text: "" });
-      setMessage({ text: "Type the text; click outside the box or OK to place it, Esc to drop it" });
+      setMessage({ text: "Type the text; drag the frame to move the box, its handles to resize it; click outside or OK to place it, Esc to drop it" });
       return;
     }
     if (tool === "hole" && b && view) {
@@ -1554,6 +1577,15 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 <button type="button" className="btn btn-primary" onClick={placeAnnot}>OK</button>
                 <button type="button" className="btn" onClick={() => { setAnnot(null); setMessage({ text: "Annotation dropped" }); }}>Cancel</button>
               </div>
+              {/* the frame moves the box; the handles at its corners and sides resize it (as in Paint) */}
+              <div className="annot-frame" title="Drag to move the text box"
+                style={{ left: tl.x - 7, top: tl.y - 7, width: br.x - tl.x + 14, height: br.y - tl.y + 14 }}
+                onPointerDown={annotGrab("move", annotBottom(annot, rows.length, annotCap))} onPointerMove={annotMove} onPointerUp={annotDrop} />
+              {(["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const).map((k) => (
+                <span key={k} className={`annot-handle h-${k}`} title="Drag to resize the text box"
+                  style={{ left: k.includes("w") ? tl.x : k.includes("e") ? br.x : (tl.x + br.x) / 2, top: k.includes("n") ? tl.y : k.includes("s") ? br.y : (tl.y + br.y) / 2 }}
+                  onPointerDown={annotGrab(k, annotBottom(annot, rows.length, annotCap))} onPointerMove={annotMove} onPointerUp={annotDrop} />
+              ))}
               {/* the typing goes here; what is typed shows in the annotation font in the box */}
               <textarea ref={annotInput} className="annot-input" autoFocus spellCheck={false} aria-label="Annotation text" value={annot.text}
                 style={{ left: tl.x, top: tl.y, width: Math.max(8, br.x - tl.x), height: Math.max(8, br.y - tl.y) }}
