@@ -4,7 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- **Special tools only make the fittings; Import 2D processes them** (as the 3D extractor's flat patterns):
+  - no more **Properties** and **Process** in Special tools; the fitting's panel has **Name** (its parts are named after it, -A, -B, … where it has several; empty: the fitting's own name, as before), its **pieces**, **material** and **thickness** (a flange: its recommended thickness until another is chosen), as the 3D extractor's parts
+  - **Send to Import 2D** puts the parts in the import list with their quantity, material and thickness (none: the Import 2D properties'); sent again, the part waiting there is replaced
+- Import 2D: the six fitting buttons no longer show in its tool strip (they did nothing there)
 
 ## Build 15 Nov 2026 (`1aa39fc`)
 

@@ -397,8 +397,9 @@ export function App() {
   const [fit, setFit] = useState<FitSession>(() => newFitSession());
   const [fitSaved, setFitSaved] = useState<Set<string>>(() => new Set());   // parts (sigs) saved to the database
   const fitState = (sig: string): FitPartState => (imports.some((i) => i.fitting === sig) ? "listed" : fitSaved.has(sig) ? "saved" : "new");
-  /** Fitting parts into the import list (`count` fittings); one waiting there already is replaced. Their item ids. */
-  const addFittings = (list: { part: FittingPart; sig: string }[], count: number, quiet = false): string[] => {
+  /** Fitting parts into the import list (`count` fittings) with their own material and thickness ("": the
+   *  Import 2D properties'); one waiting there already is replaced. Their item ids. */
+  const addFittings = (list: { part: FittingPart; sig: string }[], count: number, own: { material: string; thicknessMm: string }): string[] => {
     const stamp = Date.now().toString(36);
     const items: ImportItem[] = list.map(({ part, sig }, k) => {
       const prev = imports.find((i) => i.fitting === sig && !i.processed);
@@ -406,11 +407,12 @@ export function App() {
       return {
         id, fileName: `${part.name}.dxf`, name: part.name, qty: part.qty * count, state: "ready",
         drawing: { id, fileName: part.name, entities: part.entities }, checked: true, processed: false, fitting: sig,
+        ...(own.material || own.thicknessMm ? { own: { ...(own.material ? { material: own.material } : {}), ...(own.thicknessMm ? { thicknessMm: own.thicknessMm } : {}) } } : {}),
       };
     });
     for (const it of items) history.forget(it.id);
     setImports((l) => [...l.filter((i) => !items.some((n) => n.id === i.id)), ...items]);
-    if (!quiet) setToast(`${items.length === 1 ? items[0].name : `${items.length} parts`} added to the import list`);
+    setToast(`${items.length === 1 ? items[0].name : `${items.length} parts`} sent to Import 2D`);
     diag("fittings", `${list.length} ${list.length === 1 ? "part" : "parts"} into the import list: ${items.map((i) => `${i.name} x${i.qty}`).join(", ")}`);
     return items.map((i) => i.id);
   };
@@ -1535,10 +1537,8 @@ export function App() {
             {active.kind === "special" && (
               <ErrorBoundary key="special" what="Special tools">
               <FittingsPage session={fit} onSession={setFit} stateOf={fitState}
-                properties={`${importProps.material || "no material"} · ${importProps.thicknessMm ? `${importProps.thicknessMm} mm` : "no thickness"} · ${importProps.project ? `project ${importProps.project}` : "no project"} (Properties)`}
-                onProperties={() => { setDrawer("import"); setPropsOpen(true); }}
-                onAdd={(list, count) => { addFittings(list, count); }}
-                onProcess={(part, sig, count) => { const [id] = addFittings([{ part, sig }], count, true); setProcessing(id); }} />
+                importMaterial={importProps.material} importThickness={importProps.thicknessMm ? `${importProps.thicknessMm} mm` : ""}
+                onSend={(list, count, own) => { addFittings(list, count, own); }} />
               </ErrorBoundary>
             )}
             {(active.kind === "settings" || active.kind === "rules") && <SettingsPage onClose={() => showView("home")} startSection={active.kind === "rules" ? "rules" : undefined}
