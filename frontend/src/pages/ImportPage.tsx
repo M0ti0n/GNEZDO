@@ -12,7 +12,7 @@ import { DynamicInput } from "../components/DynamicInput";
 import { DynFields } from "../components/DynFields";
 import {
   ALL_SNAPS, aidId, angleOf as dirAngle, carcEnt, chamferAt, clipLine, cornerAt, dirAt, dragGrip, filletAt, findSnap, gripAt, gripsOf, handAngle, joinLines, offsetOf, offsetSide,
-  moveEnt, orthoSnap, rotateEnt, rotPt, slotOf, slotRadius, toAid, typed, xlineAt, xlineMiddle, xlineThrough, type Aid, type Corner, type GripKind, type SnapKind,
+  mirrorEnt, mirrorPt, moveEnt, orthoSnap, rotateEnt, rotPt, slotOf, slotRadius, toAid, typed, xlineAt, xlineMiddle, xlineThrough, type Aid, type Corner, type GripKind, type SnapKind,
 } from "../import/draw";
 import { factorFor, factorText, parseScale, scalePart, sizeOf } from "../import/scale";
 import {
@@ -84,6 +84,14 @@ const OFFSET_HINT = "Click a line, an arc, a circle or an aid line, then click t
 const FILLET_HINT = "Click a corner where two straight lines meet, type the radius + Enter. The arc's setback can't be longer than the shorter line.";
 const ROTATE_HINT = "Click a line, an arc or a circle, or drag a window, to rotate it (hold Ctrl to pick more, then let go; Ctrl+A: the whole part). Then click the point to turn around and turn by hand, or type the angle + Enter.";
 const ROT_PIVOT = "Now click the point to turn around (ends, middles and centers snap)";
+const MIRROR_HINT = "Click a line, an arc or a circle, or drag a window, to mirror it (hold Ctrl to pick more, then let go; Ctrl+A: the whole part). Then click the mirror axis: any straight line or aid line. The original is replaced by its mirror image.";
+const MIRROR_AXIS = "Now click the mirror axis: a straight line or an aid line (the mirror image shows in green)";
+const MOVE_HINT = "Click a line, an arc or a circle, or drag a window, to move it (hold Ctrl to pick more, then let go; Ctrl+A: the whole part). Then click the pick-up point and move by hand, or type distance [Tab] angle + Enter.";
+const MOVE_BASE = "Now click the pick-up point (ends, middles and centers snap)";
+/** Rotate, Mirror and Move (Manipulate group): pick the items, then the point (or axis), then where. */
+const MANIP = new Set(["rotate", "mirror", "move"]);
+/** The second step of a Manipulate tool. */
+const manipNext = (tool: string | null) => (tool === "mirror" ? MIRROR_AXIS : tool === "move" ? MOVE_BASE : ROT_PIVOT);
 const CHAMFER_HINT = "Click a corner where two straight lines meet (nearer the line for the first distance), type distance 1 [Tab] distance 2 + Enter.";
 const JOIN_HINT = "Ctrl + click two straight lines: both are lengthened (or cut back) to where they cross.";
 /** What a snap mark says. */
@@ -257,7 +265,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     const sn = findSnap(p, SNAP_PX / v.s, drawing.entities, aids, snapSet, from);
     if (sn) return { p: sn.p, snapped: true, kind: sn.kind };
     // a line, aid line or slot within 3° of horizontal / vertical: made exactly so
-    const ortho = tool === "line" || tool === "xline" || (tool === "slot" && shapePts.length === 1);
+    const ortho = tool === "line" || tool === "xline" || (tool === "slot" && shapePts.length === 1) || tool === "move";
     const o = from && ortho && snapSet.has("ortho") ? orthoSnap(from, p) : null;
     return o ? { p: o.p, snapped: true, kind: "ortho", dir: o.dir } : { p, snapped: false };
   };
@@ -333,10 +341,55 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const [rotPivot, setRotPivot] = useState<Pt | null>(null);
   const rotItems = useMemo(() => drawing.entities.filter((e) => rotSel.has(e.id)), [drawing, rotSel]);
   const rotDone = (sel = rotSel) => {
-    if (!sel.size) { setMessage({ text: "Pick something to rotate first", bad: true }); return; }
+    if (!sel.size) { setMessage({ text: `Pick something to ${tool ?? "rotate"} first`, bad: true }); return; }
     setRotStage(1);
-    setMessage({ text: ROT_PIVOT });
+    const imported = drawing.entities.some((e) => !e.drawn && sel.has(e.id));
+    setMessage({ text: imported && tool !== "rotate" ? `${manipNext(tool)}. The lines from the file go together: the whole part` : manipNext(tool) });
   };
+  // Mirror: the axis under the pointer (a straight line or an aid line), shown with the mirror image
+  const [mirAxis, setMirAxis] = useState<{ p: Pt; d: Pt; show: string } | null>(null);
+  const axisUnder = (clientX: number, clientY: number): { p: Pt; d: Pt; show: string } | null => {
+    const id = lineUnder(clientX, clientY);
+    if (!id) return null;
+    const dirOf = (a: Pt, b: Pt) => { const L = Math.hypot(b.x - a.x, b.y - a.y); return L > 1e-9 ? { p: a, d: { x: (b.x - a.x) / L, y: (b.y - a.y) / L }, show: id } : null; };
+    if (id.startsWith("aid:")) {
+      const a = aids.find((x) => `aid:${x.id}` === id);
+      return a?.kind === "xline" ? { p: a.p, d: a.d, show: id } : a?.kind === "cline" ? dirOf(a.a, a.b) : null;
+    }
+    const en = drawing.entities.find((x) => x.id === id);
+    return en?.kind === "line" ? dirOf(en.a, en.b) : null;
+  };
+  /** What the manipulated items are called in the messages. */
+  const manipWhat = () => (rotSel.size === drawing.entities.length ? "Whole part" : rotSel.size === 1 ? "1 item" : `${rotSel.size} items`);
+  const manipEnd = (text: string) => {
+    setSelected(null);
+    setMessage({ text: `${text}. Pick the next, or Esc` });
+    setRotSel(new Set());
+    setRotStage(0);
+    setRotPivot(null);
+    setMirAxis(null);
+    resetDyn();
+  };
+  const applyMirror = (ax: { p: Pt; d: Pt }) => {
+    if (!rotSel.size) return;
+    const all = rotSel.size === drawing.entities.length;
+    const entities = drawing.entities.map((e) => (rotSel.has(e.id) ? mirrorEnt(e, ax.p, ax.d) : e));
+    const points = all && drawing.points ? { points: drawing.points.map((q) => ({ ...q, p: mirrorPt(q.p, ax.p, ax.d) })) } : {};
+    commit({ ...drawing, entities, ...points }, "Mirror");
+    manipEnd(`${manipWhat()} mirrored`);
+  };
+  const applyMove = (to: Pt) => {
+    if (!rotPivot || !rotSel.size) return;
+    const dx = to.x - rotPivot.x, dy = to.y - rotPivot.y;
+    if (Math.hypot(dx, dy) < 1e-9) { setMessage({ text: "0 mm: nothing to move. Move the pointer or type a distance", bad: true }); return; }
+    const all = rotSel.size === drawing.entities.length;
+    const entities = drawing.entities.map((e) => (rotSel.has(e.id) ? moveEnt(e, dx, dy) : e));
+    const points = all && drawing.points ? { points: drawing.points.map((q) => ({ ...q, p: { x: q.p.x + dx, y: q.p.y + dy } })) } : {};
+    commit({ ...drawing, entities, ...points }, "Move");
+    manipEnd(`${manipWhat()} moved ${fmtMm(Math.hypot(dx, dy))}`);
+  };
+  /** Move: where the pick-up point goes (typed distance / angle win over the pointer). */
+  const moveTarget = (at: Pt | null): Pt | null => (rotPivot ? polar(rotPivot, at, dyn[0], dyn[1]) : null);
   /** A click picks one (again: unpicks it), a window adds all in it; without Ctrl that ends the picking. */
   const pickForRotate = (ids: string[], more: boolean) => {
     const next = new Set(rotSel);
@@ -506,10 +559,11 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (tool === "fillet" && corner) return [{ label: "Radius", unit: "mm" }];
     if (tool === "chamfer" && corner) return [{ label: "Distance 1", unit: "mm" }, { label: "Distance 2", unit: "mm", placeholder: "= 1" }];
     if (tool === "rotate" && rotStage === 2) return [{ label: "Angle", unit: "°", placeholder: live(angTo(rotPivot), "+ ccw / − cw") }];
+    if (tool === "move" && rotStage === 2) return [{ label: "Distance", unit: "mm", placeholder: live(lenTo(rotPivot)) }, { label: "Angle", unit: "°", placeholder: live(angTo(rotPivot), "+ ccw / − cw") }];
     return [];
   };
   /** Where the dynamic input boxes stand (drawing mm). */
-  const dynAt = (): Pt | null => tool === "line" ? lineStart : tool === "xline" ? xPts[0] ?? null : tool === "rotate" ? rotPivot
+  const dynAt = (): Pt | null => tool === "line" ? lineStart : tool === "xline" ? xPts[0] ?? null : (tool === "rotate" || tool === "move") ? rotPivot
     : tool === "offset" ? cur : (tool === "fillet" || tool === "chamfer") ? corner?.at ?? null : shapePts[shapePts.length - 1] ?? null;
 
   /** Enter in the dynamic input: what is typed is placed. */
@@ -519,6 +573,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       const A = v(0);
       if (A === null) { setMessage({ text: "Type the angle, e.g. 90 (minus: clockwise)", bad: true }); return; }
       applyRotate(A);
+      return;
+    }
+    if (tool === "move" && rotStage === 2) {
+      if (v(0) === null && v(1) === null) { setMessage({ text: "Type distance [Tab] angle, e.g. 50 [Tab] 90", bad: true }); return; }
+      const to = moveTarget(cur);
+      if (to) applyMove(to);
       return;
     }
     if (tool === "line" && lineStart) {
@@ -630,7 +690,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         return;
       }
       // Rotate: Ctrl+A picks the whole part, Enter ends the picking
-      if (tool === "rotate" && rotStage === 0 && !document.querySelector(".dlg-backdrop")) {
+      if (tool && MANIP.has(tool) && rotStage === 0 && !document.querySelector(".dlg-backdrop")) {
         const t = e.target as HTMLElement | null;
         const typing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
         if (!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
@@ -656,9 +716,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       if (tool === "extend" && joinFirst) { setJoinFirst(null); setMessage({ text: "Started again" }); return; }
       if (firstPick) { setFirstPick(null); setMessage({ text: "Started again: click the first one" }); return; }
       if (tool === "scale" && scaleSel.size) { setScaleSel(new Set()); setMessage({ text: "Selection cleared" }); return; }
-      if (tool === "rotate" && rotStage === 2) { setRotStage(1); setRotPivot(null); resetDyn(); setMessage({ text: ROT_PIVOT }); return; }
-      if (tool === "rotate" && rotStage === 1) { setRotStage(0); setMessage({ text: `${rotSel.size} picked. Click or window for more (Ctrl), Enter when done` }); return; }
-      if (tool === "rotate" && rotSel.size) { setRotSel(new Set()); setMessage({ text: "Selection cleared" }); return; }
+      if (MANIP.has(tool) && rotStage === 2) { setRotStage(1); setRotPivot(null); resetDyn(); setMessage({ text: manipNext(tool) }); return; }
+      if (MANIP.has(tool) && rotStage === 1) { setRotStage(0); setMirAxis(null); setMessage({ text: `${rotSel.size} picked. Click or window for more (Ctrl), Enter when done` }); return; }
+      if (MANIP.has(tool) && rotSel.size) { setRotSel(new Set()); setMessage({ text: "Selection cleared" }); return; }
       onTool(tool);
     };
     window.addEventListener("keydown", onKey);
@@ -667,7 +727,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
 
   // Rotate: letting go of Ctrl ends the picking (Ctrl + clicks / windows pick more)
   useEffect(() => {
-    if (tool !== "rotate" || rotStage !== 0 || !rotSel.size) return;
+    if (!tool || !MANIP.has(tool) || rotStage !== 0 || !rotSel.size) return;
     const up = (e: KeyboardEvent) => { if (e.key === "Control" || e.key === "Meta") rotDone(); };
     window.addEventListener("keyup", up);
     return () => window.removeEventListener("keyup", up);
@@ -765,7 +825,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         return;
       }
     }
-    if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut" || tool === "annotate" || tool === "scale" || (tool === "rotate" && rotStage === 0))) {
+    if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut" || tool === "annotate" || tool === "scale" || (MANIP.has(tool) && rotStage === 0))) {
       // Annotation: a press outside the box being typed in places it first
       if (tool === "annotate" && annot) placeAnnot();
       const p = local(e);
@@ -811,7 +871,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       }
       if ((tool === "fillet" || tool === "chamfer") && view) { setCornerHover(corner ? null : cornerAt(drawing.entities, toModel(e.clientX, e.clientY, view), SNAP_PX / view.s)?.at ?? null); return; }
       if ((tool && DRAWING_TOOLS.has(tool) || tool === "dimension") && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
-      if (tool === "rotate" && rotStage > 0 && view) { setCursor(snapAt(e.clientX, e.clientY, view, null)); return; }
+      if (tool === "mirror" && rotStage === 1) { setMirAxis(axisUnder(e.clientX, e.clientY)); return; }
+      if ((tool === "rotate" || tool === "move") && rotStage > 0 && view) { setCursor(snapAt(e.clientX, e.clientY, view, tool === "move" && rotStage === 2 ? rotPivot : null)); return; }
       // hover with Trim / Extend: preview the result
       if (tool && EDITING[tool] && view) {
         if (tool === "extend" && (e.ctrlKey || joinFirst)) { setPreview(null); return; }
@@ -870,6 +931,27 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       if (more && pick.has(en.id)) next.delete(en.id); else next.add(en.id);
       setPick(next);
       setMessage(next.size ? { text: pickText(next) } : null);
+      return;
+    }
+    if (isClick && (tool === "mirror" || tool === "move") && view && (rotStage > 0 || pr!.button === 2)) {
+      if (rotStage === 0) { rotDone(); return; }                 // right click ends the picking
+      if (pr!.button !== 0) return;
+      if (tool === "mirror") {
+        const ax = axisUnder(e.clientX, e.clientY);
+        if (!ax) { setMessage({ text: "Click a straight line or an aid line as the mirror axis", bad: true }); return; }
+        applyMirror(ax);
+        return;
+      }
+      const sn = snapAt(e.clientX, e.clientY, view, rotStage === 2 ? rotPivot : null);
+      if (rotStage === 1) {
+        setRotPivot(sn.p);
+        setRotStage(2);
+        resetDyn();
+        setMessage({ text: "Move by hand and click where it goes, or type distance [Tab] angle + Enter (0° = to the right)" });
+        return;
+      }
+      const to = moveTarget(sn.p);
+      if (to) applyMove(to);
       return;
     }
     if (isClick && tool === "rotate" && view && (rotStage > 0 || pr!.button === 2)) {
@@ -1064,7 +1146,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       if (id) holeAt(id);
       return;
     }
-    if (tool === "rotate" && rotStage === 0 && b && view) {
+    if (tool && MANIP.has(tool) && rotStage === 0 && b && view) {
       const win = Math.hypot(b.x1 - b.x0, b.y1 - b.y0) > 4;
       const hit = win ? null : lineUnder(e.clientX, e.clientY);
       const ids = win ? idsInBox(b, view, drawing.entities) : hit && !hit.startsWith("aid:") ? [hit] : [];
@@ -1251,6 +1333,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       setMessage({ text: "Nothing to sweep: no lines on top of other lines, no lines outside the part, no loose points" });
       return;
     }
+    // Markings: the button only, for now
+    if (id === "markings") { setTool(null); setMessage({ text: "Markings: coming in a later build" }); return; }
     if (id === "colourLines") { setTool(null); setMessage(null); setColouring(true); return; }
     // Check lines = the Geometry check panel: shows or hides it, with the result in the hint
     if (id === "checkLines") {
@@ -1289,6 +1373,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setRotSel(new Set());
     setRotStage(0);
     setRotPivot(null);
+    setMirAxis(null);
     setPick(new Set());
     setHoverId(null);
     setGrip(null);
@@ -1366,7 +1451,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : SHAPES[tool] ? SHAPES[tool].hint : tool === "xline" ? XLINE_HINT : tool === "offset" ? OFFSET_HINT : tool === "fillet" ? FILLET_HINT : tool === "chamfer" ? CHAMFER_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "annotate" ? ANNOT_HINT : tool === "scale" ? SCALE_HINT : tool === "rotate" ? ROTATE_HINT : "not built yet") : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : SHAPES[tool] ? SHAPES[tool].hint : tool === "xline" ? XLINE_HINT : tool === "offset" ? OFFSET_HINT : tool === "fillet" ? FILLET_HINT : tool === "chamfer" ? CHAMFER_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "annotate" ? ANNOT_HINT : tool === "scale" ? SCALE_HINT : tool === "rotate" ? ROTATE_HINT : tool === "mirror" ? MIRROR_HINT : tool === "move" ? MOVE_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -1378,7 +1463,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         blocked={!drawing.entities.length ? { process: "draw the part first" } : problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
-        className={`canvas${!tool ? " is-picking" : ""}${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || DRAWING_TOOLS.has(tool) || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "annotate" || tool === "scale" || tool === "rotate") ? " is-marking" : ""}`}
+        className={`canvas${!tool ? " is-picking" : ""}${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || DRAWING_TOOLS.has(tool) || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "annotate" || tool === "scale" || MANIP.has(tool)) ? " is-marking" : ""}`}
         onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -1412,9 +1497,26 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 <path key={`pk-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="scale-sel" />
               ))}
               {grip?.now && <path d={pathOf(grip.now)} vectorEffect="non-scaling-stroke" className="pv-add" />}
-              {tool === "rotate" && rotItems.map((e) => (
+              {tool && MANIP.has(tool) && rotItems.map((e) => (
                 <path key={`ro-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="scale-sel" />
               ))}
+              {/* Mirror: the axis under the pointer and the mirror image */}
+              {tool === "mirror" && rotStage === 1 && mirAxis && (() => {
+                const en = drawing.entities.find((x) => x.id === mirAxis.show);
+                const ad = mirAxis.show.startsWith("aid:") ? aidPath(aids.find((x) => `aid:${x.id}` === mirAxis.show)!, view, size) : null;
+                return (
+                  <>
+                    {en && <path d={pathOf(en)} vectorEffect="non-scaling-stroke" className="meas-pick" />}
+                    {ad && <path d={ad} vectorEffect="non-scaling-stroke" className="meas-pick" />}
+                    <path d={rotItems.map((e) => pathOf(mirrorEnt(e, mirAxis.p, mirAxis.d))).join(" ")} vectorEffect="non-scaling-stroke" className="pv-add" />
+                  </>
+                );
+              })()}
+              {/* Move: the items where they go */}
+              {tool === "move" && rotStage === 2 && rotPivot && cur && (() => {
+                const to = moveTarget(cur);
+                return to ? <path d={rotItems.map((e) => pathOf(moveEnt(e, to.x - rotPivot.x, to.y - rotPivot.y))).join(" ")} vectorEffect="non-scaling-stroke" className="pv-add" /> : null;
+              })()}
               {tool === "rotate" && rotStage === 2 && rotPivot && cursor && (() => {
                 const A = typed(dyn[0] ?? "") ?? handAngle(rotPivot, cursor.p, cursor.snapped);
                 return A === null ? null : rotItems.map((e) => <path key={`rp-${e.id}`} d={pathOf(rotateEnt(e, rotPivot, A))} vectorEffect="non-scaling-stroke" className="pv-add" />);
@@ -1422,12 +1524,13 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {tool === "scale" && scaleItems.map((e) => (
                 <path key={`sc-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="scale-sel" />
               ))}
-              {(!tool || MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale" || tool === "rotate" || tool === "xline" || tool === "offset") && drawing.entities.map((e) => (
+              {(!tool || MARKING[tool] || EDITING[tool] || MEASURING[tool] || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale" || MANIP.has(tool) || tool === "xline" || tool === "offset") && drawing.entities.map((e) => (
                 <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
-              {/* aid lines and dimensions: picked by Erase (and aid lines by Aid line / Offset) */}
-              {(tool === "erase" || tool === "xline" || tool === "offset") && aids.map((a) => {
+              {/* aid lines and dimensions: picked by Erase (and aid lines by Aid line / Offset; straight ones as Mirror's axis) */}
+              {(tool === "erase" || tool === "xline" || tool === "offset" || (tool === "mirror" && rotStage === 1)) && aids.map((a) => {
                 if (a.kind === "dim" && tool !== "erase") return null;
+                if (tool === "mirror" && a.kind !== "xline" && a.kind !== "cline") return null;
                 const d = aidPath(a, view, size);
                 return d ? <path key={`hit-${a.id}`} data-id={`aid:${a.id}`} d={d} vectorEffect="non-scaling-stroke" className="ent-hit" /> : null;
               })}
@@ -1535,6 +1638,19 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 <g pointerEvents="none">
                   {shown.flatMap((e) => gripsOf(e).map((q, i) => { const c = toScreen(q.p, view); return <rect key={`gr-${e.id}-${i}`} x={c.x - 4.5} y={c.y - 4.5} width={9} height={9} className="grip" />; }))}
                   {grip && cursor && <SnapMark c={toScreen(cursor.p, view)} kind={cursor.snapped ? cursor.kind : undefined} dir={cursor.dir} />}
+                </g>
+              );
+            })()}
+            {tool === "move" && rotStage > 0 && cursor && (() => {
+              const to = rotStage === 2 ? moveTarget(cursor.p) : null;
+              const c = toScreen(to ?? cursor.p, view);
+              const P = rotPivot && toScreen(rotPivot, view);
+              return (
+                <g className="line-draw" pointerEvents="none">
+                  {P && <line x1={P.x} y1={P.y} x2={c.x} y2={c.y} className="line-rubber" />}
+                  {P && <circle cx={P.x} cy={P.y} r={4.5} className="line-start" />}
+                  <SnapMark c={toScreen(cursor.p, view)} kind={cursor.snapped ? cursor.kind : undefined} dir={cursor.dir} />
+                  {to && rotPivot && <text x={c.x + 12} y={c.y - 10} className="line-len">{num(Math.hypot(to.x - rotPivot.x, to.y - rotPivot.y))}</text>}
                 </g>
               );
             })()}

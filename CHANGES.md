@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D: **new tool group Manipulate** (green): **Rotate** (moved in here; its point turned around is now green), **Mirror** and **Move**. All three pick the same way: a click, Ctrl + click or a window, Ctrl+A for the whole part, Enter / letting go of Ctrl / right click when done. **Lines from the file stay one block**: picking one of them picks them all, so an imported part is only mirrored or moved whole; lines drawn here go on their own
+  - **Mirror**: after the picking, click the mirror axis: any straight line (also one of the part's own) or a straight aid line (dashed blue); the mirror image shows in green while the pointer is on a line. The original is replaced by its mirror image
+  - **Move**: after the picking, click the pick-up point (snaps), then move by hand and click, or type **distance [Tab] angle + Enter** (0° = to the right, as for a line); the boxes show the live distance and angle in grey, the distance also stands next to the pointer
+- Import 2D: new **Markings** button (purple cross, M8). Only the button for now: it does nothing yet
 - Import 2D: **Ctrl+C / Ctrl+V**. Pick lines with no tool on (click, Ctrl + click, or a window: an annotation such as M6 in one drag), **Ctrl+C** copies them; **Ctrl+V** hangs the copy on the pointer (by its middle, snapping as the drawing tools do): every click places one more copy, Esc or a right click stops. The copy stays while the app is open, so it can also go into another part. A copy is as its original (an annotation stays traced). In a text box Ctrl+C / Ctrl+V copy and paste the text, as before
 - **Special tools only make the fittings; Import 2D processes them** (as the 3D extractor's flat patterns):
   - no more **Properties** and **Process** in Special tools; the fitting's panel has **Name** (its parts are named after it, -A, -B, … where it has several; empty: the fitting's own name, as before), its **pieces**, **material** and **thickness** (a flange: its recommended thickness until another is chosen), as the 3D extractor's parts

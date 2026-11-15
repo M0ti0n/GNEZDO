@@ -2623,11 +2623,13 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .itool-caret { position: absolute; right: 4px; bottom: 4px; width: 0; height: 0; border-left: 5px solid transparent; border-top: 6px solid var(--ink-3); transform: rotate(-45deg); }
 .itool-group.is-draw .itool-box { border-color: #6cc3ea; }
 .itool-group.is-dim .itool-box { border-color: #ec8f8f; }
+.itool-group.is-manip .itool-box { border-color: #6fc46f; }
 .itool-group.is-open .itool-box { box-shadow: 0 0 0 3px var(--blue-tint); }
 .itool-group.is-on .itool-box { border-color: var(--yellow-ink); }
 .itool-pop { position: fixed; z-index: 60; display: flex; gap: 8px; padding: 10px 12px 8px; border-radius: 18px; border: 1.5px solid; box-shadow: 0 8px 24px rgba(20,40,30,.18); animation: itool-pop .12s ease-out; }
 .itool-pop.is-draw { background: #ccecf8; border-color: #6cc3ea; }
 .itool-pop.is-dim { background: #f9d3d3; border-color: #ec8f8f; }
+.itool-pop.is-manip { background: #cfeecf; border-color: #6fc46f; }
 .itool-pop .itool-box { background: #fff; }
 @keyframes itool-pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .uf-hole { min-width: 76px; font-variant-numeric: tabular-nums; font-weight: 600; }

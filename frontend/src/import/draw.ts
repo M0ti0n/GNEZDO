@@ -443,6 +443,28 @@ export function rotateEnt(e: Entity, c: Pt, deg: number): Entity {
   }
 }
 
+/** A point mirrored over the straight line through p along d (d: unit vector). */
+export function mirrorPt(q: Pt, p: Pt, d: Pt): Pt {
+  const t = (q.x - p.x) * d.x + (q.y - p.y) * d.y;
+  return { x: 2 * (p.x + d.x * t) - q.x, y: 2 * (p.y + d.y * t) - q.y };
+}
+
+/** A line, arc, circle or spline mirrored over the straight line through p along d (d: unit vector). */
+export function mirrorEnt(e: Entity, p: Pt, d: Pt): Entity {
+  const m = (q: Pt) => mirrorPt(q, p, d);
+  switch (e.kind) {
+    case "line": return { ...e, a: m(e.a), b: m(e.b) };
+    case "circle": return { ...e, c: m(e.c) };
+    case "spline": return { ...e, fit: e.fit.map(m) };
+    case "arc": {
+      // a mirror turns the arc's direction round: its new start is where its end lands, and so on
+      const th = (Math.atan2(d.y, d.x) * 180) / Math.PI;
+      const start = norm360(2 * th - e.end);
+      return { ...e, c: m(e.c), start, end: e.end - e.start >= 360 ? start + 360 : norm360(2 * th - e.start) };
+    }
+  }
+}
+
 /** A line, arc, circle or spline moved by (dx, dy). */
 export function moveEnt(e: Entity, dx: number, dy: number): Entity {
   const m = (q: Pt): Pt => ({ x: q.x + dx, y: q.y + dy });
