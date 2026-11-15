@@ -7,7 +7,7 @@ import { DEFAULT_PART_GAP_MM, MACHINE_LIMIT, defaultTrims, fitsMachine, type Sto
 import type { Origin } from "./machine";
 import { loadNestingRules } from "./nestRules";
 import { diag, diagHeaders } from "./diag";
-import { checkGeometry, isCommon, type Entity } from "../import/geometry";
+import { checkGeometry, commonLineIds, type Entity } from "../import/geometry";
 import type { SheetCut } from "./cutPath";
 import type { SheetRemnant } from "./remnant";
 
@@ -299,8 +299,10 @@ export async function commonEdgesOf(partId: string): Promise<[number, number, nu
   return g ? commonEdgesIn(g.entities) : [];
 }
 
+/** Every straight line of the outline but those left out (the part's Common cut decides whether they count). */
 export function commonEdgesIn(entities: Entity[]): [number, number, number, number][] {
-  const lines = entities.filter(isCommon);
+  const ids = commonLineIds(entities);
+  const lines = entities.filter((e) => ids.has(e.id));
   if (!lines.length) return [];
   const report = checkGeometry(entities);
   const box = report.contours.find((c) => c.closed && c.outer)?.box ?? report.box;

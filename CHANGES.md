@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- **Common cut is a part's tick box, no more painting**: with Common cut ticked (import Properties, Geometry check or Part properties), every straight line of the part's outline may be shared with a neighbour and cut once; it shows blue in the importer. Holes and arcs are never common cut
+  - the importer's **Common cut** tool now does the opposite: click a line (or drag a window) to **leave it out** (it is cut on its own, dashed); again to take it back. A Line colors color can do the same (**No common cut**)
+  - lines painted common cut in parts saved before are no longer read: with the part ticked, its whole outline counts (leave out what must not be shared)
+  - Rules → **Common cut ticked for new parts** (before: Common cut on every straight outline line) is off by default
 - **Common cut** (Manual nest) is now an action, not an on / off switch: select parts and press it, and the copies of each part join into the tightest block (a row, a grid, or every other one turned 180°) sharing their marked lines. A note says which parts were not joined and why (no marked lines, only one selected, lines that cannot meet, may not turn 180°). Nothing stays switched on
   - Marked common cut lines are otherwise ordinary cut lines: **Fast**, **Thorough** and **Arrange** never join parts; **Custom** joins them only with its own Common cut box ticked
   - **Arrange** moves a joined block as one piece (a part picked brings its whole block); drag a part out of a block to take it out

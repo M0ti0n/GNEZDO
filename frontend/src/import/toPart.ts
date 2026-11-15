@@ -1,6 +1,6 @@
 import type { Aid } from "./draw";
 import type { SavePart } from "../api/api";
-import { buildContours, checkGeometry, endsOf, pointsAlong, roleOf, type Contour, type Drawing, type Entity, type Pt } from "./geometry";
+import { buildContours, checkGeometry, commonLineIds, endsOf, pointsAlong, roleOf, type Contour, type Drawing, type Entity, type Pt } from "./geometry";
 
 const TOL = 0.01;
 const near = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y) <= TOL;
@@ -50,7 +50,7 @@ function orderChain(c: Contour, byId: Map<string, Entity>): string[] {
  * What path generation does with the part's lines. Saved inside Part.Geometry, next to the lines.
  *   cut      closed cutting contour; lead-in / lead-out from the technology table. slow = marked as
  *            a hole: machines and post processors that can, cut it at a slower speed. common = its
- *            straight lines marked common cut (shared with a neighbouring part or the sheet edge)
+ *            the outline's straight lines that may be common cut (all but those left out)
  *   openCut  connected open cut lines cut in one go, on the inside of the contour; no lead-in and
  *            no lead-out: piercing is exactly at one end of the chain. Which end, and the direction,
  *            is decided by the cut order rules when the part is placed on a sheet.
@@ -81,10 +81,12 @@ export function operationsOf(entities: Entity[]): Operation[] {
   const byId = new Map(entities.map((e) => [e.id, e]));
   const of = (role: string) => buildContours(entities.filter((e) => roleOf(e) === role));
   const ops: Operation[] = [];
-  // cutting contours come from the geometry check, which also finds the outside contour
+  // cutting contours come from the geometry check, which also finds the outside contour; the outline's
+  // straight lines but those left out may be common cut (when the part's Common cut is ticked)
+  const shared = commonLineIds(entities);
   for (const c of checkGeometry(entities).contours) {
     if (!c.closed) continue;
-    const common = c.entityIds.filter((id) => { const e = byId.get(id); return e?.common && e.kind === "line"; });
+    const common = c.outer ? c.entityIds.filter((id) => shared.has(id)) : [];
     ops.push({ op: "cut", entityIds: orderChain(c, byId), outer: c.outer, slow: c.entityIds.some((id) => byId.get(id)?.slow), ...(common.length ? { common } : {}) });
   }
   for (const c of of("openCut")) {
