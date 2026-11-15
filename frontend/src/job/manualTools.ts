@@ -327,7 +327,7 @@ function hash(s: string): string {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   return (h >>> 0).toString(36);
 }
-const pairKey = (path: string, r: PartRules, gap: number) => `v3|${hash(path)}|${r.rotations.join(",")}|${r.mirror ? 1 : 0}|${gap}`;
+const pairKey = (path: string, r: PartRules, gap: number) => `v4|${hash(path)}|${r.rotations.join(",")}|${r.mirror ? 1 : 0}|${gap}`;
 
 /**
  * The best pair of a part: the second copy's pose against the first (at 0,0, not turned), or null
@@ -337,6 +337,11 @@ export function bestPair(path: string, r: PartRules, gap: number, deadline = Inf
   const key = pairKey(path, r, gap);
   const cache = pairs();
   if (cache.has(key)) return cache.get(key)!;
+  // only the outline counts: a copy slid against the part from outside never meets its holes (and the
+  // holes' many points - circles - made this slow enough to run out of time and never pair)
+  const outer = partLoops(path)[0];
+  if (!outer?.length) return null;
+  path = `M${outer.map((q) => `${q[0]} ${q[1]}`).join("L")}Z`;
   const A = placed(path, { ...ID, partId: "" });
   const ab = A.box;
   // a part alone and a pair are both judged turned the best way (a slanted pair lies straight later)
@@ -429,9 +434,12 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
   const inBlock = new Set(blocks.flat());
   const chosen = all.filter((i) => !inBlock.has(i));
   const ruleOf = (id: string) => rules.get(id) ?? { rotations: [90], mirror: false };
-  // the time: the prepass up to a third; the packing until the end less what the last steps take
-  const pairEnd = t0 + budget * 0.33;
-  const packEnd = t0 + budget - Math.min(budget * 0.15, 60 + 6 * all.length);
+  // the time: the prepass a third, but at least 1 s (a pair is worked out once, then remembered: a pair
+  // not finished in time was lost and worked out again from the start next time, so a slow part never
+  // paired); the packing keeps its two thirds after it, less what the last steps take
+  const pairEnd = t0 + Math.max(1000, budget * 0.33);
+  const lastSteps = Math.min(budget * 0.15, 60 + 6 * all.length);
+  let packEnd = t0 + budget - lastSteps;
 
   // -- the pieces: every part alone, and (when pairs save room) the parts of a kind two by two -------
   const singles: Piece[] = chosen.map((li) => ({ key: list[li].partId, partId: list[li].partId, members: [{ li, rel: ID }], pose0: list[li] }));
@@ -444,6 +452,8 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
     const pr = bestPair(pathOf(id)!, ruleOf(id), gap, pairEnd);
     if (pr) pairOf.set(id, pr);
   }
+  // pairs that took long (worked out the first time) do not shorten the packing
+  packEnd = Math.max(packEnd, performance.now() + budget * 0.67 - lastSteps);
   // the sets of pieces tried: every kind that pairs paired, none paired, and - a pair can be worse in
   // the group than the copies apart (two trapezoids side by side vs stacked) - each kind paired alone
   // and each kind left out; at most 8 sets (they share the time)
