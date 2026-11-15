@@ -4,7 +4,6 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-- **Arrange keeps strictly to each part's rotation rule.** Besides the rule's steps it also tried the turns that lay a part's longest sides along the sheet edge, so a part set to 180° only (grain direction), or not to turn at all, could come out turned 90° or at an odd angle. Now only the rule's steps and the angle a part already has are tried. On the test parts this costs 0.1 % of the area
 - **Whole-app logic check** (every test drawing through import, nesting, Arrange, Auto cut, the Process tools, remnants, the NC program and both machine post processors; random click-throughs of every screen). Found and fixed:
   - **Auto cut: leads no longer pierce in a neighbouring part or off the sheet.** A lead longer than the room it had (a 7 mm lead-in with a 5 mm part gap, a part on the trim border) went into the part next to it: on the test sheets 13 % of the outlines. Each lead is now checked against every other part, the sheet edge and its own part: the start moves to the nearest place where the full lead fits, else the lead is shortened (75 %, 50 %, 35 %). Auto cut says how many leads it moved or shortened, and warns (red) about any that have no room at all
   - **Auto cut: a round outline or hole starts on the circle itself**, not on the straight piece between two of its points (a start up to 0.3 mm inside a 300 mm flange's edge)
