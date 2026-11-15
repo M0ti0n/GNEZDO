@@ -434,11 +434,12 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
   const inBlock = new Set(blocks.flat());
   const chosen = all.filter((i) => !inBlock.has(i));
   const ruleOf = (id: string) => rules.get(id) ?? { rotations: [90], mirror: false };
-  // the time: the prepass up to 70 % (a pair is worked out once, then remembered: a pair not finished in
-  // time was lost and worked out again from the start next time, so a slow part never paired); the
-  // packing until the end less what the last steps take (the paired sets are packed first)
-  const pairEnd = t0 + budget * 0.7;
-  const packEnd = t0 + budget - Math.min(budget * 0.15, 60 + 6 * all.length);
+  // the time: the prepass a third, but at least 1 s (a pair is worked out once, then remembered: a pair
+  // not finished in time was lost and worked out again from the start next time, so a slow part never
+  // paired); the packing keeps its two thirds after it, less what the last steps take
+  const pairEnd = t0 + Math.max(1000, budget * 0.33);
+  const lastSteps = Math.min(budget * 0.15, 60 + 6 * all.length);
+  let packEnd = t0 + budget - lastSteps;
 
   // -- the pieces: every part alone, and (when pairs save room) the parts of a kind two by two -------
   const singles: Piece[] = chosen.map((li) => ({ key: list[li].partId, partId: list[li].partId, members: [{ li, rel: ID }], pose0: list[li] }));
@@ -451,6 +452,8 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
     const pr = bestPair(pathOf(id)!, ruleOf(id), gap, pairEnd);
     if (pr) pairOf.set(id, pr);
   }
+  // pairs that took long (worked out the first time) do not shorten the packing
+  packEnd = Math.max(packEnd, performance.now() + budget * 0.67 - lastSteps);
   // the sets of pieces tried: every kind that pairs paired, none paired, and - a pair can be worse in
   // the group than the copies apart (two trapezoids side by side vs stacked) - each kind paired alone
   // and each kind left out; at most 8 sets (they share the time)
