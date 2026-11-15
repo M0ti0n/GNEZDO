@@ -411,12 +411,13 @@ export function ImportToolStrip({ active, onTool, blocked = {}, lit = {}, openGr
   active: string | null; onTool: (id: string) => void; blocked?: Record<string, string>; lit?: Record<string, boolean>; openGroup?: string | null; strip?: string[];
 }) {
   const [open, setOpen] = useState<string | null>(openGroup);
+  // a button of the strip itself (not one in the open group) closes the group
   const tool = (t: (typeof IMPORT_TOOLS)[number], onPick?: () => void) => (
     <button key={t.id} className={`itool${t.wide ? " is-wide" : ""}${active === t.id || lit[t.id] ? " is-on" : ""}`}
       aria-pressed={active === t.id || !!lit[t.id]} aria-disabled={blocked[t.id] ? true : undefined}
       // greyed out but still hoverable, so the tooltip can say why it is blocked
       title={blocked[t.id] ? `${t.label}: ${blocked[t.id]}` : t.label}
-      onClick={() => { if (!blocked[t.id]) { onTool(t.id); onPick?.(); } }}>
+      onClick={() => { onPick?.(); if (!blocked[t.id]) onTool(t.id); }}>
       <span className="itool-box">{t.icon}</span>
       <span className="itool-label">{t.label}</span>
     </button>
@@ -426,7 +427,7 @@ export function ImportToolStrip({ active, onTool, blocked = {}, lit = {}, openGr
     <SideScroll className="itools" wrapClassName="itools-wrap" role="toolbar" label="Import tools" more="tools">
       {strip.map((id) => {
         const g = TOOL_GROUPS.find((x) => x.id === id);
-        if (!g) { const t = IMPORT_TOOLS.find((x) => x.id === id); return t ? tool(t) : null; }
+        if (!g) { const t = IMPORT_TOOLS.find((x) => x.id === id); return t ? tool(t, () => setOpen(null)) : null; }
         return <ToolGroup key={g.id} group={g} active={active} open={open === g.id}
           onOpen={(v) => setOpen(v ? g.id : null)} renderTool={(t) => tool(t)} />;
       })}
@@ -435,7 +436,8 @@ export function ImportToolStrip({ active, onTool, blocked = {}, lit = {}, openGr
 }
 
 /** A group's button: lit while one of its tools is on (showing that tool's icon). A click opens its tools below,
- *  and they stay open while tools are picked and used; another group's button or this one again closes them. */
+ *  and they stay open while tools are picked and used; any other button of the strip, this one again, or a
+ *  pop-up opening closes them. */
 function ToolGroup({ group, active, open, onOpen, renderTool }: {
   group: (typeof TOOL_GROUPS)[number]; active: string | null; open: boolean;
   onOpen: (v: boolean) => void; renderTool: (t: (typeof IMPORT_TOOLS)[number]) => ReactNode;
@@ -456,8 +458,11 @@ function ToolGroup({ group, active, open, onOpen, renderTool }: {
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
-    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
-  }, [open]);
+    // a pop-up opening (PROCESS, Properties, …) closes the group: it would lie over the pop-up
+    const watch = new MutationObserver(() => { if (document.querySelector(".dlg-backdrop")) onOpen(false); });
+    watch.observe(document.body, { childList: true, subtree: true });
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); watch.disconnect(); };
+  }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       <button ref={btn} className={`itool itool-group is-${group.tone}${cur ? " is-on" : ""}${open ? " is-open" : ""}`}

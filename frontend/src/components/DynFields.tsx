@@ -19,7 +19,14 @@ export function DynFields({ x, y, w, h, fields, values, active, onValues, onActi
 }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   // the active field focused when shown, when it changes and when the boxes move (a new point)
-  useEffect(() => { const el = refs.current[active]; if (el) { el.focus(); el.select(); } }, [active, Math.round(x), Math.round(y), fields.length]);
+  // (never while a pop-up is open, or while something else is being typed in: the boxes would take the keys)
+  useEffect(() => {
+    const el = refs.current[active];
+    if (!el || document.querySelector(".dlg-backdrop")) return;
+    const at = document.activeElement as HTMLElement | null;
+    if (at && at !== document.body && !at.closest(".dyn-in") && (at.tagName === "INPUT" || at.tagName === "TEXTAREA" || at.tagName === "SELECT" || at.isContentEditable)) return;
+    el.focus(); el.select();
+  }, [active, Math.round(x), Math.round(y), fields.length]);
   const BW = 112 * fields.length + 8, BH = 50, OFF = 18;
   const left = Math.max(4, Math.min(x + OFF, w - BW - 4));
   const top = y + OFF + BH > h - 4 ? Math.max(4, y - OFF - BH) : y + OFF;
