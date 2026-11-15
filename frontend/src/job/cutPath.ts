@@ -96,6 +96,8 @@ export interface SheetCut {
   keys: Record<number, string>;
   /** made for a 0,0 corner that mirrors the sheet as drawn (outlines counter-clockwise on screen); missing = not */
   mirrored?: boolean;
+  /** from PROCESS only (not kept with the sheet): the leads moved or shortened to fit, and those that still do not */
+  leadFit?: LeadFitCount;
 }
 
 /** What PROCESS does with the parts it gets. */
@@ -114,6 +116,37 @@ export function processedParts(sheet: NestedSheet): Set<number> {
   for (const ct of c.contours) if (ct.parts && !ct.parts.every(good)) ct.parts.forEach((i) => bad.add(i));
   for (const ct of c.contours) for (const i of ct.parts ?? [ct.part]) if (good(i) && !bad.has(i)) out.add(i);
   return out;
+}
+
+/**
+ * The cut path after the sheet's list of parts changed by hand (a part deleted, pasted, the list in
+ * another order): a contour names its part by its place in the list, so each processed part is found
+ * again by where it lies and its contours follow it; those of parts that are gone go. Parts only moved
+ * (the list as it was) keep theirs as they are: put back, they are processed again.
+ */
+export function remapCut(cut: SheetCut | undefined, before: PlacedPart[], after: PlacedPart[]): SheetCut | undefined {
+  if (!cut) return cut;
+  if (before.length === after.length && before.every((p, i) => p.partId === after[i].partId)) return cut;
+  const free = new Map<string, number[]>();
+  after.forEach((p, j) => { const k = partKey(p); free.set(k, [...(free.get(k) ?? []), j]); });
+  const to = new Map<number, number>();
+  // a part still in its place keeps it; the others take the first free part lying where they lay
+  const good = Object.keys(cut.keys).map(Number).filter((i) => before[i] && cut.keys[i] === partKey(before[i]));
+  const take = (i: number, j: number) => { to.set(i, j); const l = free.get(cut.keys[i])!; l.splice(l.indexOf(j), 1); };
+  for (const i of good) if (after[i] && partKey(after[i]) === cut.keys[i]) take(i, i);
+  for (const i of good) if (!to.has(i)) { const j = free.get(cut.keys[i])?.[0]; if (j !== undefined) take(i, j); }
+  const rename = new Map<string, string>();
+  const contours = cut.contours.filter((c) => (c.parts ?? [c.part]).every((i) => to.has(i))).map((c) => {
+    const n: CutContour = { ...c, part: to.get(c.part)!, ...(c.parts ? { parts: c.parts.map((i) => to.get(i)!) } : {}) };
+    rename.set(contourKey(c), contourKey(n));
+    return n;
+  });
+  const keys: Record<number, string> = {};
+  for (const [i, j] of to) keys[j] = cut.keys[i];
+  return {
+    ...cut, keys,
+    contours: contours.map((c) => (c.via && c.via.after !== "origin" ? { ...c, via: { ...c.via, after: rename.get(c.via.after) ?? c.via.after } } : c)),
+  };
 }
 
 /** The contours still good, in cutting order. */
@@ -294,56 +327,78 @@ export const cornerOnly = (t: LeadType) => !!LEAD_TYPES.find((x) => x.id === t)?
 /** The point of the part's box the leads are put nearest to. */
 const targetOf = (b: Box, rules: LeadRules): Pt => [rules.place.endsWith("right") ? b.x1 : b.x0, rules.place.startsWith("bottom") ? b.y1 : b.y0];
 
+/** Do these leads fit where they are (clear of the other parts, inside the sheet, not in the part itself)? */
+type LeadFit = (c: { leadIn: Pt[]; leadOut: Pt[] }) => boolean;
+/** How the leads of a PROCESS run were fitted: moved / shortened to fit, and those that still do not. */
+export interface LeadFitCount { fitted: number; tight: number }
+
+/** The leads tried shorter, in this order, where the full ones do not fit. */
+const FIT_FACTORS = [1, 0.75, 0.5, 0.35];
+
 /**
  * A closed contour with its leads: started at a sharp corner nearest the target with the corner type,
- * else at the point of a straight stretch nearest it with the other type.
+ * else at the point of a straight stretch nearest it with the other type (a curve: at one of its points,
+ * so the start lies on the curve itself, not on a chord of it). With `fit`: the nearest such start whose
+ * leads fit at their full length, else at 75 %, 50 %, 35 % of it; when none does, the nearest start with
+ * the shortest leads (counted as tight).
  */
-function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row: TechRow | null, target: Pt, side: 1 | -1): Omit<CutContour, "part" | "kind"> {
+function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row: TechRow | null, target: Pt, side: 1 | -1, fit?: LeadFit, count?: LeadFitCount): Omit<CutContour, "part" | "kind"> {
   const n = lp.length;
   const prev = (i: number) => lp[(i - 1 + n) % n], next = (i: number) => lp[(i + 1) % n];
   const cType = kind === "outer" ? rules.outCorner : rules.holeCorner;
   let oType = kind === "outer" ? rules.outOther : rules.holeOther;
   if (cornerOnly(oType)) oType = "perp";
   const angleAt = (i: number) => cornerAngle(lp, i, side);
+  const far = (p: Pt) => len(sub(p, target));
+  type Cand = { s: LeadStart; type: LeadType; d: number };
+  const byDist = (a: Cand, b: Cand) => a.d - b.d;
 
-  let start: { at: Pt; edge: number; vertex: boolean; t: Pt } | null = null;
-  let type: LeadType = oType;
   // a window (not a round hole): the middle of a radius, else well away from its corners
-  if (kind === "inner" && !isRound(lp)) start = windowStart(lp, target, leadValues(kind, row, oType).lin);
-  if (!start && cornerOnly(cType)) {
-    let best = Infinity;
-    for (let i = 0; i < n; i++) {
-      if (len(sub(lp[i], prev(i))) < 0.5 || len(sub(next(i), lp[i])) < 0.5) continue;
-      if (angleAt(i) > rules.sharpMaxDeg) continue;
-      const d = len(sub(lp[i], target));
-      if (d < best) { best = d; start = { at: lp[i], edge: i, vertex: true, t: unit(sub(next(i), lp[i])) }; }
-    }
-    if (start) type = cType;
+  const windows: Cand[] = kind === "inner" && !isRound(lp)
+    ? windowStarts(lp, target, leadValues(kind, row, oType).lin).map((s) => ({ s, type: oType, d: far(s.at) })) : [];
+  const corners: Cand[] = [];
+  if (cornerOnly(cType)) for (let i = 0; i < n; i++) {
+    if (len(sub(lp[i], prev(i))) < 0.5 || len(sub(next(i), lp[i])) < 0.5) continue;
+    if (angleAt(i) > rules.sharpMaxDeg) continue;
+    corners.push({ s: { at: lp[i], edge: i, vertex: true, t: unit(sub(next(i), lp[i])) }, type: cType, d: far(lp[i]) });
   }
-  if (!start) {
-    const v0 = leadValues(kind, row, oType);
-    let best = Infinity;
-    for (let i = 0; i < n; i++) {
-      const a = lp[i], b = next(i), e = sub(b, a), L = len(e);
-      if (L < 1e-6) continue;
-      const t = unit(e);
-      if (L >= 2) {
-        // a point of the edge, kept off its corners
-        const m = Math.min(L / 2, Math.max(1, v0.lin * 0.5));
-        const s = Math.max(m, Math.min(L - m, dot(sub(target, a), t)));
-        const p = add(a, mul(t, s));
-        const d = len(sub(p, target));
-        if (d < best) { best = d; start = { at: p, edge: i, vertex: false, t }; }
-      } else if (Math.abs(angleAt(i) - 180) < 25) {
-        // a point of a curve drawn in short pieces
-        const d = len(sub(a, target));
-        const tt = unit(add(unit(sub(a, prev(i))), t));
-        if (d < best) { best = d; start = { at: a, edge: i, vertex: true, t: tt }; }
-      }
+  const edges: Cand[] = [];
+  const v0 = leadValues(kind, row, oType);
+  // a point of a curve drawn in pieces: the turn there is small, and not none
+  const onCurve = (i: number) => { const d = Math.abs(angleAt(i) - 180); return d > 0.5 && d < 25; };
+  for (let i = 0; i < n; i++) {
+    const a = lp[i], b = next(i), e = sub(b, a), L = len(e);
+    if (L < 1e-6) continue;
+    const t = unit(e);
+    if (L >= 2 && !(onCurve(i) && onCurve((i + 1) % n))) {
+      // a point of the edge, kept off its corners
+      const m = Math.min(L / 2, Math.max(1, v0.lin * 0.5));
+      const s = Math.max(m, Math.min(L - m, dot(sub(target, a), t)));
+      const p = add(a, mul(t, s));
+      edges.push({ s: { at: p, edge: i, vertex: false, t }, type: oType, d: far(p) });
+    } else if (Math.abs(angleAt(i) - 180) < 25) {
+      // a point of a curve (its pieces are chords: their ends lie on the curve, their middles do not)
+      edges.push({ s: { at: a, edge: i, vertex: true, t: unit(add(unit(sub(a, prev(i))), t)) }, type: oType, d: far(a) });
     }
   }
-  if (!start) start = { at: lp[0], edge: 0, vertex: true, t: unit(sub(next(0), lp[0])) };
-  return leadsAt(lp, kind, rules, row, start, type, leadValues(kind, row, type), side);
+  // as before the leads were fitted: a window's own place, else the nearest sharp corner, else the nearest edge point
+  const cands = [...windows.sort(byDist), ...corners.sort(byDist), ...edges.sort(byDist)];
+  if (!cands.length) cands.push({ s: { at: lp[0], edge: 0, vertex: true, t: unit(sub(next(0), lp[0])) }, type: oType, d: 0 });
+  const at = (c: Cand, f: number) => {
+    const v = leadValues(kind, row, c.type);
+    return leadsAt(lp, kind, rules, row, c.s, c.type, f === 1 ? v : { ...v, lin: v.lin * f, lout: v.lout * f, radius: v.radius * f }, side);
+  };
+  const first = at(cands[0], 1);
+  if (!fit || fit(first)) return first;
+  // the nearest starts are tried (a long outline has hundreds: the 40 nearest of each kind are enough)
+  const tries = [...windows.slice(0, 40), ...corners.slice(0, 40), ...edges.slice(0, 40)];
+  for (const f of FIT_FACTORS) for (const c of tries) {
+    if (f === 1 && c === cands[0]) continue;
+    const out = at(c, f);
+    if (fit(out)) { if (count) count.fitted++; return out; }
+  }
+  if (count) count.tight++;
+  return at(cands[0], FIT_FACTORS[FIT_FACTORS.length - 1]);
 }
 
 export interface LeadStart { at: Pt; edge: number; vertex: boolean; t: Pt }
@@ -450,11 +505,11 @@ function isRound(lp: Pt[]): boolean {
 }
 
 /**
- * Where the leads go on a window (an inner contour that is not a round hole): the middle of its arc
- * (a radius) nearest the target if it has one, else on a straight side at least 2 × the lead-in from
- * its corners (the middle of a side too short for that), nearest the target.
+ * Where the leads may go on a window (an inner contour that is not a round hole): the middles of its
+ * arcs (radii) if it has any, else on each straight side at least 2 × the lead-in from its corners (the
+ * middle of a side too short for that), nearest the target. The caller takes the one nearest the target.
  */
-function windowStart(lp: Pt[], target: Pt, lin: number): { at: Pt; edge: number; vertex: boolean; t: Pt } | null {
+function windowStarts(lp: Pt[], target: Pt, lin: number): LeadStart[] {
   const n = lp.length;
   const t = turns(lp);
   const curved = (i: number) => Math.abs(t[i]) >= 0.5 && Math.abs(t[i]) < 25;
@@ -479,7 +534,7 @@ function windowStart(lp: Pt[], target: Pt, lin: number): { at: Pt; edge: number;
   const links = (v: number) => curved(v) && short(v - 1) && short(v) && (Math.sign(t[v]) === Math.sign(t[(v - 1 + n) % n]) || !curved((v - 1 + n) % n));
   const cands: { at: Pt; edge: number; vertex: boolean; t: Pt }[] = [];
   const first = lp.findIndex((_, v) => !links(v));
-  if (first < 0) return null;
+  if (first < 0) return [];
   // arcs: runs of short segments joined by small turns of one sense
   for (let s0 = 0; s0 < n; s0++) {
     const k0 = (first + s0) % n;
@@ -494,7 +549,7 @@ function windowStart(lp: Pt[], target: Pt, lin: number): { at: Pt; edge: number;
     // straight sides between corners (collinear pieces count as one side)
     const corner = (v: number) => Math.abs(t[v]) >= 0.5;
     const c0 = lp.findIndex((_, v) => corner(v));
-    if (c0 < 0) return null;
+    if (c0 < 0) return [];
     for (let s0 = 0; s0 < n; s0++) {
       const i0 = (c0 + s0) % n;
       if (!corner(i0)) continue;
@@ -507,8 +562,7 @@ function windowStart(lp: Pt[], target: Pt, lin: number): { at: Pt; edge: number;
       cands.push(along(i0, d));
     }
   }
-  if (!cands.length) return null;
-  return cands.reduce((b, c) => (len(sub(c.at, target)) < len(sub(b.at, target)) ? c : b));
+  return cands;
 }
 
 const totalLen = (pts: Pt[]) => pts.reduce((s, p, i) => (i ? s + len(sub(p, pts[i - 1])) : 0), 0);
@@ -671,6 +725,62 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     }
   }
 
+  // -- the leads fitted to their room: clear of every other part on the sheet (processed now or not),
+  // inside the sheet, and not in the part itself. A lead longer than the gap between two parts would
+  // pierce in the neighbour: the start moves to where the full lead fits, else the lead is shortened.
+  const clr = Math.max(1, 2 * kerf);
+  const all = sheet.parts.map((p) => {
+    const path = q.paths.get(p.partId);
+    if (!path) return null;
+    const f = transform(p);
+    const loops = partLoops(path).map((lp) => lp.map(f));
+    return loops.length ? { loops, box: boxOf(loops[0]) } : null;
+  });
+  const segDist = (p: Pt, a: Pt, b: Pt) => {
+    const e = sub(b, a), l2 = dot(e, e);
+    const t = l2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a), e) / l2)) : 0;
+    return len(sub(p, add(a, mul(e, t))));
+  };
+  const loopDist = (p: Pt, lp: Pt[]) => { let d = Infinity; for (let k = 0; k < lp.length; k++) d = Math.min(d, segDist(p, lp[k], lp[(k + 1) % lp.length])); return d; };
+  const onSheet = (p: Pt) => sheet.outline?.length
+    ? pointIn(sheet.outline[0], p[0], p[1]) && loopDist(p, sheet.outline[0]) >= clr && !sheet.outline.slice(1).some((h) => pointIn(h, p[0], p[1]) || loopDist(p, h) < clr)
+    : p[0] >= clr && p[1] >= clr && p[0] <= sheet.lengthMm - clr && p[1] <= sheet.widthMm - clr;
+  /** points along a lead, its end on the contour left out */
+  const along = (pl: Pt[], fromEnd: boolean): Pt[] => {
+    const out: Pt[] = [];
+    for (let k = 1; k < pl.length; k++) {
+      const a = pl[k - 1], b = pl[k], n = Math.max(1, Math.ceil(len(sub(b, a)) / 0.5));
+      for (let j = 0; j <= n; j++) out.push(add(a, mul(sub(b, a), j / n)));
+    }
+    const touch = fromEnd ? pl[pl.length - 1] : pl[0];
+    return out.filter((p) => len(sub(p, touch)) > 0.3);
+  };
+  const fitCount: LeadFitCount = { fitted: 0, tight: 0 };
+  /** The fit test of a contour: `own` the parts it belongs to, `lp` the contour itself. */
+  const fitOf = (own: number[], lp: Pt[], kind: "outer" | "inner"): LeadFit => (c) => {
+    for (const [pl, isIn] of [[c.leadIn, true], [c.leadOut, false]] as const) {
+      if (pl.length < 2) continue;
+      const pts = along(pl, isIn);
+      for (const p of pts) {
+        if (!onSheet(p)) return false;
+        // a hole's lead stays in the hole; an outline's stays out of its own part(s)
+        if (kind === "inner" ? !pointIn(lp, p[0], p[1]) : own.some((m) => { const g = all[m]; return !!g && pointIn(g.loops[0], p[0], p[1]) && !g.loops.slice(1).some((h) => pointIn(h, p[0], p[1])); })) return false;
+        for (let j = 0; j < all.length; j++) {
+          const g = all[j];
+          if (!g || own.includes(j)) continue;
+          if (p[0] < g.box.x0 - clr || p[0] > g.box.x1 + clr || p[1] < g.box.y0 - clr || p[1] > g.box.y1 + clr) continue;
+          // in the other part's material, or nearer its contours than the clearance
+          if (g.loops.some((l) => loopDist(p, l) < clr)) return false;
+          if (pointIn(g.loops[0], p[0], p[1]) && !g.loops.slice(1).some((h) => pointIn(h, p[0], p[1]))) return false;
+        }
+      }
+      // the pierce (the lead's far end) keeps off the contour it leads to
+      const far = isIn ? pl[0] : pl[pl.length - 1], touch = isIn ? pl[pl.length - 1] : pl[0];
+      if (kind === "outer" && loopDist(far, lp) < Math.min(clr, 0.5 * len(sub(far, touch)))) return false;
+    }
+    return true;
+  };
+
   const fresh: CutContour[] = [];
   let at = from;
   const startOf = (c: Omit<CutContour, "part" | "kind">) => c.leadIn[0] ?? c.pts[0];
@@ -701,7 +811,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
       if (canOpen) openRuns(g.open, i, "open");
     }
     // the holes, the nearest next
-    const holes = g.holes.map((lp) => closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules), side));
+    const holes = g.holes.map((lp) => closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules), side, fitOf([i], lp, "inner"), fitCount));
     while (holes.length) {
       let k = 0, best = Infinity;
       holes.forEach((h, j) => { const d = len(sub(startOf(h), at)); if (d < best) { best = d; k = j; } });
@@ -716,7 +826,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
       const members = blk.members;
       // scrap the block closes in, then the shared lines, then the block's outline
       for (const lp of blk.inner) {
-        const h = closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules), side);
+        const h = closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules), side, fitOf(members, lp, "inner"), fitCount);
         fresh.push({ part: i, kind: "inner", parts: members, ...h });
         at = endOf(h);
       }
@@ -733,13 +843,13 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
         at = endOf(cc);
       }
       for (const lp of blk.outer) {
-        const o = closedContour(lp, "outer", rules, row, targetOf(boxOf(lp), rules), side);
+        const o = closedContour(lp, "outer", rules, row, targetOf(boxOf(lp), rules), side, fitOf(members, lp, "outer"), fitCount);
         fresh.push({ part: i, kind: "outer", parts: members, ...o });
         at = endOf(o);
       }
       continue;
     }
-    const o = closedContour(g.outer, "outer", rules, row, target, side);
+    const o = closedContour(g.outer, "outer", rules, row, target, side, fitOf([i], g.outer, "outer"), fitCount);
     fresh.push({ part: i, kind: "outer", ...o });
     at = endOf(o);
   }
@@ -765,7 +875,8 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     ? (row ? traceShortestOf(row) : sheet.thicknessMm >= TRACE_SHORTEST_FROM_MM - 1e-6)
     : cutOrderOf(machine).traceShortest;
   if (traceShortest && !q.ordered) contours = tracesShortest(contours, from);
-  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours, keys, ...(mirrored ? { mirrored } : {}) };
+  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours, keys, ...(mirrored ? { mirrored } : {}),
+    ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}) };
 }
 
 /**

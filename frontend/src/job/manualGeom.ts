@@ -166,6 +166,16 @@ function closeness(a: Placed, b: Placed, gap: number): number {
   return Math.sqrt(best);
 }
 
+/** A point of a's outline lies well inside b's material (not just on its edge: 0.3 mm round it does too). */
+function deepIn(a: Placed, b: Placed): boolean {
+  const d = 0.3;
+  for (const [x, y] of a.samples) {
+    if (x < b.box.x0 + d || x > b.box.x1 - d || y < b.box.y0 + d || y > b.box.y1 - d) continue;
+    if (inMaterial(b, x, y) && inMaterial(b, x - d, y) && inMaterial(b, x + d, y) && inMaterial(b, x, y - d) && inMaterial(b, x, y + d)) return true;
+  }
+  return false;
+}
+
 /**
  * Parts that overlap another, come closer than the gap (less a little for the sampling), or reach
  * past the usable area. Indexes into `parts`.
@@ -186,7 +196,10 @@ export function problems(parts: Placed[], usable: Box, gap: number, outline?: Pt
     for (let j = i + 1; j < parts.length; j++) {
       const b = parts[j];
       if (a.box.x0 > b.box.x1 + gap || b.box.x0 > a.box.x1 + gap || a.box.y0 > b.box.y1 + gap || b.box.y0 > a.box.y1 + gap) continue;
-      if (shared?.has(`${i}|${j}`)) continue;   // the shared line was checked: facing, the kerf apart
+      // a shared line was checked (facing, the kerf apart), and parts of a block may be closer than the
+      // gap: such parts are wrong only where one lies in the other's material
+      const joined = shared?.has(`${i}|${j}`) || block?.(i, j);
+      if (joined) { if (deepIn(a, b) || deepIn(b, a)) { bad.add(i); bad.add(j); } continue; }
       const inside = (a.loops[0] && inMaterial(b, ...a.loops[0][0])) || (b.loops[0] && inMaterial(a, ...b.loops[0][0]));
       if (inside || (!block?.(i, j) && closeness(a, b, gap) < gap - tol)) { bad.add(i); bad.add(j); }
     }
