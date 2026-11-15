@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 15 Nov 2026 (`1aa39fc`)
+
 - Two or more jobs open: **each job's tab comes back with the toolbar section it had** (Automatic nest, Manual nest, Process, …) **and the sheet it had open in Manual nest**. Before, switching tabs opened Manual nest in the other job too (an EDIT made in one job was replayed in the next tab), and the open sheet was shared between the jobs
 - Removing parts from the job (Work parts): **a sheet left empty stays** (and its solution), to nest on again by hand; before it was deleted and had to be added again
 - **Whole-app logic check** (every test drawing through import, nesting, Arrange, Auto cut, the Process tools, remnants, the NC program and both machine post processors; random click-throughs of every screen). Found and fixed:
