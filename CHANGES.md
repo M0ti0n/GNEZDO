@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-- Import 2D: new **Annotation** tool (after Dimension), as the text tool in Paint: drag a box (or click) and type; the text shows in the single-line annotation font, wraps at the box's width (Enter starts a new line) and the box grows with it. **Text height** (mm, remembered) is set in the bar above the box. Click outside the box, OK or another tool to place it, Esc or Cancel to drop it. Placed text becomes tracing lines (engraved), one Undo step
+- Import 2D: new **Annotation** tool (after Dimension), as the text tool in Paint: drag a box (or click) and type; the text shows in the single-line annotation font, wraps at the box's width (Enter starts a new line) and the box grows with it. **Text height** (mm, remembered) is set in the bar above the box. Until it is placed, the box moves by its frame and resizes by its 8 handles (the text wraps again). Click outside the box, OK or another tool to place it, Esc or Cancel to drop it. Placed text becomes tracing lines (engraved), one Undo step
 - **Common cut is a part's tick box, no more painting**: with Common cut ticked (import Properties, Geometry check or Part properties), every straight line of the part's outline may be shared with a neighbour and cut once; it shows blue in the importer. Holes and arcs are never common cut
   - the importer's **Common cut** tool now does the opposite: click a line (or drag a window) to **leave it out** (it is cut on its own, dashed); again to take it back. A Line colors color can do the same (**No common cut**)
   - lines painted common cut in parts saved before are no longer read: with the part ticked, its whole outline counts (leave out what must not be shared)

@@ -2755,4 +2755,12 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .annot-bar label { display: flex; align-items: center; gap: 5px; }
 .annot-bar input { width: 56px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; font: inherit; font-size: 14px; }
 .annot-bar input:focus { outline: none; border-color: var(--blue); }
-.annot-input { position: absolute; pointer-events: auto; opacity: 0; resize: none; border: 0; padding: 0; cursor: text; }
+.annot-frame { position: absolute; pointer-events: auto; cursor: move; }
+.annot-handle { position: absolute; z-index: 2; width: 9px; height: 9px; margin: -5px 0 0 -5px; pointer-events: auto; touch-action: none;
+  background: #fff; border: 1.5px solid var(--red); }
+.annot-handle.h-nw, .annot-handle.h-se { cursor: nwse-resize; }
+.annot-handle.h-ne, .annot-handle.h-sw { cursor: nesw-resize; }
+.annot-handle.h-n, .annot-handle.h-s { cursor: ns-resize; }
+.annot-handle.h-e, .annot-handle.h-w { cursor: ew-resize; }
+.annot-frame { touch-action: none; }
+.annot-input { position: absolute; z-index: 1; pointer-events: auto; opacity: 0; resize: none; border: 0; padding: 0; cursor: text; }
