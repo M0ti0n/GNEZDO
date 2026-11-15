@@ -37,7 +37,7 @@ import type { SavedRemnant } from "./api/api";
 import { Drawer, type DrawerMode, type RailSection } from "./shell/Drawer";
 import { TabBar } from "./shell/TabBar";
 import { ToolStrip, toolsFor } from "./shell/ToolStrip";
-import { JobToolbar } from "./shell/JobToolbar";
+import { JobToolbar, type SectionId } from "./shell/JobToolbar";
 import { buildRequest, commonCutNote, continuedSheets, countsOf, isFinished, missingParts, nestApi, nestProblem, nestsOfJob, solutionsFromSaved, type NestMode, type NestRun, type NestedSheet, type Solution } from "./job/nest";
 import { CustomNestDialog, type CustomNestSettings } from "./components/CustomNestDialog";
 import { NestPage, type ProcessTool, type NestSelection } from "./components/NestView";
@@ -1097,6 +1097,10 @@ export function App() {
   // manual nesting (EDIT / VIEW on a sheet) opens Manual nest on the toolbar, BACK Automatic nest;
   // opening Automatic nest there leaves manual nesting
   const [toolbarReq, setToolbarReq] = useState<{ section: "auto" | "manual" | null; n: number }>({ section: null, n: 0 });
+  // the job toolbar's open section, per job: a job's tab comes back with the section it had
+  const [jobSection, setJobSection] = useState<Record<string, SectionId | null>>({});
+  // and the sheet each job has open in Manual nest (null: its sheets)
+  const [jobFull, setJobFull] = useState<Record<string, number | null>>({});
   // Process open on the toolbar: the nest screen shows a sheet with the AUTO CUT panel
   const [processOn, setProcessOn] = useState<Record<string, false | ProcessTool>>({});
   /** the Process tool last used per job (the Process tile opens it again) */
@@ -1108,7 +1112,9 @@ export function App() {
   const [addSheetFor, setAddSheetFor] = useState<{ jobId: string; sheet: StockSheet } | null>(null);
   const [deleteAsk, setDeleteAsk] = useState<{ jobId: string; solId: string; index: number; parts: number } | null>(null);
   const [openManual, setOpenManual] = useState<{ sheet: number; n: number }>({ sheet: 0, n: 0 });
-  const manualOn = useRef(false);   // Manual nest open (a sheet in place of the sheets)
+  const manualOn = useRef(false);   // Manual nest open (a sheet in place of the sheets), in the job shown
+  // another job's tab: Manual nest is open there if that job had a sheet open
+  useEffect(() => { manualOn.current = !!job && jobFull[job.id] != null; }, [job?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Add sheet: the dialog, filled in like the shown sheet, else the first material of the part list. */
   const askAddSheet = (jobId: string) => {
@@ -1195,19 +1201,14 @@ export function App() {
   };
   const removePart = (jobId: string, partId: string) => {
     setJobParts((m) => ({ ...m, [jobId]: (m[jobId] ?? []).filter((jp) => jp.part.id !== partId) }));
-    // its pieces off every sheet; a sheet left with nothing goes (and a solution left with no sheet)
+    // its pieces off every sheet; the sheets stay, also those left empty (to nest on again by hand)
     setSols(jobId, (st) => {
-      const list = st.list.flatMap((x) => {
+      const list = st.list.map((x) => {
         const sheets = x.run?.result?.sheets;
-        if (x.error || !sheets || !sheets.some((sh) => sh.parts.some((pl) => pl.partId === partId))) return [x];
+        if (x.error || !sheets || !sheets.some((sh) => sh.parts.some((pl) => pl.partId === partId))) return x;
         // (the cut path of the parts that stay follows them to their new places in the list)
         const without = (sh: NestedSheet): NestedSheet => { const parts = sh.parts.filter((pl) => pl.partId !== partId); return { ...sh, parts, ...(sh.cut ? { cut: remapCut(sh.cut, sh.parts, parts) } : {}) }; };
-        const keep = sheets.map((sh, k) => ({ sh: without(sh), k, was: sh.parts.length }))
-          .filter(({ sh, was }) => sh.parts.length > 0 || was === 0);
-        if (!keep.length) return [];
-        const at = new Map(keep.map(({ k }, i) => [k, i]));
-        return [{ ...x, locked: x.locked.filter((n) => at.has(n)).map((n) => at.get(n)!),
-          run: { ...x.run!, result: { ...x.run!.result!, sheets: keep.map(({ sh }) => sh) } } }];
+        return { ...x, run: { ...x.run!, result: { ...x.run!.result!, sheets: sheets.map(without) } } };
       });
       const sel = list.some((x) => x.id === st.sel.sol) ? { sol: st.sel.sol, sheet: Math.min(st.sel.sheet, Math.max(0, (list.find((x) => x.id === st.sel.sol)?.run?.result?.sheets.length ?? 1) - 1)) }
         : { sol: list.at(-1)?.id ?? null, sheet: 0 };
@@ -1323,6 +1324,8 @@ export function App() {
         />
         <div className="workspace">
           {active.kind === "job" ? <JobToolbar key={job?.id} onTool={onJobTool} request={toolbarReq}
+            initial={job ? jobSection[job.id] ?? null : null}
+            onOpen={(sec) => { if (job) setJobSection((m) => ({ ...m, [job.id]: sec })); }}
             onSection={(sec) => {
               if (job) setProcessOn((m) => ({ ...m, [job.id]: sec === "process" ? lastProcess.current[job.id] ?? "autoCut" : false }));
               // Automatic nest (and Work parts) go back to the sheets; Manual nest and Process keep the view as it is
@@ -1335,7 +1338,9 @@ export function App() {
           <main className={`page${active.kind === "jobSearch" || active.kind === "remnants" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" || active.kind === "extract" || active.kind === "special" ? " page-flush" : ""}`} aria-label={active.title}>
             {active.kind === "home" && <HomePage onAction={onHome} />}
             {active.kind === "job" && job && jobScreen[job.id] === "nest" && (
-              <NestPage
+              <NestPage key={job.id}
+                initialFull={jobFull[job.id] ?? null}
+                onFull={(i) => setJobFull((m) => ({ ...m, [job.id]: i }))}
                 onExportDxf={() => void exportDxf()}
                 onManual={(on) => { manualOn.current = on; setToolbarReq((r) => ({ section: on ? "manual" : "auto", n: r.n + 1 })); }}
                 leaveManual={leaveManual}
@@ -1459,7 +1464,7 @@ export function App() {
                   diag("parts", `Removed ${r.name} from the job: ${r.pieces} nested pieces taken off solution ${r.sols.map((n) => `#${n}`).join(", ")}`, { job: r.jobId });
                 }}>
                 It is nested: {removingPart.pieces} {removingPart.pieces === 1 ? "piece" : "pieces"} in solution {removingPart.sols.map((n) => `#${n}`).join(", ")}.
-                {" "}{removingPart.pieces === 1 ? "It is" : "They are"} taken off the sheets; the rest of the layout stays as it is (a sheet left empty goes).
+                {" "}{removingPart.pieces === 1 ? "It is" : "They are"} taken off the sheets; the rest of the layout stays as it is (a sheet left empty stays, to nest on again).
               </ConfirmDialog>
             )}
             {saveAsFor && (

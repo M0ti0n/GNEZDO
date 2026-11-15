@@ -52,6 +52,10 @@ interface Props {
   onRenestSheet: (solId: string, sheet: number) => void;
   /** manual nesting opened (true) or left (false): the toolbar follows */
   onManual?: (open: boolean) => void;
+  /** the sheet open in Manual nest when this job's screen comes (its tab opened again); null: the sheets */
+  initialFull?: number | null;
+  /** the sheet open in Manual nest changed: kept per job */
+  onFull?: (sheet: number | null) => void;
   /** a new number: leave manual nesting (Automatic nest opened on the toolbar) */
   leaveManual?: number;
   /** a Manual nest tool clicked on the toolbar (a new n each click) */
@@ -125,7 +129,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, process = false, needsSave = false, jobDirty = false, onSaveJob, onSent, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS }: Props) {
+export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, initialFull = null, onFull, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, process = false, needsSave = false, jobDirty = false, onSaveJob, onSent, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -134,9 +138,12 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
   const sheets = sol?.run?.result?.sheets ?? sol?.run?.best?.sheets ?? [];
   const liveSheets = !!sol && !sol.run?.result && sheets.length > 0;
   const sheetNo = Math.min(selected.sheet, Math.max(0, sheets.length - 1));
-  const [full, setFullState] = useState<number | null>(null);
+  const [full, setFullRaw] = useState<number | null>(initialFull !== null && initialFull < sheets.length ? initialFull : null);
+  const setFullState = (i: number | null) => { setFullRaw(i); onFull?.(i); };
   const setFull = (i: number | null) => { if ((i === null) !== (full === null)) onManual?.(i !== null); setFullState(i); };
-  useEffect(() => { if (leaveManual) setFullState(null); }, [leaveManual]);
+  // (a Back asked before this job's screen came is not for it)
+  const leaveSeen = useRef(leaveManual ?? 0);
+  useEffect(() => { if (leaveManual && leaveManual !== leaveSeen.current) { leaveSeen.current = leaveManual; setFullState(null); } }, [leaveManual]);   // eslint-disable-line react-hooks/exhaustive-deps
   // Add sheet / Delete sheet: this sheet opens in Manual nest
   // (once: back from Work parts this screen shows again and must not open Manual nest by itself)
   useEffect(() => {

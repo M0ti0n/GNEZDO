@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IMPORT_TOOLS } from "../import/ImportTools";
 import { SideScroll } from "../components/SideScroll";
 import type { CustomNestSettings } from "../components/CustomNestDialog";
@@ -99,7 +99,7 @@ const SECTIONS: Section[] = [
   },
 ];
 
-export function JobToolbar({ onTool, onSection, request, lit = {} }: {
+export function JobToolbar({ onTool, onSection, onOpen, request, initial = null, lit = {} }: {
   /** switches that are on (Common cut) */
   lit?: Record<string, boolean>;
   onTool?: (section: SectionId, tool: string, custom?: CustomNestSettings) => void;
@@ -107,10 +107,17 @@ export function JobToolbar({ onTool, onSection, request, lit = {} }: {
   onSection?: (section: SectionId | null) => void;
   /** Opens a section from outside (EDIT / VIEW on a sheet: Manual nest); a new n each time. */
   request?: { section: SectionId | null; n: number };
+  /** the section open when the toolbar comes (the job's tab opened again: the one it had) */
+  initial?: SectionId | null;
+  /** the open section changed (by a click or from outside): kept per job */
+  onOpen?: (section: SectionId | null) => void;
 }) {
-  const [open, setOpenState] = useState<SectionId | null>(null);
-  const setOpen = (s: SectionId | null) => { setOpenState(s); onSection?.(s); };
-  useEffect(() => { if (request?.n) setOpenState(request.section); }, [request?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const [open, setOpenState] = useState<SectionId | null>(initial);
+  const show = (s: SectionId | null) => { setOpenState(s); onOpen?.(s); };
+  const setOpen = (s: SectionId | null) => { show(s); onSection?.(s); };
+  // a request made before this toolbar came (another job's tab: EDIT on its sheet) is not for it
+  const seen = useRef(request?.n ?? 0);
+  useEffect(() => { if (request?.n && request.n !== seen.current) { seen.current = request.n; show(request.section); } }, [request?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open) return;

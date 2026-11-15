@@ -510,7 +510,7 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
 
   // the allowed poses of a piece: its rotations (and mirrored when allowed); a part alone also the pose it has now
   // the allowed poses of a piece: its rotation steps (and mirrored when allowed); a part alone also
-  // the pose it has now. Nothing else: the part's rotation rule always holds (grain direction)
+  // the pose it has now; and the turns that lay its longest outer edges along the sheet's axes
   const poseCache = new Map<string, { angle: number; mirror: boolean }[]>();
   const poses = (pc: Piece): { angle: number; mirror: boolean }[] => {
     const key = `${pc.key}|${pc.pose0 ? `${norm(pc.pose0.angle)}|${pc.pose0.mirror}` : ""}`;
@@ -525,6 +525,7 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
       const add = (a: number) => { if (!angles.some((o) => Math.abs(((o - a + 540) % 360) - 180) > 179.5)) angles.push(a); };
       anglesOf(r).forEach(add);
       if (pc.pose0) add(norm(pc.pose0.angle));
+      edgeAngles(loopsOf(pc, 0, m)).forEach(add);
       for (const a of angles) out.push({ angle: a, mirror: m });
     }
     poseCache.set(key, out);
@@ -939,6 +940,8 @@ export async function arrangeAgain(inp: ArrangeInput & { round: number }): Promi
       const add = (a: number) => { if (!angles.some((o) => Math.abs(((o - a + 540) % 360) - 180) > 179.5)) angles.push(a); };
       anglesOf(r).forEach(add);
       add(norm(p.angle));
+      const f = transform({ x: 0, y: 0, angle: 0, mirror: mir });
+      edgeAngles(partLoops(pathOf(p.partId)!).map((lp) => lp.map(f))).forEach(add);
       for (const a of angles) out.push({ angle: a, mirror: mir });
     }
     return out;
