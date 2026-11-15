@@ -277,6 +277,16 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     ),
   },
   {
+    // Fab's icon: a red box with TEXT in it, in blue
+    id: "annotate", label: "Annotation",
+    icon: (
+      <Ico>
+        <rect x="5" y="13" width="38" height="22" stroke={R} strokeWidth="2.6" />
+        <path d="M9 18.5H15.6M12.3 18.5V29.5M18.4 18.5V29.5H23.6M18.4 24H22.8M18.4 18.5H23.6M25.4 18.5L31.2 29.5M31.2 18.5L25.4 29.5M32.6 18.5H39.2M35.9 18.5V29.5" stroke={BL} strokeWidth="1.9" strokeLinecap="butt" />
+      </Ico>
+    ),
+  },
+  {
     id: "trace", label: "Trace",
     icon: <Ico><Nozzle beam={G} /><path d="M7 33L42 41" stroke={G} strokeWidth="4" /></Ico>,
   },
@@ -389,8 +399,8 @@ export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim"; too
 ];
 
 /** The strip's order: single tools and groups (a group stands where its first tool stood). */
-const STRIP: string[] = ["properties", "extend", "trim", "drawGroup", "alignH", "alignV", "erase", "dimGroup",
-  ...IMPORT_TOOLS.map((t) => t.id).filter((id) => !["properties", "extend", "trim", "alignH", "alignV", "erase", "process"].includes(id) && !TOOL_GROUPS.some((g) => g.tools.includes(id))),
+const STRIP: string[] = ["properties", "extend", "trim", "drawGroup", "alignH", "alignV", "erase", "dimGroup", "annotate",
+  ...IMPORT_TOOLS.map((t) => t.id).filter((id) => !["properties", "extend", "trim", "alignH", "alignV", "erase", "annotate", "process"].includes(id) && !TOOL_GROUPS.some((g) => g.tools.includes(id))),
   "process"];
 
 /** blocked: tools that cannot be used now, with the reason shown on hover (greyed out). */

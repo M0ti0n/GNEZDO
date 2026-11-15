@@ -3,6 +3,7 @@ import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
 import { ROTATIONS, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
 import { COMMON_CUT_TIP } from "../import/commonCut";
+import { textLines, textWidth } from "../import/singleLine";
 import { ColourLinesDialog, applyColours } from "../import/ColourLinesDialog";
 import { angleOf, diameterOf, dimensionOf, pickEntity, radiusOf, type Measure, type Pick } from "../import/measure";
 import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
@@ -16,7 +17,7 @@ import {
 import { factorFor, factorText, parseScale, scalePart, sizeOf } from "../import/scale";
 import {
 
-  boxOf, checkGeometry, commonCutOk, keepMarkRules, markRulesText, pathOf, pointsAlong, roleOf, union,
+  boxOf, checkGeometry, commonCutOk, findDoubles, keepMarkRules, markRulesText, pathOf, pointsAlong, roleOf, union,
   type Box, type CheckId, type Drawing, type Entity, type Pt, type Role,
 } from "../import/geometry";
 
@@ -39,6 +40,31 @@ const MARKING: Record<string, { role: Role; hint: string }> = {
 const SNAP_PX = 12;
 const HOLE_HINT = "Click a closed cutting contour, or drag a window, to mark it as a hole: cut at slower speed by machines that can (e.g. plasma). Again to unmark.";
 const COMMON_HINT = "Common cut: with Common cut ticked (Properties), every straight line of the outline may be shared with a neighbouring part and cut once (blue). Click a line, or drag a window, to leave it out (it is cut on its own, dashed); again to take it back.";
+const ANNOT_HINT = "Annotation: drag a box (or click) and type; the text is in the single-line font and is traced (engraved) on the part. Its height is set above the box; Enter starts a new line. Click outside the box or OK to place it, Esc to drop it.";
+/** Annotation: the text's lines laid out in the box (mm): words wrap at the box's width, Enter starts a line. */
+const ANNOT_PAD = 0.3, ANNOT_LEAD = 1.6;
+function annotRows(text: string, cap: number, width: number): string[] {
+  const room = Math.max(width - 2 * ANNOT_PAD * cap, cap);
+  const rows: string[] = [];
+  for (const para of text.split("\n")) {
+    let row = "";
+    for (const word of para.split(" ")) {
+      const next = row ? `${row} ${word}` : word;
+      if (textWidth(next, cap) <= room || !row) { row = next; } else { rows.push(row); row = word; }
+      // a word longer than the box: broken where it no longer fits
+      while (textWidth(row, cap) > room && row.length > 1) {
+        let k = row.length - 1;
+        while (k > 1 && textWidth(row.slice(0, k), cap) > room) k--;
+        rows.push(row.slice(0, k)); row = row.slice(k);
+      }
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+/** The box's bottom grows with the text: rows at ANNOT_LEAD x the height apart, a padding all round. */
+const annotBottom = (a: { maxY: number; minY: number }, rows: number, cap: number) =>
+  Math.min(a.minY, a.maxY - cap * (2 * ANNOT_PAD + 1 + (rows - 1) * ANNOT_LEAD + 0.35));
 const SWEEP_HINT = "Highlighted: lines on top of other lines (within 0.1 mm), lines outside the part outline and loose points. Click a line to keep it; Delete removes the rest.";
 const SCALE_HINT = "Click a line, an arc or a circle (or drag a window, Ctrl+A for all), then type a size with a unit (200mm: one item gets that size) or a scale factor (2). Enter scales the whole part.";
 const LINE_HINT = "Click the start point, then the end point (or type length [Tab] angle + Enter; angle + counter-clockwise, − clockwise); the line goes on from there. Points snap. Esc or right click finishes.";
@@ -133,6 +159,33 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
 
   // Every change to the lines is one step in the tab's history (Undo / Redo in the green bar).
   const commit = (next: Drawing, label: string) => onEdit(next, label);
+
+  // Annotation: a box being typed in (drawing mm, y up), as in Paint; placed as traced lines
+  const [annot, setAnnot] = useState<{ minX: number; maxX: number; minY: number; maxY: number; text: string } | null>(null);
+  const [annotCap, setAnnotCap] = useState<number>(() => { try { return Number(localStorage.getItem("gnezdo.annot.cap")) || 10; } catch { return 10; } });
+  const [annotCapText, setAnnotCapText] = useState(String(annotCap));
+  const annotInput = useRef<HTMLTextAreaElement | null>(null);
+  const annotLines = (a: NonNullable<typeof annot>, cap: number) =>
+    annotRows(a.text, cap, a.maxX - a.minX).flatMap((row, i) =>
+      textLines(row, { at: [a.minX + ANNOT_PAD * cap, a.maxY - cap * (ANNOT_PAD + 1 + i * ANNOT_LEAD)], capMm: cap }));
+  /** Places the text being typed (traced lines); an empty box just goes. */
+  const placeAnnot = () => {
+    const a = annot;
+    setAnnot(null);
+    if (!a || !a.text.trim()) return;
+    const ents: Entity[] = annotLines(a, annotCap).flatMap((pl) => pl.slice(1).flatMap((q, i) =>
+      Math.hypot(q[0] - pl[i][0], q[1] - pl[i][1]) > 1e-6 ? [{ id: newId("tx"), kind: "line" as const, a: { x: pl[i][0], y: pl[i][1] }, b: { x: q[0], y: q[1] }, role: "trace" as Role }] : []));
+    // a stroke that goes back over itself (as in a 3) would be traced twice: once is enough
+    const twice = new Set(findDoubles(ents));
+    commit({ ...drawing, entities: [...drawing.entities, ...ents.filter((e) => !twice.has(e.id))] }, "Annotation");
+    const n = a.text.replace(/\s/g, "").length;
+    setMessage({ text: `Annotation placed: ${n} ${n === 1 ? "character" : "characters"}, ${annotCap} mm high, traced (engraved)` });
+  };
+  const setCap = (t: string) => {
+    setAnnotCapText(t);
+    const v = Number(t.replace(",", "."));
+    if (v >= 0.5 && v <= 500) { setAnnotCap(v); try { localStorage.setItem("gnezdo.annot.cap", String(v)); } catch { /* not kept */ } }
+  };
 
   // After an undo or redo: drop the hover preview and say what happened.
   const undoneAtMount = useRef(undone);   // an older undo from before this tab was shown again: not news
@@ -607,7 +660,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
-    if ((e.target as Element).closest(".gcheck, .canvas-ui, .dyn-in")) return;
+    if ((e.target as Element).closest(".gcheck, .canvas-ui, .dyn-in, .annot-ui")) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     // no tool on: a grip of a line drawn here is dragged (lines from the file have none)
     if (e.button === 0 && !tool && view) {
@@ -619,7 +672,9 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         return;
       }
     }
-    if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut" || tool === "scale" || (tool === "rotate" && rotStage === 0))) {
+    if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut" || tool === "annotate" || tool === "scale" || (tool === "rotate" && rotStage === 0))) {
+      // Annotation: a press outside the box being typed in places it first
+      if (tool === "annotate" && annot) placeAnnot();
       const p = local(e);
       setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
       return;
@@ -898,6 +953,16 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     }
     const b = box;
     setBox(null);
+    if (tool === "annotate" && b && view) {
+      const r = host.current!.getBoundingClientRect();
+      const m = (x: number, y: number) => toModel(x + r.left, y + r.top, view);
+      let p = m(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1)), q = m(Math.max(b.x0, b.x1), Math.max(b.y0, b.y1));
+      // a click (no box dragged): a box for about 12 letters from there
+      if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) <= 4) q = { x: p.x + Math.max(annotCap * 12, 120 / view.s), y: p.y - annotCap * 1.9 };
+      setAnnot({ minX: p.x, maxX: q.x, minY: q.y, maxY: p.y, text: "" });
+      setMessage({ text: "Type the text; click outside the box or OK to place it, Esc to drop it" });
+      return;
+    }
     if (tool === "hole" && b && view) {
       if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) > 4) { holeBox(b, view); return; }
       const id = lineUnder(e.clientX, e.clientY);
@@ -1067,6 +1132,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
 
   const onTool = (id: string) => {
+    // another tool, or the same one again: the text being typed is placed
+    if (annot) placeAnnot();
     // lines picked (no tool on), then Aid line: they become aid lines
     if (id === "xline" && !tool && pick.size) {
       const items = drawing.entities.filter((e) => pick.has(e.id));
@@ -1193,7 +1260,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : SHAPES[tool] ? SHAPES[tool].hint : tool === "xline" ? XLINE_HINT : tool === "offset" ? OFFSET_HINT : tool === "fillet" ? FILLET_HINT : tool === "chamfer" ? CHAMFER_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "scale" ? SCALE_HINT : tool === "rotate" ? ROTATE_HINT : "not built yet") : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : SHAPES[tool] ? SHAPES[tool].hint : tool === "xline" ? XLINE_HINT : tool === "offset" ? OFFSET_HINT : tool === "fillet" ? FILLET_HINT : tool === "chamfer" ? CHAMFER_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "annotate" ? ANNOT_HINT : tool === "scale" ? SCALE_HINT : tool === "rotate" ? ROTATE_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -1205,7 +1272,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         blocked={!drawing.entities.length ? { process: "draw the part first" } : problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
-        className={`canvas${!tool ? " is-picking" : ""}${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || DRAWING_TOOLS.has(tool) || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "scale" || tool === "rotate") ? " is-marking" : ""}`}
+        className={`canvas${!tool ? " is-picking" : ""}${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || DRAWING_TOOLS.has(tool) || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "annotate" || tool === "scale" || tool === "rotate") ? " is-marking" : ""}`}
         onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -1437,6 +1504,22 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 snap={null} />
             )}
             {tool === "dimension" && cursor?.snapped && <SnapMark c={toScreen(cursor.p, view)} kind={cursor.kind} />}
+            {annot && tool === "annotate" && (() => {
+              const rows = annotRows(annot.text, annotCap, annot.maxX - annot.minX);
+              const bottom = annotBottom(annot, rows.length, annotCap);
+              const tl = toScreen({ x: annot.minX, y: annot.maxY }, view), br = toScreen({ x: annot.maxX, y: bottom }, view);
+              const last = rows.length - 1;
+              const caret = toScreen({ x: annot.minX + ANNOT_PAD * annotCap + textWidth(rows[last], annotCap), y: annot.maxY - annotCap * (ANNOT_PAD + 1 + last * ANNOT_LEAD) }, view);
+              return (
+                <g className="annot">
+                  <rect className="annot-box" x={tl.x} y={tl.y} width={br.x - tl.x} height={br.y - tl.y} />
+                  {annotLines(annot, annotCap).map((pl, i) => (
+                    <polyline key={i} className="annot-text" points={pl.map(([x, y]) => { const s = toScreen({ x, y }, view); return `${s.x},${s.y}`; }).join(" ")} />
+                  ))}
+                  <line className="annot-caret" x1={caret.x + 1} y1={caret.y} x2={caret.x + 1} y2={caret.y - annotCap * view.s} />
+                </g>
+              );
+            })()}
             {box && (
               <rect className={`sel-box${box.x1 < box.x0 ? " is-crossing" : ""}`}
                 x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)}
@@ -1456,6 +1539,28 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 if (dyn.some((x) => x)) { resetDyn(); return; }
                 window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
               }} />
+          );
+        })()}
+        {tool === "annotate" && view && annot && (() => {
+          const rows = annotRows(annot.text, annotCap, annot.maxX - annot.minX);
+          const tl = toScreen({ x: annot.minX, y: annot.maxY }, view), br = toScreen({ x: annot.maxX, y: annotBottom(annot, rows.length, annotCap) }, view);
+          return (
+            <div className="annot-ui">
+              <div className="annot-bar" style={{ left: tl.x, top: Math.max(4, tl.y - 46) }}>
+                <label>Text height
+                  <input type="text" inputMode="decimal" value={annotCapText} onChange={(e) => setCap(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); annotInput.current?.focus(); } if (e.key === "Escape") { e.stopPropagation(); setAnnot(null); setMessage({ text: "Annotation dropped" }); } }} />
+                  mm</label>
+                <button type="button" className="btn btn-primary" onClick={placeAnnot}>OK</button>
+                <button type="button" className="btn" onClick={() => { setAnnot(null); setMessage({ text: "Annotation dropped" }); }}>Cancel</button>
+              </div>
+              {/* the typing goes here; what is typed shows in the annotation font in the box */}
+              <textarea ref={annotInput} className="annot-input" autoFocus spellCheck={false} aria-label="Annotation text" value={annot.text}
+                style={{ left: tl.x, top: tl.y, width: Math.max(8, br.x - tl.x), height: Math.max(8, br.y - tl.y) }}
+                onChange={(e) => setAnnot({ ...annot, text: e.target.value.replace(/\t/g, " ") })}
+                onBlur={(e) => { if (!e.relatedTarget) requestAnimationFrame(() => annotInput.current?.focus({ preventScroll: true })); }}
+                onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setAnnot(null); setMessage({ text: "Annotation dropped" }); } }} />
+            </div>
           );
         })()}
         {tool === "scale" && view && scaleAt && scaleItems.length > 0 && (() => {
