@@ -31,11 +31,16 @@ export const FITTING_DEFAULTS: FittingValues = {
   flange: FLANGE_DEFAULTS, thread: THREAD_FLANGE_DEFAULTS, screw: SCREW_DEFAULTS,
 };
 
-/** The fitting being made in the Fittings tab: each fitting keeps its values, how many and the part shown. */
-export interface FitSession { kind: FittingKind; values: FittingValues; count: Record<FittingKind, number>; pick: Partial<Record<FittingKind, string>> }
+/** The fitting being made in the Fittings tab: each fitting keeps its values, how many, the part shown, and
+ *  the name, material and thickness its parts go to Import 2D with ("" / missing: its own name, the Import 2D
+ *  properties' material and thickness). */
+export interface FitSession {
+  kind: FittingKind; values: FittingValues; count: Record<FittingKind, number>; pick: Partial<Record<FittingKind, string>>;
+  name?: Partial<Record<FittingKind, string>>; material?: Partial<Record<FittingKind, string>>; thick?: Partial<Record<FittingKind, string>>;
+}
 
 export const newFitSession = (kind: FittingKind = "elbow"): FitSession => ({
-  kind, values: FITTING_DEFAULTS, count: { elbow: 1, transition: 1, branch: 1, flange: 1, thread: 1, screw: 1 }, pick: {},
+  kind, values: FITTING_DEFAULTS, count: { elbow: 1, transition: 1, branch: 1, flange: 1, thread: 1, screw: 1 }, pick: {}, name: {}, material: {}, thick: {},
 });
 
 /** One flat part of a fitting: `qty` of it per fitting. */
@@ -74,8 +79,8 @@ export function fittingProblems<K extends FittingKind>(kind: K, values: FittingV
   }
 }
 
-/** The fitting's flat parts, or the reason it cannot be made. */
-export function fittingParts<K extends FittingKind>(kind: K, values: FittingValues[K]): { parts: FittingPart[]; problems: string[] } {
+/** The fitting's flat parts, or the reason it cannot be made; `title`: its own name in place of fittingTitle. */
+export function fittingParts<K extends FittingKind>(kind: K, values: FittingValues[K], title?: string): { parts: FittingPart[]; problems: string[] } {
   const problems = fittingProblems(kind, values);
   if (problems.length) return { parts: [], problems };
   const v = values as never;
@@ -92,11 +97,11 @@ export function fittingParts<K extends FittingKind>(kind: K, values: FittingValu
   } catch (e) {
     return { parts: [], problems: [e instanceof Error ? e.message : String(e)] };
   }
-  const title = fittingTitle(kind, values);
+  const head = title?.trim() || fittingTitle(kind, values);
   const parts = pieces.map((p) => {
     const b = p.lines.build(`fit-${kind}-${p.key}-`);
     const sfx = SUFFIX[p.key] ?? p.key;
-    return { key: p.key, label: p.label, name: sfx ? `${title}-${sfx}` : title, qty: p.qty, entities: b.entities, w: b.w, h: b.h };
+    return { key: p.key, label: p.label, name: sfx ? `${head}-${sfx}` : head, qty: p.qty, entities: b.entities, w: b.w, h: b.h };
   });
   return { parts, problems: [] };
 }

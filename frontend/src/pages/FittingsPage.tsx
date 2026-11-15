@@ -1,17 +1,20 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { FIT_TOOLS, ImportToolStrip, fitIcon } from "../import/ImportTools";
 import { Preview } from "../import/ProcessDialog";
 import { NumInput } from "../components/NumInput";
+import { Combobox } from "../components/Combobox";
+import { usePickLists } from "../components/pickLists";
 import {
-  FITTING_DEFAULTS, FITTING_NAMES, fittingParts, fittingSig,
+  FITTING_DEFAULTS, FITTING_NAMES, fittingParts, fittingSig, fittingTitle,
   type FitSession, type FittingKind, type FittingPart, type FittingValues,
 } from "../import/fittings";
 import { FLANGE_SIZES, THREADS, canDivide, flangeFor, isStandard, threadFlangeFor, threadSize } from "../import/fittings/flange";
 import { screwResult } from "../import/fittings/screw";
 
 // SPECIAL TOOLS -> FITTINGS: flat parts of sheet metal fittings made from their values (the HVAC Fittings
-// workbench). One part on the canvas at a time, picked in the list; PROCESS saves it like any imported
-// drawing, and "Add to the import list" puts them all in the Import 2D list to be saved there.
+// workbench). One part on the canvas at a time, picked in the list. Here they only get their name, material
+// and thickness: "Send to Import 2D" puts them in the import list, and Import 2D processes them, as it does
+// every 2D drawing (as the 3D extractor's flat patterns).
 
 export type FitPartState = "new" | "listed" | "saved";
 
@@ -20,22 +23,27 @@ interface Props {
   onSession: (s: FitSession) => void;
   /** A part (by its sig) waiting in the import list, saved, or not added yet. */
   stateOf: (sig: string) => FitPartState;
-  /** Material, thickness and project of the import list (Properties), as text. */
-  properties: string;
-  onProperties: () => void;
-  /** The parts into the import list, `count` fittings of them (the same part again replaces the one waiting). */
-  onAdd: (parts: { part: FittingPart; sig: string }[], count: number) => void;
-  /** PROCESS: the part into the import list (if not there yet) and its save pop-up. */
-  onProcess: (part: FittingPart, sig: string, count: number) => void;
+  /** The Import 2D properties' material and thickness (used where the fitting has none of its own). */
+  importMaterial: string;
+  importThickness: string;
+  /** The parts into the import list, `count` fittings of them, with their material and thickness ("": the
+   *  Import 2D properties'); the same part again replaces the one waiting. */
+  onSend: (parts: { part: FittingPart; sig: string }[], count: number, own: { material: string; thicknessMm: string }) => void;
 }
 
 const COUNT_LABEL: Record<FittingKind, string> = { elbow: "Elbows", transition: "Fittings", branch: "Fittings", flange: "Flanges", thread: "Flanges", screw: "Screws" };
 
-export function FittingsPage({ session, onSession, stateOf, properties, onProperties, onAdd, onProcess }: Props) {
+export function FittingsPage({ session, onSession, stateOf, importMaterial, importThickness, onSend }: Props) {
   const kind = session.kind;
   const values = session.values[kind];
   const count = session.count[kind];
-  const { parts, problems } = useMemo(() => fittingParts(kind, values), [kind, values]);
+  const name = session.name?.[kind] ?? "";
+  const material = session.material?.[kind] ?? "";
+  // a flange's thickness: its recommended one until another is set
+  const rec = kind === "flange" || kind === "thread" ? String((values as { t: number }).t) : "";
+  const thick = session.thick?.[kind] ?? rec;
+  const lists = usePickLists(material || importMaterial);
+  const { parts, problems } = useMemo(() => fittingParts(kind, values, name), [kind, values, name]);
   const sigs = parts.map((p) => fittingSig(kind, values, p.key));
   const pickKey = parts.some((p) => p.key === session.pick[kind]) ? session.pick[kind] : parts[0]?.key;
   const pi = parts.findIndex((p) => p.key === pickKey);
@@ -44,23 +52,18 @@ export function FittingsPage({ session, onSession, stateOf, properties, onProper
 
   const set = <K extends FittingKind>(k: K, patch: Partial<FittingValues[K]>) =>
     onSession({ ...session, values: { ...session.values, [k]: { ...session.values[k], ...patch } } });
-  const blocked: Record<string, string> = {};
-  if (!shown) blocked.process = problems.length ? "fix the values first" : "no part";
-  const onTool = (id: string) => {
-    if (id.startsWith("fit-")) onSession({ ...session, kind: id.slice(4) as FittingKind });
-    else if (id === "process" && shown) onProcess(shown, sigs[pi], count);
-    else if (id === "properties") onProperties();
-  };
+  const onTool = (id: string) => { if (id.startsWith("fit-")) onSession({ ...session, kind: id.slice(4) as FittingKind }); };
+  const setOwn = (k: "name" | "material" | "thick", v: string) => onSession({ ...session, [k]: { ...(session[k] ?? {}), [kind]: v } });
   const pieces = parts.reduce((n, p) => n + p.qty, 0) * count;
 
   return (
     <div className="import uf fit">
-      <ImportToolStrip active={`fit-${kind}`} onTool={onTool} blocked={blocked} strip={["properties", ...FIT_TOOLS.map((t) => t.id), "process"]} />
+      <ImportToolStrip active={`fit-${kind}`} onTool={onTool} strip={FIT_TOOLS.map((t) => t.id)} />
       <section className="uf-pane fit-pane" aria-label="Canvas">
-        <h3>{shown ? <>{shown.name} <em>{shown.label} ×{shown.qty * count} · {fmt(shown.w)} × {fmt(shown.h)} mm{stateOf(sigs[pi]) === "saved" ? " · processed ✓" : stateOf(sigs[pi]) === "listed" ? " · in the import list" : ""}</em></> : FITTING_NAMES[kind]}</h3>
+        <h3>{shown ? <>{shown.name} <em>{shown.label} ×{shown.qty * count} · {fmt(shown.w)} × {fmt(shown.h)} mm{stateOf(sigs[pi]) === "saved" ? " · processed ✓" : stateOf(sigs[pi]) === "listed" ? " · sent to Import 2D" : ""}</em></> : FITTING_NAMES[kind]}</h3>
         {drawing ? <div className="fit-canvas"><Preview drawing={drawing} /></div>
           : <div className="uf-empty"><ul className="uf-problems">{problems.map((p) => <li key={p}>{p}</li>)}</ul></div>}
-        <p className="fit-hint"><b>{FITTING_NAMES[kind]}</b> · The part picked in the list is on the canvas. <b>PROCESS</b> it; once processed its box gets a check mark.</p>
+        <p className="fit-hint"><b>{FITTING_NAMES[kind]}</b> · The part picked in the list is on the canvas. <b>Send to Import 2D</b> puts the parts in the import list, to be processed there; once processed, a part's box gets a check mark.</p>
       </section>
 
       <aside className="uf-panel fit-panel" aria-label={FITTING_NAMES[kind]}>
@@ -88,23 +91,40 @@ export function FittingsPage({ session, onSession, stateOf, properties, onProper
                   <span className={`fit-box${st === "saved" ? " is-done" : ""}`} aria-label={st === "saved" ? "Processed" : "Not processed yet"}>
                     {st === "saved" && <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M2 6.5 5 9.5 10 3" fill="none" stroke="#fff" strokeWidth="2" /></svg>}
                   </span>
-                  <span className="fit-part-name"><b>{p.name}</b> · {p.label}{st === "listed" && <em> in the import list</em>}</span>
+                  <span className="fit-part-name"><b>{p.name}</b> · {p.label}{st === "listed" && <em> sent to Import 2D</em>}</span>
                   <span className="fit-part-qty">×{p.qty * count}</span>
                 </button>
               );
             })}
           </div>
-          <div className="uf-row fit-count">
-            <label htmlFor="fit-count">{COUNT_LABEL[kind]}</label>
-            <NumInput id="fit-count" className="field uf-num" value={count} min={1} int onCommit={(n) => onSession({ ...session, count: { ...session.count, [kind]: Math.max(1, n) } })} />
-            <button type="button" className="link fit-props" onClick={onProperties} title="Material, thickness and project come from the Import 2D Properties">{properties}</button>
+          <h3 className="uf-lbl">For Import 2D <small>as the 3D extractor's parts</small></h3>
+          <div className="uf-row uf-name">
+            <label htmlFor="fit-name">Name</label>
+            <NameField key={`${kind}:${name}`} value={name} placeholder={fittingTitle(kind, values)} onCommit={(v) => setOwn("name", v)} />
           </div>
+          <div className="uf-row uf-name fit-own">
+            <label htmlFor="fit-count">{COUNT_LABEL[kind]}</label>
+            <NumInput id="fit-count" className="field uf-num uf-qty" value={count} min={1} int onCommit={(n) => onSession({ ...session, count: { ...session.count, [kind]: Math.max(1, n) } })} />
+            <div className="uf-mat">
+              <Combobox value={material}
+                // a new material empties the thickness, so both are chosen together (a flange keeps its recommended one)
+                onChange={(m) => onSession({ ...session, material: { ...(session.material ?? {}), [kind]: m }, thick: { ...(session.thick ?? {}), [kind]: m === material ? thick : rec } })}
+                options={lists.strict ? lists.techMaterials : lists.materials} strict={lists.strict} strictNote="not in the Technology tables (Settings → Machines → Technology: material tags)"
+                placeholder={importMaterial ? `${importMaterial} (Import 2D)` : "Material"} ariaLabel="Material" newHint="a new material" />
+            </div>
+            <div className="fit-thick">
+              <Combobox value={thick} onChange={(t) => setOwn("thick", t.replace(",", ".").replace(/[^\d.]/g, ""))}
+                options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict} strictNote="no Technology row for this thickness of this material (Settings → Machines → Technology)"
+                placeholder={importThickness ? `${importThickness} (Import 2D)` : "Thickness"} ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
+            </div>
+          </div>
+          <p className="uf-note uf-name-note">The parts are named after it ({parts.length > 1 ? "with -A, -B, … where a fitting has several" : "one part"}). No material or thickness: the Import 2D properties&apos; ones.</p>
         </div>
         <footer className="fit-actions">
-          <button type="button" className="btn" onClick={() => onSession({ ...session, values: { ...session.values, [kind]: FITTING_DEFAULTS[kind] }, count: { ...session.count, [kind]: 1 } })}
+          <button type="button" className="btn" onClick={() => onSession({ ...session, values: { ...session.values, [kind]: FITTING_DEFAULTS[kind] }, count: { ...session.count, [kind]: 1 }, name: { ...(session.name ?? {}), [kind]: "" } })}
             title="Back to the starting values">Clear</button>
-          <button type="button" className="btn btn-primary" disabled={!parts.length} onClick={() => onAdd(parts.map((part, i) => ({ part, sig: sigs[i] })), count)}
-            title="The parts go into the Import 2D list, waiting to be processed (the same part again replaces the one waiting)">Add to the import list</button>
+          <button type="button" className="btn btn-primary" disabled={!parts.length} onClick={() => onSend(parts.map((part, i) => ({ part, sig: sigs[i] })), count, { material: material.trim(), thicknessMm: thick.trim() })}
+            title="The parts go into the Import 2D list with their quantity, material and thickness, to be processed there (sent again: the part waiting there is replaced)">Send to Import 2D</button>
         </footer>
       </aside>
     </div>
@@ -112,6 +132,17 @@ export function FittingsPage({ session, onSession, stateOf, properties, onProper
 }
 
 const fmt = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-US", { maximumFractionDigits: 1 });
+
+/** The fitting's name for Import 2D: committed on Enter or leaving the field; empty: its own (the placeholder). */
+function NameField({ value, placeholder, onCommit }: { value: string; placeholder: string; onCommit: (v: string) => void }) {
+  const [v, setV] = useState(value);
+  const done = () => { const t = v.trim().replace(/[\\/:*?"<>|]/g, "_"); if (t !== value) onCommit(t); setV(t); };
+  return (
+    <input id="fit-name" className="field" value={v} placeholder={placeholder} spellCheck={false} aria-label="Fitting name for Import 2D"
+      onChange={(e) => setV(e.target.value)} onBlur={done}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setV(value); setTimeout(() => (e.target as HTMLInputElement).blur(), 0); } }} />
+  );
+}
 
 // ------------------------------------------------------------------ the diagrams, values in boxes on them
 
