@@ -38,11 +38,13 @@ export function useProcessDel({ index, single, sheets, partName, onClear }: {
   /** DELETE SELECTED on: a click on a processed part takes its cut path away */
   const [delSel, setDelSel] = useState(false);
   /** what the deletes took, newest last, for UNDO (one step a press; DELETE PROCESS ALL: every sheet in one) */
-  type Took = { index: number; patch: Partial<Pick<NestedSheet, "cut" | "remnant">> };
+  type Took = { index: number; patch: Partial<Pick<NestedSheet, "cut" | "remnant">>; sig?: string; after?: NestedSheet["cut"] };
   const [undo, setUndo] = useState<Took[][]>([]);
   const last = undo[undo.length - 1] ?? null;
+  // the sheet as it was (its parts where they were): UNDO puts a cut path back only on that same layout
+  const sigOf = (sh: NestedSheet | undefined) => (sh ? sh.parts.map((q) => `${q.partId}:${Math.round(q.x * 100)}:${Math.round(q.y * 100)}:${q.angle}:${q.mirror ? 1 : 0}`).join("|") : "");
   const setLast = (u: Took | Took[] | null) =>
-    setUndo((l) => (u ? [...l, Array.isArray(u) ? u : [u]].slice(-50) : l.slice(0, -1)));
+    setUndo((l) => (u ? [...l, (Array.isArray(u) ? u : [u]).map((t) => ({ ...t, sig: sigOf(sheets[t.index]) }))].slice(-50) : l.slice(0, -1)));
   useEffect(() => setMsg(null), [index]);
   useEffect(() => { if (!single) setDelSel(false); }, [single]);
 
@@ -57,8 +59,9 @@ export function useProcessDel({ index, single, sheets, partName, onClear }: {
     const contours = cut.contours.filter((c) => !goes(c));
     const keys = { ...cut.keys };
     for (const k of parts) delete keys[k];
-    setLast({ index, patch: { cut } });
-    onClear(index, { cut: contours.length ? { ...cut, contours, keys } : undefined });
+    const after = contours.length ? { ...cut, contours, keys } : undefined;
+    setLast({ index, patch: { cut }, after });
+    onClear(index, { cut: after });
     diag("process", "Process del: part", { sheet: index + 1, parts: [...parts] });
     const names = [...parts].map((k) => partName(sheet, k) ?? `Part ${k + 1}`);
     setMsg(`${names.join(", ")}: not processed any more`);
@@ -104,9 +107,22 @@ export function useProcessDel({ index, single, sheets, partName, onClear }: {
         {last && (
           <button type="button" className="btn btn-plain pp-btn" title={last.length > 1 ? `${last.length} sheets: bring back what was deleted` : `Sheet ${last[0].index + 1}: bring back what was deleted`}
             onClick={() => {
-              for (const t of last) onClear(t.index, t.patch);
-              diag("process", "Process del: undone", { sheets: last.map((t) => t.index + 1) });
-              setMsg(last.length > 1 ? `${last.length} sheets: brought back` : `Sheet ${last[0].index + 1}: brought back`);
+              // only where the sheet is still as it was and still without what was deleted (processed again,
+              // or its parts moved or the sheet gone since: left as it is now)
+              let back = 0;
+              for (const t of last) {
+                const now = sheets[t.index];
+                if (!now || sigOf(now) !== t.sig) continue;
+                const patch: Partial<Pick<NestedSheet, "cut" | "remnant">> = {};
+                if (t.patch.cut && (!now.cut?.contours.length || (t.after && now.cut === t.after))) patch.cut = t.patch.cut;
+                if (t.patch.remnant && !now.remnant) patch.remnant = t.patch.remnant;
+                if (!Object.keys(patch).length) continue;
+                onClear(t.index, patch);
+                back++;
+              }
+              diag("process", "Process del: undone", { sheets: last.map((t) => t.index + 1), back });
+              setMsg(!back ? "Nothing brought back: the sheets changed since (processed again, or their parts moved)"
+                : last.length > 1 ? `${back} of ${last.length} sheets: brought back` : `Sheet ${last[0].index + 1}: brought back`);
               setLast(null);
             }}>Undo delete{undo.length > 1 ? ` (${undo.length})` : ""}</button>
         )}

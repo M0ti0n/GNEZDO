@@ -394,6 +394,8 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
   // each face's top side, in the file (from the base: whatever way the shell's faces point)
   const nTop = new Map<number, V3>([[base, top0]]);
   const bends: Bend[] = [];
+  /** compensation taking length off a face at a bend: the face, into it from the bend, how much */
+  const lost: { f: number; into: V3; mm: number; bend: number }[] = [];
   const joins: { line: [V3, V3]; gi: Rigid; gj: Rigid; i: number; j: number; shift: V3 }[] = [];
   // the edges faces were laid flat across (bends, or flat joins); other shared edges are seams: cut
   // (per face: an edge split in pieces keeps its number, and only the piece joined is not cut)
@@ -447,6 +449,9 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
             shift = mul3(mul3(intoI, -1), ba - 2 * sb);
             innerR = comp.r;
           }
+          // what each face loses at this bend (faces moved over each other), for the check below
+          const took = -dot3(shift, mul3(intoI, -1));
+          if (took > 1e-9) { lost.push({ f: i, into: intoI, mm: took / 2, bend: bends.length + 1 }); lost.push({ f: j, into: intoJ, mm: took / 2, bend: bends.length + 1 }); }
           bends.push({ innerR, angleDeg: Math.round(((phi * 180) / Math.PI) * 100) / 100, length: Math.round(L * 100) / 100, inner: up, up });
         }
         const gj = compose(g.get(i)!, compose(move(shift), R));
@@ -458,6 +463,16 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
       }
     }
   }
+  // a face losing as much as it is wide across its bends (thickness or radius far too big for it): the
+  // flat pattern would fold over itself; said, not drawn quietly
+  const tooMuch = new Set<number>();
+  for (const x of lost) {
+    const along = lost.filter((y) => y.f === x.f && Math.abs(dot3(y.into, x.into)) > 0.99);
+    const pts = faces[x.f].loops.flatMap((l) => l.edges.flatMap((e) => e.pts)).map((q) => dot3(q, x.into));
+    const [lo, hi] = lowHigh(pts);
+    if (along.reduce((n, y) => n + y.mm, 0) >= hi - lo - 1e-6) along.forEach((y) => tooMuch.add(y.bend));
+  }
+  if (tooMuch.size) problems.push(`The compensation takes more off a face than it is wide (bend ${[...tooMuch].sort((p, q) => p - q).join(", ")}): check the thickness${comp?.side === "direct" ? "" : " and the inner radius"}`);
   const missing = sel.filter((i) => !g.has(i));
   if (missing.length) problems.push(`${missing.length} picked ${missing.length === 1 ? "face does" : "faces do"} not share an edge with the others: left out`);
   stats.skin = stats.planes = g.size;

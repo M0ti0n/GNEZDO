@@ -399,8 +399,11 @@ export function App() {
   const fitState = (sig: string): FitPartState => (imports.some((i) => i.fitting === sig) ? "listed" : fitSaved.has(sig) ? "saved" : "new");
   /** Fitting parts into the import list (`count` fittings) with their own material and thickness ("": the
    *  Import 2D properties'); one waiting there already is replaced. Their item ids. */
-  const addFittings = (list: { part: FittingPart; sig: string }[], count: number, own: { material: string; thicknessMm: string }): string[] => {
+  const addFittings = (list: { part: FittingPart; sig: string }[], count: number, own0: { material: string; thicknessMm: string }): string[] => {
     const stamp = Date.now().toString(36);
+    // a thickness typed half (".", "0", "-"): none (the Import 2D properties' one)
+    const tn = Number(own0.thicknessMm);
+    const own = { material: own0.material, thicknessMm: Number.isFinite(tn) && tn > 0 ? String(tn) : "" };
     const items: ImportItem[] = list.map(({ part, sig }, k) => {
       const prev = imports.find((i) => i.fitting === sig && !i.processed);
       const id = prev?.id ?? `imp-fit-${stamp}-${k}`;

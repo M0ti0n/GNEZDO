@@ -4,6 +4,11 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Bug check of the changes since the deep check:
+  - Process del: **UNDO DELETE no longer puts an old cut path back over a newer one**: it brings a sheet's cut path or remnant back only while that sheet is as it was (same parts in the same places) and still has none (processed again since: "Nothing brought back"). Before, Auto cut again and then Undo delete replaced the new cut paths with the old ones
+  - 3D Extractor, Stitch: a compensation that takes **more off a face than it is wide** (thickness or inner radius far too big) is now reported ("check the thickness"); before, the flat pattern folded over itself without a word
+  - Import 2D: **Ctrl+A** (no tool on) picks every line, ready for Ctrl+C, Delete or a Manipulate tool; before, it selected the page's text
+  - Special tools: a thickness typed half ("." or "0") is sent as none (the Import 2D properties' one), not as a broken value
 - Process → Process del: new **Delete process all**: the cut path and the remnant of every sheet in one go (asked first); one UNDO DELETE brings them all back
 - Import 2D: **Delete key** erases the lines picked (no tool on: click, Ctrl + click or a window, then Delete); Undo brings them back. In a text box it deletes text, as before
 - 3D Extractor:
