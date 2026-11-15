@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D: **Ctrl+C / Ctrl+V**. Pick lines with no tool on (click, Ctrl + click, or a window: an annotation such as M6 in one drag), **Ctrl+C** copies them; **Ctrl+V** hangs the copy on the pointer (by its middle, snapping as the drawing tools do): every click places one more copy, Esc or a right click stops. The copy stays while the app is open, so it can also go into another part. A copy is as its original (an annotation stays traced). In a text box Ctrl+C / Ctrl+V copy and paste the text, as before
 - **Special tools only make the fittings; Import 2D processes them** (as the 3D extractor's flat patterns):
   - no more **Properties** and **Process** in Special tools; the fitting's panel has **Name** (its parts are named after it, -A, -B, … where it has several; empty: the fitting's own name, as before), its **pieces**, **material** and **thickness** (a flange: its recommended thickness until another is chosen), as the 3D extractor's parts
   - **Send to Import 2D** puts the parts in the import list with their quantity, material and thickness (none: the Import 2D properties'); sent again, the part waiting there is replaced

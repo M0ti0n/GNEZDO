@@ -443,6 +443,16 @@ export function rotateEnt(e: Entity, c: Pt, deg: number): Entity {
   }
 }
 
+/** A line, arc, circle or spline moved by (dx, dy). */
+export function moveEnt(e: Entity, dx: number, dy: number): Entity {
+  const m = (q: Pt): Pt => ({ x: q.x + dx, y: q.y + dy });
+  switch (e.kind) {
+    case "line": return { ...e, a: m(e.a), b: m(e.b) };
+    case "circle": case "arc": return { ...e, c: m(e.c) };
+    case "spline": return { ...e, fit: e.fit.map(m) };
+  }
+}
+
 /** The angle typed or shown by hand: from c to p, degrees counterclockwise from the right (0°); by hand it
  *  goes in whole degrees and is caught within 3° of every 45°. */
 export function handAngle(c: Pt, p: Pt, exact: boolean): number | null {

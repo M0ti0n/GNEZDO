@@ -12,7 +12,7 @@ import { DynamicInput } from "../components/DynamicInput";
 import { DynFields } from "../components/DynFields";
 import {
   ALL_SNAPS, aidId, angleOf as dirAngle, carcEnt, chamferAt, clipLine, cornerAt, dirAt, dragGrip, filletAt, findSnap, gripAt, gripsOf, handAngle, joinLines, offsetOf, offsetSide,
-  orthoSnap, rotateEnt, rotPt, slotOf, slotRadius, toAid, typed, xlineAt, xlineMiddle, xlineThrough, type Aid, type Corner, type GripKind, type SnapKind,
+  moveEnt, orthoSnap, rotateEnt, rotPt, slotOf, slotRadius, toAid, typed, xlineAt, xlineMiddle, xlineThrough, type Aid, type Corner, type GripKind, type SnapKind,
 } from "../import/draw";
 import { factorFor, factorText, parseScale, scalePart, sizeOf } from "../import/scale";
 import {
@@ -22,6 +22,9 @@ import {
 } from "../import/geometry";
 
 type NestRules = { rotations: Rotation[]; mirror: boolean; filler: boolean; commonCut: boolean };
+
+/** Lines copied with Ctrl+C (kept while the app is open, also for other parts); base: the middle of their box. */
+let clipboard: { ents: Entity[]; base: Pt } | null = null;
 
 /** Screen = (x * s + tx, -y * s + ty): s pixels per mm, y flipped (CAD y points up). */
 interface View { s: number; tx: number; ty: number }
@@ -285,7 +288,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const [grip, setGrip] = useState<{ id: string; g: GripKind; p: Pt; orig: Entity; now: Entity | null } | null>(null);
   const pickText = (ids: Set<string>): string => {
     if (!ids.size) return "";
-    if (ids.size > 1) return `${ids.size} picked (Ctrl + click for more, Esc to clear). Aid line turns them into aid lines`;
+    if (ids.size > 1) return `${ids.size} picked (Ctrl + click for more, Esc to clear). Ctrl+C copies them; Aid line turns them into aid lines`;
     const e = drawing.entities.find((x) => ids.has(x.id));
     if (!e) return "";
     if (!e.drawn) return "From the file: locked in place (the tools still work on it). Aid line turns it into an aid line";
@@ -295,6 +298,36 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
 
   // Rotate: the items picked (stage 0), then the point turned around (1), then the angle (2)
+  // Ctrl+V: the copied lines follow the pointer; each click places a copy (Esc or right click stops)
+  const [paste, setPaste] = useState<{ ents: Entity[]; base: Pt } | null>(null);
+  const PASTE_TIP = "Click to place the copy, again for more copies. Esc or right click to stop";
+  const copyPicked = () => {
+    const ents = drawing.entities.filter((x) => pick.has(x.id));
+    if (!ents.length) { setMessage({ text: "Pick lines first (click, Ctrl + click or a window), then Ctrl+C", bad: true }); return; }
+    const b = ents.map(boxOf).reduce(union);
+    clipboard = { ents, base: { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 } };
+    setMessage({ text: `Copied ${ents.length} ${ents.length === 1 ? "line" : "lines"}. Ctrl+V to paste (also in another part)` });
+  };
+  const startPaste = () => {
+    if (!clipboard) { setMessage({ text: "Nothing copied yet: pick lines, then Ctrl+C", bad: true }); return; }
+    if (annot) placeAnnot();
+    if (tool) onTool(tool);   // the tool is put away, as clicking its button again
+    setPick(new Set());
+    setHoverId(null);
+    setPaste(clipboard);
+    setMessage({ text: PASTE_TIP });
+  };
+  const placePaste = (at: Pt) => {
+    if (!paste) return;
+    const dx = at.x - paste.base.x, dy = at.y - paste.base.y;
+    // a copy is as its original (an annotation stays traced and locked, a line drawn here keeps its grips)
+    const made = paste.ents.map((x) => ({ ...moveEnt(x, dx, dy), id: newId("cp") }));
+    commit({ ...drawing, entities: [...drawing.entities, ...made] }, "Paste");
+    setSelected(null);
+    setMessage({ text: `Pasted ${made.length} ${made.length === 1 ? "line" : "lines"}. ${PASTE_TIP}` });
+  };
+  const endPaste = (text = "Paste finished") => { setPaste(null); setCursor(null); setMessage({ text }); };
+
   const [rotSel, setRotSel] = useState<Set<string>>(new Set());
   const [rotStage, setRotStage] = useState<0 | 1 | 2>(0);
   const [rotPivot, setRotPivot] = useState<Pt | null>(null);
@@ -578,6 +611,15 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Ctrl+C copies the lines picked, Ctrl+V pastes them (not while typing: there the text is copied)
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !document.querySelector(".dlg-backdrop")) {
+        const t = e.target as HTMLElement | null;
+        const typing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+        const k = e.key.toLowerCase();
+        if (!typing && !annot && k === "c" && !tool) { e.preventDefault(); copyPicked(); return; }
+        if (!typing && !annot && k === "v") { e.preventDefault(); startPaste(); return; }
+      }
+      if (e.key === "Escape" && paste && !document.querySelector(".dlg-backdrop")) { endPaste(); return; }
       // Scale: Ctrl+A picks the whole part (not while typing in a field other than the scale box)
       if (tool === "scale" && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && !document.querySelector(".dlg-backdrop")) {
         const t = e.target as HTMLElement | null;
@@ -707,6 +749,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     if ((e.target as Element).closest(".gcheck, .canvas-ui, .dyn-in, .annot-ui")) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    // pasting: a left click places a copy, a right click stops (the middle button still pans)
+    if (paste && view && e.button !== 1) {
+      if (e.button === 0) placePaste(snapAt(e.clientX, e.clientY, view, null).p);
+      else endPaste();
+      return;
+    }
     // no tool on: a grip of a line drawn here is dragged (lines from the file have none)
     if (e.button === 0 && !tool && view) {
       const gr = gripAt(drawing.entities.filter((x) => x.drawn), toModel(e.clientX, e.clientY, view), SNAP_PX / view.s);
@@ -751,6 +799,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       return;
     }
     if (box) { const p = local(e); setBox((b) => b && { ...b, x1: p.x, y1: p.y }); return; }
+    if (paste && view && !drag.current) { setCursor(snapAt(e.clientX, e.clientY, view, null)); return; }
     const d = drag.current;
     if (!d) {
       if (!tool) {
@@ -1178,6 +1227,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   };
 
   const onTool = (id: string) => {
+    setPaste(null);
     // drawing again: the part is checked again when CHECK is pressed
     if (manualCheck && (DRAWING_TOOLS.has(id) || id === "annotate")) setChecking(false);
     // another tool, or the same one again: the text being typed is placed
@@ -1391,6 +1441,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {offPick?.ent && <path d={pathOf(offPick.ent)} vectorEffect="non-scaling-stroke" className="meas-pick" />}
               {offPick?.aid && (() => { const d = aidPath(offPick.aid, view, size); return d ? <path d={d} vectorEffect="non-scaling-stroke" className="meas-pick" /> : null; })()}
               {/* Offset: where the copy goes */}
+              {/* Paste: the copy at the pointer */}
+              {paste && cur && <path d={paste.ents.map((x) => pathOf(moveEnt(x, cur.x - paste.base.x, cur.y - paste.base.y))).join(" ")} vectorEffect="non-scaling-stroke" className="pv-add" />}
               {tool === "offset" && offPick && cur && (() => {
                 const D = typed(dyn[0] ?? "");
                 if (offPick.aid?.kind === "xline") {
@@ -1507,6 +1559,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               const q = toScreen((corner?.at ?? cornerHover)!, view);
               return <rect x={q.x - 7} y={q.y - 7} width={14} height={14} transform={`rotate(45 ${q.x} ${q.y})`} className={`corner-mark${corner ? " is-on" : ""}`} pointerEvents="none" />;
             })()}
+            {paste && cursor && <SnapMark c={toScreen(cursor.p, view)} kind={cursor.snapped ? cursor.kind : undefined} dir={cursor.dir} />}
             {tool === "offset" && cursor && <SnapMark c={toScreen(cursor.p, view)} kind={cursor.snapped ? cursor.kind : undefined} dir={cursor.dir} />}
             {/* Offset: the distance next to the pointer, like the size of a rectangle being drawn */}
             {tool === "offset" && offPick && cur && cursor && (() => {
