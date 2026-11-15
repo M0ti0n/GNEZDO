@@ -95,6 +95,23 @@ export const FIT_TOOLS: { id: string; label: string }[] = [
 /** The fitting's icon (also the Fittings panel's heading). */
 export const fitIcon = (kind: string) => FIT_ICON[kind];
 
+const PU = "#a64ca6";   // markings
+const MIRROR_ICON = (
+  <Ico>
+    <path d="M5 41L18.5 7V41Z" stroke={K} strokeWidth="3.2" strokeLinejoin="miter" />
+    <path d="M24 5V43" stroke={R} strokeWidth="4" strokeLinecap="butt" />
+    <path d="M29.5 7V41H43Z" stroke="#22b14c" strokeWidth="3.2" strokeLinejoin="miter" />
+  </Ico>
+);
+const MOVE_ICON = (
+  <Ico>
+    <path d="M4.5 29.5H18.5V43.5H10.5L4.5 37.5Z" stroke={K} strokeWidth="3.2" strokeLinejoin="miter" />
+    <path d="M29.5 4.5H43.5V18.5H35.5L29.5 12.5Z" stroke="#22b14c" strokeWidth="3.2" strokeLinejoin="miter" />
+    <path d="M16.5 31.5L25.5 22.5" stroke={R} strokeWidth="2.4" strokeLinecap="butt" />
+    <Arrow x={29} y={19} angle={-45} color={R} />
+  </Ico>
+);
+
 export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: ReactNode }[] = [
   {
     id: "properties", label: "Properties",
@@ -272,7 +289,25 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
         <path d="M12 38L33.4 20L25.7 10.8L4.3 28.8Z" stroke={K} strokeWidth="3.2" strokeLinejoin="miter" />
         <path d="M45.7 33.3A34 34 0 0 0 41.6 21.3" stroke="#22b14c" strokeWidth="2.6" strokeLinecap="butt" />
         <path d="M38.7 16.6L44.6 19.4L38.6 23.2Z" fill="#22b14c" stroke="#22b14c" strokeWidth="1" />
-        <circle cx="12" cy="38" r="3.8" fill={BL} />
+        <circle cx="12" cy="38" r="3.8" fill="#22b14c" />
+      </Ico>
+    ),
+  },
+  {
+    // Fab's icon: the part (black) mirrored over the red axis into the green one
+    id: "mirror", label: "Mirror", icon: MIRROR_ICON,
+  },
+  {
+    // Fab's icon: the part (black) carried along the red arrow to where it goes (green)
+    id: "move", label: "Move", icon: MOVE_ICON,
+  },
+  {
+    // Fab's icon: a purple cross and M8 (a marking engraved on the part)
+    id: "markings", label: "Markings",
+    icon: (
+      <Ico>
+        <path d="M16 4V31M2.5 17.5H29.5" stroke={PU} strokeWidth="4.6" strokeLinecap="butt" />
+        <text x="46" y="45" textAnchor="end" fill={PU} fontSize="19" fontWeight="600" fontFamily="'Barlow Semi Condensed', 'Barlow', Arial, sans-serif">M8</text>
       </Ico>
     ),
   },
@@ -379,7 +414,7 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
 ];
 
 /** Tools shown together under one button: it opens them below the strip (open until another group or this one is clicked). */
-export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim"; tools: string[]; icon: ReactNode }[] = [
+export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim" | "manip"; tools: string[]; icon: ReactNode }[] = [
   {
     id: "drawGroup", label: "Drawing", tone: "draw", tools: ["line", "circle", "arc", "rect", "slot", "xline", "offset", "fillet", "chamfer"],
     icon: <Ico><path d="M12 10L37 37" stroke={K} strokeWidth="3.4" /><circle cx="12" cy="10" r="3.8" fill={BL} /><circle cx="37" cy="37" r="3.8" fill={BL} /></Ico>,
@@ -396,12 +431,13 @@ export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim"; too
       </Ico>
     ),
   },
+  { id: "manipGroup", label: "Manipulate", tone: "manip", tools: ["rotate", "mirror", "move"], icon: MOVE_ICON },
 ];
 
 /** The strip's order: single tools and groups (a group stands where its first tool stood). */
-const STRIP: string[] = ["extend", "trim", "drawGroup", "alignH", "alignV", "erase", "dimGroup", "annotate",
+const STRIP: string[] = ["extend", "trim", "drawGroup", "alignH", "alignV", "erase", "dimGroup", "annotate", "markings", "scale", "manipGroup",
   // (the fittings are Special tools' own: not in Import 2D)
-  ...IMPORT_TOOLS.map((t) => t.id).filter((id) => !["properties", "extend", "trim", "alignH", "alignV", "erase", "annotate", "process"].includes(id) && !id.startsWith("fit-") && !TOOL_GROUPS.some((g) => g.tools.includes(id))),
+  ...IMPORT_TOOLS.map((t) => t.id).filter((id) => !["properties", "extend", "trim", "alignH", "alignV", "erase", "annotate", "markings", "scale", "process"].includes(id) && !id.startsWith("fit-") && !TOOL_GROUPS.some((g) => g.tools.includes(id))),
   "process"];
 
 /** blocked: tools that cannot be used now, with the reason shown on hover (greyed out). */
