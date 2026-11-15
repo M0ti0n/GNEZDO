@@ -748,7 +748,10 @@ export async function arrange(inp: ArrangeInput): Promise<PlacedPart[] | null> {
   // a new run only when it can end in time (a run takes about as long as the last one)
   let last = 0;
   const timed = (t: Try) => { const s = performance.now(); run(t); last = performance.now() - s; };
-  for (const t of tries) { if (best && performance.now() + last > packEnd) break; await pause(); timed(t); }
+  // nothing has fitted yet: the search goes on past its time, to 2.5 x the budget, then gives up (no room).
+  // Before, it tried every order and band to the end: 10 - 45 s for parts that do not fit the sheet.
+  const giveUp = t0 + 2.5 * budget;
+  for (const t of tries) { const now = performance.now(); if (best ? now + last > packEnd : now > giveUp) break; await pause(); timed(t); }
   // with time left: shuffled orders
   let seed = 12345;
   const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);

@@ -1,8 +1,8 @@
 // The cut path's points as NC moves: arcs found again where the points lie on a circle (a part's
 // arcs and circles come from the drawing as points 7.5° apart), straight lines merged where they
-// continue each other. Every vertex stays within `tol` of the move it ends up in; arcs are cut at
-// 180° (a full circle is two moves) and need at least 3 chords, each at most 8° of the arc, so a
-// polygon with long sides stays a polygon.
+// continue each other. Every vertex stays within `tol` of the move it ends up in; arcs stay under
+// 180° (a full circle is three moves of 120°) and need at least 3 chords, each at most 8° of the arc,
+// so a polygon with long sides stays a polygon.
 
 import type { NcPt, NcSeg } from "./postprocessor";
 
@@ -93,6 +93,29 @@ export function fitMoves(p: NcPt[], tol = TOL): NcSeg[] {
       arc = { j, ...a };
     }
     if (arc && arc.j > k) {
+      // the circle goes on past this arc (it stopped at 180°): the whole run in arcs of equal length.
+      // Before, a full circle was two arcs of 172.5° and two chords left over as straight lines: a
+      // flat on every circle, 0.06 mm deep on a 60 mm hole, 0.3 mm on a 300 mm one.
+      const r = len(sub(p[i], arc.c));
+      let e = arc.j, sweep = 0;
+      for (let q = i; q < arc.j; q++) sweep += 2 * Math.asin(Math.min(1, len(sub(p[q + 1], p[q])) / (2 * r)));
+      while (e + 1 < p.length) {
+        const ang = 2 * Math.asin(Math.min(1, len(sub(p[e + 1], p[e])) / (2 * r)));
+        const turn = cross(sub(p[e], p[e - 1]), sub(p[e + 1], p[e]));
+        if (Math.abs(len(sub(p[e + 1], arc.c)) - r) > 2 * tol || ang > MAX_CHORD || Math.abs(turn) < 1e-12 || turn > 0 === arc.cw) break;
+        sweep += ang;
+        e++;
+      }
+      if (e > arc.j) {
+        const n = Math.floor(sweep / Math.PI) + 1, chords = e - i;
+        const cuts = Array.from({ length: n + 1 }, (_, m) => i + Math.round((chords * m) / n));
+        const parts = chords >= 3 * n ? cuts.slice(1).map((b, m) => ({ b, a: arcThrough(p, cuts[m], b, tol) })) : [];
+        if (parts.length && parts.every((x) => x.a)) {
+          for (const x of parts) out.push({ k: "arc", to: p[x.b], c: { x: r3(x.a!.c.x), y: r3(x.a!.c.y) }, cw: x.a!.cw });
+          i = e;
+          continue;
+        }
+      }
       out.push({ k: "arc", to: p[arc.j], c: { x: r3(arc.c.x), y: r3(arc.c.y) }, cw: arc.cw });
       i = arc.j;
       continue;

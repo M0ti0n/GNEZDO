@@ -871,13 +871,16 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           common.set(id, lay);
         }
         if (join && !common.size) { setNote(`Nothing to join. ${why.join("; ")}.`); return; }
-        // the copies Common cut joins afresh leave their old blocks
-        const kept = blocks.filter((b) => !b.some((i) => common.has(before[i].partId)));
+        // Common cut moves only the parts it joins: the rest of the selection stays where it is
+        if (join) { const joined = ids.filter((i) => common.has(before[i].partId)); ids.length = 0; ids.push(...joined); }
+        // Arrange keeps the blocks already joined as they are
+        const kept = join ? [] : blocks;
         // the note and the spinning ring show before the work starts (the ring keeps turning on its own while it runs)
         await new Promise((r) => window.setTimeout(r, 50));
         if (itemsRef.current !== before) { setNote(null); return; }
         // Rules -> Nesting rules: towards 0,0, or packed where they are (from the selection's corner nearest 0,0)
-        const toOrigin = loadNestingRules().arrangeToOrigin;
+        // (Common cut: always where they are)
+        const toOrigin = !join && loadNestingRules().arrangeToOrigin;
         let area = usable;
         if (!toOrigin) {
           const g = unionBox(ids.map((i) => geoOf(before, i)!.box));
@@ -902,7 +905,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
         commit(out, before);
         arrangeMemo.current = { key, items: out, round: again };
         const boxArea = (l: PlacedPart[]) => { const u = unionBox(ids.map((i) => geoOf(l, i)!.box)); return (u.x1 - u.x0) * (u.y1 - u.y0); };
-        if (join) { const n = ids.filter((i) => common.has(before[i].partId)).length; setNote(`Joined ${n} parts into common cut blocks${why.length ? `. Not joined: ${why.join("; ")}` : ""}`); return; }
+        if (join) { setNote(`Joined ${ids.length} parts into common cut blocks${why.length ? `. Left as they were: ${why.join("; ")}` : ""}`); return; }
         setNote(again ? `Try ${again + 1}: box ${(100 * (1 - boxArea(out) / boxArea(before))).toFixed(1)} % smaller` : `Arranged ${ids.length} ${ids.length === 1 ? "part" : "parts"} (Arrange again to try for better)`);
       } finally {
         setWorking(false);

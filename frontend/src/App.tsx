@@ -20,7 +20,7 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { partGeometry } from "./import/toPart";
 import type { SavePart } from "./api/api";
-import { forgetPartMarks, shiftSheet } from "./job/cutPath";
+import { forgetPartMarks, remapCut, shiftSheet } from "./job/cutPath";
 import { loadDefaultProject } from "./job/defaultProject";
 import { applyRules, loadRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
 import { quantityFromName } from "./import/geometry";
@@ -999,7 +999,10 @@ export function App() {
     const resized = (sh: NestedSheet, origin: Origin): NestedSheet => {
       const dx = patch.lengthMm !== undefined && origin.endsWith("right") ? patch.lengthMm - sh.lengthMm : 0;
       const dy = patch.widthMm !== undefined && origin.startsWith("bottom") ? patch.widthMm - sh.widthMm : 0;
-      return { ...shiftSheet(sh, dx, dy), ...patch };
+      const moved = shiftSheet(sh, dx, dy);
+      // the list of parts changed (one deleted, pasted): the cut path follows the parts to their new places in it
+      const cut = patch.parts && patch.cut === undefined && moved.cut ? { cut: remapCut(moved.cut, moved.parts, patch.parts) } : {};
+      return { ...moved, ...patch, ...cut };
     };
     patchSol(jobId, solId, (x) => x.run?.result ? {
       ...x, run: { ...x.run, result: { ...x.run.result, sheets: x.run.result.sheets.map((sh, i) => (i === index ? resized(sh, x.origin ?? machineFor(jobId).origin) : sh)) } },
@@ -1197,7 +1200,9 @@ export function App() {
       const list = st.list.flatMap((x) => {
         const sheets = x.run?.result?.sheets;
         if (x.error || !sheets || !sheets.some((sh) => sh.parts.some((pl) => pl.partId === partId))) return [x];
-        const keep = sheets.map((sh, k) => ({ sh: { ...sh, parts: sh.parts.filter((pl) => pl.partId !== partId) }, k, was: sh.parts.length }))
+        // (the cut path of the parts that stay follows them to their new places in the list)
+        const without = (sh: NestedSheet): NestedSheet => { const parts = sh.parts.filter((pl) => pl.partId !== partId); return { ...sh, parts, ...(sh.cut ? { cut: remapCut(sh.cut, sh.parts, parts) } : {}) }; };
+        const keep = sheets.map((sh, k) => ({ sh: without(sh), k, was: sh.parts.length }))
           .filter(({ sh, was }) => sh.parts.length > 0 || was === 0);
         if (!keep.length) return [];
         const at = new Map(keep.map(({ k }, i) => [k, i]));

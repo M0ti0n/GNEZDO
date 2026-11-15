@@ -59,7 +59,9 @@ export function useInlineCut({ index, single, sheets, parts, machine, origin, on
   /** these parts (null: every one) back to the automatic cut; the sheet's cut path after it */
   const reprocess = async (sh: NestedSheet, list: number[]) => {
     const rule: CutRule = !sh.cut || sh.cut.rule === "manual" ? "shortest" : sh.cut.rule;
-    return processSheet({ sheet: sh, paths, machine, origin, rule, what: "all", parts: list, ordered: false, traceOf: () => true });
+    const { leadFit: _, ...cut } = await processSheet({ sheet: sh, paths, machine, origin, rule, what: "all", parts: list, ordered: false, traceOf: () => true });
+    void _;
+    return cut;
   };
 
   const run = async () => {
