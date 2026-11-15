@@ -18,7 +18,7 @@ import { flatDxf, type Unfolded, type V2 } from "../import/step/unfold";
 // on the machine): foil / finish on it when marked; bend marks are traced on the bends coming up from it.
 // SEND TO IMPORT 2D puts the flat pattern into the import list (sent again: replaced there).
 
-type Pick = "base" | "top" | "stitch" | "edge" | "one" | "measure3d" | "measure" | "look" | null;
+type Pick = "base" | "top" | "stitch" | "edge" | "deledge" | "one" | "measure3d" | "measure" | "look" | null;
 
 const K = "#1b1b1b", G = "#1d9641", R = "#e3262b", B = "#1d7fd0";
 
@@ -114,6 +114,8 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   };
   const u = useMemo(() => unfoldPart(step.text, st, step.body), [step.text, st, step.body]);
   const [pick, setPick] = useState<Pick>(stitchMode && !st.stitch.length ? "stitch" : null);
+  // DEL: no added edges left, nothing to delete
+  useEffect(() => { if (pick === "deledge" && !cuts.length) setPick(null); }, [pick, cuts.length]);
   const [profiles, setProfiles] = useState<UnfoldProfile[]>(loadProfiles);
   const [editProfiles, setEditProfiles] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -169,6 +171,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   const hint = pick === "base" ? "click a flat face to unfold from" : pick === "top" ? "click a face on the top side"
     : pick === "stitch" ? "click flat faces one next to the other (again: out)"
     : pick === "edge" ? (edgeA ? "click the second point of the same flat face (corners and middles snap; Ctrl: square to the edge); along an edge: a seam" : "click a corner or an edge's middle, then a second one: across a flat face it is split; along an edge (its two ends) that edge is a seam")
+    : pick === "deledge" ? "click an added edge (green) to delete it"
     : pick === "one" ? "click the flat face to send as it is"
     : pick === "measure3d" ? "click a face, an edge, a hole's edge or a corner; then a second one"
     : pick === "look" ? "click a face: the view looks straight at it" : "drag: turn · right drag: move · wheel: zoom where the pointer is";
@@ -202,13 +205,22 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
           <button type="button" className="uf-strip" onClick={() => setPanes("both")} title="Show the part (3D) again">
             <PaneIcon dir="right" /><span>Part (3D)</span></button>
           <h3>Part <em>{hint}</em>
-            <button type="button" className={`icon-btn uf-view-btn${viewOpen ? " is-on" : ""}`} aria-expanded={viewOpen} onClick={() => setViewOpen(!viewOpen)} title="View options: edge lines, solid or wireframe, colors">
+            <button type="button" className={`icon-btn uf-wire-btn${view.wire ? " is-on" : ""}`} aria-pressed={view.wire} onClick={() => setView({ wire: !view.wire })}
+              title={view.wire ? "Wireframe: only the edges (click: solid)" : "Solid (click: wireframe, only the edges)"}>
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+                {view.wire
+                  ? <><path d="M2.5 5.5L8 2.5l5.5 3v6L8 14.5l-5.5-3z" /><path d="M2.5 5.5L8 8.5l5.5-3M8 8.5v6" strokeDasharray="1.6 1.4" /></>
+                  : <><path d="M2.5 5.5L8 2.5l5.5 3L8 8.5z" fill="#c7d3d6" /><path d="M2.5 5.5L8 8.5v6l-5.5-3z" fill="#8fa2a7" /><path d="M8 8.5l5.5-3v6L8 14.5z" fill="#a9b9bd" /></>}
+              </svg>
+            </button>
+            <button type="button" className={`icon-btn uf-view-btn${viewOpen ? " is-on" : ""}`} aria-expanded={viewOpen} onClick={() => setViewOpen(!viewOpen)} title="View options: edge lines, colors">
               <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" /><circle cx="5" cy="4" r="1.6" fill="#fff" /><circle cx="11" cy="8" r="1.6" fill="#fff" /><circle cx="7" cy="12" r="1.6" fill="#fff" /></svg>
             </button>
             <PaneButtons side="3d" panes={panes} onPanes={setPanes} /></h3>
           {viewOpen && <ViewOptions view={view} onView={setView} onClose={() => setViewOpen(false)}
             material={(partMaterial || fileMaterial || material).trim()} fileColor={solid.color} />}
           <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick === "measure" ? null : pick} edgeA={edgeA} onCorner={edgeCorner}
+            cuts={cuts} onDeleteCut={(i) => setCuts(cuts.filter((_, k) => k !== i), `Edge ${i + 1} deleted`)}
             view={view} material={(partMaterial || fileMaterial || material).trim().toLowerCase()} onLooked={() => setPick(null)}
             measure={pick === "measure3d" ? meas : []} onMeasure={(m) => setMeas((l) => (l.length >= 2 ? [m] : [...l, m]))}
             onPick={(f, k) => {
@@ -241,7 +253,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
         <section className={`uf-pane uf-flat${panes === "3d" ? " is-shut" : ""}`}>
           <button type="button" className="uf-strip" onClick={() => setPanes("both")} title="Show the flat pattern again">
             <PaneIcon dir="left" /><span>Flat pattern</span></button>
-          <h3>Flat pattern <em>{u.outline.length ? `${fmt(u.box.x1)} × ${fmt(u.box.y1)} mm · ` : ""}{stitchMode && st.comp.side === "none" ? "faces as they are" : `K ${st.kFactor}`} · top side up{st.foil ? " (foil / finish)" : ""}</em>
+          <h3>Flat pattern <em>{u.outline.length ? `${fmt(u.box.x1)} × ${fmt(u.box.y1)} mm · ` : ""}{stitchMode && st.comp.side === "none" ? "faces as they are" : stitchMode && st.comp.side === "direct" ? `direct: −2 × ${fmt(st.comp.t)} mm on down bends` : `K ${st.kFactor}`} · top side up{st.foil ? " (foil / finish)" : ""}</em>
             <PaneButtons side="flat" panes={panes} onPanes={setPanes} /></h3>
           {u.outline.length ? <FlatView u={u} st={st} measure={pick === "measure"} />
             : <div className="uf-empty">{stitchMode ? "Click the faces to stitch on the part: the first one stays, each next one must share an edge with one picked before." : "Not unfolded."}</div>}
@@ -298,8 +310,9 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
             <div className="uf-row"><span>Added edges</span><span className="uf-val">{cuts.length}</span>
               <button type="button" className={`btn btn-plain uf-mini${pick === "edge" ? " is-on" : ""}`} title="Click two corners of a flat face: it is split along the line (a flange cut at its corners)"
                 onClick={() => { setEdgeA(null); setPick(pick === "edge" ? null : "edge"); }}>{pick === "edge" ? "Adding…" : "Add"}</button>
-              {cuts.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => setCuts(cuts.slice(0, -1), "Last edge taken away")}>Undo</button>}
-              {cuts.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => setCuts([], "Added edges cleared")}>Clear</button>}</div>
+              {cuts.length > 0 && <button type="button" className={`btn btn-plain uf-mini${pick === "deledge" ? " is-on" : ""}`} title="Delete added edges one by one: click an added edge (green) on the part"
+                onClick={() => { setEdgeA(null); setPick(pick === "deledge" ? null : "deledge"); }}>{pick === "deledge" ? "Deleting…" : "Del"}</button>}
+              {cuts.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => { if (pick === "deledge") setPick(null); setCuts([], "Added edges cleared"); }}>Clear</button>}</div>
             <div className="uf-row"><span>Seams</span><span className="uf-val">{seams.length}</span>
               {seams.length > 0 && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ seams: [] })}>Clear</button>}</div>
             <div className="uf-row"><span>Top side</span><span className="uf-val">{st.flip === undefined ? "inside of most bends" : "turned by hand"}</span>
@@ -307,13 +320,18 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
               {st.flip !== undefined && <button type="button" className="btn btn-plain uf-mini" onClick={() => set({ flip: undefined })}>Auto</button>}</div>
             <div className="uf-row"><span>Compensate</span>
               <span className="cols-toggle uf-seg" role="radiogroup" aria-label="Bend compensation">
-                {(["none", "top", "bottom"] as const).map((c) => (
+                {(["none", "top", "bottom", "direct"] as const).map((c) => (
                   <button key={c} type="button" role="radio" aria-checked={st.comp.side === c} className={st.comp.side === c ? "is-on" : ""}
-                    title={c === "none" ? "The faces laid flat as they are (fine for thin sheet)" : `The faces are the sheet's ${c} side: each bend gets its allowance less the setbacks (thickness, inner radius, K-factor below)`}
-                    onClick={() => set({ comp: { ...st.comp, side: c, t: st.comp.t || 2, r: st.comp.r || st.comp.t || 2 } })}>{c === "none" ? "No" : c === "top" ? "Top side" : "Bottom side"}</button>
+                    title={c === "none" ? "The faces laid flat as they are (fine for thin sheet)"
+                      : c === "direct" ? "The faces are the top side: on every DOWN bend the top side is the outside, wider by the thickness, so the thickness comes off both faces (2 × thickness at a 90° bend). UP bends: as they are"
+                      : `The faces are the sheet's ${c} side: each bend gets its allowance less the setbacks (thickness, inner radius, K-factor below)`}
+                    onClick={() => set({ comp: { ...st.comp, side: c, t: st.comp.t || 2, r: st.comp.r || st.comp.t || 2 } })}>{c === "none" ? "No" : c === "top" ? "Top side" : c === "bottom" ? "Bottom side" : "Direct"}</button>
                 ))}
               </span></div>
-            {st.comp.side !== "none" && (<>
+            {st.comp.side === "direct" && (
+              <div className="uf-row"><span>Thickness</span><NumInput className="field uf-num" value={st.comp.t} min={0} aria-label="Sheet thickness (mm)" onCommit={(n) => set({ comp: { ...st.comp, t: n } })} /><small>mm: off each face at a down bend</small></div>
+            )}
+            {st.comp.side !== "none" && st.comp.side !== "direct" && (<>
               <div className="uf-row"><span>Thickness</span><NumInput className="field uf-num" value={st.comp.t} min={0} aria-label="Sheet thickness (mm)" onCommit={(n) => set({ comp: { ...st.comp, t: n } })} />
                 <span>inner R</span><NumInput className="field uf-num" value={st.comp.r} min={0} aria-label="Inner bend radius (mm)" onCommit={(n) => set({ comp: { ...st.comp, r: n } })} /><small>mm</small></div>
               <div className="uf-row"><label>K-factor</label><NumInput className="field uf-num" value={st.kFactor} min={0} aria-label="K-factor" onCommit={(n) => set({ kFactor: Math.min(1, n) })} /></div>
@@ -423,21 +441,22 @@ const PaneIcon = ({ dir }: { dir: "left" | "right" }) => (
   </svg>
 );
 
-/** In a pane's title: fold it away to its side (the other one takes the room), or give it the whole room. */
+/** In a pane's title: the arrow makes this pane bigger (it points the way it grows: the other one folds
+ *  away to the side); made bigger, the button puts them side by side again. */
 function PaneButtons({ side, panes, onPanes }: { side: "3d" | "flat"; panes: Panes; onPanes: (p: Panes) => void }) {
-  const other = side === "3d" ? "flat" : "3d";
   const alone = panes === side;
   return (
     <span className="uf-pane-btns">
-      <button type="button" className="icon-btn" onClick={() => onPanes(alone ? "both" : side)}
-        title={alone ? "Side by side again" : `Only this one (the ${other === "3d" ? "part" : "flat pattern"} folds away)`}>
-        <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
-          {alone ? <><rect x="2" y="3" width="5" height="10" rx="1" /><rect x="9" y="3" width="5" height="10" rx="1" /></> : <rect x="2" y="3" width="12" height="10" rx="1" />}
-        </svg>
-      </button>
-      {!alone && (
-        <button type="button" className="icon-btn" onClick={() => onPanes(other)} title="Fold this one away to the side">
-          <PaneIcon dir={side === "3d" ? "left" : "right"} />
+      {alone ? (
+        <button type="button" className="icon-btn" onClick={() => onPanes("both")} title="Side by side again">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
+            <rect x="2" y="3" width="5" height="10" rx="1" /><rect x="9" y="3" width="5" height="10" rx="1" />
+          </svg>
+        </button>
+      ) : (
+        <button type="button" className="icon-btn" onClick={() => onPanes(side)}
+          title={`Make this one bigger (the ${side === "3d" ? "flat pattern" : "part"} folds away to the side)`}>
+          <PaneIcon dir={side === "3d" ? "right" : "left"} />
         </button>
       )}
     </span>
@@ -466,8 +485,11 @@ const fmt = (v: number, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleSt
 
 // ------------------------------------------------------------------ the part in 3D (shaded, faces picked)
 
-function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, onCorner, view, material, onLooked }: {
-  solid: Solid; u: Unfolded; st: StepSettings; flip: boolean; pick: "base" | "top" | "stitch" | "edge" | "one" | "measure3d" | "look" | null;
+function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, onCorner, cuts = [], onDeleteCut, view, material, onLooked }: {
+  solid: Solid; u: Unfolded; st: StepSettings; flip: boolean; pick: "base" | "top" | "stitch" | "edge" | "deledge" | "one" | "measure3d" | "look" | null;
+  /** the edges added (stitch), and DEL: one of them clicked */
+  cuts?: FaceCut[];
+  onDeleteCut?: (i: number) => void;
   /** how it is shown: edge lines, wireframe, colors */
   view: ViewPrefs;
   /** its material (lower case), for its color */
@@ -492,6 +514,8 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
   const [hoverM, setHoverM] = useState<MPick | null>(null);
   // ADD EDGE: the point the pointer snaps to
   const [hoverP, setHoverP] = useState<{ p: V3; kind: "corner" | "mid" | "perp" } | null>(null);
+  // DEL: the added edge under the pointer
+  const [hoverCut, setHoverCut] = useState<number | null>(null);
   const seamSet = useMemo(() => new Set(st.seams ?? []), [st.seams]);
   const drag = useRef<{ x: number; y: number; moved: boolean; pan: boolean } | null>(null);
   const rotNRef = useRef<((n: V3) => V3) | null>(null);
@@ -624,6 +648,12 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
           g.fillText(hoverP.kind === "corner" ? "Corner" : hoverP.kind === "mid" ? "Middle" : "Square to edge", hc[0] + 10, hc[1] + 18);
         }
       }
+      // DEL: the added edge under the pointer, red
+      if (pick === "deledge" && hoverCut !== null && cuts[hoverCut]) {
+        const a = pr(cuts[hoverCut][0]), b = pr(cuts[hoverCut][1]);
+        g.strokeStyle = "#e3262b"; g.lineWidth = 5; g.lineCap = "round";
+        g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); g.lineCap = "butt";
+      }
       for (const m of measure) mark(m, "#f07d1a", 3.5);
       if (measure.length === 2) {
         const a = pr(refPoint(measure[0])), b = pr(refPoint(measure[1]));
@@ -637,7 +667,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
     const ro = new ResizeObserver(draw);
     ro.observe(c);
     return () => ro.disconnect();
-  }, [solid, cam, skin, base, hover, pick, picked, stitchMode, measure, hoverM, edgeA, hoverP, seamSet, view, material]);
+  }, [solid, cam, skin, base, hover, pick, picked, stitchMode, measure, hoverM, edgeA, hoverP, hoverCut, cuts, seamSet, view, material]);
 
   const faceAt = (x: number, y: number) => {
     const g = cv.current?.getContext("2d");
@@ -690,6 +720,20 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
     }
     return best;
   };
+  /** DEL: the added edge nearest the pointer (8 px), the one in front first */
+  const cutAt = (x: number, y: number): number | null => {
+    const pr = proj.current;
+    if (!pr) return null;
+    let best: { d: number; z: number; i: number } | null = null;
+    cuts.forEach(([p0, p1], i) => {
+      const [ax, ay, az] = pr(p0), [bx, by, bz] = pr(p1);
+      const vx = bx - ax, vy = by - ay, L2 = vx * vx + vy * vy || 1;
+      const t = Math.max(0, Math.min(1, ((x - ax) * vx + (y - ay) * vy) / L2));
+      const d = Math.hypot(ax + vx * t - x, ay + vy * t - y), z = az + (bz - az) * t;
+      if (d < 8 && (!best || d < best.d - 0.5 || (Math.abs(d - best.d) <= 0.5 && z < best.z))) best = { d, z, i };
+    });
+    return (best as { i: number } | null)?.i ?? null;
+  };
   /** ADD EDGE: a corner, an edge's middle (10 px), or with Ctrl after the first point: square onto the edge under the pointer */
   const edgePointAt = (x: number, y: number, ctrl: boolean): { p: V3; kind: "corner" | "mid" | "perp" } | null => {
     const pr = proj.current;
@@ -703,13 +747,17 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
       }
     }
     const front = frontAt(x, y, faceAt(x, y)), eps = sizeRef.current * 0.01;
-    let best: { d: number; p: V3; kind: "corner" | "mid" } | null = null;
+    let best: { d: number; z: number; p: V3; kind: "corner" | "mid" } | null = null;
     const take = (p: V3, kind: "corner" | "mid") => {
       const q = pr(p), d = Math.hypot(q[0] - x, q[1] - y);
       if (d >= 10 || q[2] > front + eps) return;
-      // a corner wins over a middle a little nearer
+      // hidden where it is on the screen (a face in front of it there): not this one. Off the part, at its
+      // outline, nothing is under the pointer and a corner behind (the sheet's other side) came first
+      if (frontAt(q[0], q[1], faceAt(q[0], q[1])) < q[2] - eps) return;
+      // a corner wins over a middle a little nearer; points (nearly) on top of each other on the screen
+      // (a corner in front and one behind it, the part turned to look along an edge): the one in front
       const score = d - (kind === "corner" ? 3 : 0);
-      if (!best || score < best.d) best = { d: score, p, kind };
+      if (!best || score < best.d - 2 || (Math.abs(score - best.d) <= 2 && q[2] < best.z - eps)) best = { d: score, z: q[2], p, kind };
     };
     for (const fc of solid.faces) for (const l of fc.loops) for (const e of l.edges) {
       if (e.pts.length < 2) continue;
@@ -831,6 +879,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
           }
           if (pick === "measure3d") { const [x, y] = local(e); setHoverM(measureAt(x, y)); }
           else if (pick === "edge") { const [x, y] = local(e); setHoverP(edgePointAt(x, y, e.ctrlKey || e.metaKey)); }
+          else if (pick === "deledge") { const [x, y] = local(e); setHoverCut(cutAt(x, y)); }
           else if (pick) { const [x, y] = local(e); setHover(faceAt(x, y)); }
         }}
         onPointerUp={(e) => {
@@ -839,13 +888,14 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
           const [x, y] = local(e);
           if (pick === "measure3d") { const m = measureAt(x, y); if (m) onMeasure(m); return; }
           if (pick === "edge") { const sp = edgePointAt(x, y, e.ctrlKey || e.metaKey); if (sp) onCorner?.(sp.p); return; }
+          if (pick === "deledge") { const i = cutAt(x, y); if (i !== null) { setHoverCut(null); onDeleteCut?.(i); } return; }
           const f = faceAt(x, y);
           if (f === null) return;
           if (pick === "look") { lookAt(f); onLooked(); return; }
           onPick(f, solid.faces[f].surf.kind);
         }}
         onDoubleClick={(e) => { if (pick) return; const [x, y] = local(e); const f = faceAt(x, y); if (f !== null) lookAt(f); }}
-        onPointerLeave={() => { setHover(null); setHoverM(null); setHoverP(null); }}
+        onPointerLeave={() => { setHover(null); setHoverM(null); setHoverP(null); setHoverCut(null); }}
         // zoom where the pointer is: the point under it stays there
         onWheel={(e) => {
           const c0 = cv.current;
@@ -907,14 +957,7 @@ function ViewOptions({ view, onView, onClose, material, fileColor }: {
   };
   return (
     <div className="uf-viewopts" role="dialog" aria-label="View options">
-      <div className="uf-vo-head"><b>View</b><button type="button" className="icon-btn" onClick={onClose} aria-label="Close">×</button></div>
-      <div className="uf-row">
-        <span>Show</span>
-        <span className="cols-toggle uf-seg" role="radiogroup" aria-label="Solid or wireframe">
-          <button type="button" role="radio" aria-checked={!view.wire} className={!view.wire ? "is-on" : ""} onClick={() => onView({ wire: false })}>Solid</button>
-          <button type="button" role="radio" aria-checked={view.wire} className={view.wire ? "is-on" : ""} onClick={() => onView({ wire: true })}>Wireframe</button>
-        </span>
-      </div>
+      <div className="uf-vo-head"><b>View</b><button type="button" className="icon-btn uf-vo-close" onClick={onClose} aria-label="Close" title="Close">×</button></div>
       <div className="uf-row">
         <label htmlFor="uf-edge">Edge lines</label>
         <input id="uf-edge" type="range" min={0.5} max={4} step={0.25} value={view.edge} onChange={(e) => onView({ edge: Number(e.target.value) })} />
@@ -950,48 +993,109 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
   const { u, lines: threadLines } = useMemo(() => applyThreads(u0, st), [u0, st]);
   const svg = useRef<SVGSVGElement>(null);
   const [pts, setPts] = useState<V2[]>([]);
-  const [near, setNear] = useState<V2 | null>(null);
+  const [near, setNear] = useState<{ p: V2; kind: "point" | "line" } | null>(null);
   useEffect(() => { setPts([]); setNear(null); }, [measure, u]);
   const W = u.box.x1, H = u.box.y1;
   const pad = Math.max(W, H) * 0.09;
   const y = (v: number) => H - v;
   const marks = marksOf(u, st);
   const fs = Math.max(W, H) * 0.026;
-  // snap points: outline corners and arc centers
-  const snaps = useMemo(() => {
+  // zoom (wheel, + / −) and move (right or middle button, or left without Flat distance); a new flat
+  // pattern size: fitted again
+  const fitBox = { x: -pad, y: -pad, w: W + 2 * pad, h: H + 2 * pad };
+  const [vb, setVb] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  useEffect(() => setVb(null), [W, H]);
+  const box = vb ?? fitBox;
+  // the svg's size on the screen: drawing units per screen pixel (marks and the dimension keep their size)
+  const [px, setPx] = useState({ w: 1, h: 1 });
+  useEffect(() => {
+    const el = svg.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setPx({ w: el.clientWidth || 1, h: el.clientHeight || 1 }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const upp = Math.max(box.w / px.w, box.h / px.h);
+  const zoomAt = (k: number, at?: [number, number]) => setVb((prev) => {
+    const b = prev ?? fitBox, cx = at ? at[0] : b.x + b.w / 2, cy = at ? at[1] : b.y + b.h / 2;
+    const w = Math.min(fitBox.w * 4, Math.max(fitBox.w / 400, b.w / k)), f = w / b.w;
+    return { x: cx - (cx - b.x) * f, y: cy - (cy - b.y) * f, w, h: b.h * f };
+  });
+  const svgPt = (clientX: number, clientY: number): [number, number] => {
+    const m = svg.current!.getScreenCTM()!.inverse();
+    const q = new DOMPoint(clientX, clientY).matrixTransform(m);
+    return [q.x, q.y];
+  };
+  const pan = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  // Flat distance snaps to points (corners, hole centers, middles of straight edges, bend line ends and
+  // middles), else to a point on a line (the outline, a bend line)
+  const snapPts = useMemo(() => {
     const out: V2[] = [];
-    for (const e of u.outline) { if (e.arc) out.push(e.arc.c); out.push(e.pts[0], e.pts[e.pts.length - 1]); }
+    const mid = (a: V2, b: V2): V2 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    for (const e of u.outline) {
+      if (e.arc) out.push(e.arc.c);
+      out.push(e.pts[0], e.pts[e.pts.length - 1]);
+      if (!e.arc && e.pts.length === 2) out.push(mid(e.pts[0], e.pts[1]));
+    }
+    for (const [a, b] of u.bendLines) out.push(a, b, mid(a, b));
     return out;
   }, [u]);
-  const toMm = (e: React.PointerEvent): { p: V2; snap: V2 | null } => {
-    const s = svg.current!;
-    const m = s.getScreenCTM()!.inverse();
-    const q = new DOMPoint(e.clientX, e.clientY).matrixTransform(m);
-    const p: V2 = [q.x, H - q.y];
-    const tol = 10 / s.getScreenCTM()!.a;
-    let best: V2 | null = null, bd = tol;
-    for (const c of snaps) { const d = Math.hypot(c[0] - p[0], c[1] - p[1]); if (d < bd) { bd = d; best = c; } }
-    return { p, snap: best };
+  const snapLines = useMemo(() => [...u.outline.map((e) => e.pts), ...u.bendLines.map(([a, b]) => [a, b])], [u]);
+  const toMm = (e: React.PointerEvent): { p: V2; snap: { p: V2; kind: "point" | "line" } | null } => {
+    const [sx, sy] = svgPt(e.clientX, e.clientY);
+    const p: V2 = [sx, H - sy];
+    let best: V2 | null = null, bd = 10 * upp;
+    for (const c of snapPts) { const d = Math.hypot(c[0] - p[0], c[1] - p[1]); if (d < bd) { bd = d; best = c; } }
+    if (best) return { p, snap: { p: best, kind: "point" } };
+    let on: V2 | null = null, od = 8 * upp;
+    for (const run of snapLines) for (let i = 1; i < run.length; i++) {
+      const a = run[i - 1], b = run[i], vx = b[0] - a[0], vy = b[1] - a[1], L2 = vx * vx + vy * vy;
+      if (L2 < 1e-12) continue;
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L2));
+      const q: V2 = [a[0] + vx * t, a[1] + vy * t], d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      if (d < od) { od = d; on = q; }
+    }
+    return { p, snap: on ? { p: on, kind: "line" } : null };
   };
+  const r = 4 * upp, tf = 13 * upp;
   const dim = (a: V2, b: V2, k: number) => {
     const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
     return (
       <g key={`d${k}`} className="uf-dim">
         <path d={`M${a[0]} ${y(a[1])} L${b[0]} ${y(b[1])}`} />
-        <circle cx={a[0]} cy={y(a[1])} r={fs * 0.18} /><circle cx={b[0]} cy={y(b[1])} r={fs * 0.18} />
-        <text x={(a[0] + b[0]) / 2} y={y((a[1] + b[1]) / 2) - fs * 0.5} fontSize={fs} textAnchor="middle">{fmt(d)} (X {fmt(Math.abs(b[0] - a[0]))}, Y {fmt(Math.abs(b[1] - a[1]))})</text>
+        <circle cx={a[0]} cy={y(a[1])} r={r * 0.75} /><circle cx={b[0]} cy={y(b[1])} r={r * 0.75} />
+        <text x={(a[0] + b[0]) / 2} y={y((a[1] + b[1]) / 2) - tf * 0.6} fontSize={tf} textAnchor="middle">{fmt(d)} (X {fmt(Math.abs(b[0] - a[0]))}, Y {fmt(Math.abs(b[1] - a[1]))})</text>
       </g>
     );
   };
+  const snapMark = (q: { p: V2; kind: "point" | "line" }) => q.kind === "point"
+    ? <circle className="uf-snap" cx={q.p[0]} cy={y(q.p[1])} r={r * 1.4} />
+    : <path className="uf-snap" d={`M${q.p[0] - r} ${y(q.p[1]) - r} L${q.p[0] + r} ${y(q.p[1]) + r} M${q.p[0] - r} ${y(q.p[1]) + r} L${q.p[0] + r} ${y(q.p[1]) - r}`} />;
   return (
-    <svg ref={svg} className={`uf-svg${measure ? " is-measure" : ""}`} viewBox={`${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}`}
-      onPointerMove={(e) => { if (measure) setNear(toMm(e).snap); }}
+    <div className="uf-flatwrap">
+    <svg ref={svg} className={`uf-svg${measure ? " is-measure" : ""}`} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
+      onWheel={(e) => zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, svgPt(e.clientX, e.clientY))}
+      onContextMenu={(e) => e.preventDefault()}
+      onPointerMove={(e) => {
+        const pn = pan.current;
+        if (pn) {
+          const dx = e.clientX - pn.x, dy = e.clientY - pn.y;
+          if (!pn.moved && Math.hypot(dx, dy) < 3) return;
+          pn.moved = true; pn.x = e.clientX; pn.y = e.clientY;
+          setVb((prev) => { const b = prev ?? fitBox; return { ...b, x: b.x - dx * upp, y: b.y - dy * upp }; });
+          return;
+        }
+        if (measure) setNear(toMm(e).snap);
+      }}
       onPointerDown={(e) => {
-        if (!measure) return;
+        // move: right or middle button, or the left one when not measuring
+        if (e.button !== 0 || !measure) { pan.current = { x: e.clientX, y: e.clientY, moved: false }; (e.currentTarget as Element).setPointerCapture(e.pointerId); return; }
         const { p, snap } = toMm(e);
-        const q = snap ?? p;
+        const q = snap?.p ?? p;
         setPts((l) => (l.length >= 2 ? [q] : [...l, q]));
-      }}>
+      }}
+      onPointerUp={() => { pan.current = null; }}
+      onDoubleClick={() => { if (!measure) setVb(null); }}>
       {u.outline.map((e, i) => (e.arc && e.arc.a1 - e.arc.a0 >= 2 * Math.PI - 1e-9
         ? <circle key={i} className="uf-o" cx={e.arc.c[0]} cy={y(e.arc.c[1])} r={e.arc.r} />
         : <path key={i} className="uf-o" d={`M${e.pts.map((p) => `${p[0]} ${y(p[1])}`).join(" L")}`} />))}
@@ -1018,10 +1122,18 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
       {st.foil && <text className="uf-foil" x={0} y={-pad * 0.35} fontSize={fs * 0.9}>TOP: FOIL / FINISH UP</text>}
       <text className="uf-size" x={W / 2} y={H + pad * 0.6} fontSize={fs} textAnchor="middle">{fmt(W)}</text>
       <text className="uf-size" x={-pad * 0.45} y={H / 2} fontSize={fs} textAnchor="middle" transform={`rotate(-90 ${-pad * 0.45} ${H / 2})`}>{fmt(H)}</text>
-      {measure && near && <circle className="uf-snap" cx={near[0]} cy={y(near[1])} r={fs * 0.35} />}
+      {measure && near && snapMark(near)}
       {pts.length === 2 && dim(pts[0], pts[1], 0)}
-      {pts.length === 1 && <circle className="uf-snap" cx={pts[0][0]} cy={y(pts[0][1])} r={fs * 0.25} />}
+      {pts.length === 1 && <circle className="uf-snap" cx={pts[0][0]} cy={y(pts[0][1])} r={r} />}
     </svg>
+    <div className="uf-zoom" role="group" aria-label="Zoom">
+      <button type="button" className="icon-btn" onClick={() => zoomAt(1.4)} title="Zoom in (or the mouse wheel)" aria-label="Zoom in">+</button>
+      <button type="button" className="icon-btn" onClick={() => zoomAt(1 / 1.4)} title="Zoom out (or the mouse wheel)" aria-label="Zoom out">−</button>
+      <button type="button" className="icon-btn uf-zoom-fit" onClick={() => setVb(null)} title="Fit the whole flat pattern (or double-click)" aria-label="Fit">
+        <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></svg>
+      </button>
+    </div>
+    </div>
   );
 }
 

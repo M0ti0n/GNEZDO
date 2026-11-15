@@ -4,6 +4,15 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- 3D Extractor:
+  - **Solid / wireframe** is its own button beside View (the cube; lit: wireframe); View keeps edge lines and colors. The View pop-up's **×** is bigger
+  - the **arrows** in the Part and Flat pattern titles now make **that** pane bigger (they point the way it grows; the other one folds away to the side); made bigger, the button puts them side by side again
+  - Stitch, Added edges: **Del** instead of Undo: click an added edge (green, red under the pointer) to delete just that one
+  - Add edge: a corner or middle **hidden behind a face** is no longer snapped to (with the part turned, a corner on the sheet's other side, a few pixels off, could be taken: the edge ended up on the wrong side)
+  - its count on the left rail is **blue**, as Import 2D's (it was grey)
+  - **Flat pattern zoom**: mouse wheel (where the pointer is), **+ / −** and fit buttons (or double-click); drag to move it (right or middle button while measuring)
+  - **Flat distance snaps** to corners, hole centers, middles of straight edges and the bend lines' ends and middles, and else to any point on a line (outline, bend line); the dimension keeps its size when zoomed
+  - Stitch, Compensate: new **Direct**: the faces are the top side; on every **down** bend the thickness comes off both faces (2 × thickness at 90°; at other angles thickness × tan(angle / 2) each, the same at 90°). Up bends stay as they are
 - **An open side panel follows the tab shown**: a 2D part shows Import 2D's panel, a 3D part the 3D Extractor's, a job Parts, the Jobs and Remnants screens their own; a screen without a panel of its own (Home, Settings, …) closes it. Before, the panel stayed as it was (Import 2D's over a job, …). A closed panel stays closed
 - **Arrange: trapezoids pair (one turned 180°, interlocking) again**. Working out a part's best pair took longer than its share of Arrange's time when the part has holes (their many points), so it was dropped, started again from nothing at the next Arrange, and never finished: the 650 × 450 trapezoid plate was never paired. Pairs are now worked out on the outline alone (about twice as fast), get at least 1 s on the first Arrange (on top of the packing's time: that Arrange can take up to a second longer), and are remembered after that
 - Import 2D: **new tool group Manipulate** (green): **Rotate** (moved in here; its point turned around is now green), **Mirror** and **Move**. All three pick the same way: a click, Ctrl + click or a window, Ctrl+A for the whole part, Enter / letting go of Ctrl / right click when done. **Lines from the file stay one block**: picking one of them picks them all, so an imported part is only mirrored or moved whole; lines drawn here go on their own
