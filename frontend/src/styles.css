@@ -1132,6 +1132,10 @@ th.num .th-sort { flex-direction: row-reverse; }
 .gc-pill { padding: 2px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 .gc-pill.is-bad { background: #fde8e7; color: #c8171d; }
 .gc-pill.is-ok { background: var(--green-tint); color: var(--green-ink); }
+/* a part drawn in Import 2D: checked when CHECK is pressed (in the pill's place) */
+.gc-check-btn { padding: 4px 14px; border-radius: 6px; border: 2px solid #1f9a3d; background: #fff; color: #1f9a3d; font: inherit; font-size: 15px; font-weight: 700; letter-spacing: .06em; cursor: pointer; white-space: nowrap; }
+.gc-check-btn:hover { background: #1f9a3d; color: #fff; }
+.gc-sum.gc-manual { background: #eef6f0; color: var(--ink-2); }
 .gc-toggle { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; color: var(--ink-3); }
 .gc-toggle:hover { background: var(--sheet); color: var(--ink); }
 .gcheck.is-closed .gc-toggle svg { transform: rotate(180deg); }

@@ -10,6 +10,9 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - Import 2D: the six fitting buttons no longer show in its tool strip (they did nothing there)
 - Import 2D: **an open tool group (Drawing, Dimension) closes** when any other button of the strip is pressed, and when a pop-up opens (PROCESS, Properties, …); before, it stayed open over the pop-up. Picking a tool inside the group keeps it open, as before
 - Import 2D: the drawing tools' number boxes (dynamic input) no longer take the keyboard while a pop-up is open or another field is being typed in
+- Import 2D: **only the middle (or right) mouse button pans the canvas**; a left-button drag with a drawing tool (Line, Circle, Arc, …) no longer moves the view
+- Import 2D, a part **drawn in Import 2D** (New part, also once named): the Geometry check no longer runs while it is being drawn (a half-drawn part is all open lines: red lines and balloons everywhere). A green **CHECK** button stands in the status's place; pressed, the part is checked and stays checked while its problems are fixed; taking a drawing tool again puts the check away. **PROCESS needs it**. Parts from files are checked all the time, as before
+- Import 2D, **Arc**: the dashed preview now goes through the second point (it bulged to the other side)
 
 ## Build 15 Nov 2026 (`1aa39fc`)
 
