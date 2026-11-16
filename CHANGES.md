@@ -11,6 +11,9 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - LVD machine file, **MS**: **pierce times** from the machine's pierce table (the same columns): Pierce = normal pierce (#117: 0.2 s at 1 – 2 mm … 10 s at 15 mm), new **Quick pierce** (#102: 0.1 … 1 s)
 - LVD machine file, **SS**: E001 / E002 / E003 speeds and pierce times (normal #117, quick #102) from the machine's own stainless table (INOX304, the default columns): 1 mm 6310, 1.2 – 2 mm as 2 mm (6321), 3 mm 6331, 4 mm 6340, 5 mm 6350, 6 mm 6360, 8 mm 6380, 10 mm 6400, 15 mm 6450; new **12 mm** row (6420; leads, gaps and the rest as 10 mm). From 8 mm up the table has no quick pierce (0). E004 (trace) as it was
 - LVD machine file: **hole (window) lead-out 0** at every thickness, MS and SS
+- HACO machine file: speeds, pierce times and torch times from the HACO table for the **Hypertherm HPR130** power source (said in each technology's new Note): 80 A 2 – 10 mm, 130 A 12 – 35 mm; new **2.5 mm** row (80 A, 7980 mm/min; its other values as 3 mm); small holes at half the speed, as before
+- Technology: a **Note** per technology (what it is for, e.g. the power source it was made with), beside its name
+- Technology (plasma and others, not laser): new column **Torch down / up** [s], the time the torch takes to go down and up again for every contour; the time estimates (Nest report, Cost report, Simulation) count it at every pierce and every trace
 - Technology, laser: new column **Quick pierce** [s]: the Simulation counts it for an Inline cut stretch started with a quick pierce (before: no time at all)
 
 ## Build 16 Nov 2026 (`840fc56`)

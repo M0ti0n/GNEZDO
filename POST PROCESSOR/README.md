@@ -4,7 +4,7 @@ One zip per machine: its postprocessor and technology tables. Import in GNEZDO: 
 
 | Zip | Machine |
 |---|---|
-| `HACO-KOMPAKT-plasma.gnezdo-machine.zip` | HACO KOMPAKT plasma, ISO incremental, 80 A and 130 A technology tables |
+| `HACO-KOMPAKT-plasma.gnezdo-machine.zip` | HACO KOMPAKT plasma, ISO incremental, 80 A and 130 A technology tables, **for a Hypertherm HPR130 power source** (speeds, pierce and torch down / up times from the HACO table for the HPR130) |
 | `LVD-AXEL-laser.gnezdo-machine.zip` | LVD Axel 3015 laser (.CNC: a subprogram per part, G980 placement, E codes), MS (MS, Mn12, HARDOX) and SS (SS, ALU, Zn) technology tables. 0,0 corner set to bottom left: check it on the machine. Speeds per thickness: E001 fast, E002 medium, E003 slow, E004 trace (only for the time estimates: the machine cuts with its own tables) |
 
 Each zip's files also sit loose in a folder of the same name, to read and diff.

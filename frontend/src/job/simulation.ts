@@ -58,13 +58,18 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
     const rp: Pt[] = [at, ...viaOf(c, contours[k - 1]), p0];
     const racc = accOf(rp), d = racc[racc.length - 1];
     if (d > 0.01) { const dt = (d / rapidMmMin) * 60; legs.push({ k, phase: "rapid", t0: t, t1: t + dt, pts: rp, acc: racc }); t += dt; }
+    if (c.kind === "trace" && (row?.torchS || 0) > 0) {
+      // a trace: the torch down and up again too
+      const dt = row!.torchS!;
+      legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt;
+    }
     if (c.kind !== "trace") {
       // an inline cut's stretch: no pierce time unless it pierces (normally, or quickly: the row's Quick pierce)
       // a common pierce's hole pierced already: none either
-      const dt = reusesPierce(contours, k) ? 0
-        : c.inline && c.inline.pierce === "quick" ? row?.quickPierceS || 0
-        : c.inline && c.inline.pierce === "none" ? 0
-        : row?.pierceS || 0;
+      // and the torch down and up again (plasma), where it pierces
+      const pierced = !reusesPierce(contours, k) && !(c.inline && c.inline.pierce === "none");
+      const dt = !pierced ? 0
+        : (c.inline && c.inline.pierce === "quick" ? row?.quickPierceS || 0 : row?.pierceS || 0) + (row?.torchS || 0);
       if (dt > 0) { legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt; }
     }
     // its speed: laser by its class (E001 - E004, its size without the leads), else small holes slower

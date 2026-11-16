@@ -30,7 +30,7 @@ export function partCutSeconds(path: string, row: TechRow | null | undefined, sm
   for (const lp of loops) {
     const b = box(lp);
     const v = speedFor(row, { kind: lp === outer ? "outer" : "inner", w: b.w, h: b.h, small }, laser);
-    s += (perimeter(lp) / v) * 60 + (row.pierceS || 0);
+    s += (perimeter(lp) / v) * 60 + (row.pierceS || 0) + (row.torchS || 0);
     // lead-in and lead-out
     s += (((lp === outer ? row.outLeadInMm + row.outLeadOutMm : row.holeLeadInMm + row.holeLeadOutMm) || 0) / v) * 60;
   }
