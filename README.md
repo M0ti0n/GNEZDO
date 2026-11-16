@@ -15,7 +15,7 @@ Run it as a web app on your work server, or as a desktop app on Windows and Linu
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 
 [**⬇ Download test build**](#download-a-test-build) ·
-[**Test parts**](https://github.com/M0ti0n/GNEZDO/raw/main/test-parts/TEST_PARTS_FOR_GNEZDO.7z) ·
+[**Test parts**](https://github.com/M0ti0n/GNEZDO/raw/main/test-parts/GNEZDO%20TEST%20PARTS.zip) ·
 [Roadmap](#roadmap) ·
 [Run on a server](#run-on-the-server-docker)
 
@@ -126,9 +126,9 @@ The desktop version keeps its data in your own app-data folder (`%LOCALAPPDATA%\
 
 ### Test parts
 
-**[⬇ Download TEST_PARTS_FOR_GNEZDO.7z](https://github.com/M0ti0n/GNEZDO/raw/main/test-parts/TEST_PARTS_FOR_GNEZDO.7z)** (in [`test-parts/`](test-parts/))
+**[⬇ Download GNEZDO TEST PARTS.zip](https://github.com/M0ti0n/GNEZDO/raw/main/test-parts/GNEZDO%20TEST%20PARTS.zip)** (in [`test-parts/`](test-parts/))
 
-DXF parts for trying the import: unpack the archive (7-Zip) and drop the folder on the Import panel.
+Parts for trying GNEZDO: unpack the zip. **TEST PARTS 2D**: DXF parts, drop the folder on the Import 2D panel. **TEST PARTS 3D**: STEP parts, open them in the 3D Extractor.
 
 ### Run on the server (Docker)
 

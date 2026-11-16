@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- Test parts: one download, **GNEZDO TEST PARTS.zip** (folders TEST PARTS 2D: DXF, TEST PARTS 3D: STEP), linked on the front page; the old archives are gone
 
 ## Build 16 Nov 2026, 2 (`cf6d4f8`)
 
