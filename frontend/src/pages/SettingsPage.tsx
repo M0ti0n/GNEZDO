@@ -11,7 +11,7 @@ import { loadViewPrefs, saveViewPrefs, type ViewPrefs } from "../job/viewPrefs";
 import { flush, logDownloadUrl, logSettings, reportProblem, setLogEnabled, type LogSettings as LogSettingsData } from "../job/diag";
 import { Combobox } from "../components/Combobox";
 import { DatabaseForm } from "../components/DatabaseSetup";
-import { data, type DataInfo } from "../api/data";
+import { data, restartFresh, type DataInfo } from "../api/data";
 import { NumInput } from "../components/NumInput";
 import { TechnologySettings } from "../components/TechnologySettings";
 import { LeadsSettings } from "../components/LeadsSettings";
@@ -572,7 +572,14 @@ function DataSettings() {
   const [d, setD] = useState<DataInfo | null | undefined>(undefined);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [changing, setChanging] = useState(false);
+  const [fresh, setFresh] = useState<null | { word: string; busy: boolean; error?: string }>(null);
   useEffect(() => { void data.info().then(setD).catch(() => setD(null)); }, []);
+  const startFresh = async () => {
+    if (!fresh || fresh.busy || fresh.word.trim() !== "DELETE") return;
+    setFresh({ ...fresh, busy: true, error: undefined });
+    try { await data.startFresh(fresh.word); restartFresh(); }
+    catch (e) { setFresh({ ...fresh, busy: false, error: (e as Error).message }); }
+  };
   const open = async () => {
     setMsg(null);
     try { await data.openFolder(); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
@@ -601,6 +608,26 @@ function DataSettings() {
               Keep it somewhere safe, e.g. on another drive. To go back to it: close GNEZDO and put it in place of data{d.file.includes("\\") ? "\\" : "/"}gnezdo.db, renamed to gnezdo.db.</p>
             <div className="rule-row"><a className="btn btn-save" href={data.backupUrl} download>Back up now</a></div>
           </section>
+          <section className="rule">
+            <h3>Start fresh</h3>
+            <p className="rule-help">Like a new install: deletes all parts, jobs, projects, remnants, machines and settings, and resets what the screens
+              remember (view options, open panels). A copy of the database is saved first in data{d.file.includes("\\") ? "\\" : "/"}backups.
+              There is no need to delete the data folder by hand.</p>
+            <div className="rule-row"><button type="button" className="btn btn-danger-plain" onClick={() => setFresh({ word: "", busy: false })}>Start fresh…</button></div>
+          </section>
+          {fresh && (
+            <ConfirmDialog title="Delete all data and start fresh?" confirmLabel={fresh.busy ? "Deleting…" : "Delete everything"}
+              confirmDisabled={fresh.busy || fresh.word.trim() !== "DELETE"}
+              onCancel={() => { if (!fresh.busy) setFresh(null); }} onConfirm={() => void startFresh()}>
+              All parts, jobs, projects, remnants, machines and settings are deleted, and open tabs close. A backup copy is kept in
+              data{d.file.includes("\\") ? "\\" : "/"}backups. Machines then need importing again (Settings → Machines → Import machine).
+              <span className="fresh-type">Type <b>DELETE</b> to confirm:
+                <input className="fresh-word" ref={(el) => { if (el && !fresh.word && !fresh.busy) window.setTimeout(() => el.focus(), 0); }} value={fresh.word} disabled={fresh.busy} autoComplete="off" spellCheck={false} aria-label="Type DELETE to confirm"
+                  onChange={(e) => setFresh({ ...fresh, word: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === "Enter") void startFresh(); }} /></span>
+              {fresh.error && <span className="fresh-error" role="alert">{fresh.error}</span>}
+            </ConfirmDialog>
+          )}
         </>
       )}
       {d?.kind === "sqlite" && <section className="rule"><h3>Database file</h3><p className="data-path">{d.file}</p></section>}

@@ -77,4 +77,33 @@ public sealed class DesktopTests : IAsyncLifetime
         cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('Parts', 'Jobs', 'Settings', '__EFMigrationsHistory')";
         Assert.Equal(4L, (long)(await cmd.ExecuteScalarAsync())!);
     }
+
+    [Fact]
+    public async Task Start_fresh_backs_up_then_empties_every_table()
+    {
+        var put = await _client.PutAsJsonAsync("/api/settings/machines", new { value = new JsonArray(1, 2) });
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+
+        // not without the word
+        var no = await _client.PostAsJsonAsync("/api/data/start-fresh", new { confirm = "yes" });
+        Assert.Equal(HttpStatusCode.BadRequest, no.StatusCode);
+        Assert.Equal("[1,2]", (await _client.GetStringAsync("/api/settings/machines")).Replace(" ", ""));
+
+        var res = await _client.PostAsJsonAsync("/api/data/start-fresh", new { confirm = "DELETE" });
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var backup = (await res.Content.ReadFromJsonAsync<JsonObject>())!["backup"]!.GetValue<string>();
+        Assert.StartsWith(Path.Combine(_root, "data", "backups"), backup);
+
+        // the data is gone, GNEZDO goes on working on the same file
+        Assert.Equal("null", await _client.GetStringAsync("/api/settings/machines"));
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/api/parts")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync("/api/settings/machines", new { value = new JsonArray() })).StatusCode);
+
+        // the backup still holds it
+        await using var con = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={backup};Pooling=False");
+        await con.OpenAsync();
+        await using var cmd = con.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM Settings WHERE Key = 'machines'";
+        Assert.Equal(1L, (long)(await cmd.ExecuteScalarAsync())!);
+    }
 }
