@@ -678,6 +678,14 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         const k = e.key.toLowerCase();
         if (!typing && !annot && k === "c" && !tool) { e.preventDefault(); copyPicked(); return; }
         if (!typing && !annot && k === "v") { e.preventDefault(); startPaste(); return; }
+        // no tool on: Ctrl+A picks every line (then Ctrl+C, Delete, a Manipulate tool, …)
+        if (!typing && !annot && k === "a" && !tool && !paste) {
+          e.preventDefault();
+          const all = new Set(drawing.entities.map((x) => x.id));
+          setPick(all);
+          setMessage(all.size ? { text: pickText(all) } : null);
+          return;
+        }
       }
       if (e.key === "Escape" && paste && !document.querySelector(".dlg-backdrop")) { endPaste(); return; }
       // Delete: the lines picked are erased (not while typing: there it deletes text)
