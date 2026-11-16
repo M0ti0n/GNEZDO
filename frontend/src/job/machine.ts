@@ -104,8 +104,8 @@ export const cutOrderOf = (m: Machine | undefined): CutOrderRules => {
   return { bigLast: r.bigLast, bigTimesMedian: r.bigTimesMedian, bigSheetPct: r.bigSheetPct, traceShortest: !!r.traceShortest };
 };
 
-/** Rapid speed assumed when a machine has none set [mm/min]: plasma measured on a HACO (2 m in 8 s), laser a guess. */
-export const DEFAULT_RAPID_MM_MIN: Record<Technology, number> = { laser: 20000, plasma: 15000, waterjet: 20000, other: 20000 };
+/** Rapid speed assumed when a machine has none set [mm/min]: plasma as on the HACO (14,000), laser a guess. */
+export const DEFAULT_RAPID_MM_MIN: Record<Technology, number> = { laser: 20000, plasma: 14000, waterjet: 20000, other: 20000 };
 
 /** The machine's rapid speed for the time estimates [mm/min]. */
 export const rapidOf = (m: Machine | undefined): number =>

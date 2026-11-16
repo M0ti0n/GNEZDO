@@ -240,7 +240,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
 
         <section className="rule">
           <h3>Rapid speed</h3>
-          <p className="rule-help">How fast the head travels between cuts, for the time estimates (Nest report, Cost report, Simulation). The pierce times are in the Technology table (Cutting · Pierce). Empty or 0: {DEFAULT_RAPID_MM_MIN[machine.technology].toLocaleString("en-US")} mm/min{machine.technology === "plasma" ? " (measured on a plasma: 2 m in 8 s)" : ""}.</p>
+          <p className="rule-help">How fast the head travels between cuts, for the time estimates (Nest report, Cost report, Simulation). The pierce times are in the Technology table (Cutting · Pierce). Empty or 0: {DEFAULT_RAPID_MM_MIN[machine.technology].toLocaleString("en-US")} mm/min{machine.technology === "plasma" ? " (as on the HACO plasma)" : ""}.</p>
           <div className="size-row">
             <NumInput value={machine.rapidMmMin ?? 0} min={0} placeholder={String(DEFAULT_RAPID_MM_MIN[machine.technology])} aria-label="Rapid speed (mm/min)"
               onCommit={(n) => setM({ rapidMmMin: n > 0 ? n : undefined })} />
