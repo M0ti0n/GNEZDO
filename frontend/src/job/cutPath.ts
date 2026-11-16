@@ -47,6 +47,9 @@ export interface CutContour {
   leadOut: Pt[];
   /** cut at the small-hole speed */
   small?: boolean;
+  /** processed with Selected parts / Trace / Cut internal (an order picked by hand): processing the whole
+   *  sheet again keeps the parts whose outline came so, first and in that order, and does the rest after them */
+  picked?: boolean;
   lead?: LeadType;
   /** the lead values set by hand (Process → Lead in / out); missing: the Technology row's */
   spec?: LeadSpec;
@@ -98,6 +101,8 @@ export interface SheetCut {
   mirrored?: boolean;
   /** from PROCESS only (not kept with the sheet): the leads moved or shortened to fit, and those that still do not */
   leadFit?: LeadFitCount;
+  /** from PROCESS only: the whole sheet processed, parts kept first as picked by hand before (their count) */
+  keptFirst?: number;
 }
 
 /** What PROCESS does with the parts it gets. */
@@ -701,9 +706,22 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   const canTrace = machineCan(machine, "trace"), canOpen = machineCan(machine, "openCut");
   const mirrored = originMirrors(q.origin);
   const side = mirrored ? -1 : 1;
+  // the whole sheet processed again: the parts processed before with Selected parts (an order by hand, e.g.
+  // some needed before the rest of the sheet) stay as they are, first and in that order; the rest of the
+  // sheet is processed after them, from where the head is when they are done
+  let first: CutContour[] = [];
+  if (!q.parts && q.what === "all" && sheet.cut && !!sheet.cut.mirrored === mirrored) {
+    const good = processedParts(sheet);
+    const outlined = new Set(sheet.cut.contours.filter((c) => c.picked && c.kind === "outer").flatMap((c) => c.parts ?? [c.part]));
+    first = sheet.cut.contours.filter((c) => c.picked && (c.parts ?? [c.part]).every((k) => outlined.has(k) && good.has(k)));
+    const done = new Set(first.flatMap((c) => c.parts ?? [c.part]));
+    idx = idx.filter((k) => !done.has(k));
+  }
   const geos = await partGeos(sheet, q.paths, idx, q.what !== "internal" && (canTrace || canOpen), mirrored);
   const from = originPoint(sheet, q.origin);
-  const order = q.ordered ? idx : orderParts(geos, q.rule, machine, sheet, from);
+  const lastOfFirst = first[first.length - 1];
+  const start: Pt = lastOfFirst ? (lastOfFirst.leadOut[lastOfFirst.leadOut.length - 1] ?? lastOfFirst.pts[lastOfFirst.pts.length - 1]) : from;
+  const order = q.ordered ? idx : orderParts(geos, q.rule, machine, sheet, start);
   const by = new Map(geos.map((g) => [g.i, g]));
 
   // common cut: parts a kerf apart along their marked lines make blocks, cut as one (job/commonPath.ts)
@@ -782,7 +800,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   };
 
   const fresh: CutContour[] = [];
-  let at = from;
+  let at = start;
   const startOf = (c: Omit<CutContour, "part" | "kind">) => c.leadIn[0] ?? c.pts[0];
   const endOf = (c: Omit<CutContour, "part" | "kind">) => c.leadOut[c.leadOut.length - 1] ?? c.pts[c.pts.length - 1];
   /** open runs from the end nearer the head */
@@ -867,16 +885,21 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     kept = (sheet.cut?.contours ?? []).filter((c) => (c.parts ?? [c.part]).every((k) => good.has(k)) && !drop(c) && !dropBlock(c));
     for (const c of kept) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
   }
-  for (const c of fresh) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
+  // picked by hand: marked, so processing the whole sheet later keeps them first
+  if (q.ordered) for (const c of fresh) c.picked = true;
+  for (const c of [...first, ...fresh]) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
   let contours = [...kept, ...fresh];
   // the sheet's tracing first, shortest rapids (not after a contour order picked by hand): on a laser the
   // Technology row says (not set: from 4 mm up), on other machines Settings -> Machines -> Cut order
   const traceShortest = machine.technology === "laser"
     ? (row ? traceShortestOf(row) : sheet.thicknessMm >= TRACE_SHORTEST_FROM_MM - 1e-6)
     : cutOrderOf(machine).traceShortest;
-  if (traceShortest && !q.ordered) contours = tracesShortest(contours, from);
+  // (the parts kept first stay first: the tracing of the rest comes after them)
+  if (traceShortest && !q.ordered) contours = tracesShortest(contours, start);
+  contours = [...first, ...contours];
   return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours, keys, ...(mirrored ? { mirrored } : {}),
-    ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}) };
+    ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}),
+    ...(first.length ? { keptFirst: new Set(first.flatMap((c) => c.parts ?? [c.part])).size } : {}) };
 }
 
 /**

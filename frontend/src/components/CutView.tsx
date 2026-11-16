@@ -16,8 +16,8 @@ import toolAutoCut from "../shell/jobtools/tool-autoCut.png";
 export type SelectMode = "multi" | "sheet" | "parts" | "trace" | "internal";
 
 const MODES: { id: SelectMode; label: string; hint: string }[] = [
-  { id: "multi", label: "Multi sheet", hint: "Every sheet of the solution (asks to save the job first if it was never saved)" },
-  { id: "sheet", label: "Selected sheet", hint: "Only the sheet shown" },
+  { id: "multi", label: "Multi sheet", hint: "Every sheet of the solution (asks to save the job first if it was never saved). Parts processed before with Selected parts stay first, in their order; the rest comes after them" },
+  { id: "sheet", label: "Selected sheet", hint: "Only the sheet shown. Parts processed before with Selected parts stay first, in their order; the rest comes after them" },
   { id: "parts", label: "Selected parts", hint: "SELECT, then click the parts in the order to cut them" },
   { id: "trace", label: "Trace", hint: "Only the tracing of the picked parts, in the order picked" },
   { id: "internal", label: "Cut internal", hint: "Only the holes of the picked parts, in the order picked" },
@@ -102,15 +102,15 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
     try {
       const what: CutWhat = mode === "trace" ? "trace" : mode === "internal" ? "internal" : "all";
       const list = mode === "multi" ? sheets.map((_, i) => i) : [index];
-      let contours = 0, metres = 0, fitted = 0, tight = 0;
+      let contours = 0, metres = 0, fitted = 0, tight = 0, keptFirst = 0;
       for (const i of list) {
         const sh = sheets[i];
-        const { leadFit, ...cut } = await processSheet({
+        const { leadFit, keptFirst: kf, ...cut } = await processSheet({
           sheet: sh, paths, machine, origin, rule, what,
           parts: picks ? picked : null, ordered: picks,
           traceOf: (k) => (picks ? !noTrace.has(k) : !skipTrace),
         });
-        fitted += leadFit?.fitted ?? 0; tight += leadFit?.tight ?? 0;
+        fitted += leadFit?.fitted ?? 0; tight += leadFit?.tight ?? 0; keptFirst += kf ?? 0;
         onCut(i, cut);
         const live = liveContours({ ...sh, cut });
         contours += live.length;
@@ -122,7 +122,8 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
         fitted ? `${fitted} ${fitted === 1 ? "lead" : "leads"} moved or shortened to stay clear of other parts and the sheet edge` : "",
         tight ? `${tight} ${tight === 1 ? "lead has" : "leads have"} no room: check ${tight === 1 ? "it" : "them"} (Lead in / out), or nest with a bigger part gap` : "",
       ].filter(Boolean).join("; ");
-      setMsg({ text: `${list.length > 1 ? `${list.length} sheets` : `Sheet ${index + 1}`}: ${contours} contours, ${metres.toFixed(1)} m of cut${fit ? `. ${fit}` : ""}`, bad: tight > 0 });
+      const kept = keptFirst ? `. ${keptFirst} ${keptFirst === 1 ? "part" : "parts"} processed before with Selected parts kept first, in that order; the rest after ${keptFirst === 1 ? "it" : "them"} (Process del clears them to start over)` : "";
+      setMsg({ text: `${list.length > 1 ? `${list.length} sheets` : `Sheet ${index + 1}`}: ${contours} contours, ${metres.toFixed(1)} m of cut${kept}${fit ? `. ${fit}` : ""}`, bad: tight > 0 });
       if (picks) { setPicked([]); setPicking(false); }
     } catch (e) {
       setMsg({ text: `Not processed: ${(e as Error).message}`, bad: true });
