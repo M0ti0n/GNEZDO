@@ -122,6 +122,7 @@ if (dbPage) app.MapDatabaseSetup();
 if (desktop is not null)
 {
     app.MapDesktopEndpoints(desktop);
+    app.MapToolEndpoints(desktop);
     var diag = app.Services.GetRequiredService<DiagLog>();
     app.Lifetime.ApplicationStarted.Register(() => desktop.OpenWindow(diag));
     app.Lifetime.ApplicationStopped.Register(desktop.Release);

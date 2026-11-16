@@ -17,17 +17,19 @@ import { TechnologySettings } from "../components/TechnologySettings";
 import { LeadsSettings } from "../components/LeadsSettings";
 import { NcOutputSettings } from "../components/NcOutputSettings";
 import { MachineFoldersSettings } from "../components/MachineFoldersSettings";
+import { ToolsSettings } from "../components/ToolsSettings";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
 import { DEFAULT_CUT_ORDER, DEFAULT_RAPID_MM_MIN, LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, cutOrderOf, machineCan, newMachine, type Machine, type MachineList } from "../job/machine";
 import { DEFAULT_KEYS, KEY_ACTIONS, RESERVED_KEYS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
-type Section = "stock" | "machine" | "rules" | "keys" | "projects" | "personal" | "data" | "log";
+type Section = "stock" | "machine" | "rules" | "tools" | "keys" | "projects" | "personal" | "data" | "log";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock and remnants", ready: true },
   { id: "machine", label: "Machines", ready: true },
   { id: "rules", label: "Rules", ready: true },
+  { id: "tools", label: "Special tools", ready: true },
   { id: "keys", label: "Shortcuts", ready: true },
   { id: "projects", label: "Projects and parts", ready: true },
   { id: "personal", label: "Personal", ready: true },
@@ -122,6 +124,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
       {section === "projects" && <ProjectsSettings onOpenJob={onOpenJob} />}
       {section === "rules" && <RulesTabs rules={rules} onChange={onRules} />}
       {section === "data" && <DataSettings />}
+      {section === "tools" && <ToolsSettings isAdmin={isAdmin} />}
       {section === "log" && <LogSettings isAdmin={isAdmin} />}
 
       {section === "machine" && (
@@ -610,7 +613,7 @@ function DataSettings() {
           </section>
           <section className="rule">
             <h3>Start fresh</h3>
-            <p className="rule-help">Like a new install: deletes all parts, jobs, projects, remnants, machines and settings, and resets what the screens
+            <p className="rule-help">Like a new install: deletes all parts, jobs, projects, remnants, machines, added special tools and settings, and resets what the screens
               remember (view options, open panels). A copy of the database is saved first in data{d.file.includes("\\") ? "\\" : "/"}backups.
               There is no need to delete the data folder by hand.</p>
             <div className="rule-row"><button type="button" className="btn btn-danger-plain" onClick={() => setFresh({ word: "", busy: false })}>Start fresh…</button></div>
@@ -619,7 +622,7 @@ function DataSettings() {
             <ConfirmDialog title="Delete all data and start fresh?" confirmLabel={fresh.busy ? "Deleting…" : "Delete everything"}
               confirmDisabled={fresh.busy || fresh.word.trim() !== "DELETE"}
               onCancel={() => { if (!fresh.busy) setFresh(null); }} onConfirm={() => void startFresh()}>
-              All parts, jobs, projects, remnants, machines and settings are deleted, and open tabs close. A backup copy is kept in
+              All parts, jobs, projects, remnants, machines, added special tools and settings are deleted, and open tabs close. A backup copy is kept in
               data{d.file.includes("\\") ? "\\" : "/"}backups. Machines then need importing again (Settings → Machines → Import machine).
               <span className="fresh-type">Type <b>DELETE</b> to confirm:
                 <input className="fresh-word" ref={(el) => { if (el && !fresh.word && !fresh.busy) window.setTimeout(() => el.focus(), 0); }} value={fresh.word} disabled={fresh.busy} autoComplete="off" spellCheck={false} aria-label="Type DELETE to confirm"

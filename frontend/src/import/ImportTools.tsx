@@ -94,6 +94,14 @@ export const FIT_TOOLS: { id: string; label: string }[] = [
 ];
 /** The fitting's icon (also the Fittings panel's heading). */
 export const fitIcon = (kind: string) => FIT_ICON[kind];
+/** A plug-in special tool's icon: its own (an image: it cannot run anything), else a generic one. */
+export const pluginIcon = (src: string | null): ReactNode => (src
+  ? <img className="itool-img" src={src} width={48} height={48} alt="" draggable={false} />
+  : (
+    <Ico>
+      <path d="M8 14h9a5 5 0 0 1 10 0h9v9a5 5 0 0 0 0 10v9H27a5 5 0 0 0-10 0H8V33a5 5 0 0 0 0-10z" fill={FB} stroke={K} strokeWidth="2.6" />
+    </Ico>
+  ));
 
 const PU = "#a64ca6";   // markings
 const MIRROR_ICON = (
@@ -443,8 +451,10 @@ const STRIP: string[] = ["extend", "trim", "drawGroup", "alignH", "alignV", "era
 /** blocked: tools that cannot be used now, with the reason shown on hover (greyed out). */
 /** lit: switches that are on besides the active tool (Check lines while the Geometry check panel is open). */
 /** openGroup: the group shown open at first; strip: other tools and groups than Import 2D's (Special tools). */
-export function ImportToolStrip({ active, onTool, blocked = {}, lit = {}, openGroup = null, strip = STRIP }: {
+export function ImportToolStrip({ active, onTool, blocked = {}, lit = {}, openGroup = null, strip = STRIP, extra = [] }: {
   active: string | null; onTool: (id: string) => void; blocked?: Record<string, string>; lit?: Record<string, boolean>; openGroup?: string | null; strip?: string[];
+  /** Buttons that are not GNEZDO's own (plug-in special tools) */
+  extra?: { id: string; label: string; icon: ReactNode }[];
 }) {
   const [open, setOpen] = useState<string | null>(openGroup);
   // a button of the strip itself (not one in the open group) closes the group
@@ -463,7 +473,7 @@ export function ImportToolStrip({ active, onTool, blocked = {}, lit = {}, openGr
     <SideScroll className="itools" wrapClassName="itools-wrap" role="toolbar" label="Import tools" more="tools">
       {strip.map((id) => {
         const g = TOOL_GROUPS.find((x) => x.id === id);
-        if (!g) { const t = IMPORT_TOOLS.find((x) => x.id === id); return t ? tool(t, () => setOpen(null)) : null; }
+        if (!g) { const t = IMPORT_TOOLS.find((x) => x.id === id) ?? extra.find((x) => x.id === id); return t ? tool(t, () => setOpen(null)) : null; }
         return <ToolGroup key={g.id} group={g} active={active} open={open === g.id}
           onOpen={(v) => setOpen(v ? g.id : null)} renderTool={(t) => tool(t)} />;
       })}

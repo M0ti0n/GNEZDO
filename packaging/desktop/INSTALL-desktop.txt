@@ -64,6 +64,10 @@ gnezdo-backup-....db) to your Downloads. To go back to a backup: close GNEZDO an
 replace data\gnezdo.db in the app-data folder with it (renamed to gnezdo.db).
 To move GNEZDO to another PC: install it there and do the same with a backup.
 
+Special tools: plug-in tools can also sit in the tools folder, %LOCALAPPDATA%\GNEZDO\tools
+(Settings -> Special tools -> Open tools folder; Reload after changing one). How to write one:
+SPECIAL TOOLS/README.md in the GNEZDO repository.
+
 Starting fresh (like a new install): Settings -> Data -> "Start fresh...". It saves a copy
 of the database to data\backups first, then deletes all parts, jobs, projects, remnants,
 machines and settings, and resets what the screens remember. No need to delete the
