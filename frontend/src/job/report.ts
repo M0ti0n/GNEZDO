@@ -7,7 +7,7 @@ import type { JobPart } from "../api/types";
 import { densityOf, loopsOf, sheetStats, type NestedSheet, type SheetStats } from "./nest";
 import { rapidOf, type Machine, type Origin } from "./machine";
 import { remnantArea } from "./remnant";
-import { techRowFor, type TechRow } from "./technology";
+import { speedFor, techRowFor, type TechRow } from "./technology";
 
 
 type Loop = [number, number][];
@@ -19,8 +19,9 @@ const box = (pts: Loop) => {
   return { w: x1 - x0, h: y1 - y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
 };
 
-/** Cutting time of one piece [s] with this row: the outline at the cutting speed, small holes slower, a pierce each. */
-export function partCutSeconds(path: string, row: TechRow | null | undefined, small?: boolean): number | null {
+/** Cutting time of one piece [s] with this row: each contour at its speed (laser: its E001 - E003 class;
+ *  else the outline at the cutting speed, small holes slower), a pierce each. */
+export function partCutSeconds(path: string, row: TechRow | null | undefined, small?: boolean, laser = false): number | null {
   if (!row || !(row.speed > 0)) return null;
   const loops = loopsOf(path);
   if (!loops.length) return 0;
@@ -28,8 +29,7 @@ export function partCutSeconds(path: string, row: TechRow | null | undefined, sm
   let s = 0;
   for (const lp of loops) {
     const b = box(lp);
-    const isSmall = lp !== outer && (small || (row.smallHoleMm > 0 && b.w + b.h <= 2 * row.smallHoleMm));
-    const v = isSmall && row.smallHoleSpeed > 0 ? row.smallHoleSpeed : row.speed;
+    const v = speedFor(row, { kind: lp === outer ? "outer" : "inner", w: b.w, h: b.h, small }, laser);
     s += (perimeter(lp) / v) * 60 + (row.pierceS || 0);
     // lead-in and lead-out
     s += (((lp === outer ? row.outLeadInMm + row.outLeadOutMm : row.holeLeadInMm + row.holeLeadOutMm) || 0) / v) * 60;
@@ -61,7 +61,7 @@ export function sheetReport(sheet: NestedSheet, jobParts: JobPart[], machine: Ma
     return {
       jp, partId, qty,
       kg: jp ? partKg({ areaMm2: jp.part.areaMm2, material: sheet.material, thicknessMm: sheet.thicknessMm }) : 0,
-      cutS: jp ? partCutSeconds(jp.part.path, row) : null,
+      cutS: jp ? partCutSeconds(jp.part.path, row, false, machine.technology === "laser") : null,
     };
   }).sort((a, b) => (a.jp?.no ?? 1e9) - (b.jp?.no ?? 1e9));
   let cutS: number | null = null, rapidS: number | null = null;

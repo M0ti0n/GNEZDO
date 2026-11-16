@@ -7,7 +7,7 @@
 import { viaOf, type CutContour } from "./cutPath";
 import type { Pt } from "./manualGeom";
 import { reusesPierce } from "./commonPierce";
-import type { TechRow } from "./technology";
+import { speedFor, type TechRow } from "./technology";
 
 /** Cutting speed when the Technology row has none [mm/min] */
 const FALLBACK_SPEED = 2000;
@@ -42,7 +42,7 @@ const accOf = (pts: Pt[]) => { const a = [0]; for (let i = 1; i < pts.length; i+
 const cutPts = (c: CutContour): Pt[] => [...c.leadIn, ...(c.leadIn.length ? c.pts.slice(1) : c.pts), ...(c.leadOut.length ? c.leadOut.slice(1) : [])];
 
 /** rapidMmMin: the machine's rapid speed (rapidOf) */
-export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | null, rapidMmMin: number): SimTimeline {
+export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | null, rapidMmMin: number, laser = false): SimTimeline {
   const fromTech = !!row && row.speed > 0;
   const speed = fromTech ? row!.speed : FALLBACK_SPEED;
   const legs: Leg[] = [];
@@ -64,7 +64,13 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
       const dt = (c.inline && c.inline.pierce !== "pierce") || reusesPierce(contours, k) ? 0 : row?.pierceS || 0;
       if (dt > 0) { legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt; }
     }
-    const v = c.small && row && row.smallHoleSpeed > 0 ? row.smallHoleSpeed : speed;
+    // its speed: laser by its class (E001 - E004, its size without the leads), else small holes slower
+    let v = speed;
+    if (fromTech) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [x, y] of c.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      v = speedFor(row!, { kind: c.kind, w: x1 - x0, h: y1 - y0, small: c.small }, laser);
+    }
     const acc = accOf(path);
     const dt = (acc[acc.length - 1] / v) * 60;
     legs.push({ k, phase: "cut", t0: t, t1: t + dt, pts: path, acc });

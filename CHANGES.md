@@ -4,7 +4,9 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- Technology, **laser**: the Cutting speeds are now the machine's four, to match its own technology tables one to one: **E001 Fast speed** (the old Speed), **E002 Medium speed** (new), **E003 Slow speed** (the old Small holes) and **E004 Trace speed** (new). Laser: "Middle up to" / "Little up to" are now **Medium (E002) up to** / **Slow (E003) up to**; the laser's "Small hole up to" is gone from the table (the two limits decide). A new speed not filled in counts as E001
+- The time estimates (Nest report, Cost report, Simulation) on a laser now count each contour at the speed of the class the LVD output gives it: its longer side against the two limits, traces at E004. Before, every hole above the small size counted at the full speed, so most holes (E002 in the past programs) came out too fast
+- LVD machine file (POST PROCESSOR): the MS and SS tables carry E002 and E004 speeds for every thickness (from the old tables, as E001 and E003 already were)
 
 ## Build 16 Nov 2026 (`840fc56`)
 
