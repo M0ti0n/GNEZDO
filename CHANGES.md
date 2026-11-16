@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 16 Nov 2026 (`840fc56`)
+
 - Bug check of the changes since the deep check:
   - Process del: **UNDO DELETE no longer puts an old cut path back over a newer one**: it brings a sheet's cut path or remnant back only while that sheet is as it was (same parts in the same places) and still has none (processed again since: "Nothing brought back"). Before, Auto cut again and then Undo delete replaced the new cut paths with the old ones
   - 3D Extractor, Stitch: a compensation that takes **more off a face than it is wide** (thickness or inner radius far too big) is now reported ("check the thickness"); before, the flat pattern folded over itself without a word
