@@ -15,6 +15,9 @@ export interface TechRow {
   midSpeed?: number;
   /** Laser: E004, trace speed [mm/min] (marking); 0 = the fast one */
   traceSpeed?: number;
+  /** Laser: quick pierce time [s] (LVD #102), for the estimates of contours started with a quick pierce
+   *  (Inline cut); 0 = not counted */
+  quickPierceS?: number;
   /** Holes up to this size are small holes [mm] */
   smallHoleMm: number;
   /** Pierce time [s] */
@@ -117,6 +120,7 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; except?: Techno
     { key: "smallHoleSpeed", label: "E003 Slow speed", unit: "mm/min" },
     { key: "traceSpeed", label: "E004 Trace speed", unit: "mm/min" },
     { key: "pierceS", label: "Pierce", unit: "s" },
+    { key: "quickPierceS", label: "Quick pierce", unit: "s" },
   ] },
   { group: "Holes · leads", cols: [
     { key: "holeLeadInMm", label: "Lead-in", unit: "mm" },
@@ -194,7 +198,7 @@ export const emptyRow = (thicknessMm: number): TechRow => ({
   holeLeadInMm: 0, holeLeadOutMm: 0, holeGapMm: 0, holeLeadRadiusMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outGapMm: 0, outLeadRadiusMm: 0,
   leadInAngle: 0, leadOutAngle: 0, partGapMm: 0, borderMm: 0,
   remGapInMm: 0, remGapOutMm: 0, remMinDistMm: 0, remLeadInMm: 0, remLeadOutMm: 0,
-  midSizeMm: 0, littleSizeMm: 0, prePierce: 0, techProgram: 0, mjGapMm: 1, mjPierce: 1, midSpeed: 0, traceSpeed: 0,
+  midSizeMm: 0, littleSizeMm: 0, prePierce: 0, techProgram: 0, mjGapMm: 1, mjPierce: 1, midSpeed: 0, traceSpeed: 0, quickPierceS: 0,
 });
 
 export const newTechnology = (name = "New technology"): TechSet => ({
