@@ -2686,7 +2686,8 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 ------------------------------------------------------------------- */
 /* Special tools: each fitting its own button, room for its name */
 .fit .itool { width: 84px; }
-.import.fit { grid-template-columns: minmax(0, 1fr) 380px; }
+/* Special tools: a wider panel than the importers' (the diagram and the plug-in tools' forms); the canvas takes what is left */
+.import.fit { grid-template-columns: minmax(0, 1fr) 460px; }
 .fit > .itools-wrap { grid-column: 1 / -1; }
 .fit-pane { grid-row: 2; grid-column: 1; margin: 10px; position: relative; }
 .fit-canvas { flex: 1; min-height: 0; display: flex; }
