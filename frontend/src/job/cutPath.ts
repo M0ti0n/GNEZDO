@@ -888,14 +888,19 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   // picked by hand: marked, so processing the whole sheet later keeps them first
   if (q.ordered) for (const c of fresh) c.picked = true;
   for (const c of [...first, ...fresh]) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
-  let contours = [...kept, ...fresh];
-  // the sheet's tracing first, shortest rapids (not after a contour order picked by hand): on a laser the
-  // Technology row says (not set: from 4 mm up), on other machines Settings -> Machines -> Cut order
+  // the tracing first, shortest rapids: on a laser the Technology row says (not set: from 4 mm up), on other
+  // machines Settings -> Machines -> Cut order. Parts picked by hand (Selected parts): the tracing of the
+  // parts picked this time first, then they are cut in the order picked; earlier picks stay as they are.
+  // The whole sheet with parts kept first (picked before): they stay first, the rest's tracing after them.
   const traceShortest = machine.technology === "laser"
     ? (row ? traceShortestOf(row) : sheet.thicknessMm >= TRACE_SHORTEST_FROM_MM - 1e-6)
     : cutOrderOf(machine).traceShortest;
-  // (the parts kept first stay first: the tracing of the rest comes after them)
-  if (traceShortest && !q.ordered) contours = tracesShortest(contours, start);
+  const lastKept = kept[kept.length - 1];
+  const batchFrom: Pt = lastKept ? (lastKept.leadOut[lastKept.leadOut.length - 1] ?? lastKept.pts[lastKept.pts.length - 1]) : start;
+  let contours: CutContour[];
+  if (traceShortest && q.ordered && q.what === "all") contours = [...kept, ...tracesShortest(fresh, batchFrom)];
+  else if (traceShortest && !q.ordered) contours = tracesShortest([...kept, ...fresh], start);
+  else contours = [...kept, ...fresh];
   contours = [...first, ...contours];
   return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours, keys, ...(mirrored ? { mirrored } : {}),
     ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}),
