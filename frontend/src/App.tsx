@@ -1,5 +1,6 @@
 import { startDesktop } from "./api/desktop";
 import { drafts, newDraftId, type DraftContent, type DraftRow } from "./api/drafts";
+import { leaving } from "./api/data";
 import { RestoreDialog } from "./components/RestoreDialog";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { api, demoMode } from "./api/api";
@@ -990,6 +991,7 @@ export function App() {
   // closing the browser window with unsaved jobs or a nest running: the browser asks first
   useEffect(() => {
     const onLeave = (e: BeforeUnloadEvent) => {
+      if (leaving.now) return;
       const busy = (jid: string) => jobDirty(jid) || solsOf(jid).list.some((x) => x.run && !isFinished(x.run) && !x.error);
       if (!state.tabs.some((t) => t.kind === "job" && t.jobId && busy(t.jobId))) return;
       e.preventDefault();

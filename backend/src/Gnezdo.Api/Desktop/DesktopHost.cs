@@ -142,6 +142,9 @@ public sealed class DesktopHost
                 psi.ArgumentList.Add($"--user-data-dir={Path.Combine(DataDir, "browser")}");
                 psi.ArgumentList.Add("--no-first-run");
                 psi.ArgumentList.Add("--no-default-browser-check");
+                // no add-ons in GNEZDO's window: it needs none, and an antivirus's add-on put in this
+                // profile can make the antivirus guard the whole folder (it then cannot be deleted)
+                psi.ArgumentList.Add("--disable-extensions");
                 if (OperatingSystem.IsLinux()) psi.ArgumentList.Add("--class=GNEZDO");
                 Process.Start(psi);
                 log?.Write("desktop", $"Window opened in {Path.GetFileName(browser)}", new { browser, url = Url });

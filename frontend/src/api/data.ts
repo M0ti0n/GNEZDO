@@ -30,6 +30,19 @@ export const data = {
   info: (): Promise<DataInfo> => (demoMode ? Promise.resolve({ kind: "demo" }) : call<DataInfo>("/api/data")),
   openFolder: () => call<void>("/api/data/open-folder", "POST"),
   backupUrl: "/api/data/backup",
+  startFresh: (confirm: string) => call<{ backup: string }>("/api/data/start-fresh", "POST", { confirm }),
   test: (f: DbForm) => call<DbCheck>("/api/setup/test", "POST", f),
   save: (f: DbForm) => call<DbSaved>("/api/setup/save", "POST", f),
 };
+
+/** Set while "Start fresh" reloads the page: the window then closes without asking about unsaved jobs. */
+export const leaving = { now: false };
+
+/** After the database is emptied: forget what this browser remembers (view options, panels, the
+ *  machines' local copy, …) and start the page again, like a new install. */
+export function restartFresh() {
+  leaving.now = true;
+  try { localStorage.clear(); } catch { /* nothing kept */ }
+  try { sessionStorage.clear(); } catch { /* nothing kept */ }
+  location.reload();
+}

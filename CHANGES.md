@@ -4,6 +4,8 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Settings → Data → **Start fresh…** (desktop): like a new install without deleting any folder. A copy of the database goes to data\backups first, then all parts, jobs, projects, remnants, machines and settings are deleted and the screens forget what they remembered. Confirmed by typing DELETE
+- The desktop window (GNEZDO's own Edge / Chrome) starts without browser add-ons: an antivirus add-on put in its profile could make the antivirus guard the whole data\browser folder, so it could not be deleted
 - Test parts: one download, **GNEZDO TEST PARTS.zip** (folders TEST PARTS 2D: DXF, TEST PARTS 3D: STEP), linked on the front page; the old archives are gone
 
 ## Build 16 Nov 2026, 2 (`cf6d4f8`)

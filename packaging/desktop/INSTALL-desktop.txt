@@ -64,6 +64,12 @@ gnezdo-backup-....db) to your Downloads. To go back to a backup: close GNEZDO an
 replace data\gnezdo.db in the app-data folder with it (renamed to gnezdo.db).
 To move GNEZDO to another PC: install it there and do the same with a backup.
 
+Starting fresh (like a new install): Settings -> Data -> "Start fresh...". It saves a copy
+of the database to data\backups first, then deletes all parts, jobs, projects, remnants,
+machines and settings, and resets what the screens remember. No need to delete the
+app-data folder by hand (an antivirus can lock GNEZDO's browser profile in data\browser,
+so deleting it by hand can fail with "access denied").
+
 
 5. SETTINGS (optional)
 ----------------------
