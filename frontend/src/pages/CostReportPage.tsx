@@ -45,7 +45,7 @@ export function CostReportPage({ job, jobParts, userName }: { job: ReportJob; jo
     rows: picked.map((jp) => {
       const row = techRowFor(job.machine.technologies, jp.part.material, jp.part.thicknessMm)?.row ?? null;
       const kg = partKg(jp.part);
-      const cutS = partCutSeconds(jp.part.path, row);
+      const cutS = partCutSeconds(jp.part.path, row, false, job.machine.technology === "laser");
       const pm = priceOf(jp.part.material);
       const each = kg * pm.kg + ((cutS ?? 0) / 60) * pm.min;
       return { jp, kg, cutS, each };

@@ -7,10 +7,14 @@ import type { Technology } from "./machine";
 export interface TechRow {
   thicknessMm: number;
   kerfMm: number;
-  /** Cutting speed [mm/min] */
+  /** Cutting speed [mm/min] (laser: E001, fast) */
   speed: number;
-  /** Speed for small holes [mm/min] */
+  /** Speed for small holes [mm/min] (laser: E003, slow) */
   smallHoleSpeed: number;
+  /** Laser: E002, medium speed [mm/min] (contours up to "Medium (E002) up to"); 0 = the fast one */
+  midSpeed?: number;
+  /** Laser: E004, trace speed [mm/min] (marking); 0 = the fast one */
+  traceSpeed?: number;
   /** Holes up to this size are small holes [mm] */
   smallHoleMm: number;
   /** Pierce time [s] */
@@ -97,12 +101,21 @@ export const cellValue = (r: TechRow, c: TechColumn): number => r[c.key] ?? c.de
 export const traceShortestOf = (r: TechRow) => (r.traceShortest ?? traceDefault(r)) === 1;
 
 /** The table's columns, in groups, as shown and exported. */
-export const TECH_COLUMNS: { group: string; only?: Technology[]; cols: TechColumn[] }[] = [
-  { group: "Cutting", cols: [
+export const TECH_COLUMNS: { group: string; only?: Technology[]; except?: Technology[]; cols: TechColumn[] }[] = [
+  { group: "Cutting", except: ["laser"], cols: [
     { key: "kerfMm", label: "Kerf", unit: "mm" },
     { key: "speed", label: "Speed", unit: "mm/min" },
     { key: "smallHoleSpeed", label: "Small holes", unit: "mm/min" },
     { key: "smallHoleMm", label: "Small hole up to", unit: "mm" },
+    { key: "pierceS", label: "Pierce", unit: "s" },
+  ] },
+  // laser: the four speeds of the machine's own technology tables (LVD E001 - E004), to match them one to one
+  { group: "Cutting", only: ["laser"], cols: [
+    { key: "kerfMm", label: "Kerf", unit: "mm" },
+    { key: "speed", label: "E001 Fast speed", unit: "mm/min" },
+    { key: "midSpeed", label: "E002 Medium speed", unit: "mm/min" },
+    { key: "smallHoleSpeed", label: "E003 Slow speed", unit: "mm/min" },
+    { key: "traceSpeed", label: "E004 Trace speed", unit: "mm/min" },
     { key: "pierceS", label: "Pierce", unit: "s" },
   ] },
   { group: "Holes · leads", cols: [
@@ -137,8 +150,8 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; cols: TechColum
     { key: "mjPierce", label: "Restart", unit: "0 none, 1 pierce, 2 quick", max: 2, def: () => 1 },
   ] },
   { group: "Laser", only: ["laser"], cols: [
-    { key: "midSizeMm", label: "Middle up to", unit: "mm" },
-    { key: "littleSizeMm", label: "Little up to", unit: "mm" },
+    { key: "midSizeMm", label: "Medium (E002) up to", unit: "mm" },
+    { key: "littleSizeMm", label: "Slow (E003) up to", unit: "mm" },
     { key: "prePierce", label: "Pre-pierce", unit: "1 = on", max: 1 },
     { key: "techProgram", label: "Tech program", unit: "no.", max: 99999 },
     { key: "traceShortest", label: "Trace shortest", unit: "1 = on", max: 1, def: traceDefault },
@@ -146,14 +159,42 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; cols: TechColum
 ];
 
 /** The column groups shown for a machine's technology (all when not known). */
-export const techColumnsFor = (technology?: Technology) => TECH_COLUMNS.filter((g) => !g.only || !technology || g.only.includes(technology));
+export const techColumnsFor = (technology?: Technology) => TECH_COLUMNS.filter((g) =>
+  // the laser's Cutting replaces the others' (a machine of no known kind: the others')
+  g.except ? !(technology && g.except.includes(technology))
+  : g.group === "Cutting" ? !!technology && !!g.only?.includes(technology)
+  : !g.only || !technology || g.only.includes(technology));
+
+/** Laser: a contour's class as the LVD output writes it (E001 fast .. E004 trace): its longer side
+ *  against "Medium (E002) up to" / "Slow (E003) up to" (outlines too), a trace E004, an open cut E001. */
+export function laserClass(row: TechRow, c: { kind: string; w: number; h: number }): 1 | 2 | 3 | 4 {
+  if (c.kind === "trace") return 4;
+  if (c.kind === "open") return 1;
+  const size = Math.max(c.w, c.h);
+  if ((row.littleSizeMm ?? 0) > 0 && size <= row.littleSizeMm! + 0.01) return 3;
+  if ((row.midSizeMm ?? 0) > 0 && size <= row.midSizeMm! + 0.01) return 2;
+  return 1;
+}
+
+/** A contour's cutting speed [mm/min] for the time estimates. Laser: by its class (E001 - E004, as the
+ *  machine cuts it); a speed not set: the fast one. Else: the cutting speed, small holes (marked, or up
+ *  to "Small hole up to") at the small-hole speed. */
+export function speedFor(row: TechRow, c: { kind: string; w: number; h: number; small?: boolean }, laser: boolean): number {
+  if (laser) {
+    const e = laserClass(row, c);
+    const v = e === 2 ? row.midSpeed : e === 3 ? row.smallHoleSpeed : e === 4 ? row.traceSpeed : row.speed;
+    return v && v > 0 ? v : row.speed;
+  }
+  const small = c.kind === "inner" && (c.small || (row.smallHoleMm > 0 && (c.w + c.h) / 2 <= row.smallHoleMm));
+  return small && row.smallHoleSpeed > 0 ? row.smallHoleSpeed : row.speed;
+}
 
 export const emptyRow = (thicknessMm: number): TechRow => ({
   thicknessMm, kerfMm: 0, speed: 0, smallHoleSpeed: 0, smallHoleMm: 0, pierceS: 0,
   holeLeadInMm: 0, holeLeadOutMm: 0, holeGapMm: 0, holeLeadRadiusMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outGapMm: 0, outLeadRadiusMm: 0,
   leadInAngle: 0, leadOutAngle: 0, partGapMm: 0, borderMm: 0,
   remGapInMm: 0, remGapOutMm: 0, remMinDistMm: 0, remLeadInMm: 0, remLeadOutMm: 0,
-  midSizeMm: 0, littleSizeMm: 0, prePierce: 0, techProgram: 0, mjGapMm: 1, mjPierce: 1,
+  midSizeMm: 0, littleSizeMm: 0, prePierce: 0, techProgram: 0, mjGapMm: 1, mjPierce: 1, midSpeed: 0, traceSpeed: 0,
 });
 
 export const newTechnology = (name = "New technology"): TechSet => ({

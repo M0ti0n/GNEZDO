@@ -31,7 +31,7 @@ export function useSimulation({ index, single, sheets, parts, machine, origin }:
   const tl = useMemo(() => {
     if (!sheet) return null;
     const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row ?? null;
-    return simTimeline(liveContours(sheet), from, row, rapidOf(machine));
+    return simTimeline(liveContours(sheet), from, row, rapidOf(machine), machine.technology === "laser");
   }, [sheet, machine, from]);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
