@@ -35,8 +35,13 @@ export const FITTING_DEFAULTS: FittingValues = {
  *  the name, material and thickness its parts go to Import 2D with ("" / missing: its own name, the Import 2D
  *  properties' material and thickness). */
 export interface FitSession {
-  kind: FittingKind; values: FittingValues; count: Record<FittingKind, number>; pick: Partial<Record<FittingKind, string>>;
-  name?: Partial<Record<FittingKind, string>>; material?: Partial<Record<FittingKind, string>>; thick?: Partial<Record<FittingKind, string>>;
+  /** A built-in fitting, or a plug-in tool: "tool:<its id>" (Settings -> Special tools) */
+  kind: FittingKind | `tool:${string}`;
+  values: FittingValues;
+  /** The plug-in tools' values, by tool id */
+  tools?: Record<string, Record<string, number | boolean | string>>;
+  count: Partial<Record<string, number>>; pick: Partial<Record<string, string>>;
+  name?: Partial<Record<string, string>>; material?: Partial<Record<string, string>>; thick?: Partial<Record<string, string>>;
 }
 
 export const newFitSession = (kind: FittingKind = "elbow"): FitSession => ({

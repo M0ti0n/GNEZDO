@@ -45,6 +45,7 @@ Working now:
 - **Manual nesting** with add sheet, mirror, rotate, arrange, stack, align edge, common cut, lock, copy and paste
 - **Work part list** with materials, thicknesses, required / nested / maximum quantities and stock sheets, including remnants from DXF
 - **Server version** with users and sign-in, and a **desktop version** for one PC
+- **Special tools**: sheet metal fittings made from their values, and **plug-in tools** added without a new build (guide and example in [`SPECIAL TOOLS/`](SPECIAL%20TOOLS/))
 
 Coming:
 
@@ -107,6 +108,7 @@ Import parts from drawing files into the database, review them and fix problems 
 | `nesting/` | Nesting engine: PackingSolver with our fixes, and our pre-pass (hole filling, pairs, blocks, common cut) and post-pass ([nesting/README.md](nesting/README.md)); started by the backend for every auto nest | C++, Python |
 
 | `packaging/` | The Windows server zip (`start.bat`) and the desktop builds for Windows and Linux | |
+| `SPECIAL TOOLS/` | How to write a plug-in special tool, with an example tool | JavaScript, JSON, SVG |
 
 Planned: postprocessor.
 

@@ -11,7 +11,7 @@ namespace Gnezdo.Api.Endpoints;
 public static class SettingsEndpoints
 {
     /// <summary>Keys that may be stored (more come as settings move to the server).</summary>
-    public static readonly string[] Keys = ["machines"];
+    public static readonly string[] Keys = ["machines", "specialTools"];
 
     public record SettingSaveRequest(JsonNode? Value, string? ModifiedBy);
 

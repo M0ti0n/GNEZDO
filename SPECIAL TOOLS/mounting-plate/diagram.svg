@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 220">
+  <rect x="40" y="36" width="190" height="130" rx="14" fill="#e7f1f8" stroke="#1b2a30" stroke-width="1.6"/>
+  <g fill="#fff" stroke="#1b2a30" stroke-width="1.4">
+    <circle cx="62" cy="58" r="8"/><circle cx="208" cy="58" r="8"/><circle cx="208" cy="144" r="8"/><circle cx="62" cy="144" r="8"/>
+  </g>
+  <circle cx="135" cy="101" r="22" fill="#fff" stroke="#7b8c92" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <path d="M40 22H230 M40 16v12 M230 16v12" stroke="#1e8db5" stroke-width="1.8"/>
+  <path d="M246 36V166 M240 36h12 M240 166h12" stroke="#4c9a2a" stroke-width="1.8"/>
+  <path d="M40 50A14 14 0 0 1 54 36" fill="none" stroke="#8a4fb3" stroke-width="2.4"/>
+  <path d="M30 30 44 42" stroke="#8a4fb3" stroke-width="1"/>
+  <path d="M56 150 68 138" stroke="#c2412d" stroke-width="1.8"/>
+  <path d="M30 178 56 150" stroke="#c2412d" stroke-width="1"/>
+  <path d="M40 182H62 M40 176v12 M62 176v12" stroke="#a8683a" stroke-width="1.8"/>
+  <path d="M62 144V188" stroke="#a8683a" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="135" y="140" text-anchor="middle" font-family="Barlow, sans-serif" font-size="10" fill="#7b8c92">center hole</text>
+</svg>

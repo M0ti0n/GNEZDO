@@ -106,4 +106,42 @@ public sealed class DesktopTests : IAsyncLifetime
         cmd.CommandText = "SELECT COUNT(*) FROM Settings WHERE Key = 'machines'";
         Assert.Equal(1L, (long)(await cmd.ExecuteScalarAsync())!);
     }
+    [Fact]
+    public async Task Tools_folder_hands_over_the_tools_files()
+    {
+        // nothing there yet: an empty list (the folder is made by Open folder)
+        var empty = (await _client.GetFromJsonAsync<JsonObject>("/api/tools/folder"))!;
+        Assert.Empty(empty["tools"]!.AsArray());
+        Assert.Equal(Path.Combine(_root, "tools"), empty["folder"]!.GetValue<string>());
+
+        var dir = Path.Combine(_root, "tools");
+        Directory.CreateDirectory(Path.Combine(dir, "plate"));
+        await File.WriteAllTextAsync(Path.Combine(dir, "plate", "tool.json"), "{\"id\":\"plate\"}");
+        await File.WriteAllTextAsync(Path.Combine(dir, "plate", "tool.js"), "function parts(v, gz) {}");
+        await File.WriteAllTextAsync(Path.Combine(dir, "plate", "notes.txt"), "not handed over");
+        Directory.CreateDirectory(Path.Combine(dir, "_off", "old"));                 // _ and . folders: not tools
+        Directory.CreateDirectory(Path.Combine(dir, "half"));                        // no tool.json: a problem
+        await File.WriteAllTextAsync(Path.Combine(dir, "half", "tool.js"), "x");
+        using (var z = System.IO.Compression.ZipFile.Open(Path.Combine(dir, "ring.gnezdo-tool.zip"), System.IO.Compression.ZipArchiveMode.Create))
+        {
+            await using var w = new StreamWriter(z.CreateEntry("tool.json").Open());
+            await w.WriteAsync("{\"id\":\"ring\"}");
+        }
+
+        var res = (await _client.GetFromJsonAsync<JsonObject>("/api/tools/folder"))!;
+        var tools = res["tools"]!.AsArray();
+        Assert.Equal(2, tools.Count);
+        var plate = tools.First(t => t!["name"]!.GetValue<string>() == "plate")!;
+        Assert.Equal("function parts(v, gz) {}", plate["files"]!["tool.js"]!.GetValue<string>());
+        Assert.Null(plate["files"]!["notes.txt"]);
+        var ring = tools.First(t => t!["name"]!.GetValue<string>() == "ring.gnezdo-tool.zip")!;
+        Assert.Equal("{\"id\":\"ring\"}", ring["files"]!["tool.json"]!.GetValue<string>());
+        var problems = res["problems"]!.AsArray();
+        Assert.Single(problems);
+        Assert.Equal("half", problems[0]!["name"]!.GetValue<string>());
+
+        // added tools live in a setting of their own
+        var put = await _client.PutAsJsonAsync("/api/settings/specialTools", new { value = new JsonObject { ["tools"] = new JsonArray() } });
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+    }
 }

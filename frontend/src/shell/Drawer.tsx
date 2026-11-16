@@ -76,7 +76,7 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRem
           {extractPanel.parts.length > 0 && <span className="rail-count is-3d">{extractPanel.parts.filter((x) => x.kind !== "hardware").length}</span>}
         </button>
         <button role="tab" aria-selected={screen === "special"} className={`rail-btn${screen === "special" ? " is-on" : ""}`}
-          onClick={() => onRail("special")} title="Special tools: parts made from their values (fittings: elbows, transitions, branch reducers, flanges, screw flights); into the Import 2D list">
+          onClick={() => onRail("special")} title="Special tools: parts made from their values (fittings: elbows, transitions, branch reducers, flanges, screw flights; and plug-in tools from Settings → Special tools); into the Import 2D list">
           <IconSpecial /><span>Special tools</span>
         </button>
         <button role="tab" aria-selected={mode === "parts"} className={`rail-btn${mode === "parts" ? " is-on" : ""}`}

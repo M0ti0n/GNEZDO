@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { FIT_TOOLS, ImportToolStrip, fitIcon } from "../import/ImportTools";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { FIT_TOOLS, ImportToolStrip, fitIcon, pluginIcon } from "../import/ImportTools";
 import { Preview } from "../import/ProcessDialog";
 import { NumInput } from "../components/NumInput";
 import { Combobox } from "../components/Combobox";
@@ -10,7 +10,10 @@ import {
 } from "../import/fittings";
 import { FLANGE_SIZES, THREADS, canDivide, flangeFor, isStandard, threadFlangeFor, threadSize } from "../import/fittings/flange";
 import { screwResult } from "../import/fittings/screw";
-
+import { activeTools, useToolStore } from "../tools/toolStore";
+import { runToolPackage } from "../tools/toolRunner";
+import type { ToolResult } from "../tools/toolCore";
+import { svgUrl, toolValues, type ToolField, type ToolPackage, type ToolValues } from "../tools/toolFormat";
 // SPECIAL TOOLS -> FITTINGS: flat parts of sheet metal fittings made from their values (the HVAC Fittings
 // workbench). One part on the canvas at a time, picked in the list. Here they only get their name, material
 // and thickness: "Send to Import 2D" puts them in the import list, and Import 2D processes them, as it does
@@ -33,51 +36,112 @@ interface Props {
 
 const COUNT_LABEL: Record<FittingKind, string> = { elbow: "Elbows", transition: "Fittings", branch: "Fittings", flange: "Flanges", thread: "Flanges", screw: "Screws" };
 
-export function FittingsPage({ session, onSession, stateOf, importMaterial, importThickness, onSend }: Props) {
-  const kind = session.kind;
+export function FittingsPage(props: Props) {
+  const { session, onSession } = props;
+  const store = useToolStore();
+  const plugins = activeTools(store);
+  const pluginId = session.kind.startsWith("tool:") ? session.kind.slice(5) : null;
+  const plugin = pluginId ? plugins.find((t) => t.manifest.id === pluginId) : undefined;
+  const onTool = (id: string) => {
+    if (id.startsWith("fit-")) onSession({ ...session, kind: id.slice(4) as FittingKind });
+    else if (id.startsWith("tool:")) onSession({ ...session, kind: id as FitSession["kind"] });
+  };
+  const strip = (
+    <ImportToolStrip active={pluginId ? `tool:${pluginId}` : `fit-${session.kind}`} onTool={onTool}
+      strip={[...FIT_TOOLS.map((t) => t.id), ...plugins.map((t) => `tool:${t.manifest.id}`)]}
+      extra={plugins.map((t) => ({ id: `tool:${t.manifest.id}`, label: t.manifest.name, icon: pluginIcon(t.icon ? svgUrl(t.icon) : null) }))} />
+  );
+  // a plug-in tool switched off or removed meanwhile: back to the first fitting
+  if (pluginId && !plugin) {
+    return (
+      <div className="import uf fit">
+        {strip}
+        <section className="uf-pane fit-pane" aria-label="Canvas">
+          <div className="uf-empty"><p>{store.loaded ? "This special tool is no longer there (removed or switched off in Settings → Special tools)." : "Loading the special tools…"}</p></div>
+        </section>
+      </div>
+    );
+  }
+  return plugin ? <PluginTool {...props} strip={strip} pkg={plugin} key={plugin.manifest.id} /> : <BuiltIn {...props} strip={strip} />;
+}
+
+/** Everything a special tool's screen shows besides its own form. */
+interface Made {
+  kind: string;
+  heading: string;
+  icon: ReactNode;
+  form: ReactNode;
+  parts: FittingPart[];
+  problems: string[];
+  sigs: string[];
+  /** The parts' name when none is given */
+  title: string;
+  countLabel: string;
+  pill: string;
+  /** A thickness the tool recommends (the flanges'): the thickness until another is set */
+  rec?: string;
+  busy?: boolean;
+  onClear: () => void;
+}
+
+function BuiltIn({ strip, ...props }: Props & { strip: ReactNode }) {
+  const { session, onSession } = props;
+  const kind = session.kind as FittingKind;
   const values = session.values[kind];
-  const count = session.count[kind];
+  const count = session.count[kind] ?? 1;
+  const name = session.name?.[kind] ?? "";
+  const { parts, problems } = useMemo(() => fittingParts(kind, values, name), [kind, values, name]);
+  const set = <K extends FittingKind>(k: K, patch: Partial<FittingValues[K]>) =>
+    onSession({ ...session, values: { ...session.values, [k]: { ...session.values[k], ...patch } } });
+  const pieces = parts.reduce((n, p) => n + p.qty, 0) * count;
+  return <FitScreen {...props} strip={strip} made={{
+    kind, heading: FITTING_NAMES[kind], icon: fitIcon(kind), parts, problems,
+    sigs: parts.map((p) => fittingSig(kind, values, p.key)),
+    title: fittingTitle(kind, values), countLabel: COUNT_LABEL[kind],
+    pill: kind === "screw" ? `${pieces} ${pieces === 1 ? "piece" : "pieces"}` : `${parts.length} ${parts.length === 1 ? "part" : "parts"}`,
+    rec: kind === "flange" || kind === "thread" ? String((values as { t: number }).t) : undefined,
+    onClear: () => onSession({ ...session, values: { ...session.values, [kind]: FITTING_DEFAULTS[kind] }, count: { ...session.count, [kind]: 1 }, name: { ...(session.name ?? {}), [kind]: "" } }),
+    form: (<>
+      {kind === "elbow" && <Elbow v={session.values.elbow} set={(p) => set("elbow", p)} />}
+      {kind === "transition" && <Transition v={session.values.transition} set={(p) => set("transition", p)} />}
+      {kind === "branch" && <Branch v={session.values.branch} set={(p) => set("branch", p)} />}
+      {kind === "flange" && <Flange v={session.values.flange} set={(p) => set("flange", p)} />}
+      {kind === "thread" && <Thread v={session.values.thread} set={(p) => set("thread", p)} />}
+      {kind === "screw" && <Screw v={session.values.screw} set={(p) => set("screw", p)} ok={!problems.length} />}
+    </>),
+  }} />;
+}
+
+function FitScreen({ session, onSession, stateOf, importMaterial, importThickness, onSend, strip, made }: Props & { strip: ReactNode; made: Made }) {
+  const { kind, parts, problems, sigs, rec = "" } = made;
+  const count = session.count[kind] ?? 1;
   const name = session.name?.[kind] ?? "";
   const material = session.material?.[kind] ?? "";
-  // a flange's thickness: its recommended one until another is set
-  const rec = kind === "flange" || kind === "thread" ? String((values as { t: number }).t) : "";
   const thick = session.thick?.[kind] ?? rec;
   const lists = usePickLists(material || importMaterial);
-  const { parts, problems } = useMemo(() => fittingParts(kind, values, name), [kind, values, name]);
-  const sigs = parts.map((p) => fittingSig(kind, values, p.key));
   const pickKey = parts.some((p) => p.key === session.pick[kind]) ? session.pick[kind] : parts[0]?.key;
   const pi = parts.findIndex((p) => p.key === pickKey);
   const shown = pi >= 0 ? parts[pi] : undefined;
   const drawing = useMemo(() => (shown ? { id: `fit-${shown.key}`, fileName: shown.name, entities: shown.entities } : null), [shown]);
-
-  const set = <K extends FittingKind>(k: K, patch: Partial<FittingValues[K]>) =>
-    onSession({ ...session, values: { ...session.values, [k]: { ...session.values[k], ...patch } } });
-  const onTool = (id: string) => { if (id.startsWith("fit-")) onSession({ ...session, kind: id.slice(4) as FittingKind }); };
   const setOwn = (k: "name" | "material" | "thick", v: string) => onSession({ ...session, [k]: { ...(session[k] ?? {}), [kind]: v } });
-  const pieces = parts.reduce((n, p) => n + p.qty, 0) * count;
 
   return (
     <div className="import uf fit">
-      <ImportToolStrip active={`fit-${kind}`} onTool={onTool} strip={FIT_TOOLS.map((t) => t.id)} />
-      <section className="uf-pane fit-pane" aria-label="Canvas">
-        <h3>{shown ? <>{shown.name} <em>{shown.label} ×{shown.qty * count} · {fmt(shown.w)} × {fmt(shown.h)} mm{stateOf(sigs[pi]) === "saved" ? " · processed ✓" : stateOf(sigs[pi]) === "listed" ? " · sent to Import 2D" : ""}</em></> : FITTING_NAMES[kind]}</h3>
+      {strip}
+      <section className={`uf-pane fit-pane${made.busy ? " is-busy" : ""}`} aria-label="Canvas">
+        <h3>{shown ? <>{shown.name} <em>{shown.label} ×{shown.qty * count} · {fmt(shown.w)} × {fmt(shown.h)} mm{stateOf(sigs[pi]) === "saved" ? " · processed ✓" : stateOf(sigs[pi]) === "listed" ? " · sent to Import 2D" : ""}</em></> : made.heading}</h3>
         {drawing ? <div className="fit-canvas"><Preview drawing={drawing} /></div>
-          : <div className="uf-empty"><ul className="uf-problems">{problems.map((p) => <li key={p}>{p}</li>)}</ul></div>}
-        <p className="fit-hint"><b>{FITTING_NAMES[kind]}</b> · The part picked in the list is on the canvas. <b>Send to Import 2D</b> puts the parts in the import list, to be processed there; once processed, a part's box gets a check mark.</p>
+          : <div className="uf-empty">{made.busy && !problems.length ? <p>Working…</p> : <ul className="uf-problems">{problems.map((p) => <li key={p}>{p}</li>)}</ul>}</div>}
+        <p className="fit-hint"><b>{made.heading}</b> · The part picked in the list is on the canvas. <b>Send to Import 2D</b> puts the parts in the import list, to be processed there; once processed, a part&apos;s box gets a check mark.</p>
       </section>
 
-      <aside className="uf-panel fit-panel" aria-label={FITTING_NAMES[kind]}>
+      <aside className="uf-panel fit-panel" aria-label={made.heading}>
         <header>
-          <h2 className="fit-title"><span className="fit-title-ic">{fitIcon(kind)}</span>{FITTING_NAMES[kind]}</h2>
-          <span className="uf-pill is-ok">{kind === "screw" ? `${pieces} ${pieces === 1 ? "piece" : "pieces"}` : `${parts.length} ${parts.length === 1 ? "part" : "parts"}`}</span>
+          <h2 className="fit-title"><span className="fit-title-ic">{made.icon}</span>{made.heading}</h2>
+          <span className="uf-pill is-ok">{made.pill}</span>
         </header>
         <div className="uf-body">
-          {kind === "elbow" && <Elbow v={session.values.elbow} set={(p) => set("elbow", p)} />}
-          {kind === "transition" && <Transition v={session.values.transition} set={(p) => set("transition", p)} />}
-          {kind === "branch" && <Branch v={session.values.branch} set={(p) => set("branch", p)} />}
-          {kind === "flange" && <Flange v={session.values.flange} set={(p) => set("flange", p)} />}
-          {kind === "thread" && <Thread v={session.values.thread} set={(p) => set("thread", p)} />}
-          {kind === "screw" && <Screw v={session.values.screw} set={(p) => set("screw", p)} ok={!problems.length} />}
+          {made.form}
 
           {problems.length > 0 && <ul className="uf-problems">{problems.map((p) => <li key={p}>{p}</li>)}</ul>}
 
@@ -97,13 +161,13 @@ export function FittingsPage({ session, onSession, stateOf, importMaterial, impo
               );
             })}
           </div>
-          <h3 className="uf-lbl">For Import 2D <small>as the 3D extractor's parts</small></h3>
+          <h3 className="uf-lbl">For Import 2D <small>as the 3D extractor&apos;s parts</small></h3>
           <div className="uf-row uf-name">
             <label htmlFor="fit-name">Name</label>
-            <NameField key={`${kind}:${name}`} value={name} placeholder={fittingTitle(kind, values)} onCommit={(v) => setOwn("name", v)} />
+            <NameField key={`${kind}:${name}`} value={name} placeholder={made.title} onCommit={(v) => setOwn("name", v)} />
           </div>
           <div className="uf-row uf-name fit-own">
-            <label htmlFor="fit-count">{COUNT_LABEL[kind]}</label>
+            <label htmlFor="fit-count">{made.countLabel}</label>
             <NumInput id="fit-count" className="field uf-num uf-qty" value={count} min={1} int onCommit={(n) => onSession({ ...session, count: { ...session.count, [kind]: Math.max(1, n) } })} />
             <div className="uf-mat">
               <Combobox value={material}
@@ -118,17 +182,119 @@ export function FittingsPage({ session, onSession, stateOf, importMaterial, impo
                 placeholder={importThickness ? `${importThickness} (Import 2D)` : "Thickness"} ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" />
             </div>
           </div>
-          <p className="uf-note uf-name-note">The parts are named after it ({parts.length > 1 ? "with -A, -B, … where a fitting has several" : "one part"}). No material or thickness: the Import 2D properties&apos; ones.</p>
+          <p className="uf-note uf-name-note">The parts are named after it ({parts.length > 1 ? "with -A, -B, … where it makes several" : "one part"}). No material or thickness: the Import 2D properties&apos; ones.</p>
         </div>
         <footer className="fit-actions">
-          <button type="button" className="btn" onClick={() => onSession({ ...session, values: { ...session.values, [kind]: FITTING_DEFAULTS[kind] }, count: { ...session.count, [kind]: 1 }, name: { ...(session.name ?? {}), [kind]: "" } })}
-            title="Back to the starting values">Clear</button>
-          <button type="button" className="btn btn-primary" disabled={!parts.length} onClick={() => onSend(parts.map((part, i) => ({ part, sig: sigs[i] })), count, { material: material.trim(), thicknessMm: thick.trim() })}
+          <button type="button" className="btn" onClick={made.onClear} title="Back to the starting values">Clear</button>
+          <button type="button" className="btn btn-primary" disabled={!parts.length || made.busy} onClick={() => onSend(parts.map((part, i) => ({ part, sig: sigs[i] })), count, { material: material.trim(), thicknessMm: thick.trim() })}
             title="The parts go into the Import 2D list with their quantity, material and thickness, to be processed there (sent again: the part waiting there is replaced)">Send to Import 2D</button>
         </footer>
       </aside>
     </div>
   );
+}
+
+// ------------------------------------------------------------------ plug-in tools (Settings -> Special tools)
+
+/** A plug-in tool's parts for its values, run in its sandbox; the last result stays while a new one is made. */
+function usePluginResult(pkg: ToolPackage, values: ToolValues): { result: ToolResult | null; busy: boolean } {
+  const key = JSON.stringify(values);
+  const [got, setGot] = useState<{ pkg: ToolPackage; key: string; result: ToolResult } | null>(null);
+  useEffect(() => {
+    let live = true;
+    void runToolPackage(pkg, values).then((result) => { if (live) setGot({ pkg, key, result }); });
+    return () => { live = false; };
+  }, [pkg, key]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const fresh = got?.pkg === pkg && got.key === key;
+  return { result: got?.pkg === pkg ? got.result : null, busy: !fresh };
+}
+
+const toolSig = (pkg: ToolPackage, values: ToolValues, key: string) => `tool:${pkg.manifest.id}@${pkg.manifest.toolVersion ?? ""}:${JSON.stringify(values)}:${key}`;
+
+function PluginTool({ strip, pkg, ...props }: Props & { strip: ReactNode; pkg: ToolPackage }) {
+  const { session, onSession } = props;
+  const m = pkg.manifest;
+  const kind = `tool:${m.id}`;
+  const values = useMemo(() => toolValues(m, session.tools?.[m.id]), [m, session.tools]);
+  const name = session.name?.[kind] ?? "";
+  const { result, busy } = usePluginResult(pkg, values);
+  const set = (patch: ToolValues) => onSession({ ...session, tools: { ...(session.tools ?? {}), [m.id]: { ...values, ...patch } } });
+  const ok = result && !("error" in result) ? result : null;
+  const title = ok?.title || m.name.toUpperCase();
+  const head = name.trim() || title;
+  const parts: FittingPart[] = (ok?.parts ?? []).map((p) => {
+    const sfx = p.suffix ?? ((ok?.parts.length ?? 0) > 1 ? p.key : "");
+    return { key: p.key, label: p.label, name: sfx ? `${head}-${sfx}` : head, qty: p.qty, entities: p.entities, w: p.w, h: p.h };
+  });
+  const problems = !result ? [] : "error" in result ? [`The tool failed: ${result.error}`] : result.problems;
+  const pieces = parts.reduce((n, p) => n + p.qty, 0) * (session.count[kind] ?? 1);
+  return <FitScreen {...props} strip={strip} made={{
+    kind, heading: m.name, icon: pluginIcon(pkg.icon ? svgUrl(pkg.icon) : null), parts, problems, busy,
+    sigs: parts.map((p) => toolSig(pkg, values, p.key)), title, countLabel: m.countLabel || "Pieces",
+    pill: parts.length === 1 ? `${pieces} ${pieces === 1 ? "piece" : "pieces"}` : `${parts.length} parts`,
+    onClear: () => onSession({ ...session, tools: { ...(session.tools ?? {}), [m.id]: toolValues(m) }, count: { ...session.count, [kind]: 1 }, name: { ...(session.name ?? {}), [kind]: "" } }),
+    form: <PluginForm pkg={pkg} values={values} set={set} />,
+  }} />;
+}
+
+/** A plug-in tool's form, from its tool.json: value boxes on its diagram, the rest in rows by group. */
+function PluginForm({ pkg, values, set }: { pkg: ToolPackage; values: ToolValues; set: (p: ToolValues) => void }) {
+  const m = pkg.manifest;
+  const onDiagram = (f: ToolField) => !!pkg.diagram && !!f.at && (f.type === "number" || f.type === "int");
+  const boxes = m.fields.filter(onDiagram);
+  const rows = m.fields.filter((f) => !onDiagram(f));
+  const groups: { name: string; fields: ToolField[] }[] = [];
+  for (const f of rows) {
+    const g = f.group ?? "";
+    const at = groups.find((x) => x.name === g);
+    if (at) at.fields.push(f); else groups.push({ name: g, fields: [f] });
+  }
+  const numIn = (f: ToolField, cls: string, label: string) => (
+    <NumInput className={cls} value={values[f.key] as number} min={f.min ?? -1e9} int={f.type === "int"} aria-label={label}
+      onCommit={(n) => set({ [f.key]: f.max !== undefined ? Math.min(f.max, n) : n })} placeholder="0" />
+  );
+  return (<>
+    {pkg.diagram && (
+      <div className="li-editor fit-diagram">
+        <img className="fit-diagram-img" src={svgUrl(pkg.diagram)} alt="" />
+        {boxes.map((f) => {
+          const c = COL[f.color ?? "dark"];
+          return (
+            <label key={f.key} className="li-val fit-val" style={{ left: `${f.at![0]}%`, top: `${f.at![1]}%`, borderColor: c[0] }} title={f.title ?? f.label}>
+              <b style={{ color: c[1] }}>{f.label}</b>
+              {numIn(f, "li-num", f.title ?? f.label)}
+              <span>{f.unit ?? ""}</span>
+            </label>
+          );
+        })}
+      </div>
+    )}
+    {groups.map((g) => (
+      <div key={g.name || "-"} className="fit-group">
+        {g.name && <h3 className="uf-lbl">{g.name}</h3>}
+        {g.fields.map((f) => (
+          <div key={f.key} className="fit-field">
+            {f.type === "check" ? (
+              <label className="fit-check" title={f.title}><input type="checkbox" checked={values[f.key] === true} onChange={(e) => set({ [f.key]: e.target.checked })} /> {f.label}</label>
+            ) : f.type === "choice" ? (
+              <div className="uf-row"><span title={f.title}>{f.label}</span>
+                <div className="fit-chips">
+                  {f.options!.map((o) => <Chip key={String(o.value)} on={values[f.key] === o.value} onClick={() => set({ [f.key]: o.value })}>{o.label}</Chip>)}
+                </div>
+              </div>
+            ) : f.type === "text" ? (
+              <div className="uf-row"><label title={f.title}>{f.label}</label>
+                <input className="field fit-text" value={values[f.key] as string} aria-label={f.title ?? f.label} spellCheck={false} onChange={(e) => set({ [f.key]: e.target.value })} /></div>
+            ) : (
+              <div className="uf-row"><label title={f.title}>{f.label}</label>{numIn(f, "field uf-num", f.title ?? f.label)}{f.unit && <small>{f.unit}</small>}</div>
+            )}
+            {f.note && <p className="uf-note">{f.note}</p>}
+          </div>
+        ))}
+      </div>
+    ))}
+    {m.note && <p className="uf-note">{m.note}</p>}
+  </>);
 }
 
 const fmt = (x: number) => (Math.round(x * 10) / 10).toLocaleString("en-US", { maximumFractionDigits: 1 });

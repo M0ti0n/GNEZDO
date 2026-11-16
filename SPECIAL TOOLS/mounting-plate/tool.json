@@ -1,0 +1,26 @@
+{
+  "format": "gnezdo-tool",
+  "version": 1,
+  "id": "mounting-plate",
+  "name": "Mounting plate",
+  "toolVersion": "1.0",
+  "description": "A rectangular plate with rounded corners, bolt holes in from the edges and an optional center hole. The example tool of the guide.",
+  "countLabel": "Plates",
+  "script": "tool.js",
+  "icon": "icon.svg",
+  "diagram": "diagram.svg",
+  "fields": [
+    { "key": "w", "type": "number", "label": "W", "title": "W: width", "unit": "mm", "default": 300, "min": 1, "at": [50, 7], "color": "blue" },
+    { "key": "h", "type": "number", "label": "H", "title": "H: height", "unit": "mm", "default": 200, "min": 1, "at": [86, 46], "color": "green" },
+    { "key": "r", "type": "number", "label": "R", "title": "R: corner radius (0: square corners)", "unit": "mm", "default": 10, "min": 0, "at": [11, 10], "color": "purple" },
+    { "key": "d", "type": "number", "label": "D", "title": "D: bolt hole diameter", "unit": "mm", "default": 13, "min": 0.5, "at": [11, 82], "color": "red" },
+    { "key": "e", "type": "number", "label": "E", "title": "E: hole center in from the edges", "unit": "mm", "default": 25, "min": 0, "at": [30, 92], "color": "brown" },
+    { "key": "holes", "type": "choice", "label": "Bolt holes", "group": "Holes", "default": 4,
+      "options": [ { "value": 0, "label": "None" }, { "value": 4, "label": "4 corners" }, { "value": 6, "label": "6 (and mid of W)" } ] },
+    { "key": "center", "type": "check", "label": "Center hole", "group": "Holes", "default": false },
+    { "key": "dc", "type": "number", "label": "Center hole D", "unit": "mm", "group": "Holes", "default": 50, "min": 1, "note": "Used when Center hole is ticked." },
+    { "key": "cross", "type": "check", "label": "Center cross (tracing)", "group": "Marking", "default": false },
+    { "key": "crossLen", "type": "number", "label": "Cross size", "unit": "mm", "group": "Marking", "default": 20, "min": 1 }
+  ],
+  "note": "The parts are named PLATE WxH unless a name is given."
+}
