@@ -1979,6 +1979,8 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .tech-meta { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin: 12px 0 10px; font-size: 13.5px; color: var(--ink-2); }
 .tech-name { display: flex; align-items: center; gap: 6px; }
 .tech-name .field { width: 220px; height: 30px; }
+.tech-note { display: flex; align-items: center; gap: 6px; flex: 1 1 260px; }
+.tech-note .field { flex: 1; min-width: 0; height: 30px; }
 .tech-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .tech-tag { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 9px; border-radius: 11px; background: var(--blue-tint); color: var(--blue-ink); font-weight: 600; font-size: 12.5px; }
 .tech-tag button { border: 0; background: none; color: inherit; font-size: 14px; line-height: 1; padding: 0 4px; cursor: pointer; }

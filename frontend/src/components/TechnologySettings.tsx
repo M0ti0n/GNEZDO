@@ -148,6 +148,8 @@ export function TechnologySettings({ techs, onChange, machineName, technology }:
               onChange={(e) => setTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} onBlur={addTag} />}
             {!tech.materials.length && <span className="tech-hint">none: any material</span>}
           </div>
+          <label className="tech-note"><span>Note</span><input className="field" value={tech.note ?? ""} readOnly={locked} title={locked ? LOCKED : undefined}
+            placeholder="what it is for, e.g. the power source" onChange={(e) => setTech({ note: e.target.value || undefined })} /></label>
           <div className="tech-range">
             <span>Thickness</span>
             <NumInput value={tech.minMm} min={0} readOnly={locked} tabIndex={locked ? -1 : undefined} aria-label="Used from thickness (mm)" onCommit={(n) => setTech({ minMm: n })} />

@@ -22,6 +22,8 @@ export interface TechRow {
   smallHoleMm: number;
   /** Pierce time [s] */
   pierceS: number;
+  /** Torch down and up again for a contour [s] (plasma: its height control), for the time estimates; 0 = not counted */
+  torchS?: number;
   holeLeadInMm: number;
   holeLeadOutMm: number;
   /** Gap between the lead-in and lead-out points along the contour [mm]: + cuts past the start, − leaves a tab */
@@ -79,6 +81,8 @@ export interface TechSet {
   minMm: number;
   maxMm: number;
   rows: TechRow[];
+  /** What it is for (e.g. the power source it was made with) */
+  note?: string;
 }
 
 export type RowKey = Exclude<keyof TechRow, "extra" | "skip">;
@@ -111,6 +115,7 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; except?: Techno
     { key: "smallHoleSpeed", label: "Small holes", unit: "mm/min" },
     { key: "smallHoleMm", label: "Small hole up to", unit: "mm" },
     { key: "pierceS", label: "Pierce", unit: "s" },
+    { key: "torchS", label: "Torch down / up", unit: "s" },
   ] },
   // laser: the four speeds of the machine's own technology tables (LVD E001 - E004), to match them one to one
   { group: "Cutting", only: ["laser"], cols: [
