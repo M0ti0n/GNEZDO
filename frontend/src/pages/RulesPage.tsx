@@ -126,7 +126,7 @@ export function RulesTabs({ rules, onChange }: { rules: ImportRules; onChange: (
         </section>
 
         <section className="rule">
-          <h3>Splines to polyline</h3>
+          <h3>Splines and short lines to polyline</h3>
           <label className="rule-field">
             <span>Tolerance</span>
             <span className="rule-num">
@@ -135,7 +135,7 @@ export function RulesTabs({ rules, onChange }: { rules: ImportRules; onChange: (
             </span>
           </label>
           <p className="rule-help">Geometry check → Splines → <b>To polyline</b> turns splines into lines and arcs that stay at most this far
-            from the spline. Smaller: closer to the curve, more pieces. Larger: fewer, longer pieces. {SPLINE_TOL_MIN} to {SPLINE_TOL_MAX} mm,
+            from the spline. The 3D Extractor uses it too, for curves of a flat pattern that come as many short lines (round reliefs across bends): they are joined into lines and arcs. Smaller: closer to the curve, more pieces. Larger: fewer, longer pieces. {SPLINE_TOL_MIN} to {SPLINE_TOL_MAX} mm,
             default {SPLINE_TOL_DEFAULT} mm.</p>
         </section>
 

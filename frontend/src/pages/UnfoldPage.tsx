@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { loadRules, splineTolOf } from "../import/rules";
 import { useMiddleDouble } from "../components/middleDouble";
 import { NumInput } from "../components/NumInput";
 import { Combobox } from "../components/Combobox";
@@ -155,7 +156,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   const ups = u.bends.filter((b) => b.up).length;
   const download = () => {
     const t = applyThreads(u, st);
-    const url = URL.createObjectURL(new Blob([flatDxf(t.u, { marks: marksOf(t.u, st), texts: bendTexts(t.u, st), threads: t.lines })], { type: "application/dxf" }));
+    const url = URL.createObjectURL(new Blob([flatDxf(t.u, { marks: marksOf(t.u, st), texts: bendTexts(t.u, st), threads: t.lines, fitTol: splineTolOf(loadRules()) })], { type: "application/dxf" }));
     const a = document.createElement("a");
     a.href = url; a.download = `${name}_flat.dxf`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);

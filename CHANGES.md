@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- 3D Extractor: curves of a flat pattern that came as many short lines (round corner reliefs across bends, cuts through a bend) are now **joined into lines and arcs** within the Splines to polyline tolerance (Settings → Rules → Import rules, default 0.01 mm), in what goes to Import 2D and in Flat DXF. The 150 × 150 box: 3,404 lines → 20 lines and 44 arcs, the same shape (at most 0.008 mm off), so the machine no longer runs thousands of tiny moves at the corners
 - Import 2D, Geometry check: new check **No cutting outline**: a drawing whose lines are all tracing or open cut (nothing to cut the part out, e.g. a file of marking blocks) was shown as ready to process; it is now flagged and not processed
 - Import 2D, Geometry check: **Contours cross each other** no longer flags the outline where two of its pieces meet at a sharp angle and rounding puts one end a hair (under 0.01 mm) past the other; a 3D Extractor flat pattern with corner reliefs on 75° bends (150 × 150 box) is now ready to process. A real crossing (a figure eight, a hole over the edge) is still found
 - Import 2D, Process all with no project (and no default project): the hint under the button says to set the project, and the Project box is highlighted like Material and Thickness (was only a message after pressing it)
