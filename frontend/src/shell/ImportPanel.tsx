@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { loadDefaultProject } from "../job/defaultProject";
 import { Combobox } from "../components/Combobox";
 import { usePickLists } from "../components/pickLists";
 import { PanelHead } from "../components/FilterFields";
@@ -71,6 +72,8 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
   const lists = usePickLists(p.properties.material);
   // a project typed but not saved: parts can only be saved under saved projects
   const projectMissing = lists.projectsLoaded && !lists.projectKnown(p.properties.project);
+  // no project and no default project (Settings -> Projects and parts): Process all cannot save the parts
+  const projectEmpty = !p.properties.project.trim() && !loadDefaultProject();
   const [projectError, setProjectError] = useState<string | null>(null);
 
   // only DXF and DWG are taken, anything else in a folder is left out; a single file
@@ -96,15 +99,16 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
   const processHint = !ready.length ? ""
     : toProcess === 0 && unchecked ? "Press Check lines first"
     : toProcess === 0 ? (toCheck ? "Double-click the red parts to open them and process them one by one" : "")
-    : !propsSet ? "Set material and thickness, then Process all"
+    : !propsSet ? `Set ${projectEmpty ? "the project, " : ""}material and thickness, then Process all`
+    : projectEmpty ? "Set the project, then Process all"
     : projectMissing ? "Save the project first, then Process all"
     : toCheck ? `Process all saves the ${toProcess} green; the red stay in the list` : "";
   const [needProps, setNeedProps] = useState(false);
   const processAll = () => {
-    if (!propsSet || projectMissing) {
+    if (!propsSet || projectMissing || projectEmpty) {
       setNeedProps(true);
       p.onPropsOpen(true);
-      const field = projectMissing ? "Project" : p.properties.material.trim() ? "Thickness in mm" : "Material";
+      const field = projectMissing || projectEmpty ? "Project" : p.properties.material.trim() ? "Thickness in mm" : "Material";
       setTimeout(() => document.querySelector<HTMLInputElement>(`.imp-props input[aria-label="${field}"]`)?.focus(), 0);
       return;
     }
@@ -160,7 +164,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
 
           {p.propsOpen && (
             <div className="imp-props-body">
-              <Combobox className={needProps && projectMissing ? "is-required" : undefined}
+              <Combobox className={needProps && (projectMissing || projectEmpty) ? "is-required" : undefined}
                 value={p.properties.project} onChange={(project) => setProp({ project })}
                 options={lists.projects} placeholder="Project" ariaLabel="Project" newHint="a new project"
                 onCreate={async (code) => { await lists.createProject(code); setProp({ project: code }); }} createLabel="Save new project" />
