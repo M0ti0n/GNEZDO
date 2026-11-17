@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMiddleDouble } from "../components/middleDouble";
 import { NumInput } from "../components/NumInput";
 import { Combobox } from "../components/Combobox";
 import { usePickLists } from "../components/pickLists";
@@ -507,6 +508,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
   const cv = useRef<HTMLCanvasElement>(null);
   // turned (yaw, pitch), zoomed and moved (ox, oy: screen pixels off the middle)
   const [cam, setCam] = useState({ yaw: -0.7, pitch: 0.5, zoom: 1, ox: 0, oy: 0 });
+  const middleDouble3d = useMiddleDouble(() => setCam((c) => ({ ...c, zoom: 1, ox: 0, oy: 0 })));
   const [hover, setHover] = useState<number | null>(null);
   const shapes = useRef<{ i: number; path: Path2D }[]>([]);
   const proj = useRef<((p: V3) => [number, number, number]) | null>(null);
@@ -864,7 +866,11 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
     <div className="uf-canvas">
       <canvas ref={cv} className={pick ? "is-pick" : ""}
         // left button: turn; right or middle button (or Shift): move
-        onPointerDown={(e) => { drag.current = { x: e.clientX, y: e.clientY, moved: false, pan: e.button !== 0 || e.shiftKey }; (e.target as Element).setPointerCapture(e.pointerId); }}
+        onPointerDown={(e) => {
+          // a double click with the middle button: the whole part in view again (the way it is turned stays)
+          if (middleDouble3d(e)) { e.preventDefault(); drag.current = null; return; }
+          drag.current = { x: e.clientX, y: e.clientY, moved: false, pan: e.button !== 0 || e.shiftKey }; (e.target as Element).setPointerCapture(e.pointerId);
+        }}
         onContextMenu={(e) => e.preventDefault()}
         onPointerMove={(e) => {
           const d = drag.current;
@@ -1004,6 +1010,7 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
   // pattern size: fitted again
   const fitBox = { x: -pad, y: -pad, w: W + 2 * pad, h: H + 2 * pad };
   const [vb, setVb] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const middleDoubleFlat = useMiddleDouble(() => setVb(null));
   useEffect(() => setVb(null), [W, H]);
   const box = vb ?? fitBox;
   // the svg's size on the screen: drawing units per screen pixel (marks and the dimension keep their size)
@@ -1088,6 +1095,8 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
         if (measure) setNear(toMm(e).snap);
       }}
       onPointerDown={(e) => {
+        // a double click with the middle button: Fit
+        if (middleDoubleFlat(e)) { e.preventDefault(); pan.current = null; return; }
         // move: right or middle button, or the left one when not measuring
         if (e.button !== 0 || !measure) { pan.current = { x: e.clientX, y: e.clientY, moved: false }; (e.currentTarget as Element).setPointerCapture(e.pointerId); return; }
         const { p, snap } = toMm(e);

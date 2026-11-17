@@ -65,6 +65,10 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRem
         <button className="rail-btn" onClick={onNewJob} title="New job">
           <IconNewJob /><span>New job</span>
         </button>
+        <button role="tab" aria-selected={mode === "parts"} className={`rail-btn${mode === "parts" ? " is-on" : ""}`}
+          onClick={() => toggle("parts")} title="Imported parts: find them and drag them into the open job">
+          <IconLibrary /><span>Parts</span>
+        </button>
         <button role="tab" aria-selected={mode === "import"} className={`rail-btn${mode === "import" || screen === "import" ? " is-on" : ""}`}
           onClick={() => onRail("import")} title="Import 2D: DXF, DWG or SVG drawings (and flat patterns from the 3D Extractor) into the parts library; an empty canvas (New part) to draw one">
           <IconImport /><span>Import 2D</span>
@@ -78,10 +82,6 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRem
         <button role="tab" aria-selected={screen === "special"} className={`rail-btn${screen === "special" ? " is-on" : ""}`}
           onClick={() => onRail("special")} title="Special tools: parts made from their values (fittings: elbows, transitions, branch reducers, flanges, screw flights; and plug-in tools from Settings → Special tools); into the Import 2D list">
           <IconSpecial /><span>Special tools</span>
-        </button>
-        <button role="tab" aria-selected={mode === "parts"} className={`rail-btn${mode === "parts" ? " is-on" : ""}`}
-          onClick={() => toggle("parts")} title="Imported parts">
-          <IconLibrary /><span>Parts</span>
         </button>
         <button role="tab" aria-selected={mode === "jobs"} className={`rail-btn${mode === "jobs" || screen === "jobs" ? " is-on" : ""}`}
           onClick={() => onRail("jobs")} title="Job search">
