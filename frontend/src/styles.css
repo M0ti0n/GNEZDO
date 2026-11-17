@@ -2608,16 +2608,38 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .uf-name input#uf-name { flex: 1; min-width: 0; font-weight: 600; }
 .uf-name .uf-qty { width: 58px; }
 .uf-name-note { margin-top: -4px; }
+.uf-send-one { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 40px; font-weight: 600; }
+.uf-send-one:not(:disabled) { border-color: var(--green-ink); background: var(--green-tint); color: var(--green-ink); }
+.uf-send-one:hover:not(:disabled) { background: #d3ecc6; }
+.uf-send-ic { display: inline-flex; width: 24px; height: 24px; }
+.uf-send-ic svg { width: 24px; height: 24px; }
 .x3-rename { height: 26px; padding: 0 6px; font-weight: 600; min-width: 0; }
 .x3-ren svg { display: block; margin: auto; }
 .uf-3d .uf-canvas { position: relative; }
 .uf-3d { position: relative; }
-.uf-meas { position: absolute; top: 44px; right: 10px; z-index: 2; width: min(300px, calc(100% - 20px)); padding: 10px 12px; background: rgba(255,255,255,.95); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 14px rgba(20,50,30,.12); font-size: 13.5px; font-variant-numeric: tabular-nums; display: grid; gap: 6px; }
+.uf-meas { position: absolute; top: 44px; right: 10px; z-index: 2; width: min(340px, calc(100% - 20px)); padding: 10px 12px; background: rgba(255,255,255,.96); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 14px rgba(20,50,30,.12); font-size: 13.5px; font-variant-numeric: tabular-nums; display: grid; gap: 8px; }
 .uf-meas p { margin: 0; display: grid; gap: 1px; }
 .uf-meas b { font-weight: 600; color: #b4561f; }
 .uf-meas-hint { color: var(--ink-3); }
-.uf-meas-res { display: grid; gap: 2px; padding-top: 6px; border-top: 1px solid var(--line); font-weight: 600; color: #c8171d; }
-.uf-meas .link { justify-self: start; }
+/* the picks, and CLEAR beside them */
+.uf-meas-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.uf-meas-picks { display: grid; gap: 6px; min-width: 0; }
+.uf-meas-picks span { color: var(--ink-2); overflow-wrap: anywhere; }
+.uf-meas-clear { padding: 4px 12px; border: 1.5px solid #d22a2a; border-radius: 3px; background: #fff; color: #111; font: inherit; font-size: 17px; letter-spacing: .03em; cursor: pointer; }
+.uf-meas-clear:hover { background: #fdeceb; }
+/* the result: the main value big, and ΔX ΔY ΔZ */
+.uf-meas-out { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; padding-top: 8px; border-top: 1px solid var(--line); }
+.uf-meas-main { display: grid; gap: 4px; min-width: 0; }
+.uf-meas-main > b { color: #c8441f; font-weight: 700; }
+.uf-meas-big { display: block; padding: 6px 10px; border: 1.5px solid #222; border-radius: 3px; background: #fff; color: #111; font-size: 22px; text-align: right; white-space: nowrap; }
+.uf-meas-big small { font-size: 14px; color: var(--ink-3); }
+.uf-meas-note { font-size: 12.5px; color: var(--ink-3); }
+.uf-meas-delta { display: grid; gap: 4px; }
+.uf-meas-delta label { display: grid; grid-template-columns: 16px 16px 76px; align-items: center; gap: 3px; font-size: 16px; font-weight: 600; }
+.uf-meas-delta input { width: 76px; padding: 2px 6px; border: 1.5px solid currentColor; border-radius: 2px; background: #fff; color: #111; font: inherit; font-size: 13.5px; font-weight: 500; text-align: right; }
+.uf-meas-delta .is-x { color: #1fa83a; }
+.uf-meas-delta .is-y { color: #e0262b; }
+.uf-meas-delta .is-z { color: #1a8fd6; }
 .uf-mat { flex: 1; min-width: 0; }
 .uf-mat > * { width: 100%; }
 .surf-badges { display: flex; gap: 6px; }

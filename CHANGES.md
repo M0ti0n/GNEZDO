@@ -4,6 +4,9 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- 3D Extractor, **wireframe**: edges hidden behind the part are drawn dashed (the visible ones solid)
+- 3D Extractor, **Measure 3D**: new panel layout: 1. and 2. pick (corner coordinates X Y Z) with **CLEAR** beside them; the result (Distance, Offset, Angle…) in a big box; **ΔX ΔY ΔZ** (green, red, blue) in boxes of their own, ready to copy
+- 3D Extractor, part by part: a **Send to Import 2D** button in the part's panel (under Name / Pieces) sends this part with its name, pieces and material and takes it off the 3D Extractor list; the next part in the list opens. The SEND TO IMPORT 2D tool on top still sends and keeps the part in the list. The STEP file's material is offered there only when it can be taken (a material of the Technology tables)
 - Import 2D → Geometry check → Splines: new **To polyline** button: the splines become lines and arcs that follow them within a tolerance set in **Settings → Rules → Import rules → Splines to polyline** (0.001 to 1 mm, default 0.01 mm) (they can then be trimmed, extended and measured, and cut as clean lines and arcs; Undo brings the splines back). A spline is now also checked and saved along its drawn curve, not only straight through its fit points
 - Drawing (Import 2D): the **dynamic input** (Length / Angle) sits on the other side of the last point from the pointer, so it no longer covers the line being drawn
 - **Double click with the middle button (wheel)**: Fit, as the Fit button, in Import 2D, the nest / Process view and the 3D Extractor (3D view: the whole part again, turned as it is; flat pattern: Fit)

@@ -155,3 +155,24 @@ export function relate(a: MPick, b: MPick): string[] {
   out.push(`Distance: ${f2(len3(dv))}`, delta);
   return out;
 }
+
+/** A number as the measuring shows it (up to 2 decimals, thousands separated). */
+export const fmtMeasure = f2;
+
+/** Between two picks, for the measuring panel: the main value (its label, number and unit), the other
+ *  lines, and how far apart they are along X, Y and Z (their reference points, as positive numbers). */
+export function measureSummary(a: MPick, b: MPick): { main: { label: string; value: string; unit: "mm" | "°" }; notes: string[]; delta: V3 } {
+  let main: { label: string; value: string; unit: "mm" | "°" } | null = null;
+  const notes: string[] = [];
+  for (const l of relate(a, b)) {
+    if (l.startsWith("ΔX")) continue;
+    const m: RegExpExecArray | null = !main ? /^(.+?):\s*(-?[\d,.]+)(°)?/.exec(l) : null;
+    if (m) {
+      main = { label: m[1], value: m[2], unit: m[3] ? "°" : "mm" };
+      const rest = l.slice(m[0].length).trim().replace(/^\((.*)\)$/, "$1");
+      if (rest) notes.push(rest);
+    } else notes.push(l);
+  }
+  const dv = sub3(refPoint(b), refPoint(a));
+  return { main: main ?? { label: "Distance", value: f2(len3(dv)), unit: "mm" }, notes, delta: [Math.abs(dv[0]), Math.abs(dv[1]), Math.abs(dv[2])] };
+}

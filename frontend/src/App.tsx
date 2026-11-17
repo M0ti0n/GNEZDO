@@ -384,6 +384,18 @@ export function App() {
     ids.forEach((id) => dispatch({ type: "close", id: `drawing:${id}` }));
     setExtracts((l) => l.filter((x) => !ids.includes(x.id)));
   };
+  /** Part by part: one part to Import 2D, off the 3D Extractor's list; the next part (else the one before) opens. */
+  const sendOne = (id: string) => {
+    const me = extracts.find((x) => x.id === id);
+    if (!me || !me.step.info.ok) return;
+    // the list's order: by kind, then by name; the next of the same kind, else the one before, else any part
+    const same = extracts.filter((x) => x.kind === me.kind).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const k = same.indexOf(me);
+    const next = same[k + 1] ?? same[k - 1] ?? extracts.find((x) => x.id !== id && x.kind !== "hardware");
+    sendToImport([id]);
+    removeParts([id]);
+    if (next) open(drawingTab(next.id, next.name));
+  };
   const extractPanel = {
     parts: extracts, reading: x3Reading,
     onFiles: (f: File[]) => { void addSteps(f); },
@@ -1522,6 +1534,7 @@ export function App() {
                 step={shownPart.step} material={shownPart.material || importProps.material} partMaterial={shownPart.material ?? ""} fileMaterial={shownPart.fileMaterial}
                 onChange={(step) => patchPart(shownPart.id, { step })}
                 onSend={() => sendToImport([shownPart.id])}
+                onSendOne={() => sendOne(shownPart.id)}
                 onName={(name, qty, material) => renamePart(shownPart.id, name, qty, material)} />
               </ErrorBoundary>
             )}
