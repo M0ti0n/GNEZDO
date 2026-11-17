@@ -1965,6 +1965,24 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .dyn-label { font-family: var(--font-cond); font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-2); }
 .dyn-in input { width: 100%; padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; font: inherit; font-size: 15px; }
 .dyn-in input:focus { outline: none; border-color: var(--blue); }
+/* Import 2D → MARKINGS: the panel beside the place (marking, annotation, size) and the preview */
+.dyn-in.mark-ui { gap: 8px; padding: 8px 10px; border-color: #a64ca6; }
+.mark-steps { display: flex; gap: 10px; font-family: var(--font-cond); font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-3); }
+.mark-steps .is-on { color: #8a2f8a; }
+.mark-steps .is-done { color: var(--ink-2); }
+.mark-shapes { display: flex; gap: 6px; }
+.mark-shapes button { display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border: 1.5px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+.mark-shapes button svg path { fill: none; stroke: #8a2f8a; stroke-width: .07; stroke-linecap: round; stroke-linejoin: round; }
+.mark-shapes button:hover, .mark-shapes button.is-on { border-color: #a64ca6; background: #f6ecf6; }
+.mark-shapes button:focus-visible { outline: 2px solid #a64ca6; outline-offset: 1px; }
+.mark-row { display: flex; gap: 6px; align-items: center; }
+.dyn-in .mark-text { flex: 1; min-width: 0; }
+.mark-sizes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mark-sizes button { padding: 8px 4px; border: 1.5px solid var(--line); border-radius: 6px; background: #fff; font: inherit; font-family: var(--font-cond); font-size: 15px; font-weight: 600; letter-spacing: .03em; cursor: pointer; }
+.mark-sizes button:hover, .mark-sizes button.is-on { border-color: #a64ca6; background: #f6ecf6; color: #6e1f6e; }
+.mark-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-3); }
+.mark-preview polyline { fill: none; stroke: var(--ln-trace); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 4 2; }
+.mark-preview .mark-at { fill: #a64ca6; stroke: #fff; stroke-width: 1; }
 
 /* Settings -> Machines: page tabs, Technology table */
 .mc-pages { display: flex; border-bottom: 2px solid var(--line); margin: 4px 0 16px; }

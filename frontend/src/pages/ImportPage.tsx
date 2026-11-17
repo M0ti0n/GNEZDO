@@ -11,6 +11,7 @@ import type { BatchProperties } from "../import/batch";
 import { DynamicInput } from "../components/DynamicInput";
 import { splinesToPolylines } from "../import/splines";
 import { useMiddleDouble } from "../components/middleDouble";
+import { MARKINGS, MARK_SIZES, loadMarkPrefs, markingEntities, markingIconPath, markingStrokes, saveMarkPrefs, type MarkSize } from "../import/markings";
 import { DynFields } from "../components/DynFields";
 import {
   ALL_SNAPS, aidId, angleOf as dirAngle, carcEnt, chamferAt, clipLine, cornerAt, dirAt, dragGrip, filletAt, findSnap, gripAt, gripsOf, handAngle, joinLines, offsetOf, offsetSide,
@@ -45,6 +46,7 @@ const MARKING: Record<string, { role: Role; hint: string }> = {
 const SNAP_PX = 12;
 const HOLE_HINT = "Click a closed cutting contour, or drag a window, to mark it as a hole: cut at slower speed by machines that can (e.g. plasma). Again to unmark.";
 const COMMON_HINT = "Common cut: with Common cut ticked (Properties), every straight line of the outline may be shared with a neighbouring part and cut once (blue). Click a line, or drag a window, to leave it out (it is cut on its own, dashed); again to take it back.";
+const MARK_HINT = "Markings: click where the marking goes (points snap), then pick the marking, type an annotation if it needs one (Enter), and pick the size: SMALL, MEDIUM or BIG. It is traced (engraved). Esc steps back.";
 const ANNOT_HINT = "Annotation: drag a box (or click) and type; the text is in the single-line font and is traced (engraved) on the part. Its height is set above the box; Enter starts a new line. Until it is placed, drag the box's frame to move it, its handles to resize it. Click outside the box or OK to place it, Esc to drop it.";
 /** Annotation: the text's lines laid out in the box (mm): words wrap at the box's width, Enter starts a line. */
 const ANNOT_PAD = 0.3, ANNOT_LEAD = 1.6;
@@ -184,6 +186,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const [annotCap, setAnnotCap] = useState<number>(() => { try { return Number(localStorage.getItem("gnezdo.annot.cap")) || 10; } catch { return 10; } });
   const [annotCapText, setAnnotCapText] = useState(String(annotCap));
   const annotInput = useRef<HTMLTextAreaElement | null>(null);
+  // MARKINGS: where it goes and what is chosen so far (1 marking, 2 annotation, 3 size)
+  const [mark, setMark] = useState<{ at: Pt; step: 1 | 2 | 3; shape: string; text: string; size: MarkSize } | null>(null);
+  const markText = useRef<HTMLInputElement | null>(null);
+  const markPanel = useRef<HTMLDivElement | null>(null);
   // the box moved by its frame or resized by its handles (as in Paint) until it is placed
   const annotDrag = useRef<{ kind: string; x: number; y: number; a: NonNullable<typeof annot>; bottom: number } | null>(null);
   const annotGrab = (kind: string, bottom: number) => (e: React.PointerEvent) => {
@@ -222,6 +228,32 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     commit({ ...drawing, entities: [...drawing.entities, ...ents.filter((e) => !twice.has(e.id))] }, "Annotation");
     const n = a.text.replace(/\s/g, "").length;
     setMessage({ text: `Annotation placed: ${n} ${n === 1 ? "character" : "characters"}, ${annotCap} mm high, traced (engraved)` });
+  };
+  /** Places the marking being chosen (traced lines) and keeps the marking and size for the next one. */
+  const placeMark = (size: MarkSize) => {
+    const m = mark;
+    if (!m) return;
+    const shape = MARKINGS.find((x) => x.id === m.shape) ?? MARKINGS[0];
+    const ents = markingEntities(shape, m.at, size, m.text, () => newId("mk"));
+    const twice = new Set(findDoubles(ents));
+    commit({ ...drawing, entities: [...drawing.entities, ...ents.filter((e) => !twice.has(e.id))] }, "Marking");
+    saveMarkPrefs({ shape: shape.id, size });
+    setMark(null);
+    setMessage({ text: `Marking ${shape.label}${m.text.trim() ? ` "${m.text.trim()}"` : ""} placed, ${size}, traced (engraved). Click the next place, or Esc` });
+  };
+  // the panel's step gets the keys (after the click on the canvas has moved the focus)
+  useEffect(() => {
+    if (!mark) return;
+    const t = window.setTimeout(() => {
+      const el = markPanel.current?.querySelector<HTMLElement>(mark.step === 2 ? ".mark-text" : mark.step === 1 ? ".mark-shapes .is-on" : ".mark-sizes .is-on");
+      el?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [mark?.at, mark?.step]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const markBack = () => {
+    if (!mark) return;
+    if (mark.step === 1) { setMark(null); setMessage({ text: "Marking dropped" }); return; }
+    setMark({ ...mark, step: (mark.step - 1) as 1 | 2 });
   };
   const setCap = (t: string) => {
     setAnnotCapText(t);
@@ -852,6 +884,13 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         return;
       }
     }
+    // MARKINGS: a click picks the place (snapped), and the panel asks what goes there; a right click drops it
+    if (tool === "markings" && view && e.button !== 1) {
+      if (e.button === 2) { if (mark) { setMark(null); setMessage({ text: "Marking dropped" }); } return; }
+      const prefs = loadMarkPrefs();
+      setMark({ at: snapAt(e.clientX, e.clientY, view).p, step: 1, shape: mark?.shape ?? prefs.shape, text: "", size: prefs.size });
+      return;
+    }
     if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut" || tool === "annotate" || tool === "scale" || (MANIP.has(tool) && rotStage === 0))) {
       // Annotation: a press outside the box being typed in places it first
       if (tool === "annotate" && annot) placeAnnot();
@@ -897,7 +936,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         return;
       }
       if ((tool === "fillet" || tool === "chamfer") && view) { setCornerHover(corner ? null : cornerAt(drawing.entities, toModel(e.clientX, e.clientY, view), SNAP_PX / view.s)?.at ?? null); return; }
-      if ((tool && DRAWING_TOOLS.has(tool) || tool === "dimension") && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
+      if ((tool && DRAWING_TOOLS.has(tool) || tool === "dimension" || (tool === "markings" && !mark)) && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
       if (tool === "mirror" && rotStage === 1) { setMirAxis(axisUnder(e.clientX, e.clientY)); return; }
       if ((tool === "rotate" || tool === "move") && rotStage > 0 && view) { setCursor(snapAt(e.clientX, e.clientY, view, tool === "move" && rotStage === 2 ? rotPivot : null)); return; }
       // hover with Trim / Extend: preview the result
@@ -1360,8 +1399,6 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       setMessage({ text: "Nothing to sweep: no lines on top of other lines, no lines outside the part, no loose points" });
       return;
     }
-    // Markings: the button only, for now
-    if (id === "markings") { setTool(null); setMessage({ text: "Markings: coming in a later build" }); return; }
     if (id === "colourLines") { setTool(null); setMessage(null); setColouring(true); return; }
     // Check lines = the Geometry check panel: shows or hides it, with the result in the hint
     if (id === "checkLines") {
@@ -1380,6 +1417,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       return;
     }
     setMessage(null);
+    setMark(null);
     setPreview(null);
     setLineStart(null);
     setShapePts([]);
@@ -1487,7 +1525,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : SHAPES[tool] ? SHAPES[tool].hint : tool === "xline" ? XLINE_HINT : tool === "offset" ? OFFSET_HINT : tool === "fillet" ? FILLET_HINT : tool === "chamfer" ? CHAMFER_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "annotate" ? ANNOT_HINT : tool === "scale" ? SCALE_HINT : tool === "rotate" ? ROTATE_HINT : tool === "mirror" ? MIRROR_HINT : tool === "move" ? MOVE_HINT : "not built yet") : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : SHAPES[tool] ? SHAPES[tool].hint : tool === "xline" ? XLINE_HINT : tool === "offset" ? OFFSET_HINT : tool === "fillet" ? FILLET_HINT : tool === "chamfer" ? CHAMFER_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "annotate" ? ANNOT_HINT : tool === "markings" ? MARK_HINT : tool === "scale" ? SCALE_HINT : tool === "rotate" ? ROTATE_HINT : tool === "mirror" ? MIRROR_HINT : tool === "move" ? MOVE_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -1499,7 +1537,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         blocked={!drawing.entities.length ? { process: "draw the part first" } : problems ? { process: "fix the geometry problems first (Geometry check)" } : undefined} />
       <div
         ref={host}
-        className={`canvas${!tool ? " is-picking" : ""}${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || DRAWING_TOOLS.has(tool) || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "annotate" || tool === "scale" || MANIP.has(tool)) ? " is-marking" : ""}`}
+        className={`canvas${!tool ? " is-picking" : ""}${tool && (MARKING[tool] || EDITING[tool] || MEASURING[tool] || DRAWING_TOOLS.has(tool) || tool === "sweep" || tool === "hole" || tool === "commonCut" || tool === "annotate" || tool === "markings" || tool === "scale" || MANIP.has(tool)) ? " is-marking" : ""}`}
         onPointerLeave={() => { setPreview(null); setCursor(null); }}
         style={view ? { backgroundSize: `${grid}px ${grid}px`, backgroundPosition: `${view.tx % grid}px ${view.ty % grid}px` } : undefined}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -1778,6 +1816,19 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 snap={null} />
             )}
             {tool === "dimension" && cursor?.snapped && <SnapMark c={toScreen(cursor.p, view)} kind={cursor.kind} />}
+            {mark && tool === "markings" && (() => {
+              // the marking as it will be: at the size picked last (step 3: the size under choice)
+              const shape = MARKINGS.find((x) => x.id === mark.shape) ?? MARKINGS[0];
+              const at = toScreen(mark.at, view);
+              return (
+                <g className="mark-preview">
+                  {markingStrokes(shape, mark.at, mark.size, mark.text).map((pl, i) => (
+                    <polyline key={i} points={pl.map(([x, y]) => { const q = toScreen({ x, y }, view); return `${q.x},${q.y}`; }).join(" ")} />
+                  ))}
+                  <circle className="mark-at" cx={at.x} cy={at.y} r={3} />
+                </g>
+              );
+            })()}
             {annot && tool === "annotate" && (() => {
               const rows = annotRows(annot.text, annotCap, annot.maxX - annot.minX);
               const bottom = annotBottom(annot, rows.length, annotCap);
@@ -1813,6 +1864,71 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 if (dyn.some((x) => x)) { resetDyn(); return; }
                 window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
               }} />
+          );
+        })()}
+        {tool === "markings" && view && mark && (() => {
+          const q = toScreen(mark.at, view);
+          const PW = 300, PH = mark.step === 1 ? 118 : 104;
+          const top = q.y + 22 + PH > size.h - 4 ? Math.max(4, q.y - 22 - PH) : q.y + 22;
+          // right of the place, else left of it; never under the Geometry check panel
+          const hr = host.current?.getBoundingClientRect(), gr = host.current?.querySelector(".gcheck")?.getBoundingClientRect();
+          const under = !!hr && !!gr && top < gr.bottom - hr.top + 4;
+          const right = under ? gr!.left - hr!.left - 8 : size.w - 4;
+          const left = q.x + 22 + PW <= right ? q.x + 22 : Math.max(4, Math.min(q.x - 22 - PW, right - PW));
+          const keys = (e: React.KeyboardEvent) => {
+            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); markBack(); }
+          };
+          return (
+            <div ref={markPanel} className="dyn-in mark-ui" style={{ left, top, width: PW }} onKeyDown={keys} onPointerDown={(e) => e.stopPropagation()}>
+              <div className="mark-steps" aria-hidden="true">
+                {["Marking", "Annotation", "Size"].map((t, i) => <span key={t} className={mark.step === i + 1 ? "is-on" : mark.step > i + 1 ? "is-done" : ""}>{i + 1}. {t}</span>)}
+              </div>
+              {mark.step === 1 && (
+                <div className="mark-shapes" role="radiogroup" aria-label="Marking">
+                  {MARKINGS.map((m, i) => (
+                    <button key={m.id} type="button" role="radio" aria-checked={mark.shape === m.id} autoFocus={mark.shape === m.id}
+                      className={mark.shape === m.id ? "is-on" : ""} title={`${m.label} (${i + 1})`}
+                      onMouseEnter={() => setMark({ ...mark, shape: m.id })}
+                      onKeyDown={(e) => {
+                        const n = Number(e.key);
+                        if (n >= 1 && n <= MARKINGS.length) { e.preventDefault(); setMark({ ...mark, shape: MARKINGS[n - 1].id, step: 2 }); }
+                        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          const k = (i + (e.key === "ArrowRight" ? 1 : MARKINGS.length - 1)) % MARKINGS.length;
+                          setMark({ ...mark, shape: MARKINGS[k].id });
+                          (e.currentTarget.parentElement?.children[k] as HTMLElement | undefined)?.focus();
+                        }
+                      }}
+                      onClick={() => setMark({ ...mark, shape: m.id, step: 2 })}>
+                      <svg viewBox="-0.1 -0.1 1.2 1.2" width="34" height="34" aria-hidden="true"><path d={markingIconPath(m)} /></svg>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {mark.step === 2 && (
+                <div className="mark-row">
+                  <input ref={markText} className="field mark-text" autoFocus value={mark.text} placeholder="Annotation (optional), e.g. M8"
+                    spellCheck={false} aria-label="Annotation beside the marking"
+                    onChange={(e) => setMark({ ...mark, text: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setMark({ ...mark, step: 3 }); } }} />
+                  <button type="button" className="btn btn-plain" onClick={() => setMark({ ...mark, step: 3 })}>Next</button>
+                </div>
+              )}
+              {mark.step === 3 && (
+                <div className="mark-sizes" role="radiogroup" aria-label="Size">
+                  {MARK_SIZES.map((z) => (
+                    <button key={z.id} type="button" role="radio" aria-checked={mark.size === z.id} autoFocus={mark.size === z.id}
+                      className={mark.size === z.id ? "is-on" : ""} title={`${z.label}: ${z.k === 1 ? "as drawn" : z.k < 1 ? "half the size" : "twice the size"}; places the marking`}
+                      onMouseEnter={() => setMark({ ...mark, size: z.id })} onFocus={() => setMark({ ...mark, size: z.id })}
+                      onClick={() => placeMark(z.id)}>{z.label}</button>
+                  ))}
+                </div>
+              )}
+              <div className="mark-foot">
+                {mark.step > 1 ? <button type="button" className="link" onClick={markBack}>Back</button> : <span>Click a marking (or 1 to {MARKINGS.length})</span>}
+                <span>{mark.step === 3 ? "Click a size to place it" : mark.step === 2 ? "Enter: next" : ""} · Esc: {mark.step === 1 ? "drop" : "back"}</span>
+              </div>
+            </div>
           );
         })()}
         {tool === "annotate" && view && annot && (() => {
