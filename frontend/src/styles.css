@@ -2485,6 +2485,10 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .mc-name small { flex: none; margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
 .mc-del { justify-self: center; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1.5px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink-3); cursor: pointer; }
 .mc-del:hover { border-color: #f2c4c2; background: #fde8e8; color: var(--red); }
+/* Process del: icon buttons (Fab's icons), the icon on the left */
+.pp-btn.pd-btn { display: flex; align-items: center; justify-content: flex-start; gap: 12px; height: 56px; padding: 4px 12px 4px 6px; text-align: left; }
+.pp-btn.pd-btn img { width: 46px; height: 46px; flex: none; padding: 2px; background: #fff; border: 1px solid #d9dedf; border-radius: 8px; }
+.pp-btn.pd-btn:disabled img { opacity: .45; filter: grayscale(1); }
 .pp-btn.pd-sel.is-on { background: #fde8e8; border-color: var(--red); color: var(--red); box-shadow: 0 0 0 2px #fde8e8; }
 
 /* Process -> Movement */

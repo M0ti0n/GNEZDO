@@ -14,6 +14,11 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import type { CutMode } from "./ManualNest";
 import toolProcessDel from "../shell/jobtools/tool-processDel.png";
 import toolPostProcess from "../shell/jobtools/tool-postProcess.png";
+import pdProcess from "../shell/jobtools/pd-process.png";
+import pdAll from "../shell/jobtools/pd-all.png";
+import pdCut from "../shell/jobtools/pd-cut.png";
+import pdRemnant from "../shell/jobtools/pd-remnant.png";
+import pdSelected from "../shell/jobtools/pd-selected.png";
 
 // Process -> PROCESS DEL and POST PROCESS: their panels on the right, beside all sheets or one sheet
 // (the sheet they work on: the one open, or the card selected).
@@ -37,7 +42,7 @@ export function useProcessDel({ index, single, sheets, partName, onClear }: {
   const [msg, setMsg] = useState<string | null>(null);
   /** DELETE SELECTED on: a click on a processed part takes its cut path away */
   const [delSel, setDelSel] = useState(false);
-  /** what the deletes took, newest last, for UNDO (one step a press; DELETE PROCESS ALL: every sheet in one) */
+  /** what the deletes took, newest last, for UNDO (one step a press; DELETE ALL PROCESS: every sheet in one) */
   type Took = { index: number; patch: Partial<Pick<NestedSheet, "cut" | "remnant">>; sig?: string; after?: NestedSheet["cut"] };
   const [undo, setUndo] = useState<Took[][]>([]);
   const last = undo[undo.length - 1] ?? null;
@@ -68,7 +73,7 @@ export function useProcessDel({ index, single, sheets, partName, onClear }: {
   };
   const has = { remnant: !!sheet?.remnant, cut: !!sheet?.cut?.contours.length };
   const what = { remnant: "the remnant", cut: "the cut path", all: "the cut path and the remnant" };
-  // DELETE PROCESS ALL: the cut path and the remnant of every sheet, in one go
+  // DELETE ALL PROCESS: the cut path and the remnant of every sheet, in one go
   const withProcess = sheets.map((sh, i) => (sh.cut?.contours.length || sh.remnant ? i : -1)).filter((i) => i >= 0);
   const goEvery = () => {
     const took: Took[] = withProcess.map((i) => ({ index: i, patch: { cut: sheets[i].cut, remnant: sheets[i].remnant } }));
@@ -91,18 +96,25 @@ export function useProcessDel({ index, single, sheets, partName, onClear }: {
       {panelHead(toolProcessDel, "Process del")}
       <div className="ac-body">
         <p className="rule-help ac-help">Sheet {index + 1}{sheet ? ` · ${sheet.material} ${sheet.thicknessMm} mm` : ""}: {has.cut ? "cut path" : "no cut path"}, {has.remnant ? "remnant" : "no remnant"}.</p>
-        <div className="pp-actions">
-          <button type="button" className="btn btn-plain pp-btn is-del" disabled={!has.remnant} onClick={() => setAsk("remnant")}>Delete remnant</button>
-          <button type="button" className="btn btn-plain pp-btn is-del" disabled={!has.cut} onClick={() => setAsk("cut")}>Delete cut path</button>
-          <button type="button" className="btn btn-plain pp-btn is-del" disabled={!has.cut && !has.remnant} onClick={() => setAsk("all")}>Delete process</button>
-          <button type="button" className="btn btn-plain pp-btn is-del" disabled={!withProcess.length}
+        {/* in the order of Fab's icons: the whole process, of every sheet, the cut path, the remnant, of parts clicked */}
+        <div className="pp-actions pd-actions">
+          <button type="button" className="btn btn-plain pp-btn is-del pd-btn" disabled={!has.cut && !has.remnant} onClick={() => setAsk("all")}
+            title="The cut path and the remnant of this sheet">
+            <img src={pdProcess} alt="" draggable={false} /><span>Delete process</span></button>
+          <button type="button" className="btn btn-plain pp-btn is-del pd-btn" disabled={!withProcess.length}
             title={withProcess.length ? `The cut path and the remnant of every sheet (${withProcess.length} processed)` : "No sheet is processed"}
-            onClick={() => setAsk("every")}>Delete process all</button>
+            onClick={() => setAsk("every")}><img src={pdAll} alt="" draggable={false} /><span>Delete all process</span></button>
+          <button type="button" className="btn btn-plain pp-btn is-del pd-btn" disabled={!has.cut} onClick={() => setAsk("cut")}
+            title="The cut path of this sheet (the remnant stays)">
+            <img src={pdCut} alt="" draggable={false} /><span>Delete cut path</span></button>
+          <button type="button" className="btn btn-plain pp-btn is-del pd-btn" disabled={!has.remnant} onClick={() => setAsk("remnant")}
+            title="The remnant of this sheet (the cut path stays)">
+            <img src={pdRemnant} alt="" draggable={false} /><span>Delete remnant</span></button>
+          <button type="button" className={`btn btn-plain pp-btn is-del pd-btn pd-sel${delSel ? " is-on" : ""}`} aria-pressed={delSel} disabled={!single || !has.cut}
+            title={!single ? "Open a sheet (VIEW / EDIT) to delete the cut path of parts on it" : "On: click processed parts to take their cut path away (they are not processed any more); click again to turn it off"}
+            onClick={() => setDelSel((v) => !v)}><img src={pdSelected} alt="" draggable={false} /><span>Delete selected</span></button>
         </div>
-        <button type="button" className={`btn btn-plain pp-btn is-del pd-sel${delSel ? " is-on" : ""}`} aria-pressed={delSel} disabled={!single || !has.cut}
-          title={!single ? "Open a sheet (VIEW / EDIT) to delete the cut path of parts on it" : "On: click processed parts to take their cut path away (they are not processed any more); click again to turn it off"}
-          onClick={() => setDelSel((v) => !v)}>Delete selected</button>
-        <p className="rule-help ac-help">Delete process: the cut path and the remnant both. Works on the sheet that is open, or the sheet selected among all sheets. Delete process all: of every sheet at once. Delete selected (on / off): click parts on the open sheet to take their cut path away (a common cut block's whole).</p>
+        <p className="rule-help ac-help">Delete process: the cut path and the remnant both. Works on the sheet that is open, or the sheet selected among all sheets. Delete all process: of every sheet at once. Delete selected (on / off): click parts on the open sheet to take their cut path away (a common cut block's whole).</p>
         {msg && <p className="tech-msg ac-msg" role="status">{msg}</p>}
         {last && (
           <button type="button" className="btn btn-plain pp-btn" title={last.length > 1 ? `${last.length} sheets: bring back what was deleted` : `Sheet ${last[0].index + 1}: bring back what was deleted`}
