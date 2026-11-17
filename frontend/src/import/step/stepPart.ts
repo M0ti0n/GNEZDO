@@ -87,14 +87,15 @@ export interface UnfoldProfile {
   foil: boolean;
 }
 
-export const DEFAULT_PROFILE: UnfoldProfile = { name: "Standard", kFactor: 0.44, kTable: [], markLen: 20, markInset: 2, marks: "trace", annotate: true, engraveText: false, textMm: 6, foil: false };
+export const DEFAULT_PROFILE: UnfoldProfile = { name: "Standard", kFactor: 0.25, kTable: [], markLen: 20, markInset: 2, marks: "trace", annotate: true, engraveText: false, textMm: 6, foil: false };
 
 const PROFILES = "gnezdo.unfoldProfiles", CURRENT = "gnezdo.unfoldProfile";
 export function loadProfiles(): UnfoldProfile[] {
   try {
     const raw = localStorage.getItem(PROFILES);
     const l = raw ? (JSON.parse(raw) as UnfoldProfile[]) : [];
-    return l.length ? l.map((p) => ({ ...DEFAULT_PROFILE, ...p })) : [DEFAULT_PROFILE];
+    // the Standard profile still at the old default K-factor (0.44, never changed): the new default
+    return l.length ? l.map((p) => ({ ...DEFAULT_PROFILE, ...p, ...(p.name === DEFAULT_PROFILE.name && p.kFactor === 0.44 && !p.kTable?.length ? { kFactor: DEFAULT_PROFILE.kFactor } : {}) })) : [DEFAULT_PROFILE];
   } catch { return [DEFAULT_PROFILE]; }
 }
 export const saveProfiles = (l: UnfoldProfile[]) => { try { localStorage.setItem(PROFILES, JSON.stringify(l)); } catch { /* this session only */ } };

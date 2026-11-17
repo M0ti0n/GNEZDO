@@ -35,7 +35,7 @@ export interface ImportRules {
 }
 
 /** To polyline's tolerance [mm]: default, and the range it is kept in. */
-export const SPLINE_TOL_DEFAULT = 0.01;
+export const SPLINE_TOL_DEFAULT = 0.1;
 export const SPLINE_TOL_MIN = 0.001;
 export const SPLINE_TOL_MAX = 1;
 export const splineTolOf = (r: ImportRules) =>

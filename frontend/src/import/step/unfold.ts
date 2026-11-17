@@ -153,7 +153,7 @@ const angleOn = (a: V3, d: V3, r0: V3, q: V3) => {
 interface CylMap { g: Rigid; a: V3; d: V3; r0: V3; sgn: number; rn: number; dir: V3; phi: number }
 
 /** Unfold a solid with this K-factor (inner radius + K × thickness is the bend's neutral radius). */
-export function unfold(s: Solid, opt: number | UnfoldOptions = 0.44): Unfolded {
+export function unfold(s: Solid, opt: number | UnfoldOptions = 0.25): Unfolded {
   const opts: UnfoldOptions = typeof opt === "number" ? { kFactor: opt } : opt;
   const kFactor = opts.kFactor, flip = !!opts.flip;
   const problems = [...s.problems];
@@ -340,7 +340,7 @@ export function flatDxf(u: Unfolded, o: { marks?: [V2, V2][]; bendLines?: boolea
   // an edge that is a curve sampled into many short lines (a round relief across a bend, a cut through a
   // bend): lines and arcs that follow it within fitTol, so the machine does not run thousands of tiny moves
   const fitted = (pts: V2[]) => {
-    const tol = o.fitTol ?? 0.01;
+    const tol = o.fitTol ?? 0.1;
     const clean = pts.filter((q, i) => i === 0 || Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) > 1e-9);
     for (const s of fitPoints(clean as [number, number][], tol)) {
       const ci = s.m && circleThrough(s.a, s.m, s.b);
