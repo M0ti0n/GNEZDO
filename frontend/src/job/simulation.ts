@@ -3,6 +3,9 @@
 // lead-in, the contour and the lead-out at the row's speed (small holes at theirs), and so on. A part
 // counts as cut out when its outline is done (a common cut block's parts: when the block's outline is).
 // The times are an estimate (no acceleration).
+// Pre-pierce (laser, the sheet's or its Technology row's Pre-pierce on) as the laser runs it: first a
+// pass that only pierces, every contour in the cut order, then the cut path as usual without piercing
+// again.
 
 import { viaOf, type CutContour } from "./cutPath";
 import type { Pt } from "./manualGeom";
@@ -16,6 +19,8 @@ interface Leg {
   /** index in the contours */
   k: number;
   phase: "rapid" | "pierce" | "cut";
+  /** the pre-pierce pass */
+  pre?: true;
   t0: number;
   t1: number;
   pts: Pt[];
@@ -34,6 +39,8 @@ export interface SimTimeline {
   partDone: Map<number, number>;
   /** the cutting speed was the Technology row's */
   fromTech: boolean;
+  /** pre-pierce: how many contours are pierced first, and when that pass ends */
+  pre?: { count: number; end: number };
 }
 
 const lenOf = (a: Pt, b: Pt) => Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -41,14 +48,34 @@ const accOf = (pts: Pt[]) => { const a = [0]; for (let i = 1; i < pts.length; i+
 /** The whole cut of a contour: lead-in, contour, lead-out, as one polyline */
 const cutPts = (c: CutContour): Pt[] => [...c.leadIn, ...(c.leadIn.length ? c.pts.slice(1) : c.pts), ...(c.leadOut.length ? c.leadOut.slice(1) : [])];
 
-/** rapidMmMin: the machine's rapid speed (rapidOf) */
-export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | null, rapidMmMin: number, laser = false): SimTimeline {
+/** rapidMmMin: the machine's rapid speed (rapidOf); prePierce: pierce every contour first */
+export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | null, rapidMmMin: number, laser = false, prePierce = false): SimTimeline {
   const fromTech = !!row && row.speed > 0;
   const speed = fromTech ? row!.speed : FALLBACK_SPEED;
   const legs: Leg[] = [];
   const start: number[] = [], end: number[] = [];
   const partDone = new Map<number, number>();
   let t = 0, at = from;
+  // where it pierces: not a trace, not a common pierce's hole pierced already, not an inline cut's
+  // stretch that starts without a pierce; how long: the row's pierce (or quick pierce) and torch time
+  const pierces = (c: CutContour, k: number) => c.kind !== "trace" && !reusesPierce(contours, k) && !(c.inline && c.inline.pierce === "none");
+  const pierceS = (c: CutContour) => (c.inline && c.inline.pierce === "quick" ? row?.quickPierceS || 0 : row?.pierceS || 0) + (row?.torchS || 0);
+  // the pre-pierce pass: to each pierce point (the machine's own moves), pierce only
+  const prePierced = new Set<number>();
+  if (prePierce) {
+    contours.forEach((c, k) => {
+      const path = cutPts(c);
+      if (!path.length || !pierces(c, k)) return;
+      const p0 = path[0];
+      const d = lenOf(at, p0);
+      if (d > 0.01) { const dt = (d / rapidMmMin) * 60; legs.push({ k, phase: "rapid", pre: true, t0: t, t1: t + dt, pts: [at, p0], acc: [0, d] }); t += dt; }
+      const dt = pierceS(c);
+      legs.push({ k, phase: "pierce", pre: true, t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt;
+      prePierced.add(k);
+      at = p0;
+    });
+  }
+  const preEnd = t;
   contours.forEach((c, k) => {
     const path = cutPts(c);
     start.push(t);
@@ -63,13 +90,8 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
       const dt = row!.torchS!;
       legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt;
     }
-    if (c.kind !== "trace") {
-      // an inline cut's stretch: no pierce time unless it pierces (normally, or quickly: the row's Quick pierce)
-      // a common pierce's hole pierced already: none either
-      // and the torch down and up again (plasma), where it pierces
-      const pierced = !reusesPierce(contours, k) && !(c.inline && c.inline.pierce === "none");
-      const dt = !pierced ? 0
-        : (c.inline && c.inline.pierce === "quick" ? row?.quickPierceS || 0 : row?.pierceS || 0) + (row?.torchS || 0);
+    if (pierces(c, k) && !prePierced.has(k)) {
+      const dt = pierceS(c);
       if (dt > 0) { legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt; }
     }
     // its speed: laser by its class (E001 - E004, its size without the leads), else small holes slower
@@ -87,7 +109,7 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
     at = path[path.length - 1];
     if (c.kind === "outer") for (const p of c.parts ?? [c.part]) partDone.set(p, t);
   });
-  return { contours, legs, total: t, start, end, partDone, fromTech };
+  return { contours, legs, total: t, start, end, partDone, fromTech, ...(prePierced.size ? { pre: { count: prePierced.size, end: preEnd } } : {}) };
 }
 
 /** The polyline cut `d` mm along */
@@ -116,24 +138,34 @@ export interface SimState {
   rapids: [Pt, Pt][];
   /** parts cut out */
   done: Set<number>;
+  /** pre-pierce: the holes pierced in the pre-pierce pass and not cut yet */
+  pierced: Pt[];
+  /** in the pre-pierce pass: the contour being pierced (1 = the first) of how many */
+  prePierce?: { at: number; of: number };
 }
 
 export function simAt(tl: SimTimeline, t: number, from: Pt): SimState {
   const done = new Set<number>();
   for (const [p, at] of tl.partDone) if (at <= t + 1e-9) done.add(p);
-  if (t <= 0 || !tl.legs.length) return { k: 0, phase: "start", head: from, shown: [], rapids: [], done };
+  if (t <= 0 || !tl.legs.length) return { k: 0, phase: "start", head: from, shown: [], rapids: [], done, pierced: [] };
   const rapids: [Pt, Pt][] = [];
   const shown: CutContour[] = [];
+  const pierced = new Map<number, Pt>();
+  // the pre-pierce pass's rapids only while it runs (then the cutting's)
+  const inPre = !!tl.pre && t < tl.pre.end;
+  let preAt = 0, prePierce: SimState["prePierce"];
   let head = from, k = tl.contours.length, phase: SimState["phase"] = "done", current: CutContour | undefined;
   for (const leg of tl.legs) {
     if (leg.t1 <= t) {
-      if (leg.phase === "rapid") for (let i = 1; i < leg.pts.length; i++) rapids.push([leg.pts[i - 1], leg.pts[i]]);
-      if (leg.phase === "cut") shown.push(tl.contours[leg.k]);
+      if (leg.phase === "rapid" && !!leg.pre === inPre) for (let i = 1; i < leg.pts.length; i++) rapids.push([leg.pts[i - 1], leg.pts[i]]);
+      if (leg.phase === "pierce" && leg.pre) { pierced.set(leg.k, leg.pts[0]); preAt++; }
+      if (leg.phase === "cut") { shown.push(tl.contours[leg.k]); pierced.delete(leg.k); }
       head = leg.pts[leg.pts.length - 1];
       continue;
     }
     // the leg the head is on
     k = leg.k; phase = leg.phase;
+    if (leg.pre) prePierce = { at: preAt + 1, of: tl.pre!.count };
     const f = leg.t1 > leg.t0 ? (t - leg.t0) / (leg.t1 - leg.t0) : 1;
     const d = f * leg.acc[leg.acc.length - 1];
     if (leg.phase === "rapid") {
@@ -148,10 +180,11 @@ export function simAt(tl: SimTimeline, t: number, from: Pt): SimState {
       // drawn as an open run so far (no lead colors while it is being cut)
       current = { ...c, pts: part, leadIn: [], leadOut: [] };
       shown.push(current);
+      pierced.delete(leg.k);
     }
     break;
   }
-  return { k, phase, head, shown, current, rapids, done };
+  return { k, phase, head, shown, current, rapids, done, pierced: [...pierced.values()], ...(prePierce ? { prePierce } : {}) };
 }
 
 /** m:ss (h:mm:ss from an hour) */

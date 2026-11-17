@@ -51,7 +51,7 @@ export interface CutMode {
   /** Break cut: its balloons (BC, 1, 2) at the leads they mark; `float`: following the pointer, still to be placed */
   balloons?: { at: Pt; label: string; neg: boolean; sel?: boolean; float?: boolean; side?: number; mj?: boolean; title?: string }[];
   /** Simulation: the path as far as the head has come, the parts cut out so far, the head */
-  sim?: { shown: CutContour[]; current?: CutContour; rapids: [Pt, Pt][]; done: Set<number>; head: Pt };
+  sim?: { shown: CutContour[]; current?: CutContour; rapids: [Pt, Pt][]; done: Set<number>; head: Pt; pierced?: Pt[] };
 }
 
 // Manual nesting of one sheet (EDIT / VIEW on a sheet card). The parts on the sheet are moved with
@@ -1086,6 +1086,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                         </g>
                       );
                     })}
+                    {cut?.sim?.pierced?.map(([x, y], k) => <circle key={`pp${k}`} className="sim-pierced" cx={x} cy={y} r={3 / v.s} style={{ strokeWidth: 1 / v.s }} />)}
                     {cut?.sim && (() => {
                       // the head: a crosshair
                       const [hx, hy] = cut.sim.head, r = 9 / v.s, g = 5 / v.s, e = 15 / v.s;

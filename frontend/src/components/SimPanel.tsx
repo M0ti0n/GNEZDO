@@ -10,7 +10,8 @@ import toolSimulation from "../shell/jobtools/tool-simulation.png";
 // Process -> Simulation (after Fab's layout): the open sheet's cut path played back. The parts keep
 // their colors until they are cut out, then turn see-through; the path and the rapids show as far as
 // the head (a red crosshair) has come. PLAY / PAUSE, STOP (back to the start), the playback bar (drag to
-// jump), a contour back / on, and the speed (1× to 100×).
+// jump), a contour back / on, and the speed (1× to 100×). Laser with pre-pierce on: the pierce-only pass
+// first (the pierced holes show as dots until they are cut), then the cutting.
 
 type PartRef = { path: string; name?: string };
 
@@ -31,7 +32,10 @@ export function useSimulation({ index, single, sheets, parts, machine, origin }:
   const tl = useMemo(() => {
     if (!sheet) return null;
     const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row ?? null;
-    return simTimeline(liveContours(sheet), from, row, rapidOf(machine), machine.technology === "laser");
+    // pre-pierce as the laser does it: the sheet's own (Post process), else its Technology row's
+    const laser = machine.technology === "laser";
+    const prePierce = laser && (sheet.prePierce ?? !!row?.prePierce);
+    return simTimeline(liveContours(sheet), from, row, rapidOf(machine), laser, prePierce);
   }, [sheet, machine, from]);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -73,7 +77,8 @@ export function useSimulation({ index, single, sheets, parts, machine, origin }:
   const c = state && state.k < n ? tl!.contours[state.k] : undefined;
   const partName = (i: number | undefined) => (i === undefined ? "" : parts.get(sheet?.parts[i]?.partId ?? "")?.name ?? `Part ${i + 1}`);
   const cutOut = state?.done.size ?? 0, toCut = tl?.partDone.size ?? 0;
-  const at = state?.phase === "done" ? n : state?.phase === "start" ? 0 : (state?.k ?? 0) + 1;
+  const pre = state?.prePierce;
+  const at = state?.phase === "done" ? n : state?.phase === "start" || pre ? 0 : (state?.k ?? 0) + 1;
 
   const play = () => {
     if (!can) return;
@@ -125,7 +130,8 @@ export function useSimulation({ index, single, sheets, parts, machine, origin }:
         <div className="ac-field"><span>Now</span></div>
         <dl className="sim-now">
           <dt>Part</dt><dd title={c ? (c.parts ? c.parts.map(partName).join(", ") : partName(c.part)) : ""}>{c ? (c.parts ? `Common cut block (${c.parts.length})` : partName(c.part)) : "–"}</dd>
-          <dt>Contour</dt><dd>{c ? `${KIND[c.kind] ?? c.kind}${state?.phase === "rapid" ? " · rapid to it" : state?.phase === "pierce" ? " · piercing" : ""}` : state?.phase === "done" ? "All cut" : "–"}</dd>
+          <dt>Contour</dt><dd>{c ? `${KIND[c.kind] ?? c.kind}${pre ? (state?.phase === "rapid" ? " · rapid to its pierce" : " · pre-piercing") : state?.phase === "rapid" ? " · rapid to it" : state?.phase === "pierce" ? " · piercing" : ""}` : state?.phase === "done" ? "All cut" : "–"}</dd>
+          {tl?.pre && <><dt>Pre-pierce</dt><dd>{pre ? <><b>{pre.at}</b> / {pre.of}</> : t >= tl.pre.end ? `done (${tl.pre.count})` : `${tl.pre.count} contours first`}</dd></>}
           <dt>Parts cut</dt><dd>{cutOut} / {toCut}</dd>
           <dt>Contours</dt><dd>{at} / {n}</dd>
         </dl>
@@ -133,11 +139,12 @@ export function useSimulation({ index, single, sheets, parts, machine, origin }:
           <span><i className="sim-key is-uncut" /> not cut yet</span>
           <span><i className="sim-key is-cut" /> cut</span>
           <span><i className="sim-key is-rapid" /> rapid</span>
+          {tl?.pre && <span><i className="sim-key is-pierced" /> pre-pierced</span>}
           <span className="sim-key-head">⊕ head</span>
         </div>
         {!single ? <p className="ac-empty sim-msg">Open a sheet (VIEW / EDIT) to play its cut.</p>
           : !can ? <p className="tech-msg ac-msg is-bad">Process the sheet first (Auto cut).</p> : null}
-        <p className="rule-help ac-help">Times {tl?.fromTech ? "from the Technology row's speeds and pierce time" : "with 2000 mm/min (no speed in the Technology row)"} and {+(rapidOf(machine) / 1000).toFixed(1)} m/min rapids (Settings → Machines): an estimate (no acceleration). Drag the playback bar to jump.</p>
+        <p className="rule-help ac-help">Times {tl?.fromTech ? "from the Technology row's speeds and pierce time" : "with 2000 mm/min (no speed in the Technology row)"} and {+(rapidOf(machine) / 1000).toFixed(1)} m/min rapids (Settings → Machines): an estimate (no acceleration). Drag the playback bar to jump.{tl?.pre ? " Pre-pierce is on for this sheet: every contour is pierced first, then cut." : ""}</p>
       </div>
     </aside>
   );
@@ -146,8 +153,9 @@ export function useSimulation({ index, single, sheets, parts, machine, origin }:
     panel,
     cut: {
       picking: false, picked: [], onPick: () => { /* parts are not picked here */ }, panel,
-      ...(can && state ? { sim: { shown: state.shown, current: state.current, rapids: state.rapids, done: state.done, head: state.head } } : {}),
+      ...(can && state ? { sim: { shown: state.shown, current: state.current, rapids: state.rapids, done: state.done, head: state.head, pierced: state.pierced } } : {}),
       hint: !can ? (single ? "Process the sheet first (Auto cut), then play its cut here." : "Open a sheet to play its cut.")
+        : pre ? `SIMULATION · PRE-PIERCE ${pre.at} / ${pre.of} · ${clock(t)} / ${clock(total)}`
         : `SIMULATION · contour ${at} / ${n} · parts cut ${cutOut} / ${toCut} · ${clock(t)} / ${clock(total)}`,
     },
   };
