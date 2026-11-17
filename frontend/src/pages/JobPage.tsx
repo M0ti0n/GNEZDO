@@ -12,6 +12,8 @@ import { sheetFromDxf } from "../job/dxfSheet";
 import { SheetPropertiesDialog } from "../components/SheetPropertiesDialog";
 import { gapsFor, withGaps, type Machine, type MachineList } from "../job/machine";
 import { partColor } from "../job/nest";
+import { techMaterials, techThicknesses } from "../job/technology";
+import type { ComboOption } from "../components/Combobox";
 import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
 
 interface Props {
@@ -100,6 +102,28 @@ const value = (jp: JobPart, c: Col): string | number => {
   }
 };
 
+/** The materials and thicknesses to pick from in a job: the job machine's Technology table (its
+ *  material tags, and the thicknesses it has for a material), with the database's added; a table
+ *  that names no materials gives the database's only. */
+function useMachineLists(machine: Machine, picks: { materials: ComboOption[]; thicknesses: ComboOption[] }) {
+  return useMemo(() => {
+    const sets = [machine.technologies];
+    const tagged = techMaterials(sets);
+    const mm = (t: number): ComboOption => ({ value: String(t), label: `${t} mm` });
+    const byKey = new Map<string, string>();
+    for (const m of [...tagged, ...picks.materials.map((o) => o.value)]) { const k = m.trim().toLowerCase(); if (k && !byKey.has(k)) byKey.set(k, m.trim()); }
+    const materials = [...byKey.values()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const dbThick = picks.thicknesses.map((o) => Number(o.value)).filter((t) => t > 0);
+    /** the thicknesses for a material: the table's for it (all the table's when it has none for it), and the database's */
+    const thicknesses = (material: string): ComboOption[] => {
+      let t = tagged.length ? techThicknesses(sets, material) : [];
+      if (!t.length) t = techThicknesses(sets, "");
+      return [...new Set([...t, ...dbThick])].sort((a, b) => a - b).map(mm);
+    };
+    return { materials, materialOptions: materials.map((v): ComboOption => ({ value: v })), thicknesses };
+  }, [machine, picks.materials, picks.thicknesses]);
+}
+
 // Work parts screen of a job: the job part list (left) and the stock sheets (right).
 export function JobPage({ title, parts, nestedIn, stock, stockSettings, onStock, onDropParts, onPart, onRemove, onOpenParts, onNotice, machine, machines, onMachine }: Props) {
   const [over, setOver] = useState(false);
@@ -107,6 +131,7 @@ export function JobPage({ title, parts, nestedIn, stock, stockSettings, onStock,
   // the part's pop-up (double-click its name), and its versions
   const [editing, setEditing] = useState<PartSummary | null>(null);
   const picks = usePickLists("");   // materials and thicknesses for the part list
+  const choose = useMachineLists(machine, picks);   // … with the job machine's Technology table
   const [history, setHistory] = useState<PartSummary | null>(null);
   const [sort, setSort] = useState<{ col: Col; dir: 1 | -1 }>({ col: "no", dir: 1 });
 
@@ -259,7 +284,7 @@ export function JobPage({ title, parts, nestedIn, stock, stockSettings, onStock,
                           <td data-c={3} className={`cell-mat${ownM ? " is-job-only" : ""}`}
                             title={ownM ? `In this job only. In the database: ${jp.dbMaterial}` : "Material in this job (the part in the database is not changed)"}>
                             <span className="cell-mat-row">
-                              <DraftCombo value={jp.part.material} options={picks.materials} ariaLabel={`Material of ${jp.part.name} in this job`}
+                              <DraftCombo value={jp.part.material} options={choose.materialOptions} ariaLabel={`Material of ${jp.part.name} in this job`}
                                 onCommit={(v) => { const m = v.trim(); if (!m) return false; if (m !== jp.part.material) set({ material: m }); return true; }} />
                               {ownM && <button type="button" className="cell-reset" title={`Back to the database's: ${jp.dbMaterial}`}
                                 aria-label={`Material of ${jp.part.name} back to ${jp.dbMaterial}`} onClick={() => set({ material: jp.dbMaterial })}>↺</button>}
@@ -268,7 +293,7 @@ export function JobPage({ title, parts, nestedIn, stock, stockSettings, onStock,
                           <td data-c={4} className={`cell-mat${ownT ? " is-job-only" : ""}`}
                             title={ownT ? `In this job only. In the database: ${jp.dbThicknessMm} mm` : "Thickness in this job (the part in the database is not changed)"}>
                             <span className="cell-mat-row">
-                              <DraftCombo value={String(jp.part.thicknessMm)} options={picks.thicknesses} numeric suffix="mm"
+                              <DraftCombo value={String(jp.part.thicknessMm)} options={choose.thicknesses(jp.part.material)} numeric suffix="mm"
                                 ariaLabel={`Thickness of ${jp.part.name} in this job`}
                                 onCommit={(v) => { const t = Number(v.replace(",", ".").replace(/[^\d.]/g, "")); if (!(t > 0 && t <= 1000)) return false; if (t !== jp.part.thicknessMm) set({ thicknessMm: t }); return true; }} />
                               {ownT && <button type="button" className="cell-reset" title={`Back to the database's: ${jp.dbThicknessMm} mm`}
@@ -339,8 +364,9 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
   const file = useRef<HTMLInputElement>(null);
   const [tooBig, setTooBig] = useState<{ file: string; l: number; w: number } | null>(null);
   const lists = usePickLists("");
-  const materials = useMemo(() => [...new Set([...parts.map((p) => p.part.material), ...lists.materials.map((m) => m.value)])]
-    .filter(Boolean).sort((a, b) => a.localeCompare(b)), [parts, lists.materials]);
+  const choose = useMachineLists(machine, lists);
+  const materials = useMemo(() => [...new Set([...parts.map((p) => p.part.material), ...choose.materials])]
+    .filter(Boolean).sort((a, b) => a.localeCompare(b)), [parts, choose.materials]);
 
   // material / thickness pairs of the part list, and the first one with no sheet yet
   const jobPairs = useMemo(() => {
