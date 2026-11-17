@@ -58,7 +58,7 @@ export type RemnantLead = LeadType | "outside";
 /** The lead types a remnant cut can have (an open line: no corner of its own). */
 export const REMNANT_LEADS: { id: RemnantLead; label: string; settings: string }[] = [
   { id: "corner", label: "In line", settings: "Lead-in · lead-out" },
-  { id: "outside", label: "In line, from outside", settings: "From beyond the sheet edge · lead-in · lead-out" },
+  { id: "outside", label: "In line, from outside", settings: "Pierce / exit at the gap in / out · in line" },
   { id: "perp", label: "Perpendicular (90°)", settings: "Lead-in · lead-out" },
   { id: "angled", label: "At an angle", settings: "Lead-in · lead-out · angles" },
 ];

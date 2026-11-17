@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-- Settings → Machines → Leads & cutting → Remnant cut: new **In line, from outside** (as Common cut's): where a remnant cut runs to the sheet edge it is cut right to the edge (the gap in / out is not used there) and its lead comes in line from beyond the edge, so the cut starts off the plate (the lead-out goes on past the edge). Lengths: Technology → Remnant cut lead-in / lead-out, else the outline's (at least 2 mm). Ends away from the sheet edge get an in-line lead
+- Settings → Machines → Leads & cutting → Remnant cut: new **In line, from outside** (as Common cut's): where a remnant cut runs to the sheet edge it pierces at the **Gap in** and exits at the **Gap out** (Technology → Remnant cut), in line with the cut and with no lead of its own there; a negative gap is that far beyond the edge, off the plate (0: on the edge). Ends away from the sheet edge get an in-line lead
 
 ## Build 17 Nov 2026 (`c7bc609`)
 

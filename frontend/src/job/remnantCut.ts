@@ -5,10 +5,9 @@
 // nearer the head. All as open cuts. Where a cut runs to
 // a sheet edge it starts / ends the Technology row's Gap in / Gap out from it (+ inside the sheet, an
 // uncut bridge; − beyond the edge); leads of the Leads & cutting type (Remnant cut), from the scrap side.
-// "In line, from outside": where a cut runs to a sheet edge it is cut right to the edge (no gap there) and
-// its lead comes in line from beyond the edge (lead-out: goes on past it), so it starts in the air, not
-// with a pierce in the plate; lengths: Remnant cut's lead-in / lead-out, else the outline's (2 mm at least).
-// Ends away from the sheet edge: in line, as "In line".
+// "In line, from outside": where a cut runs to a sheet edge it pierces and exits at the Gap in / Gap out
+// from the edge (− beyond it: off the plate), coming in line, with no lead of its own there. Ends away
+// from the sheet edge: an in-line lead, as "In line".
 
 import { DEFAULT_ANGLE, leadRulesOf } from "./leads";
 import type { Machine } from "./machine";
@@ -58,15 +57,6 @@ export function remnantCutPaths(sheet: NestedSheet, machine: Machine, from: Pt):
   const gapIn = row?.remGapInMm ?? 0, gapOut = row?.remGapOutMm ?? 0;
   const lin = row?.remLeadInMm ?? 0, lout = row?.remLeadOutMm ?? 0;
   const outside = type === "outside";
-  // from outside: the lengths beyond the edge (Remnant cut's, else the outline's)
-  const oin = Math.max(2, lin || row?.outLeadInMm || 0), oout = Math.max(2, lout || row?.outLeadOutMm || 0);
-  /** How far from p along d the sheet ends (0: p is not inside it). */
-  const toEdge = (p: Pt, d: Pt) => {
-    let t = Infinity;
-    if (d[0] > 1e-9) t = Math.min(t, (sheet.lengthMm - p[0]) / d[0]); else if (d[0] < -1e-9) t = Math.min(t, -p[0] / d[0]);
-    if (d[1] > 1e-9) t = Math.min(t, (sheet.widthMm - p[1]) / d[1]); else if (d[1] < -1e-9) t = Math.min(t, -p[1] / d[1]);
-    return Number.isFinite(t) ? Math.max(0, t) : 0;
-  };
   const aIn = ((row?.leadInAngle || DEFAULT_ANGLE.angled!) * Math.PI) / 180, aOut = ((row?.leadOutAngle || DEFAULT_ANGLE.angled!) * Math.PI) / 180;
   const tol = Math.max(1.5, Math.ceil(Math.max(sheet.lengthMm, sheet.widthMm) / 1500) * 1.5);
   const onEdge = ([x, y]: Pt) => x <= tol || y <= tol || x >= sheet.lengthMm - tol || y >= sheet.widthMm - tol;
@@ -91,8 +81,7 @@ export function remnantCutPaths(sheet: NestedSheet, machine: Machine, from: Pt):
     let pts = rev ? l0.slice().reverse() : l0.slice();
     const full = lineLen(pts);
     const edgeS = onEdge(pts[0]), edgeE = onEdge(pts[pts.length - 1]);
-    // from outside: no gap at a sheet edge (the lead comes in from beyond it)
-    const gi = edgeS && !outside ? gapIn : 0, go = edgeE && !outside ? gapOut : 0;
+    const gi = edgeS ? gapIn : 0, go = edgeE ? gapOut : 0;
     // too short for its gaps: as it is
     if (Math.max(0, gi) + Math.max(0, go) < full - 1) {
       if (gi > 0) pts = cutStart(pts, gi);
@@ -110,13 +99,14 @@ export function remnantCutPaths(sheet: NestedSheet, machine: Machine, from: Pt):
     };
     const nS = side(s, dS), nE = side(e, mul(dE, -1));
     let leadIn: Pt[] = [], leadOut: Pt[] = [];
-    if (outside && edgeS) leadIn = [add(s, mul(dS, -(toEdge(s, mul(dS, -1)) + oin))), s];
+    // from outside: at a sheet edge it pierces at the gap itself (no lead); elsewhere in line
+    if (outside && edgeS) leadIn = [];
     else if (lin > 0 && outside) leadIn = [add(s, mul(dS, -lin)), s];
     else if (lin > 0) {
       const dir = type === "corner" ? mul(dS, -1) : type === "angled" ? unit(add(mul(dS, -Math.cos(aIn)), mul(nS, Math.sin(aIn)))) : nS;
       leadIn = [add(s, mul(dir, lin)), s];
     }
-    if (outside && edgeE) leadOut = [e, add(e, mul(dE, toEdge(e, dE) + oout))];
+    if (outside && edgeE) leadOut = [];
     else if (lout > 0 && outside) leadOut = [e, add(e, mul(dE, lout))];
     else if (lout > 0) {
       const dir = type === "corner" ? dE : type === "angled" ? unit(add(mul(dE, Math.cos(aOut)), mul(nE, Math.sin(aOut)))) : nE;
