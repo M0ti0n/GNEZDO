@@ -4,6 +4,9 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D, Geometry check: new check **No cutting outline**: a drawing whose lines are all tracing or open cut (nothing to cut the part out, e.g. a file of marking blocks) was shown as ready to process; it is now flagged and not processed
+- Import 2D, Geometry check: **Contours cross each other** no longer flags the outline where two of its pieces meet at a sharp angle and rounding puts one end a hair (under 0.01 mm) past the other; a 3D Extractor flat pattern with corner reliefs on 75° bends (150 × 150 box) is now ready to process. A real crossing (a figure eight, a hole over the edge) is still found
+- Import 2D, Process all with no project (and no default project): the hint under the button says to set the project, and the Project box is highlighted like Material and Thickness (was only a message after pressing it)
 - Settings → Machines → Leads & cutting → Remnant cut: new **In line, from outside** (as Common cut's): where a remnant cut runs to the sheet edge it pierces at the **Gap in** and exits at the **Gap out** (Technology → Remnant cut), in line with the cut and with no lead of its own there; a negative gap is that far beyond the edge, off the plate (0: on the edge). Ends away from the sheet edge get an in-line lead
 
 ## Build 17 Nov 2026 (`c7bc609`)

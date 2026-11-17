@@ -67,7 +67,7 @@ export interface Contour {
   outer: boolean;          // the largest contour is the outside of the part
 }
 
-export type CheckId = "doubles" | "separate" | "crossing" | "insideOpen" | "outsideOpen" | "outerNotCut" | "closedOpenCut" | "outsidePart" | "splines";
+export type CheckId = "noOutline" | "doubles" | "separate" | "crossing" | "insideOpen" | "outsideOpen" | "outerNotCut" | "closedOpenCut" | "outsidePart" | "splines";
 
 export interface CheckResult {
   id: CheckId;
@@ -244,7 +244,10 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   const marks = markRuleBreaks(entities);
   const outsidePart = marksOutsidePart(entities.filter((e) => !doubleSet.has(e.id)), rest);
 
+  // lines, but none of them cutting (all tracing / open cut): nothing would be cut out
+  const noOutline = entities.length > 0 && !contours.length;
   const checks: CheckResult[] = [
+    { id: "noOutline", label: "No cutting outline", count: noOutline ? 1 : 0, entityIds: noOutline ? entities.map((e) => e.id) : [], points: [] },
     { id: "doubles", label: "Double or tiny lines", count: doubles.length, entityIds: doubles, points: [] },
     {
       id: "separate", label: "Lines outside the part outline", count: separate.length,
@@ -546,11 +549,14 @@ function crossingContours(entities: Entity[], closed: Contour[]): { groups: stri
     }
     // a contour crossing itself (figure eight): two of its segments cross properly; neighbours
     // only meet at their shared end, which does not count
+    // a crossing right at the joint of two pieces (within the join tolerance of a segment's end) is the
+    // joint itself, a hair off by rounding (an arc's end computed from its center), not a figure eight
     const own = segs[i], boxes = own.map(segBox);
+    const atEnd = (p: Pt, s: { a: Pt; b: Pt }) => Math.hypot(p.x - s.a.x, p.y - s.a.y) <= JOIN_TOLERANCE_MM || Math.hypot(p.x - s.b.x, p.y - s.b.y) <= JOIN_TOLERANCE_MM;
     outer: for (let x = 0; x < own.length; x++) for (let y = x + 1; y < own.length; y++) {
       if (!overlaps(boxes[x], boxes[y])) continue;
       const at = segsMeet(own[x].a, own[x].b, own[y].a, own[y].b, true);
-      if (at) { hit.add(i); points.push(at); break outer; }
+      if (at && !(atEnd(at, own[x]) && atEnd(at, own[y]))) { hit.add(i); points.push(at); break outer; }
     }
   }
   // contours that cross are reported together, one group per connected set

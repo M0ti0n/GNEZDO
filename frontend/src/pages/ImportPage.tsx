@@ -2089,7 +2089,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               <li key={c.id}>
                 <button className={`gc-row ${!c.count ? "is-ok" : c.id === "splines" ? "is-warn" : "is-bad"}${selected === c.id ? " is-on" : ""}`}
                   onClick={() => choose(c.id)} disabled={c.count === 0}
-                  title={!c.count ? "No problems" : c.id === "splines" ? "Splines are cut as short straight lines. To polyline changes them into lines and arcs. Show on the drawing" : "Show on the drawing"}>
+                  title={!c.count ? "No problems" : c.id === "noOutline" ? "Every line is tracing or open cut: there is nothing to cut the part out. Mark its outline as cutting (Trace / Open cut again unmarks a line). Show on the drawing" : c.id === "splines" ? "Splines are cut as short straight lines. To polyline changes them into lines and arcs. Show on the drawing" : "Show on the drawing"}>
                   <span className="gc-mark" aria-hidden="true">{c.count ? "!" : "✓"}</span>
                   <span className="gc-label">{c.label}</span>
                   {c.count > 0 && <span className="gc-count">{c.count}</span>}
