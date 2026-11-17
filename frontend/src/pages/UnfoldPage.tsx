@@ -52,8 +52,10 @@ const ICONS: Record<string, ReactNode> = {
   // Fab's icon: a frame cut at its corners by added edges (green), from corner (red) to corner
   edge: <Ico><path d="M4.4 5.1H42V41.8H4.4ZM14.5 15.2V31.9H31.9V15.2Z" fill="#dcdcdc" fillRule="evenodd" stroke={K} strokeWidth="2.4" /><path d="M4.4 5.1L14.5 15.2M42 5.1L31.9 15.2M42 41.8L31.9 31.9M4.4 41.8L14.5 31.9" stroke="#22b14c" strokeWidth="2" /><circle cx="4.9" cy="41.3" r="3" fill={R} /><circle cx="15" cy="31.4" r="3" fill={R} /></Ico>,
   one: <Ico><path d="M4 34l20-10 20 10-20 10z" fill="#d6e8f8" stroke={B} strokeWidth="2.4" /><path d="M24 4v16M18 14l6 6 6-6" stroke={K} strokeWidth="2.4" /></Ico>,
-  measure3d: <Ico><path d="M8 30l14-7 18 7-14 7z" fill="#eef3f4" stroke={K} strokeWidth="2" /><path d="M8 30v8l18 7v-8M26 37l14-7v8l-14 7" stroke={K} strokeWidth="2" fill="none" /><path d="M8 14l18 7M8 10v8M26 17v8" stroke={R} strokeWidth="2.2" /><circle cx="36" cy="12" r="5" stroke={R} strokeWidth="2.2" /></Ico>,
-  measure: <Ico><path d="M6 26h36M6 18v16M42 18v16" stroke={K} strokeWidth="2.2" /><path d="M11 26l6-3.5v7zM37 26l-6-3.5v7z" fill={R} /></Ico>,
+  // Fab's icon: a box with its width and depth dimensioned (red)
+  measure3d: <Ico><path d="M4.1 16.5L20.1 5.3H44.9L29.2 16.5Z" fill="#dcdcdc" stroke={K} strokeWidth="2.2" strokeLinejoin="round" /><path d="M4.1 16.5H29.2V26.7H4.1Z" fill="#a3a3a3" stroke={K} strokeWidth="2.2" /><path d="M29.2 16.5L44.9 5.3V15.7L29.2 26.7Z" fill="#cfcfcf" stroke={K} strokeWidth="2.2" strokeLinejoin="round" /><path d="M4.1 28.4V38.3M29.2 28.4V38.3M44.9 17.5V27.2M6 35.5H27.3M31.3 34.3L43.2 26.4" stroke={R} strokeWidth="1.8" /><path d="M5 35.5L8.6 33.6V37.4ZM28.3 35.5L24.7 33.6V37.4ZM30.6 34.8L32.3 31.3L34.4 34.2ZM43.9 25.9L42.3 29.4L40.1 26.6Z" fill={R} /></Ico>,
+  // Fab's icon: a flat pattern with its width dimensioned (red), its bends (blue)
+  measure: <Ico><path d="M14.2 1.7H34.6V7.6H40.7V30.6H34.6V36.2H14.2V30.6H8.4V7.6H14.2Z" fill="#dcdcdc" stroke={K} strokeWidth="1.9" strokeLinejoin="miter" /><path d="M14.2 9.6V14M14.2 24.2V28.6M34.6 9.6V14M34.6 24.2V28.6M16.2 7.6H20.4M28.4 7.6H32.6M16.2 30.6H20.4M28.4 30.6H32.6" stroke="#1d8fd6" strokeWidth="1.6" /><path d="M8.4 32V45M40.7 32V45M10.4 41.6H38.7" stroke={R} strokeWidth="1.8" /><path d="M9.2 41.6L12.8 39.7V43.5ZM39.9 41.6L36.3 39.7V43.5Z" fill={R} /></Ico>,
   look: <Ico><path d="M10 12h28v24H10z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><circle cx="24" cy="24" r="6" stroke={B} strokeWidth="2.6" /><circle cx="24" cy="24" r="2" fill={B} /><path d="M24 4v6M24 38v6M4 24h6M38 24h6" stroke={R} strokeWidth="2.2" /></Ico>,
   send: <Ico><rect x="4" y="10" width="26" height="28" stroke={K} strokeWidth="2.2" /><path d="M4 24h26" stroke={G} strokeWidth="2.4" strokeDasharray="5 4" /><path d="M28 24h16M38 18l6 6-6 6" stroke={G} strokeWidth="3" /></Ico>,
   dxf: <Ico><path d="M10 4h18l10 10v30H10z" stroke={K} strokeWidth="2.2" /><path d="M24 18v16M18 28l6 6 6-6" stroke={G} strokeWidth="2.6" /></Ico>,
@@ -199,7 +201,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
         {tool("one", "One face", pick === "one", () => setPick(pick === "one" ? null : "one"), "Click one flat face: its outline (with its holes) is the flat pattern, as it is (Stitch with one face)")}
         {tool("measure3d", "Measure 3D", pick === "measure3d", () => { setPick(pick === "measure3d" ? null : "measure3d"); setMeas([]); }, "Measure the part: click a face, an edge, a hole's edge or a corner, then a second one: offset between faces, hole sizes, distance between holes, angles")}
         {tool("look", "Face view", pick === "look", () => setPick(pick === "look" ? null : "look"), "Click a face of the part: the view turns to look straight at it")}
-        {tool("measure", "Flat distance", pick === "measure", () => setPick(pick === "measure" ? null : "measure"), "Click two points of the flat pattern (corners and hole centers snap)")}
+        {tool("measure", "Measure 2D", pick === "measure", () => setPick(pick === "measure" ? null : "measure"), "Measure the flat pattern: click two points (corners and hole centers snap)")}
         <span className="uf-sep" />
         {tool("send", sent ? "Send again" : "Send to Import 2D", false, onSend, step.info.ok
           ? `Put the flat pattern into Import 2D (×${qty}) to be processed there${sent ? "; it replaces the one sent before" : ""}`
@@ -984,7 +986,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
 /** The 3D Extractor with no part open: its tools and panes, empty until a STEP file is dropped on its list. */
 export function ExtractEmpty({ onPick }: { onPick: () => void }) {
   const tools: [string, string][] = [["stitch", "Stitch"], ["edge", "Add edge"], ["base", "Fixed face"], ["top", "Top side"], ["one", "One face"],
-    ["measure3d", "Measure 3D"], ["look", "Face view"], ["measure", "Flat distance"]];
+    ["measure3d", "Measure 3D"], ["look", "Face view"], ["measure", "Measure 2D"]];
   const t = ([id, label]: [string, string]) => (
     <button key={id} type="button" className="itool" aria-disabled title={`${label}: open a part first`}>
       <span className="itool-box">{ICONS[id]}</span><span className="itool-label">{label}</span>
@@ -1068,7 +1070,7 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
   const y = (v: number) => H - v;
   const marks = marksOf(u, st);
   const fs = Math.max(W, H) * 0.026;
-  // zoom (wheel, + / −) and move (right or middle button, or left without Flat distance); a new flat
+  // zoom (wheel, + / −) and move (right or middle button, or left without Measure 2D); a new flat
   // pattern size: fitted again
   const fitBox = { x: -pad, y: -pad, w: W + 2 * pad, h: H + 2 * pad };
   const [vb, setVb] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -1096,7 +1098,7 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
     return [q.x, q.y];
   };
   const pan = useRef<{ x: number; y: number; moved: boolean } | null>(null);
-  // Flat distance snaps to points (corners, hole centers, middles of straight edges, bend line ends and
+  // Measure 2D snaps to points (corners, hole centers, middles of straight edges, bend line ends and
   // middles), else to a point on a line (the outline, a bend line)
   const snapPts = useMemo(() => {
     const out: V2[] = [];
