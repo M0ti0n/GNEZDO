@@ -1,7 +1,7 @@
 import { ALL_SNAPS, SNAP_KINDS } from "../import/draw";
 import { useState } from "react";
 import { NumInput } from "../components/NumInput";
-import { DEFAULT_RULES, ROTATIONS, type ImportRules } from "../import/rules";
+import { DEFAULT_RULES, ROTATIONS, SPLINE_TOL_DEFAULT, SPLINE_TOL_MAX, SPLINE_TOL_MIN, splineTolOf, type ImportRules } from "../import/rules";
 import { ColourLists } from "./ColourLists";
 import { DEFAULT_NESTING_RULES, SEARCH_GROWTH_MAX, SEARCH_GROWTH_MIN, loadNestingRules, saveNestingRules, type NestingRules } from "../job/nestRules";
 
@@ -123,6 +123,20 @@ export function RulesTabs({ rules, onChange }: { rules: ImportRules; onChange: (
               <ColourLists value={rules.colours} onChange={(colours) => set({ colours })} />
             </div>
           )}
+        </section>
+
+        <section className="rule">
+          <h3>Splines to polyline</h3>
+          <label className="rule-field">
+            <span>Tolerance</span>
+            <span className="rule-num">
+              <NumInput className="field" value={splineTolOf(rules)} min={SPLINE_TOL_MIN} aria-label="Splines to polyline tolerance (mm)"
+                onCommit={(n) => set({ splineTolMm: Math.min(SPLINE_TOL_MAX, Math.max(SPLINE_TOL_MIN, Math.round(n * 1000) / 1000)) })} /> mm
+            </span>
+          </label>
+          <p className="rule-help">Geometry check → Splines → <b>To polyline</b> turns splines into lines and arcs that stay at most this far
+            from the spline. Smaller: closer to the curve, more pieces. Larger: fewer, longer pieces. {SPLINE_TOL_MIN} to {SPLINE_TOL_MAX} mm,
+            default {SPLINE_TOL_DEFAULT} mm.</p>
         </section>
 
         <section className="rule">
