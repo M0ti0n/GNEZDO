@@ -30,7 +30,16 @@ export interface ImportRules {
   colours: ColourRules;
   /** What drawing on the importer canvas snaps to (missing: everything). */
   snaps?: SnapKind[];
+  /** Geometry check → Splines → To polyline: how far the lines and arcs may be from the spline [mm] (missing: SPLINE_TOL_DEFAULT). */
+  splineTolMm?: number;
 }
+
+/** To polyline's tolerance [mm]: default, and the range it is kept in. */
+export const SPLINE_TOL_DEFAULT = 0.01;
+export const SPLINE_TOL_MIN = 0.001;
+export const SPLINE_TOL_MAX = 1;
+export const splineTolOf = (r: ImportRules) =>
+  Math.min(SPLINE_TOL_MAX, Math.max(SPLINE_TOL_MIN, r.splineTolMm ?? SPLINE_TOL_DEFAULT));
 
 /**
  * One color of a list:

@@ -1,17 +1,16 @@
 // Splines into polylines (Geometry check → Splines → To polyline): a spline becomes lines and arcs that
-// follow it as it is drawn, within SPLINE_TOL, each keeping the spline's role and the rest of its marks.
+// follow it as it is drawn, within a tolerance (Settings → Rules → Import rules; default 0.01 mm), each
+// keeping the spline's role and the rest of its marks.
 // Lines and arcs can be trimmed, extended, measured and cut cleanly; a spline cannot.
 
 import { circleThrough, fitPoints, type P2 } from "./fittings/arcs";
 import { splinePoints, type Entity } from "./geometry";
-
-/** How far the polyline may be from the spline [mm]. */
-export const SPLINE_TOL = 0.01;
+import { SPLINE_TOL_DEFAULT } from "./rules";
 
 const norm = (x: number) => ((x % 360) + 360) % 360;
 
 /** The lines and arcs for one spline (ids from the spline's: id~1, id~2, …). */
-export function splineToPolyline(e: Extract<Entity, { kind: "spline" }>, tol = SPLINE_TOL): Entity[] {
+export function splineToPolyline(e: Extract<Entity, { kind: "spline" }>, tol = SPLINE_TOL_DEFAULT): Entity[] {
   const { id, kind: _k, fit: _f, sampled: _s, ...marks } = e;
   const pts = splinePoints(e).map((q): P2 => [q.x, q.y]);
   // without repeated points (a zero-length piece fits nothing)
@@ -35,12 +34,12 @@ export function splineToPolyline(e: Extract<Entity, { kind: "spline" }>, tol = S
   return out;
 }
 
-/** The drawing's splines (those in `ids`, or all) as polylines; how many were changed. */
-export function splinesToPolylines(entities: Entity[], ids?: Set<string>): { entities: Entity[]; changed: number } {
+/** The drawing's splines (those in `ids`, or all) as polylines within tol [mm]; how many were changed. */
+export function splinesToPolylines(entities: Entity[], ids?: Set<string>, tol = SPLINE_TOL_DEFAULT): { entities: Entity[]; changed: number } {
   let changed = 0;
   const out = entities.flatMap((e) => {
     if (e.kind !== "spline" || (ids && !ids.has(e.id))) return [e];
-    const made = splineToPolyline(e);
+    const made = splineToPolyline(e, tol);
     if (!made.length) return [e];
     changed++;
     return made;

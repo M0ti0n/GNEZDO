@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-- Import 2D → Geometry check → Splines: new **To polyline** button: the splines become lines and arcs that follow them within 0.01 mm (they can then be trimmed, extended and measured, and cut as clean lines and arcs; Undo brings the splines back). A spline is now also checked and saved along its drawn curve, not only straight through its fit points
+- Import 2D → Geometry check → Splines: new **To polyline** button: the splines become lines and arcs that follow them within a tolerance set in **Settings → Rules → Import rules → Splines to polyline** (0.001 to 1 mm, default 0.01 mm) (they can then be trimmed, extended and measured, and cut as clean lines and arcs; Undo brings the splines back). A spline is now also checked and saved along its drawn curve, not only straight through its fit points
 - Drawing (Import 2D): the **dynamic input** (Length / Angle) sits on the other side of the last point from the pointer, so it no longer covers the line being drawn
 - **Double click with the middle button (wheel)**: Fit, as the Fit button, in Import 2D, the nest / Process view and the 3D Extractor (3D view: the whole part again, turned as it is; flat pattern: Fit)
 - Left rail: **Parts** moved up, right under New job

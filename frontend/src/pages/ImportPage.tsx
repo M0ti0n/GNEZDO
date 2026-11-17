@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImportToolStrip, IMPORT_TOOLS } from "../import/ImportTools";
-import { ROTATIONS, type Rotation } from "../import/rules";
+import { ROTATIONS, loadRules, splineTolOf, type Rotation } from "../import/rules";
 import { FILLER_TIP } from "../import/filler";
 import { COMMON_CUT_TIP } from "../import/commonCut";
 import { textLines, textWidth } from "../import/singleLine";
@@ -9,7 +9,7 @@ import { angleOf, diameterOf, dimensionOf, pickEntity, radiusOf, type Measure, t
 import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
 import { DynamicInput } from "../components/DynamicInput";
-import { SPLINE_TOL, splinesToPolylines } from "../import/splines";
+import { splinesToPolylines } from "../import/splines";
 import { useMiddleDouble } from "../components/middleDouble";
 import { DynFields } from "../components/DynFields";
 import {
@@ -1459,11 +1459,13 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: `${ids.length} ${ids.length === 1 ? "line" : "lines"} → cutting` });
   };
   const toPolylines = (ids: string[]) => {
-    const r = splinesToPolylines(drawing.entities, new Set(ids));
+    // the tolerance as Settings → Rules → Import rules has it now
+    const tol = splineTolOf(loadRules());
+    const r = splinesToPolylines(drawing.entities, new Set(ids), tol);
     if (!r.changed) { setMessage({ text: "The splines could not be changed", bad: true }); return; }
     commit({ ...drawing, entities: r.entities }, "Splines to polylines");
     setSelected(null);
-    setMessage({ text: `${r.changed} ${r.changed === 1 ? "spline" : "splines"} → polyline (lines and arcs within ${SPLINE_TOL} mm)` });
+    setMessage({ text: `${r.changed} ${r.changed === 1 ? "spline" : "splines"} → polyline (lines and arcs within ${tol} mm)` });
   };
   const SMALL_MM = 1;
   const small = issues.filter((i) => i.fix && i.size <= SMALL_MM);
@@ -1909,7 +1911,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 )}
                 {c.count > 0 && c.id === "splines" && (
                   <button type="button" className="gc-fix" onClick={() => toPolylines(c.entityIds)}
-                    title={`Change the splines into polylines: lines and arcs that follow them within ${SPLINE_TOL} mm (they can then be trimmed, extended and measured)`}>
+                    title={`Change the splines into polylines: lines and arcs that follow them within ${splineTolOf(loadRules())} mm (Settings → Rules → Import rules); they can then be trimmed, extended and measured`}>
                     To polyline
                   </button>
                 )}
