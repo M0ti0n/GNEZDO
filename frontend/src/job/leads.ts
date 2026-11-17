@@ -37,8 +37,8 @@ export interface LeadRules {
   holeShorten: boolean;
   /** Slots narrower than 2 × the lead-in: the leads go in the middle of the end arc / short edge */
   slotMiddle: boolean;
-  /** Remnant cuts (open lines): in line with the cut, at 90° or at an angle, from the scrap side */
-  remnant: LeadType;
+  /** Remnant cuts (open lines): in line with the cut, in line from outside the sheet, at 90° or at an angle, from the scrap side */
+  remnant: RemnantLead;
   /** Common cut, the shared lines: pierced outside the block coming in line or at an angle, or on the line's end */
   common: CommonLead;
 }
@@ -52,9 +52,13 @@ export const COMMON_LEADS: { id: CommonLead; label: string; settings: string }[]
   { id: "none", label: "No lead, pierce on the line", settings: "Pierced at the line's end" },
 ];
 
+/** A remnant cut's lead: a lead type, or "outside": in line from beyond the sheet edge (as Common cut's). */
+export type RemnantLead = LeadType | "outside";
+
 /** The lead types a remnant cut can have (an open line: no corner of its own). */
-export const REMNANT_LEADS: { id: LeadType; label: string; settings: string }[] = [
+export const REMNANT_LEADS: { id: RemnantLead; label: string; settings: string }[] = [
   { id: "corner", label: "In line", settings: "Lead-in · lead-out" },
+  { id: "outside", label: "In line, from outside", settings: "From beyond the sheet edge · lead-in · lead-out" },
   { id: "perp", label: "Perpendicular (90°)", settings: "Lead-in · lead-out" },
   { id: "angled", label: "At an angle", settings: "Lead-in · lead-out · angles" },
 ];

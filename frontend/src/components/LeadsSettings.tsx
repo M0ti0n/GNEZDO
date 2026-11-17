@@ -77,13 +77,13 @@ export function LeadsSettings({ machine, onChange }: { machine: Machine; onChang
             {REMNANT_LEADS.map((t) => (
               <button key={t.id} type="button" role="radio" aria-checked={r.remnant === t.id}
                 className={`lead-card${r.remnant === t.id ? " is-on" : ""}`} onClick={() => set({ remnant: t.id })} title={t.settings}>
-                <LeadIcon type={t.id} />
+                {t.id === "outside" ? <RemnantOutsideIcon /> : <LeadIcon type={t.id} />}
                 <b>{t.label}</b>
                 <small>{t.settings}</small>
               </button>
             ))}
           </div>
-          <p className="rule-help">Lengths (0 = no lead), the gap in / out from the sheet edge and the distance to the parts: Technology → Remnant cut.</p>
+          <p className="rule-help">Lengths (0 = no lead), the gap in / out from the sheet edge and the distance to the parts: Technology → Remnant cut. In line, from outside: where a cut runs to the sheet edge it is cut right to the edge (the gaps are not used there) and the lead comes in line from beyond the edge, so the cut starts in the air, with no pierce in the plate (lead-out: on past the edge); lengths: Remnant cut's lead-in / lead-out, else the outline's (at least 2 mm). Ends away from the edge: in line.</p>
         </section>
         <section className="lead-sec">
           <h3>Common cut <small>the shared line of two parts, cut once without kerf compensation</small></h3>
@@ -108,6 +108,22 @@ export function LeadsSettings({ machine, onChange }: { machine: Machine; onChang
         <button type="button" className="btn btn-plain" disabled={isDefault} onClick={() => onChange({ ...DEFAULT_LEAD_RULES })}>Back to the defaults</button>
       </div>
     </div>
+  );
+}
+
+/** A remnant cut across the sheet (blue), its leads coming in from beyond the sheet edges (green in, red out). */
+function RemnantOutsideIcon() {
+  const IN = "#22a046", OUT = "#e0352b", LINE = "#1e8db5", SHEET = "rgba(27,42,48,.09)", EDGE = "var(--ink, #1b2a30)";
+  const st = { fill: "none", strokeLinecap: "round" as const, strokeWidth: 3.4 };
+  const dot = (x: number, y: number, c: string) => <circle cx={x} cy={y} r={3.6} fill="#fff" stroke={c} strokeWidth={2.4} />;
+  return (
+    <svg width={112} height={72} viewBox="0 0 112 72" aria-hidden="true">
+      <rect x={28} y={10} width={56} height={52} fill={SHEET} />
+      <path d="M28 10V62M84 10V62" stroke={EDGE} strokeWidth={1.6} opacity={0.6} fill="none" />
+      <path d="M28 36H84" stroke={LINE} {...st} />
+      <path d="M10 36H28" stroke={IN} {...st} /><path d="M84 36H102" stroke={OUT} {...st} />
+      {dot(10, 36, IN)}
+    </svg>
   );
 }
 
