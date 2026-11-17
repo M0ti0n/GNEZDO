@@ -93,9 +93,15 @@ const MIRROR_AXIS = "Now click the mirror axis: a straight line or an aid line (
 const MOVE_HINT = "Click a line, an arc or a circle, or drag a window, to move it (hold Ctrl to pick more, then let go; Ctrl+A: the whole part). Then click the pick-up point and move by hand, or type distance [Tab] angle + Enter.";
 const MOVE_BASE = "Now click the pick-up point (ends, middles and centers snap)";
 /** Rotate, Mirror and Move (Manipulate group): pick the items, then the point (or axis), then where. */
-const MANIP = new Set(["rotate", "mirror", "move"]);
+const MANIP = new Set(["rotate", "mirror", "move", "patternL", "patternC"]);
+/** Pattern tools: copies of what is picked (the originals stay) */
+const PATTERN = new Set(["patternL", "patternC"]);
+const PATTERN_L_HINT = "Linear pattern: click a line, an arc or a circle (a hole), or drag a window, to copy it (Ctrl: more; or pick first, then the tool). Then click the pick-up point and type count [Tab] distance [Tab] angle + Enter: count is how many in all, the original included; the distance is between two neighbours (or by hand, with the pointer).";
+const PATTERN_C_HINT = "Circular pattern: click a line, an arc or a circle (a hole), or drag a window, to copy it (Ctrl: more; or pick first, then the tool). Then click the axis point (the center to copy around) and type the count + Enter: how many in all, the original included, evenly round the full circle (or [Tab] a smaller angle to spread them over).";
+const PATTERN_AXIS = "Now click the axis point: the center the copies go round (centers and ends snap)";
+const PATTERN_BASE = "Now click the pick-up point (ends, middles and centers snap)";
 /** The second step of a Manipulate tool. */
-const manipNext = (tool: string | null) => (tool === "mirror" ? MIRROR_AXIS : tool === "move" ? MOVE_BASE : ROT_PIVOT);
+const manipNext = (tool: string | null) => (tool === "mirror" ? MIRROR_AXIS : tool === "move" ? MOVE_BASE : tool === "patternC" ? PATTERN_AXIS : tool === "patternL" ? PATTERN_BASE : ROT_PIVOT);
 const CHAMFER_HINT = "Click a corner where two straight lines meet (nearer the line for the first distance), type distance 1 [Tab] distance 2 + Enter.";
 const JOIN_HINT = "Ctrl + click two straight lines: both are lengthened (or cut back) to where they cross.";
 /** What a snap mark says. */
@@ -378,7 +384,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (!sel.size) { setMessage({ text: `Pick something to ${tool ?? "rotate"} first`, bad: true }); return; }
     setRotStage(1);
     const imported = drawing.entities.some((e) => !e.drawn && sel.has(e.id));
-    setMessage({ text: imported && tool !== "rotate" ? `${manipNext(tool)}. The lines from the file go together: the whole part` : manipNext(tool) });
+    setMessage({ text: imported && tool !== "rotate" && !(tool && PATTERN.has(tool)) ? `${manipNext(tool)}. The lines from the file go together: the whole part` : manipNext(tool) });
   };
   // Mirror: the axis under the pointer (a straight line or an aid line), shown with the mirror image
   const [mirAxis, setMirAxis] = useState<{ p: Pt; d: Pt; show: string } | null>(null);
@@ -422,6 +428,39 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     commit({ ...drawing, entities, ...points }, "Move");
     manipEnd(`${manipWhat()} moved ${fmtMm(Math.hypot(dx, dy))}`);
   };
+  /** Patterns: the copies (each a set of the picked items), for the count, distance and angle typed (linear:
+   *  the distance and angle follow the pointer where nothing is typed); null: not enough to go on yet. */
+  const patternCopies = (at: Pt | null): Entity[][] | null => {
+    if (!rotPivot || !rotSel.size || (tool !== "patternL" && tool !== "patternC")) return null;
+    const n = typed(dyn[0] ?? "");
+    const N = n === null ? (tool === "patternL" ? 2 : null) : Math.round(n);
+    if (N === null || N < 2 || N > 500) return null;
+    const out: Entity[][] = [];
+    if (tool === "patternC") {
+      const A = typed(dyn[1] ?? "");
+      const full = A === null || Math.abs(Math.abs(A) - 360) < 1e-9;
+      const step = full ? 360 / N : A! / (N - 1);
+      if (Math.abs(step) < 1e-9) return null;
+      for (let k = 1; k < N; k++) out.push(rotItems.map((e) => rotateEnt(e, rotPivot, step * k)));
+      return out;
+    }
+    const to = polar(rotPivot, at, dyn[1], dyn[2]);
+    if (!to) return null;
+    const dx = to.x - rotPivot.x, dy = to.y - rotPivot.y;
+    if (Math.hypot(dx, dy) < 1e-9) return null;
+    for (let k = 1; k < N; k++) out.push(rotItems.map((e) => moveEnt(e, dx * k, dy * k)));
+    return out;
+  };
+  const applyPattern = (at: Pt | null) => {
+    const copies = patternCopies(at);
+    if (!copies) {
+      setMessage({ text: tool === "patternC" ? "Type the count (2 or more, the original included) + Enter" : "Type count [Tab] distance [Tab] angle + Enter, or move the pointer away from the pick-up point", bad: true });
+      return;
+    }
+    const made = copies.flat().map((e) => ({ ...e, id: newId("pt"), drawn: true }));
+    commit({ ...drawing, entities: [...drawing.entities, ...made] }, tool === "patternC" ? "Circular pattern" : "Linear pattern");
+    manipEnd(`${tool === "patternC" ? "Circular" : "Linear"} pattern: ${copies.length + 1} in all (${copies.length} ${copies.length === 1 ? "copy" : "copies"} of ${manipWhat().toLowerCase()})`);
+  };
   /** Move: where the pick-up point goes (typed distance / angle win over the pointer). */
   const moveTarget = (at: Pt | null): Pt | null => (rotPivot ? polar(rotPivot, at, dyn[0], dyn[1]) : null);
   /** A click picks one (again: unpicks it), a window adds all in it; without Ctrl that ends the picking. */
@@ -431,7 +470,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     // stays whole); lines drawn here turn on their own
     const imported = drawing.entities.filter((e) => !e.drawn).map((e) => e.id);
     const isImp = new Set(imported);
-    const group = ids.some((id) => isImp.has(id)) ? [...new Set([...ids, ...imported])] : ids;
+    // a pattern copies just what is picked (a hole of the part), the part itself stays as it is
+    const group = !(tool && PATTERN.has(tool)) && ids.some((id) => isImp.has(id)) ? [...new Set([...ids, ...imported])] : ids;
     if (ids.length === 1 && next.has(ids[0])) group.forEach((id) => next.delete(id)); else group.forEach((id) => next.add(id));
     setRotSel(next);
     if (!more && next.size) { rotDone(next); return; }
@@ -594,10 +634,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (tool === "chamfer" && corner) return [{ label: "Distance 1", unit: "mm" }, { label: "Distance 2", unit: "mm", placeholder: "= 1" }];
     if (tool === "rotate" && rotStage === 2) return [{ label: "Angle", unit: "°", placeholder: live(angTo(rotPivot), "+ ccw / − cw") }];
     if (tool === "move" && rotStage === 2) return [{ label: "Distance", unit: "mm", placeholder: live(lenTo(rotPivot)) }, { label: "Angle", unit: "°", placeholder: live(angTo(rotPivot), "+ ccw / − cw") }];
+    if (tool === "patternL" && rotStage === 2) return [{ label: "Count", unit: "pcs", placeholder: "2" }, { label: "Distance", unit: "mm", placeholder: live(lenTo(rotPivot)) }, { label: "Angle", unit: "°", placeholder: live(angTo(rotPivot), "+ ccw / − cw") }];
+    if (tool === "patternC" && rotStage === 2) return [{ label: "Count", unit: "pcs", placeholder: "e.g. 6" }, { label: "Angle", unit: "°", placeholder: "360" }];
     return [];
   };
   /** Where the dynamic input boxes stand (drawing mm). */
-  const dynAt = (): Pt | null => tool === "line" ? lineStart : tool === "xline" ? xPts[0] ?? null : (tool === "rotate" || tool === "move") ? rotPivot
+  const dynAt = (): Pt | null => tool === "line" ? lineStart : tool === "xline" ? xPts[0] ?? null : (tool === "rotate" || tool === "move" || tool === "patternL" || tool === "patternC") ? rotPivot
     : tool === "offset" ? cur : (tool === "fillet" || tool === "chamfer") ? corner?.at ?? null : shapePts[shapePts.length - 1] ?? null;
 
   /** Enter in the dynamic input: what is typed is placed. */
@@ -609,6 +651,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       applyRotate(A);
       return;
     }
+    if ((tool === "patternL" || tool === "patternC") && rotStage === 2) { applyPattern(cur); return; }
     if (tool === "move" && rotStage === 2) {
       if (v(0) === null && v(1) === null) { setMessage({ text: "Type distance [Tab] angle, e.g. 50 [Tab] 90", bad: true }); return; }
       const to = moveTarget(cur);
@@ -938,7 +981,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       if ((tool === "fillet" || tool === "chamfer") && view) { setCornerHover(corner ? null : cornerAt(drawing.entities, toModel(e.clientX, e.clientY, view), SNAP_PX / view.s)?.at ?? null); return; }
       if ((tool && DRAWING_TOOLS.has(tool) || tool === "dimension" || (tool === "markings" && !mark)) && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
       if (tool === "mirror" && rotStage === 1) { setMirAxis(axisUnder(e.clientX, e.clientY)); return; }
-      if ((tool === "rotate" || tool === "move") && rotStage > 0 && view) { setCursor(snapAt(e.clientX, e.clientY, view, tool === "move" && rotStage === 2 ? rotPivot : null)); return; }
+      if ((tool === "rotate" || tool === "move" || tool === "patternL" || tool === "patternC") && rotStage > 0 && view) { setCursor(snapAt(e.clientX, e.clientY, view, (tool === "move" || tool === "patternL") && rotStage === 2 ? rotPivot : null)); return; }
       // hover with Trim / Extend: preview the result
       if (tool && EDITING[tool] && view) {
         if (tool === "extend" && (e.ctrlKey || joinFirst)) { setPreview(null); return; }
@@ -1018,6 +1061,20 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
       }
       const to = moveTarget(sn.p);
       if (to) applyMove(to);
+      return;
+    }
+    if (isClick && (tool === "patternL" || tool === "patternC") && view && (rotStage > 0 || pr!.button === 2)) {
+      if (rotStage === 0) { rotDone(); return; }                 // right click ends the picking
+      if (pr!.button !== 0) return;
+      const sn = snapAt(e.clientX, e.clientY, view, tool === "patternL" && rotStage === 2 ? rotPivot : null);
+      if (rotStage === 1) {
+        setRotPivot(sn.p);
+        setRotStage(2);
+        resetDyn();
+        setMessage({ text: tool === "patternC" ? "Type the count (in all, the original included) + Enter; [Tab] an angle to spread them over less than a full circle" : "Type count [Tab] distance [Tab] angle + Enter (0° = to the right), or click where the next one goes" });
+        return;
+      }
+      applyPattern(sn.p);
       return;
     }
     if (isClick && tool === "rotate" && view && (rotStage > 0 || pr!.button === 2)) {
@@ -1376,6 +1433,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
 
   const onTool = (id: string) => {
     setPaste(null);
+    // a pattern tool with lines picked first: they are what it copies (on to the axis / pick-up point)
+    const prePicked = PATTERN.has(id) && tool !== id && pick.size ? new Set(pick) : null;
     // drawing again: the part is checked again when CHECK is pressed
     if (manualCheck && (DRAWING_TOOLS.has(id) || id === "annotate")) setChecking(false);
     // another tool, or the same one again: the text being typed is placed
@@ -1443,6 +1502,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setHoverId(null);
     setGrip(null);
     setTool((t) => (t === id ? null : id));
+    if (prePicked) { setRotSel(prePicked); setRotStage(1); setMessage({ text: manipNext(id) }); }
   };
 
   const check = report.checks.find((c) => c.id === selected) ?? null;
@@ -1525,7 +1585,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setMessage({ text: n ? `Fixed ${n} ${n === 1 ? "end" : "ends"} under ${SMALL_MM} mm` : "Nothing small to fix" });
   };
   const toolLabel = IMPORT_TOOLS.find((t) => t.id === tool)?.label;
-  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : SHAPES[tool] ? SHAPES[tool].hint : tool === "xline" ? XLINE_HINT : tool === "offset" ? OFFSET_HINT : tool === "fillet" ? FILLET_HINT : tool === "chamfer" ? CHAMFER_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "annotate" ? ANNOT_HINT : tool === "markings" ? MARK_HINT : tool === "scale" ? SCALE_HINT : tool === "rotate" ? ROTATE_HINT : tool === "mirror" ? MIRROR_HINT : tool === "move" ? MOVE_HINT : "not built yet") : null);
+  const hint = message?.text ?? (tool ? MARKING[tool]?.hint ?? EDITING[tool]?.hint ?? MEASURING[tool]?.hint ?? (tool === "line" ? LINE_HINT : SHAPES[tool] ? SHAPES[tool].hint : tool === "xline" ? XLINE_HINT : tool === "offset" ? OFFSET_HINT : tool === "fillet" ? FILLET_HINT : tool === "chamfer" ? CHAMFER_HINT : tool === "sweep" ? SWEEP_HINT : tool === "hole" ? HOLE_HINT : tool === "commonCut" ? COMMON_HINT : tool === "annotate" ? ANNOT_HINT : tool === "markings" ? MARK_HINT : tool === "patternL" ? PATTERN_L_HINT : tool === "patternC" ? PATTERN_C_HINT : tool === "scale" ? SCALE_HINT : tool === "rotate" ? ROTATE_HINT : tool === "mirror" ? MIRROR_HINT : tool === "move" ? MOVE_HINT : "not built yet") : null);
   const bw = report.box.maxX - report.box.minX, bh = report.box.maxY - report.box.minY;
 
   // Grid follows the drawing: 10 mm dots, 100 mm when zoomed far out.
@@ -1590,6 +1650,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {tool === "move" && rotStage === 2 && rotPivot && cur && (() => {
                 const to = moveTarget(cur);
                 return to ? <path d={rotItems.map((e) => pathOf(moveEnt(e, to.x - rotPivot.x, to.y - rotPivot.y))).join(" ")} vectorEffect="non-scaling-stroke" className="pv-add" /> : null;
+              })()}
+              {(tool === "patternL" || tool === "patternC") && rotStage === 2 && rotPivot && (() => {
+                const cp = patternCopies(cur);
+                return cp ? <path d={cp.flat().map((e) => pathOf(e)).join(" ")} vectorEffect="non-scaling-stroke" className="pv-add" /> : null;
               })()}
               {tool === "rotate" && rotStage === 2 && rotPivot && cursor && (() => {
                 const A = typed(dyn[0] ?? "") ?? handAngle(rotPivot, cursor.p, cursor.snapped);
@@ -1725,6 +1789,17 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   {P && <circle cx={P.x} cy={P.y} r={4.5} className="line-start" />}
                   <SnapMark c={toScreen(cursor.p, view)} kind={cursor.snapped ? cursor.kind : undefined} dir={cursor.dir} />
                   {to && rotPivot && <text x={c.x + 12} y={c.y - 10} className="line-len">{num(Math.hypot(to.x - rotPivot.x, to.y - rotPivot.y))}</text>}
+                </g>
+              );
+            })()}
+            {(tool === "patternL" || tool === "patternC") && rotStage > 0 && (() => {
+              const P = rotPivot && toScreen(rotPivot, view);
+              const c = cursor && toScreen(cursor.p, view);
+              return (
+                <g className="line-draw" pointerEvents="none">
+                  {P && c && tool === "patternL" && <line x1={P.x} y1={P.y} x2={c.x} y2={c.y} className="line-rubber" />}
+                  {P && <circle cx={P.x} cy={P.y} r={4.5} className="line-start" />}
+                  {cursor && c && <SnapMark c={c} kind={cursor.snapped ? cursor.kind : undefined} dir={cursor.dir} />}
                 </g>
               );
             })()}

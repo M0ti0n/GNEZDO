@@ -310,6 +310,34 @@ export const IMPORT_TOOLS: { id: string; label: string; wide?: boolean; icon: Re
     id: "move", label: "Move", icon: MOVE_ICON,
   },
   {
+    // Fab's icon: the part (black) copied along the red arrow (green copies)
+    id: "patternL", label: "Linear pat.",
+    icon: (
+      <Ico>
+        <path d="M4 43V33L13 43Z" stroke={K} strokeWidth="2.6" strokeLinejoin="miter" />
+        <path d="M12 34V24L21 34Z" stroke="#22b14c" strokeWidth="2.6" strokeLinejoin="miter" />
+        <path d="M20 25V15L29 25Z" stroke="#22b14c" strokeWidth="2.6" strokeLinejoin="miter" />
+        <path d="M28 16V6L37 16Z" stroke="#22b14c" strokeWidth="2.6" strokeLinejoin="miter" />
+        <path d="M24 44L43 25" stroke={R} strokeWidth="2.8" strokeLinecap="round" />
+        <path d="M36.5 25L43 25L43 31.5" stroke={R} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+      </Ico>
+    ),
+  },
+  {
+    // Fab's icon: the part (black) copied round the blue center (green copies) on the red circle
+    id: "patternC", label: "Circular pat.",
+    icon: (
+      <Ico>
+        <path d="M14.5 17A15 15 0 0 1 21 11.6M27 11.6A15 15 0 0 1 33.5 17M36 23V25M33.5 31A15 15 0 0 1 27 36.4M21 36.4A15 15 0 0 1 14.5 31M12 25V23" stroke={R} strokeWidth="2" strokeLinecap="round" />
+        <circle cx="24" cy="24" r="2.8" fill="#1d8fd6" />
+        <path d="M6 6h4v3h4v6H6Z" fill={K} />
+        <path d="M34 6h4v3h4v6h-8Z" fill="#22b14c" />
+        <path d="M6 33h4v3h4v6H6Z" fill="#22b14c" />
+        <path d="M34 33h4v3h4v6h-8Z" fill="#22b14c" />
+      </Ico>
+    ),
+  },
+  {
     // Fab's icon: a purple cross and M8 (a marking engraved on the part)
     id: "markings", label: "Markings",
     icon: (
@@ -439,7 +467,7 @@ export const TOOL_GROUPS: { id: string; label: string; tone: "draw" | "dim" | "m
       </Ico>
     ),
   },
-  { id: "manipGroup", label: "Manipulate", tone: "manip", tools: ["rotate", "mirror", "move"], icon: MOVE_ICON },
+  { id: "manipGroup", label: "Manipulate", tone: "manip", tools: ["rotate", "mirror", "move", "patternL", "patternC"], icon: MOVE_ICON },
 ];
 
 /** The strip's order: single tools and groups (a group stands where its first tool stood). */
