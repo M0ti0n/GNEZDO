@@ -99,7 +99,7 @@ const manipNext = (tool: string | null) => (tool === "mirror" ? MIRROR_AXIS : to
 const CHAMFER_HINT = "Click a corner where two straight lines meet (nearer the line for the first distance), type distance 1 [Tab] distance 2 + Enter.";
 const JOIN_HINT = "Ctrl + click two straight lines: both are lengthened (or cut back) to where they cross.";
 /** What a snap mark says. */
-const SNAP_LABEL: Record<SnapKind, string> = { end: "End", mid: "Mid", center: "Center", quadrant: "Quadrant", intersection: "Intersection", perpendicular: "Perpendicular", tangent: "Tangent", ortho: "Horizontal" };
+const SNAP_LABEL: Record<SnapKind, string> = { end: "End", mid: "Mid", center: "Center", quadrant: "Quadrant", intersection: "Intersection", perpendicular: "Perpendicular", tangent: "Tangent", ortho: "H" };
 
 /** The circle through three points (null when they are on one line). */
 function circleThrough(a: Pt, b: Pt, c: Pt): { c: Pt; r: number } | null {
@@ -2306,7 +2306,7 @@ function SnapMark({ c, kind, dir }: { c: { x: number; y: number }; kind?: SnapKi
     <g className="snap-glyph is-ortho" pointerEvents="none">
       <path d={`M${x - 8} ${y}H${x + 8}M${x} ${y - 8}V${y + 8}`} className="line-cross" />
       <path d={dir === "v" ? `M${x} ${y - 70}V${y + 70}` : `M${x - 70} ${y}H${x + 70}`} className="snap-guide" />
-      <text x={x + 12} y={y + 20} className="snap-label">{dir === "v" ? "Vertical" : "Horizontal"}</text>
+      <text x={x + 12} y={y + 20} className="snap-label">{dir === "v" ? "V" : "H"}</text>
     </g>
   );
   if (!kind) return <path d={`M${x - 8} ${y}H${x + 8}M${x} ${y - 8}V${y + 8}`} className="line-cross" pointerEvents="none" />;

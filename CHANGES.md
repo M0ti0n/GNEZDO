@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D, drawing: the horizontal / vertical snap shows just **H** or **V** at the pointer (was Horizontal / Vertical)
 - Import 2D → **MARKINGS** works: click where the marking goes (points snap); a panel beside it asks for **1. the marking** (U, V, cross +, cross ×, octagon with a slash; click, or keys 1 to 5), **2. an annotation** (optional, e.g. M8; Enter), **3. the size**: **SMALL** (half), **MEDIUM** (as drawn, 12 mm), **BIG** (twice); clicking the size places it. The marking is centered on the place, the annotation to its right, its letters following the size (7 mm at MEDIUM). Everything is traced (engraved) right away. A dashed preview shows it before it is placed; Esc or Back steps back, a right click drops it; the last marking and size are kept for the next one
 - 3D Extractor, **wireframe**: edges hidden behind the part are drawn dashed (the visible ones solid)
 - 3D Extractor, **Measure 3D**: new panel layout: 1. and 2. pick (corner coordinates X Y Z) with **CLEAR** beside them; the result (Distance, Offset, Angle…) in a big box; **ΔX ΔY ΔZ** (green, red, blue) in boxes of their own, ready to copy
