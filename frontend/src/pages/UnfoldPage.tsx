@@ -4,7 +4,7 @@ import { NumInput } from "../components/NumInput";
 import { Combobox } from "../components/Combobox";
 import { usePickLists } from "../components/pickLists";
 import { add3, len3, lowHigh, mul3, normalAt, sub3, type Solid, type V3 } from "../import/step/step";
-import { describe, edgePick, facePick, refPoint, relate, type MPick } from "../import/step/measure3d";
+import { describe, edgePick, facePick, fmtMeasure, measureSummary, refPoint, type MPick } from "../import/step/measure3d";
 import {
   applyThreads, bendTexts, holeGroups, TAP_DRILLS, infoOf, kFor, loadProfiles, marksOf, partSolid, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
   DEFAULT_PROFILE, type Grain, type MarkAs, type StepPart, type StepSettings, type UnfoldProfile,
@@ -56,7 +56,7 @@ const ICONS: Record<string, ReactNode> = {
   dxf: <Ico><path d="M10 4h18l10 10v30H10z" stroke={K} strokeWidth="2.2" /><path d="M24 18v16M18 28l6 6 6-6" stroke={G} strokeWidth="2.6" /></Ico>,
 };
 
-export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial, fileMaterial = "", onChange, onSend, onName }: {
+export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial, fileMaterial = "", onChange, onSend, onSendOne, onName }: {
   name: string;
   kind: BodyKind;
   qty: number;
@@ -68,6 +68,8 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   /** new settings: the part unfolded again */
   onChange: (step: StepPart) => void;
   onSend: () => void;
+  /** Send to Import 2D and take it off the 3D Extractor's list (part by part; the next part opens) */
+  onSendOne?: () => void;
   /** the name and quantity it goes to Import 2D with */
   onName: (name: string, qty: number, material: string) => void;
   /** its own material ("": the Import 2D properties' one) */
@@ -180,7 +182,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   // the part and the flat pattern side by side, or one of them folded away to the side (kept for next time)
   const [panes, setPanesState] = useState<Panes>(loadPanes);
   const setPanes = (v: Panes) => { setPanesState(v); try { localStorage.setItem(PANES_KEY, v); } catch { /* this session */ } };
-  const measured = meas.length === 2 ? relate(meas[0], meas[1]) : [];
+  const measured = meas.length === 2 ? measureSummary(meas[0], meas[1]) : null;
 
   return (
     <div className="import uf">
@@ -207,7 +209,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
             <PaneIcon dir="right" /><span>Part (3D)</span></button>
           <h3>Part <em>{hint}</em>
             <button type="button" className={`icon-btn uf-wire-btn${view.wire ? " is-on" : ""}`} aria-pressed={view.wire} onClick={() => setView({ wire: !view.wire })}
-              title={view.wire ? "Wireframe: only the edges (click: solid)" : "Solid (click: wireframe, only the edges)"}>
+              title={view.wire ? "Wireframe: the edges, hidden ones dashed (click: solid)" : "Solid (click: wireframe, the edges with hidden ones dashed)"}>
               <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
                 {view.wire
                   ? <><path d="M2.5 5.5L8 2.5l5.5 3v6L8 14.5l-5.5-3z" /><path d="M2.5 5.5L8 8.5l5.5-3M8 8.5v6" strokeDasharray="1.6 1.4" /></>
@@ -241,10 +243,33 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
           {pick === "measure3d" && (
             <div className="uf-meas" aria-live="polite">
               {!meas.length && <p>Click a flat face, a round face, an edge, a hole's edge or a corner.</p>}
-              {meas.map((m, i) => { const d = describe(m); return <p key={i}><b>{i + 1}. {d.title}</b>{d.lines.map((l, k) => <span key={k}>{l}</span>)}</p>; })}
-              {meas.length === 1 && <p className="uf-meas-hint">Click a second one to measure between them.</p>}
-              {measured.length > 0 && <div className="uf-meas-res">{measured.map((l, i) => <span key={i}>{l}</span>)}</div>}
-              {meas.length > 0 && <button type="button" className="link" onClick={() => setMeas([])}>Clear</button>}
+              {meas.length > 0 && (
+                <div className="uf-meas-top">
+                  <div className="uf-meas-picks">
+                    {meas.map((m, i) => { const d = describe(m); return <p key={i}><b>{i + 1}. {d.title}</b>{d.lines.map((l, k) => <span key={k}>{l}</span>)}</p>; })}
+                    {meas.length === 1 && <p className="uf-meas-hint">Click a second one to measure between them.</p>}
+                  </div>
+                  <button type="button" className="uf-meas-clear" onClick={() => setMeas([])} title="Clear: measure again">CLEAR</button>
+                </div>
+              )}
+              {measured && (
+                <div className="uf-meas-out">
+                  <div className="uf-meas-main">
+                    <b>{measured.main.label}: {measured.main.value}{measured.main.unit === "°" ? "°" : ""}</b>
+                    <output className="uf-meas-big">{measured.main.value} <small>{measured.main.unit}</small></output>
+                    {measured.notes.map((l, i) => <span key={i} className="uf-meas-note">{l}</span>)}
+                  </div>
+                  <div className="uf-meas-delta">
+                    {(["X", "Y", "Z"] as const).map((ax, i) => (
+                      <label key={ax} className={`is-${ax.toLowerCase()}`} title={`Δ${ax}: apart along ${ax}`}>
+                        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 2.5L14 13.5H2z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+                        <span>{ax}</span>
+                        <input readOnly value={fmtMeasure(measured.delta[i])} aria-label={`Delta ${ax}`} onFocus={(e) => e.target.select()} />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <div className="uf-leg">{stitchMode
@@ -278,10 +303,19 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
                 placeholder={material && !partMaterial ? `${material} (Import 2D)` : "Material"} ariaLabel="Material" newHint="a new material" />
             </div>
           </div>
-          <p className="uf-note uf-name-note">Its name, pieces and material in Import 2D (the name usually the drawing's number). No material: the Import 2D properties' one.</p>
-          {fileMaterial && fileMaterial.toLowerCase() !== partMaterial.trim().toLowerCase() && (
-            <p className="uf-note">The STEP file says: <b>{fileMaterial}</b>{lists.strict && !lists.techMaterials.some((o) => o.value.toLowerCase() === fileMaterial.toLowerCase()) ? " (not in the Technology tables)" : ""}{" "}
-              {(!lists.strict || lists.techMaterials.some((o) => o.value.toLowerCase() === fileMaterial.toLowerCase())) && <button type="button" className="link" onClick={() => setMaterial(lists.techMaterials.find((o) => o.value.toLowerCase() === fileMaterial.toLowerCase())?.value ?? fileMaterial)}>use it</button>}</p>
+          {onSendOne && (
+            <button type="button" className="btn uf-send-one" disabled={!step.info.ok} onClick={onSendOne}
+              title={step.info.ok
+                ? `Send this part to Import 2D with its name, ${qty} ${qty === 1 ? "piece" : "pieces"} and material (no material: the Import 2D properties' one); it leaves this list and the next part opens`
+                : "Not unfolded yet: nothing to send"}>
+              <span className="uf-send-ic" aria-hidden="true">{ICONS.send}</span>Send to Import 2D
+            </button>
+          )}
+          {/* the STEP file's material, when it can be taken (a material of the Technology tables) */}
+          {fileMaterial && fileMaterial.toLowerCase() !== partMaterial.trim().toLowerCase()
+            && (!lists.strict || lists.techMaterials.some((o) => o.value.toLowerCase() === fileMaterial.toLowerCase())) && (
+            <p className="uf-note">The STEP file says: <b>{fileMaterial}</b>{" "}
+              <button type="button" className="link" onClick={() => setMaterial(lists.techMaterials.find((o) => o.value.toLowerCase() === fileMaterial.toLowerCase())?.value ?? fileMaterial)}>use it</button></p>
           )}
           <div className="uf-row">
             <span>Mode</span>
@@ -576,6 +610,27 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
         return { f, i, depth, lit: 0.4 + 0.6 * Math.abs(nr[0] * L[0] + nr[1] * L[1] + nr[2] * L[2]) };
       }).sort((a, b) => b.depth - a.depth);
       const out: { i: number; path: Path2D }[] = [];
+      // wireframe, hidden lines dashed: every edge is drawn dashed first; the visible lines go on a layer of
+      // their own where each face (the farthest first) wipes out the lines behind it, then draws its own;
+      // the layer goes over the dashed lines, so only the hidden ones stay dashed
+      let layC: HTMLCanvasElement | null = null, lay: CanvasRenderingContext2D | null = null;
+      if (view.wire) {
+        layC = document.createElement("canvas");
+        layC.width = c.width; layC.height = c.height;
+        lay = layC.getContext("2d");
+        lay?.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const seen = new Set<number>();
+        g.save();
+        g.strokeStyle = "#98a8ac"; g.lineWidth = 0.9 * view.edge; g.setLineDash([5, 4]);
+        g.beginPath();
+        for (const f of solid.faces) for (const l of f.loops) for (const e of l.edges) {
+          if (seen.has(e.id)) continue;
+          seen.add(e.id);
+          e.pts.forEach((p, j) => { const q = pr(p); if (j) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); });
+        }
+        g.stroke();
+        g.restore();
+      }
       for (const it of items) {
         const k = it.i === base ? "base" : stitchMode ? (picked.has(it.i) ? "stitch" : "side") : solid.faces[it.i].surf.kind === "other" ? "bad" : skin.has(it.i) ? "skin" : "side";
         const roleRgb = k === "bad" ? [214, 90, 70] : k === "base" ? [120, 196, 140] : k === "skin" ? [200, 228, 208] : k === "stitch" ? [150, 196, 238] : [178, 192, 196];
@@ -595,23 +650,27 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
           g.fillStyle = hot ? "rgba(242,183,5,0.9)" : `rgba(${c2[0]},${c2[1]},${c2[2]},0.94)`;
           g.fill(path, "evenodd");
         }
-        g.strokeStyle = view.wire ? (k === "base" ? "#1d9641" : k === "stitch" ? "#1d7fd0" : k === "bad" ? "#c2412d" : "#33464c")
+        // wireframe: the face hides what is behind it on the layer of visible lines
+        const t = lay ?? g;
+        if (lay) { lay.globalCompositeOperation = "destination-out"; lay.fill(path, "evenodd"); lay.globalCompositeOperation = "source-over"; }
+        t.strokeStyle = view.wire ? (k === "base" ? "#1d9641" : k === "stitch" ? "#1d7fd0" : k === "bad" ? "#c2412d" : "#33464c")
           : mine ? "#3c4a4e" : k === "skin" || k === "base" ? "#1d9641" : k === "stitch" ? "#1d7fd0" : k === "bad" ? "#c2412d" : "#7f9296";
-        g.lineWidth = (k === "side" ? 0.9 : 1.2) * view.edge;
-        g.beginPath();
-        for (const l of it.f.loops) for (const e of l.edges) e.pts.forEach((p, j) => { const q = pr(p); if (j) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); });
-        g.stroke();
+        t.lineWidth = (k === "side" ? 0.9 : 1.2) * view.edge;
+        t.beginPath();
+        for (const l of it.f.loops) for (const e of l.edges) e.pts.forEach((p, j) => { const q = pr(p); if (j) t.lineTo(q[0], q[1]); else t.moveTo(q[0], q[1]); });
+        t.stroke();
         // edges added across faces (ADD EDGE): green; existing edges made seams: red dashed
         for (const l of it.f.loops) for (const e of l.edges) {
           const col = seamSet.has(e.id) ? "#e3262b" : e.id <= -1_000_000 ? "#22b14c" : null;
           if (!col) continue;
-          g.strokeStyle = col; g.lineWidth = 2.8 * Math.max(1, view.edge);
-          g.setLineDash(seamSet.has(e.id) ? [7, 4] : []);
-          g.beginPath(); e.pts.forEach((p, j) => { const q = pr(p); if (j) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]); }); g.stroke();
-          g.setLineDash([]);
+          t.strokeStyle = col; t.lineWidth = 2.8 * Math.max(1, view.edge);
+          t.setLineDash(seamSet.has(e.id) ? [7, 4] : []);
+          t.beginPath(); e.pts.forEach((p, j) => { const q = pr(p); if (j) t.lineTo(q[0], q[1]); else t.moveTo(q[0], q[1]); }); t.stroke();
+          t.setLineDash([]);
         }
         out.push({ i: it.i, path });
       }
+      if (layC) { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(layC, 0, 0); g.restore(); }
       shapes.current = out.reverse();   // nearest first, for picking
       proj.current = pr;
       sizeRef.current = size;
