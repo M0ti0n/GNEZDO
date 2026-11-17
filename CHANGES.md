@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- 3D Extractor: new icons for **Stitch** and **Add edge** (Fab's)
 - Defaults: **Splines to polyline tolerance 0.1 mm** (was 0.01 mm; Settings → Rules → Import rules, also used for the 3D Extractor's short-line curves) and **K-factor 0.25** (was 0.44) in the 3D Extractor's Standard profile. A Standard profile still at the old 0.44 (never changed) takes 0.25; a K-factor set by hand, a K-factor table or another profile stays as it is
 - 3D Extractor: curves of a flat pattern that came as many short lines (round corner reliefs across bends, cuts through a bend) are now **joined into lines and arcs** within the Splines to polyline tolerance (Settings → Rules → Import rules, default 0.1 mm), in what goes to Import 2D and in Flat DXF. The 150 × 150 box: 3,404 lines → 20 lines and 44 arcs, the same shape (at most 0.008 mm off), so the machine no longer runs thousands of tiny moves at the corners
 - Import 2D, Geometry check: new check **No cutting outline**: a drawing whose lines are all tracing or open cut (nothing to cut the part out, e.g. a file of marking blocks) was shown as ready to process; it is now flagged and not processed
