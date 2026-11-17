@@ -83,7 +83,7 @@ export function LeadsSettings({ machine, onChange }: { machine: Machine; onChang
               </button>
             ))}
           </div>
-          <p className="rule-help">Lengths (0 = no lead), the gap in / out from the sheet edge and the distance to the parts: Technology → Remnant cut. In line, from outside: where a cut runs to the sheet edge it is cut right to the edge (the gaps are not used there) and the lead comes in line from beyond the edge, so the cut starts in the air, with no pierce in the plate (lead-out: on past the edge); lengths: Remnant cut's lead-in / lead-out, else the outline's (at least 2 mm). Ends away from the edge: in line.</p>
+          <p className="rule-help">Lengths (0 = no lead), the gap in / out from the sheet edge and the distance to the parts: Technology → Remnant cut. In line, from outside: where a cut runs to the sheet edge it pierces at the Gap in and exits at the Gap out, in line with the cut (a negative gap: that far beyond the edge, off the plate; 0: on the edge). Ends away from the edge: an in-line lead.</p>
         </section>
         <section className="lead-sec">
           <h3>Common cut <small>the shared line of two parts, cut once without kerf compensation</small></h3>
