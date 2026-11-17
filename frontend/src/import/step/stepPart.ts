@@ -4,6 +4,7 @@
 // bends that come up from it. A part with foil / finish is never mirrored when nesting; one with a
 // grain direction only turns 180° (its grain stays along the sheet's length, X).
 
+import { loadRules, splineTolOf } from "../rules";
 import { readDxf } from "../dxf";
 import { fixMarkRules, type Drawing, type Role } from "../geometry";
 import type { Rotation } from "../rules";
@@ -273,7 +274,7 @@ export function applyThreads(u: Unfolded, st: StepSettings): { u: Unfolded; line
 /** The flat pattern as an import drawing: the outline cut, the bend marks traced (or open cut), the labels traced. */
 export function flatDrawing(id: string, name: string, u0: Unfolded, st: StepSettings): Drawing {
   const { u, lines } = applyThreads(u0, st);
-  const text = flatDxf(u, { marks: marksOf(u, st), bendLines: false, texts: bendTexts(u, st), threads: lines });
+  const text = flatDxf(u, { marks: marksOf(u, st), bendLines: false, texts: bendTexts(u, st), threads: lines, fitTol: splineTolOf(loadRules()) });
   const r = readDxf(text, `${name}.dxf`);
   const role: Role = st.marks === "openCut" ? "openCut" : "trace";
   const entities = r.drawing.entities.map((e) => (e.layer === "BEND_MARK" ? { ...e, role, fileRole: role } : e.layer === "BEND_TEXT" || e.layer === "THREAD" ? { ...e, role: "trace" as Role, fileRole: "trace" as Role } : e));

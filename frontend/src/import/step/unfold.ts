@@ -10,6 +10,7 @@
 //  4. The flat pattern: the skin's edges that only one skin face has (outline, holes); the bends'
 //     middle lines as bend lines.
 
+import { circleThrough, fitPoints } from "../fittings/arcs";
 import { add3, cross3, dot3, len3, lowHigh, mul3, normalAt, sub3, unit3, type Face, type Solid, type V3 } from "./step";
 
 export type V2 = [number, number];
@@ -332,10 +333,24 @@ export function bendMarks(u: Unfolded, len = 20, inset = 2, all = false): [V2, V
 
 /** The flat pattern as DXF (R12): outline on layer 0 (lines, arcs, circles); bend marks on BEND_MARK
  *  (traced); the bends' whole lines on BEND (for a drawing, not for cutting) unless left out. */
-export function flatDxf(u: Unfolded, o: { marks?: [V2, V2][]; bendLines?: boolean; texts?: V2[][]; threads?: V2[][] } = {}): string {
+export function flatDxf(u: Unfolded, o: { marks?: [V2, V2][]; bendLines?: boolean; texts?: V2[][]; threads?: V2[][]; fitTol?: number } = {}): string {
   const out: string[] = ["0", "SECTION", "2", "ENTITIES"];
   const n = (v: number) => (Math.round(v * 1e6) / 1e6).toString();
   const line = (a: V2, b: V2, layer: string) => out.push("0", "LINE", "8", layer, "10", n(a[0]), "20", n(a[1]), "30", "0", "11", n(b[0]), "21", n(b[1]), "31", "0");
+  // an edge that is a curve sampled into many short lines (a round relief across a bend, a cut through a
+  // bend): lines and arcs that follow it within fitTol, so the machine does not run thousands of tiny moves
+  const fitted = (pts: V2[]) => {
+    const tol = o.fitTol ?? 0.01;
+    const clean = pts.filter((q, i) => i === 0 || Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) > 1e-9);
+    for (const s of fitPoints(clean as [number, number][], tol)) {
+      const ci = s.m && circleThrough(s.a, s.m, s.b);
+      if (!s.m || !ci) { line(s.a, s.b, "0"); continue; }
+      const deg = (q: [number, number]) => (Math.atan2(q[1] - ci.c[1], q[0] - ci.c[0]) * 180) / Math.PI;
+      // counterclockwise from start to end: a -> m -> b turning left runs from a, else from b
+      const left = (s.m[0] - s.a[0]) * (s.b[1] - s.m[1]) - (s.m[1] - s.a[1]) * (s.b[0] - s.m[0]) > 0;
+      out.push("0", "ARC", "8", "0", "10", n(ci.c[0]), "20", n(ci.c[1]), "30", "0", "40", n(ci.r), "50", n(deg(left ? s.a : s.b)), "51", n(deg(left ? s.b : s.a)));
+    }
+  };
   for (const e of u.outline) {
     if (e.arc) {
       const { c, r, a0, a1 } = e.arc;
@@ -343,6 +358,7 @@ export function flatDxf(u: Unfolded, o: { marks?: [V2, V2][]; bendLines?: boolea
       else out.push("0", "ARC", "8", "0", "10", n(c[0]), "20", n(c[1]), "30", "0", "40", n(r), "50", n((a0 * 180) / Math.PI), "51", n((a1 * 180) / Math.PI));
       continue;
     }
+    if (e.pts.length > 3) { fitted(e.pts); continue; }
     for (let i = 1; i < e.pts.length; i++) line(e.pts[i - 1], e.pts[i], "0");
   }
   for (const [a, b] of o.marks ?? []) line(a, b, "BEND_MARK");
