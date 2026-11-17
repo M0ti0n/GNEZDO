@@ -1,5 +1,5 @@
 // Splines into polylines (Geometry check → Splines → To polyline): a spline becomes lines and arcs that
-// follow it as it is drawn, within a tolerance (Settings → Rules → Import rules; default 0.01 mm), each
+// follow it as it is drawn, within a tolerance (Settings → Rules → Import rules; default 0.1 mm), each
 // keeping the spline's role and the rest of its marks.
 // Lines and arcs can be trimmed, extended, measured and cut cleanly; a spline cannot.
 
