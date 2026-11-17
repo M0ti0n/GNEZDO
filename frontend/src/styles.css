@@ -2454,6 +2454,8 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .sim-key.is-cut { background: rgba(240, 243, 243, .6); border-color: var(--ink); }
 .sim-key.is-rapid { height: 0; border: 0; border-top: 2px dashed #8a949b; vertical-align: 3px; }
 .sim-key-head { color: #e3262b; }
+.sim-key.is-pierced { width: 10px; border-radius: 50%; background: #f08a00; border-color: #8a4b00; }
+.sim-pierced { fill: #f08a00; stroke: #8a4b00; }
 .sim-msg { position: static; }
 /* eleven Process tools: a little narrower so the row fits */
 .jsec-process .jtool { min-width: 72px; }
