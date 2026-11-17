@@ -305,8 +305,27 @@ export function pointsAlong(e: Entity, arcStepDeg = 7.5): Pt[] {
       const n = Math.max(2, Math.ceil(sweep / arcStepDeg));
       return Array.from({ length: n + 1 }, (_, i) => on(e.c, e.r, e.start + (sweep * i) / n));
     }
-    case "spline": return e.fit;
+    case "spline": return splinePoints(e);
   }
+}
+
+/** Points along a spline as it is drawn: its sampled points as they are, else the Catmull-Rom curve
+ *  through its fit points (as pathOf draws it), `perSpan` points between two fit points. */
+export function splinePoints(e: Extract<Entity, { kind: "spline" }>, perSpan = 16): Pt[] {
+  const p = e.fit;
+  if (e.sampled || p.length < 3) return p;
+  const out: Pt[] = [p[0]];
+  for (let i = 0; i < p.length - 1; i++) {
+    const p0 = p[Math.max(i - 1, 0)], p1 = p[i], p2 = p[i + 1], p3 = p[Math.min(i + 2, p.length - 1)];
+    const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
+    const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+    for (let k = 1; k <= perSpan; k++) {
+      const t = k / perSpan, u = 1 - t;
+      const w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t;
+      out.push(k === perSpan ? p2 : { x: w0 * p1.x + w1 * c1.x + w2 * c2.x + w3 * p2.x, y: w0 * p1.y + w1 * c1.y + w2 * c2.y + w3 * p2.y });
+    }
+  }
+  return out;
 }
 
 type Seg = [Pt, Pt];

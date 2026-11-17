@@ -9,6 +9,8 @@ import { angleOf, diameterOf, dimensionOf, pickEntity, radiusOf, type Measure, t
 import { alignAt, diagnoseEnds, eraseAt, extendAt, trimAt, type EditResult, type EndIssue } from "../import/edit";
 import type { BatchProperties } from "../import/batch";
 import { DynamicInput } from "../components/DynamicInput";
+import { SPLINE_TOL, splinesToPolylines } from "../import/splines";
+import { useMiddleDouble } from "../components/middleDouble";
 import { DynFields } from "../components/DynFields";
 import {
   ALL_SNAPS, aidId, angleOf as dirAngle, carcEnt, chamferAt, clipLine, cornerAt, dirAt, dragGrip, filletAt, findSnap, gripAt, gripsOf, handAngle, joinLines, offsetOf, offsetSide,
@@ -799,6 +801,8 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     : (drawing.points ?? []).reduce((b, { p }) => union(b, { minX: p.x, minY: p.y, maxX: p.x, maxY: p.y }), report.box)),
     [fit, report.box, drawing.points, empty]);
   useEffect(() => { if (!view) fitAll(); }, [view, fitAll]);
+  // a double click with the middle button: Fit, as the Fit button
+  const middleDouble = useMiddleDouble(() => { setSelected(null); fitAll(); });
 
   // Wheel zooms around the cursor (non-passive so the page does not scroll).
   useEffect(() => {
@@ -830,6 +834,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
     if ((e.target as Element).closest(".gcheck, .canvas-ui, .dyn-in, .annot-ui")) return;
+    if (middleDouble(e)) { e.preventDefault(); return; }
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     // pasting: a left click places a copy, a right click stops (the middle button still pans)
     if (paste && view && e.button !== 1) {
@@ -1453,6 +1458,13 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     setSelected(null);
     setMessage({ text: `${ids.length} ${ids.length === 1 ? "line" : "lines"} → cutting` });
   };
+  const toPolylines = (ids: string[]) => {
+    const r = splinesToPolylines(drawing.entities, new Set(ids));
+    if (!r.changed) { setMessage({ text: "The splines could not be changed", bad: true }); return; }
+    commit({ ...drawing, entities: r.entities }, "Splines to polylines");
+    setSelected(null);
+    setMessage({ text: `${r.changed} ${r.changed === 1 ? "spline" : "splines"} → polyline (lines and arcs within ${SPLINE_TOL} mm)` });
+  };
   const SMALL_MM = 1;
   const small = issues.filter((i) => i.fix && i.size <= SMALL_MM);
   // fixes one at a time, re-checking in between, so each fix sees the result of the one before
@@ -1793,7 +1805,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
           if (!f.length || !at) return null;
           const q = toScreen(at, view);
           return (
-            <DynFields x={q.x} y={q.y} w={size.w} h={size.h} fields={f} values={dyn} active={Math.min(dynIdx, f.length - 1)}
+            <DynFields x={q.x} y={q.y} w={size.w} h={size.h} away={cursor ? toScreen(cursor.p, view) : undefined} fields={f} values={dyn} active={Math.min(dynIdx, f.length - 1)}
               onValues={setDyn} onActive={setDynIdx} onEnter={applyDyn}
               onEscape={() => {
                 if (dyn.some((x) => x)) { resetDyn(); return; }
@@ -1884,7 +1896,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               <li key={c.id}>
                 <button className={`gc-row ${!c.count ? "is-ok" : c.id === "splines" ? "is-warn" : "is-bad"}${selected === c.id ? " is-on" : ""}`}
                   onClick={() => choose(c.id)} disabled={c.count === 0}
-                  title={!c.count ? "No problems" : c.id === "splines" ? "Splines will be converted to lines and arcs. Show on the drawing" : "Show on the drawing"}>
+                  title={!c.count ? "No problems" : c.id === "splines" ? "Splines are cut as short straight lines. To polyline changes them into lines and arcs. Show on the drawing" : "Show on the drawing"}>
                   <span className="gc-mark" aria-hidden="true">{c.count ? "!" : "✓"}</span>
                   <span className="gc-label">{c.label}</span>
                   {c.count > 0 && <span className="gc-count">{c.count}</span>}
@@ -1893,6 +1905,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                   <button type="button" className="gc-fix" onClick={() => makeCut(c.entityIds)}
                     title={c.id === "outerNotCut" ? "The outer contour is always plain cutting: make these lines cut" : "A closed contour is never open cut: make these lines cut"}>
                     Make cut
+                  </button>
+                )}
+                {c.count > 0 && c.id === "splines" && (
+                  <button type="button" className="gc-fix" onClick={() => toPolylines(c.entityIds)}
+                    title={`Change the splines into polylines: lines and arcs that follow them within ${SPLINE_TOL} mm (they can then be trimmed, extended and measured)`}>
+                    To polyline
                   </button>
                 )}
                 {c.count > 0 && (c.id === "doubles" || c.id === "separate") && (

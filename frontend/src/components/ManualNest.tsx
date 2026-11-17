@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMiddleDouble } from "./middleDouble";
 import type { JobPart } from "../api/types";
 import type { Origin } from "../job/machine";
 import { partColor, unlocked, type NestedSheet, type PlacedPart, type Solution } from "../job/nest";
@@ -231,6 +232,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     return () => ro.disconnect();
   }, [fit]);
   useEffect(() => { fit(size.w, size.h); }, [index]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // a double click with the middle button: Fit, as the Fit button
+  const middleDouble = useMiddleDouble(() => fit(size.w, size.h));
   useEffect(() => {
     const el = host.current;
     if (!el) return;
@@ -460,6 +463,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const [hover, setHover] = useState(-1);
   const [moving, setMoving] = useState(false);   // selected parts being dragged
   const onPointerDown = (e: React.PointerEvent) => {
+    if (middleDouble(e)) { e.preventDefault(); return; }
     if (working) return;
     if (paste) {
       if (e.button === 0) placePaste(toMm(local(e).x, local(e).y));

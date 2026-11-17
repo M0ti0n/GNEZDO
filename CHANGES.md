@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D → Geometry check → Splines: new **To polyline** button: the splines become lines and arcs that follow them within 0.01 mm (they can then be trimmed, extended and measured, and cut as clean lines and arcs; Undo brings the splines back). A spline is now also checked and saved along its drawn curve, not only straight through its fit points
+- Drawing (Import 2D): the **dynamic input** (Length / Angle) sits on the other side of the last point from the pointer, so it no longer covers the line being drawn
+- **Double click with the middle button (wheel)**: Fit, as the Fit button, in Import 2D, the nest / Process view and the 3D Extractor (3D view: the whole part again, turned as it is; flat pattern: Fit)
+- Left rail: **Parts** moved up, right under New job
 - Work parts: the **Material** and **Thickness** lists of the job part list (and the sheets' Material list) now offer everything the job's machine has in its Technology table, not only what parts in the database already use; Thickness lists the thicknesses the table has for that part's material. The database's values stay in the lists too
 - Process → **Simulation** now plays **pre-pierce** as the laser runs it (laser sheets with Pre-pierce on, the sheet's own or its Technology row's): first a pass that only pierces every contour in the cut order (orange dots stay on the pierced holes until they are cut; the panel counts Pre-pierce 3 / 12), then marking and cutting without piercing again. Before, the Simulation left pre-pierce out, so with marking first it looked as if only the parts with marking were pre-pierced (the NC program and the laser were right)
 - Special tools: the right panel is wider (460 px instead of 380), so the diagrams and forms have more room; the canvas takes what is left. The other screens' panels are unchanged

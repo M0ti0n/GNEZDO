@@ -4,9 +4,13 @@ import { useEffect, useRef } from "react";
  * Dynamic input with fields (as in AutoCAD): small boxes next to the last point, the active one focused,
  * so values can be typed straight away. Tab goes to the next field (Shift+Tab back), Enter applies,
  * Esc steps back. A field left empty follows the pointer. x, y are pixels in the positioned parent.
+ * With the pointer given, the boxes sit on the other side of the point from it (diagonally), so they
+ * never cover the line being drawn.
  */
-export function DynFields({ x, y, w, h, fields, values, active, onValues, onActive, onEnter, onEscape }: {
+export function DynFields({ x, y, w, h, away, fields, values, active, onValues, onActive, onEnter, onEscape }: {
   x: number; y: number;
+  /** the pointer (pixels in the parent): the boxes keep to the other side of x, y */
+  away?: { x: number; y: number };
   /** size of the parent, to keep the boxes inside it */
   w: number; h: number;
   fields: { label: string; placeholder?: string; unit?: string }[];
@@ -28,8 +32,14 @@ export function DynFields({ x, y, w, h, fields, values, active, onValues, onActi
     el.focus(); el.select();
   }, [active, Math.round(x), Math.round(y), fields.length]);
   const BW = 112 * fields.length + 8, BH = 50, OFF = 18;
-  const left = Math.max(4, Math.min(x + OFF, w - BW - 4));
-  const top = y + OFF + BH > h - 4 ? Math.max(4, y - OFF - BH) : y + OFF;
+  // the side away from the pointer (right / below without one), turned round where it does not fit
+  const goLeft = !!away && away.x > x + 1, goUp = !!away && away.y > y + 1;
+  let left = goLeft ? x - OFF - BW : x + OFF;
+  if (left < 4) left = x + OFF; else if (left + BW > w - 4) left = x - OFF - BW;
+  let top = goUp ? y - OFF - BH : y + OFF;
+  if (top < 4) top = y + OFF; else if (top + BH > h - 4) top = y - OFF - BH;
+  left = Math.max(4, Math.min(left, w - BW - 4));
+  top = Math.max(4, Math.min(top, h - BH - 4));
   return (
     <div className="dyn-in dyn-fields" style={{ left, top }} onPointerDown={(e) => e.stopPropagation()}>
       {fields.map((f, i) => (
