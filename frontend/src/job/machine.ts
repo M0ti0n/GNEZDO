@@ -39,6 +39,9 @@ export interface Machine {
   kerfMm: number;
   /** Rapid speed for the time estimates (reports, simulation) [mm/min]; missing = the technology's default. */
   rapidMmMin?: number;
+  /** Holes marked with the Hole tool (Import 2D) are cut this size, in % of the drawn size (the plasma
+   *  cuts holes smaller than drawn: 115 = 15 % bigger); missing = 100, as drawn. */
+  holeCompPct?: number;
   /** Which line properties it cuts; the others are skipped for its jobs (missing = it can). */
   lines?: Partial<Record<LineCapability, boolean>>;
   /** Writes its NC programs (Settings -> Machines -> NC output); missing = none yet. */
@@ -106,6 +109,12 @@ export const cutOrderOf = (m: Machine | undefined): CutOrderRules => {
 
 /** Rapid speed assumed when a machine has none set [mm/min]: plasma as on the HACO (14,000), laser a guess. */
 export const DEFAULT_RAPID_MM_MIN: Record<Technology, number> = { laser: 20000, plasma: 14000, waterjet: 20000, other: 20000 };
+
+/** Hole compensation as a factor (1 = as drawn); kept between 50 % and 200 %. */
+export const holeCompOf = (m: Machine | undefined): number => {
+  const p = m?.holeCompPct;
+  return p && p > 0 ? Math.min(200, Math.max(50, p)) / 100 : 1;
+};
 
 /** The machine's rapid speed for the time estimates [mm/min]. */
 export const rapidOf = (m: Machine | undefined): number =>

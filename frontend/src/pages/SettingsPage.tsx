@@ -252,6 +252,16 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
         </section>
 
         <section className="rule">
+          <h3>Hole compensation</h3>
+          <p className="rule-help">Holes marked with the <b>Hole</b> tool in Import 2D are cut this size on this machine, in % of the drawn size: the plasma cuts holes smaller than drawn, so e.g. 115 % cuts them 15 % bigger (a Ø20 hole is cut Ø23). The kerf compensation stays as it is. Other holes and the outline are cut as drawn. Empty or 100: as drawn ({"50"} to {"200"} %).</p>
+          <div className="size-row">
+            <NumInput value={machine.holeCompPct ?? 100} min={50} placeholder="100" aria-label="Hole compensation (%)"
+              onCommit={(n) => setM({ holeCompPct: n > 0 && Math.round(n * 10) / 10 !== 100 ? Math.min(200, Math.max(50, Math.round(n * 10) / 10)) : undefined })} />
+            <span className="size-unit">%</span>
+          </div>
+        </section>
+
+        <section className="rule">
           <h3>Sheet origin (0,0)</h3>
           <p className="rule-help">The corner of the sheet where the machine's 0,0 is. Nesting packs the parts towards this corner, so what is left over is one piece at the other end.</p>
           <div className="origin-pick" role="radiogroup" aria-label="Sheet origin">
