@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 18 Nov 2026 (`ffabd63`)
+
 Fixes from the bug report of 18 Nov (points 3 and 14 work as designed; 13 matches Libellula's own programs):
 - Process → Auto cut, **Cut internal** / **Trace** on a part already processed (Selected parts): its new holes or tracing now go right before that part's outline, not after it (the part was cut loose first)
 - Post process, **HACO plasma**: F is written at every lead-in, as HACO's own postprocessor does (it was left out when the rapid kept the same direction); the small-hole speed is for holes only: open cuts, remnant cuts and common cut lines go at the cutting speed. Import the machine file again (`POST PROCESSOR/HACO-KOMPAKT-plasma.gnezdo-machine.zip`, or paste its postprocessor) to use it
