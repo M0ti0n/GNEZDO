@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- Server version (Docker): the web image builds on Debian Node (node:22-slim) instead of Alpine, where the frontend build had started to fail (no change in GNEZDO itself)
 
 ## Build 18 Nov 2026 (`8086bc6`)
 
