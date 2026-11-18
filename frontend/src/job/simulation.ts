@@ -7,10 +7,13 @@
 // pass that only pierces, every contour in the cut order, then the cut path as usual without piercing
 // again.
 
-import { viaOf, type CutContour } from "./cutPath";
+import { liveContours, originPoint, viaOf, type CutContour } from "./cutPath";
+import { rapidOf, rowAsCut, type Machine, type Origin } from "./machine";
+import type { NestedSheet } from "./nest";
+import { remnantCutPaths } from "./remnantCut";
 import type { Pt } from "./manualGeom";
 import { reusesPierce } from "./commonPierce";
-import { speedFor, type TechRow } from "./technology";
+import { speedFor, techRowFor, type TechRow } from "./technology";
 
 /** Cutting speed when the Technology row has none [mm/min] */
 const FALLBACK_SPEED = 2000;
@@ -56,10 +59,15 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
   const start: number[] = [], end: number[] = [];
   const partDone = new Map<number, number>();
   let t = 0, at = from;
-  // where it pierces: not a trace, not a common pierce's hole pierced already, not an inline cut's
-  // stretch that starts without a pierce; how long: the row's pierce (or quick pierce) and torch time
-  const pierces = (c: CutContour, k: number) => c.kind !== "trace" && !reusesPierce(contours, k) && !(c.inline && c.inline.pierce === "none");
-  const pierceS = (c: CutContour) => (c.inline && c.inline.pierce === "quick" ? row?.quickPierceS || 0 : row?.pierceS || 0) + (row?.torchS || 0);
+  // how it pierces, as the NC program does (job/ncProgram.ts): an inline cut's stretch as Inline cut says,
+  // an outline in a common pierce's hole pierced already a quick pierce, a piece after a micro joint as
+  // the row's MJ restart says (0 none, 1 pierce, 2 quick); a trace not at all
+  const mj = (["none", "pierce", "quick"] as const)[row?.mjPierce ?? 1] ?? "pierce";
+  const pierceOf = (c: CutContour, k: number): "pierce" | "quick" | "none" =>
+    c.kind === "trace" ? "none" : c.inline ? c.inline.pierce : reusesPierce(contours, k) ? "quick" : c.restart ? mj : "pierce";
+  const pierces = (c: CutContour, k: number) => pierceOf(c, k) !== "none";
+  // how long: the row's pierce (or quick pierce) and torch time
+  const pierceS = (c: CutContour, k: number) => (pierceOf(c, k) === "quick" ? row?.quickPierceS || 0 : row?.pierceS || 0) + (row?.torchS || 0);
   // the pre-pierce pass: to each pierce point (the machine's own moves), pierce only
   const prePierced = new Set<number>();
   if (prePierce) {
@@ -69,7 +77,7 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
       const p0 = path[0];
       const d = lenOf(at, p0);
       if (d > 0.01) { const dt = (d / rapidMmMin) * 60; legs.push({ k, phase: "rapid", pre: true, t0: t, t1: t + dt, pts: [at, p0], acc: [0, d] }); t += dt; }
-      const dt = pierceS(c);
+      const dt = pierceS(c, k);
       legs.push({ k, phase: "pierce", pre: true, t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt;
       prePierced.add(k);
       at = p0;
@@ -91,7 +99,7 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
       legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt;
     }
     if (pierces(c, k) && !prePierced.has(k)) {
-      const dt = pierceS(c);
+      const dt = pierceS(c, k);
       if (dt > 0) { legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt; }
     }
     // its speed: laser by its class (E001 - E004, its size without the leads), else small holes slower
@@ -110,6 +118,20 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
     if (c.kind === "outer") for (const p of c.parts ?? [c.part]) partDone.set(p, t);
   });
   return { contours, legs, total: t, start, end, partDone, fromTech, ...(prePierced.size ? { pre: { count: prePierced.size, end: preEnd } } : {}) };
+}
+
+/** A sheet's cut path played back as the machine runs its program: the contours, then the remnant's cuts
+ *  (open cuts, as the NC program has them); pre-pierce (laser) the sheet's own, else its row's. */
+export function sheetTimeline(sheet: NestedSheet, machine: Machine, origin: Origin): SimTimeline {
+  const r0 = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row;
+  const row = r0 ? rowAsCut(machine, r0) : null;
+  const laser = machine.technology === "laser";
+  const prePierce = laser && (sheet.prePierce ?? !!row?.prePierce);
+  const from = originPoint(sheet, origin);
+  const live = liveContours(sheet), last = live[live.length - 1];
+  const at = last ? last.leadOut[last.leadOut.length - 1] ?? last.pts[last.pts.length - 1] : from;
+  const rem = live.length ? remnantCutPaths(sheet, machine, at).map((r): CutContour => ({ part: -1, kind: "open", ...r })) : [];
+  return simTimeline([...live, ...rem], from, row, rapidOf(machine), laser, prePierce);
 }
 
 /** The polyline cut `d` mm along */

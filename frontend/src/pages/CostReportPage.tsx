@@ -5,6 +5,7 @@ import { PartThumb, sizeLabel } from "../components/PartThumb";
 import { NumInput } from "../components/NumInput";
 import { partCutSeconds, partKg } from "../job/report";
 import { techRowFor } from "../job/technology";
+import { rowAsCut } from "../job/machine";
 import type { ReportJob } from "./NestReportPage";
 
 // Cost report (toolbar -> Report -> Cost report), after Fab's layout: on the right who it is for, the
@@ -43,7 +44,8 @@ export function CostReportPage({ job, jobParts, userName }: { job: ReportJob; jo
   const build = () => ({
     at: new Date(), who, project, currency: prices.currency, fixed: prices.fixed,
     rows: picked.map((jp) => {
-      const row = techRowFor(job.machine.technologies, jp.part.material, jp.part.thicknessMm)?.row ?? null;
+      const r0 = techRowFor(job.machine.technologies, jp.part.material, jp.part.thicknessMm)?.row;
+      const row = r0 ? rowAsCut(job.machine, r0) : null;
       const kg = partKg(jp.part);
       const cutS = partCutSeconds(jp.part.path, row, false, job.machine.technology === "laser");
       const pm = priceOf(jp.part.material);

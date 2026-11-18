@@ -71,6 +71,13 @@ export function pointIn(lp: Pt[], x: number, y: number): boolean {
 export const inMaterial = (q: Placed, x: number, y: number) =>
   !!q.loops[0] && pointIn(q.loops[0], x, y) && !q.loops.slice(1).some((h) => pointIn(h, x, y));
 
+/** Is a sheet point in a part's material (its drawn outline less its holes)? Whatever its contours are
+ *  cut as (whole, broken, in micro-joint pieces, inline). */
+export function sheetMaterial(sheet: Pick<NestedSheet, "parts">, paths: Map<string, string>): (p: Pt) => boolean {
+  const ps = sheet.parts.map((p) => placed(paths.get(p.partId) ?? "", p));
+  return ([x, y]) => ps.some((q) => x >= q.box.x0 && x <= q.box.x1 && y >= q.box.y0 && y <= q.box.y1 && inMaterial(q, x, y));
+}
+
 /** The area parts may use: inside the trims (by the machine's axes: X-, Y- at the origin corner). */
 export function usableBox(sheet: NestedSheet, origin: Origin): Box {
   const t = sheet.trims ?? { xMinus: 0, xPlus: 0, yMinus: 0, yPlus: 0 };

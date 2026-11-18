@@ -4,6 +4,7 @@ import { diag } from "../job/diag";
 import { DEFAULT_INLINE, inlineCut, inlineParts, type InlineOptions, type InlinePierce } from "../job/inlineCut";
 import type { Machine, Origin } from "../job/machine";
 import type { NestedSheet } from "../job/nest";
+import { sheetMaterial } from "../job/manualGeom";
 import { NumInput } from "./NumInput";
 import type { CutMode } from "./ManualNest";
 import toolInlineCut from "../shell/jobtools/tool-inlineCut.png";
@@ -59,7 +60,9 @@ export function useInlineCut({ index, single, sheets, parts, machine, origin, on
   /** these parts (null: every one) back to the automatic cut; the sheet's cut path after it */
   const reprocess = async (sh: NestedSheet, list: number[]) => {
     const rule: CutRule = !sh.cut || sh.cut.rule === "manual" ? "shortest" : sh.cut.rule;
-    const { leadFit: _, keptFirst: _k, ...cut } = await processSheet({ sheet: sh, paths, machine, origin, rule, what: "all", parts: list, ordered: false, traceOf: () => true });
+    const { leadFit: _, keptFirst: _k, ...cut } = await processSheet({ sheet: sh, paths, machine, origin, rule, what: "all", parts: list, ordered: false,
+      // tracing skipped on these parts (Auto cut's Skip trace lines, or unticked) stays skipped
+      traceOf: (k) => !sh.cut || sh.cut.contours.some((c) => c.kind === "trace" && c.part === k) });
     void _;
     return cut;
   };
@@ -74,7 +77,7 @@ export function useInlineCut({ index, single, sheets, parts, machine, origin, on
       let cut = cutPath;
       if (again.length) cut = await reprocess(sheet, again);
       const sh = { ...sheet, cut };
-      const r = inlineCut(cut, new Set(liveContours(sh)), want, originPoint(sheet, origin), opt);
+      const r = inlineCut(cut, new Set(liveContours(sh)), want, originPoint(sheet, origin), opt, sheetMaterial(sheet, paths));
       if (typeof r === "string") { setMsg({ text: r, bad: true }); return; }
       onCut(index, r.cut);
       diag("process", `Inline cut on sheet ${index + 1}`, { contours: r.contours, stretches: r.stretches, passes: r.passes, left: r.left, ...opt });

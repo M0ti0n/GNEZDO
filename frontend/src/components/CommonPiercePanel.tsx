@@ -5,7 +5,7 @@ import { editLead, leadCtx, leadOf } from "../job/leadEdit";
 import type { LeadType } from "../job/leads";
 import type { Machine, Origin } from "../job/machine";
 import { diag } from "../job/diag";
-import type { Pt } from "../job/manualGeom";
+import { sheetMaterial, type Pt } from "../job/manualGeom";
 import type { NestedSheet } from "../job/nest";
 import { NumInput } from "./NumInput";
 import type { CutMode } from "./ManualNest";
@@ -78,7 +78,8 @@ export function useCommonPierce({ index, single, sheets, parts, machine, origin,
     const r = editLead(ctx, k, { op: "set", type, spec: { ...v, gap: v.gap < 0 ? v.gap : -5 } }, false, live);
     return typeof r === "string" ? r : r.cut.contours[k];
   };
-  const job = (id?: string) => ({ from: sheet ? originPoint(sheet, origin) : ([0, 0] as Pt), name: nameOf, breakCut, ...(id ? { id } : {}) });
+  const solid = useMemo(() => (sheet ? sheetMaterial(sheet, paths) : undefined), [sheet, paths]);
+  const job = (id?: string) => ({ from: sheet ? originPoint(sheet, origin) : ([0, 0] as Pt), name: nameOf, breakCut, solid, ...(id ? { id } : {}) });
 
   const apply = (r: ReturnType<typeof commonPierce>, what: string) => {
     if (typeof r === "string") { setMsg({ text: r, bad: true }); return false; }

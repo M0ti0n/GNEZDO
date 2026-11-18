@@ -5,7 +5,9 @@
 
 import type { JobPart } from "../api/types";
 import { densityOf, loopsOf, sheetStats, type NestedSheet, type SheetStats } from "./nest";
-import { rapidOf, type Machine, type Origin } from "./machine";
+import { rapidOf, rowAsCut, type Machine, type Origin } from "./machine";
+import { liveContours, originMirrors, originPoint } from "./cutPath";
+import { sheetTimeline } from "./simulation";
 import { remnantArea } from "./remnant";
 import { speedFor, techRowFor, type TechRow } from "./technology";
 
@@ -53,7 +55,8 @@ export function sheetReport(sheet: NestedSheet, jobParts: JobPart[], machine: Ma
   const byId = new Map(jobParts.map((jp) => [jp.part.id, jp]));
   const refs = new Map(jobParts.map((jp) => [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2 }]));
   const stats = sheetStats(sheet, refs, origin, remnantArea(sheet));
-  const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row ?? null;
+  const r0 = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row;
+  const row = r0 ? rowAsCut(machine, r0) : null;
   const counts = new Map<string, number>();
   for (const p of sheet.parts) counts.set(p.partId, (counts.get(p.partId) ?? 0) + 1);
   const parts = [...counts].map(([partId, qty]) => {
@@ -67,19 +70,29 @@ export function sheetReport(sheet: NestedSheet, jobParts: JobPart[], machine: Ma
   let cutS: number | null = null, rapidS: number | null = null;
   if (row) {
     cutS = parts.reduce((s, p) => s + (p.cutS ?? 0) * p.qty, 0);
-    // rapids: from 0,0 through the parts bottom-up (rows of about a part's height), and between each part's contours
-    const pts = sheet.parts.map((p) => ({ x: p.x, y: sheet.widthMm - p.y }));
-    pts.sort((a, b) => Math.round(a.y / 100) - Math.round(b.y / 100) || a.x - b.x);
-    let d = 0, at = { x: 0, y: 0 };
-    for (const q of pts) { d += Math.hypot(q.x - at.x, q.y - at.y); at = q; }
-    d += Math.hypot(at.x, at.y);
-    for (const p of sheet.parts) {
-      const jp = byId.get(p.partId);
-      if (!jp) continue;
-      const n = loopsOf(jp.part.path).length;
-      d += Math.max(0, n - 1) * Math.hypot(jp.part.w, jp.part.h) * 0.35;
+    const path = sheet.cut && !!sheet.cut.mirrored === originMirrors(origin) && liveContours(sheet).length > 0;
+    if (path) {
+      // the cut path generated: its own rapids and cutting (as Simulation plays it)
+      const tl = sheetTimeline(sheet, machine, origin);
+      rapidS = tl.legs.reduce((s, l) => s + (l.phase === "rapid" ? l.t1 - l.t0 : 0), 0);
+      cutS = tl.total - rapidS;
+    } else {
+      // rapids: from the machine's 0,0 through the parts row by row (rows of about a part's height, the
+      // row nearest the 0,0 first), back to 0,0; and between each part's contours
+      const [ox, oy] = originPoint(sheet, origin);
+      const pts = sheet.parts.map((p) => ({ x: p.x, y: p.y }));
+      pts.sort((a, b) => Math.round(Math.abs(a.y - oy) / 100) - Math.round(Math.abs(b.y - oy) / 100) || Math.abs(a.x - ox) - Math.abs(b.x - ox));
+      let d = 0, at = { x: ox, y: oy };
+      for (const q of pts) { d += Math.hypot(q.x - at.x, q.y - at.y); at = q; }
+      d += Math.hypot(at.x - ox, at.y - oy);
+      for (const p of sheet.parts) {
+        const jp = byId.get(p.partId);
+        if (!jp) continue;
+        const n = loopsOf(jp.part.path).length;
+        d += Math.max(0, n - 1) * Math.hypot(jp.part.w, jp.part.h) * 0.35;
+      }
+      rapidS = (d / rapidOf(machine)) * 60;
     }
-    rapidS = (d / rapidOf(machine)) * 60;
   }
   return { stats, row, cutS, rapidS, totalS: cutS !== null && rapidS !== null ? cutS + rapidS : null, parts };
 }

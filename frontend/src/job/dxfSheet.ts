@@ -54,6 +54,14 @@ export function dxfOutline(entities: Entity[], b: { minX: number; minY: number; 
     const q: [number, number][] = [];
     for (const p of lp) if (!q.length || Math.hypot(p[0] - q[q.length - 1][0], p[1] - q[q.length - 1][1]) > 0.01) q.push(p);
     while (q.length > 2 && Math.hypot(q[0][0] - q[q.length - 1][0], q[0][1] - q[q.length - 1][1]) <= 0.01) q.pop();
+    // a line is drawn in pieces (points along it): its middle points go, a rectangle is 4 corners again
+    for (let i = 0; q.length > 3 && i < q.length;) {
+      const a = q[(i + q.length - 1) % q.length], p = q[i], c = q[(i + 1) % q.length];
+      const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
+      const off = l > 0 ? Math.abs((p[0] - a[0]) * (c[1] - a[1]) - (p[1] - a[1]) * (c[0] - a[0])) / l : 0;
+      const between = (p[0] - a[0]) * (c[0] - a[0]) + (p[1] - a[1]) * (c[1] - a[1]) > 0 && (p[0] - c[0]) * (a[0] - c[0]) + (p[1] - c[1]) * (a[1] - c[1]) > 0;
+      if (off < 0.02 && between) q.splice(i, 1); else i++;
+    }
     return q;
   };
   const out = loops.map((p) => clean(p.map((q) => [r(q.x - b.minX), r(b.maxY - q.y)] as [number, number]))).filter((lp) => lp.length > 2);

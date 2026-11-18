@@ -16,6 +16,7 @@
 import { api } from "../api/api";
 import { checkGeometry, pointsAlong, roleOf } from "../import/geometry";
 import { DEFAULT_ANGLE, LEAD_TYPES, leadRulesOf, type LeadRules, type LeadType } from "./leads";
+import { tidyPierces } from "./commonPierce";
 import { commonEdges, partCommonLines, placedEdges, type CommonEdge } from "./commonCut";
 import { commonBlocks, sharedLineCut, type CommonBlock } from "./commonPath";
 import { cutOrderOf, gapsFor, holeCompOf, machineCan, type Machine, type Origin } from "./machine";
@@ -42,6 +43,9 @@ export interface CutContour {
   /** the part's index in the sheet's parts */
   part: number;
   kind: CutKind;
+  /** a hole marked with the Hole tool, cut this much bigger or smaller (the machine's hole compensation):
+   *  the lead and joint tools rebuild it from the drawing at that size */
+  holeK?: number;
   pts: Pt[];
   leadIn: Pt[];
   leadOut: Pt[];
@@ -579,10 +583,10 @@ const totalLen = (pts: Pt[]) => pts.reduce((s, p, i) => (i ? s + len(sub(p, pts[
 
 // ------------------------------------------------------------------ parts and their order
 
-interface PartGeo { i: number; outer: Pt[]; holes: Pt[][]; trace: Pt[][]; open: Pt[][]; box: Box; area: number }
+interface PartGeo { i: number; outer: Pt[]; holes: Pt[][]; holeK: number[]; trace: Pt[][]; open: Pt[][]; box: Box; area: number }
 
 /** A loop scaled about the middle of its box by k (hole compensation). */
-function scaledLoop(lp: Pt[], k: number): Pt[] {
+export function scaledLoop(lp: Pt[], k: number): Pt[] {
   const b = boxOf(lp), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
   return lp.map(([x, y]) => [cx + (x - cx) * k, cy + (y - cy) * k]);
 }
@@ -601,10 +605,12 @@ async function partGeos(sheet: NestedSheet, paths: Map<string, string>, idx: num
       const b = boxOf(lp), tol = Math.max(0.2, 0.03 * Math.max(b.x1 - b.x0, b.y1 - b.y0));   // the outline path is rounded, curves drawn in pieces
       return marked.some((h) => Math.abs(h.x0 - b.x0) < tol && Math.abs(h.x1 - b.x1) < tol && Math.abs(h.y0 - b.y0) < tol && Math.abs(h.y1 - b.y1) < tol);
     };
-    const loops = partLoops(path).map((lp, k) => (k > 0 && marked.length && isMarked(lp) ? scaledLoop(lp, holeK) : lp)).map((lp) => lp.map(f));
+    const raw = partLoops(path);
+    const ks = raw.map((lp, k) => (k > 0 && marked.length && isMarked(lp) ? holeK : 1));
+    const loops = raw.map((lp, k) => (ks[k] !== 1 ? scaledLoop(lp, ks[k]) : lp)).map((lp) => lp.map(f));
     const outer = loops[0] ? oriented(loops[0], !mirrored) : [];
     return {
-      i, outer, holes: loops.slice(1).map((lp) => oriented(lp, mirrored)),
+      i, outer, holes: loops.slice(1).map((lp) => oriented(lp, mirrored)), holeK: ks.slice(1),
       trace: marks.trace.map((l) => l.map(f)), open: marks.open.map((l) => l.map(f)),
       box: boxOf(outer), area: Math.abs(signedArea(outer)),
     };
@@ -848,7 +854,8 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
       if (canOpen) openRuns(g.open, i, "open");
     }
     // the holes, the nearest next
-    const holes = g.holes.map((lp) => closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules), side, fitOf([i], lp, "inner"), fitCount));
+    const holes = g.holes.map((lp, j) => ({ ...closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules), side, fitOf([i], lp, "inner"), fitCount),
+      ...(g.holeK[j] !== 1 ? { holeK: g.holeK[j] } : {}) }));
     while (holes.length) {
       let k = 0, best = Infinity;
       holes.forEach((h, j) => { const d = len(sub(startOf(h), at)); if (d < best) { best = d; k = j; } });
@@ -904,6 +911,21 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     kept = (sheet.cut?.contours ?? []).filter((c) => (c.parts ?? [c.part]).every((k) => good.has(k)) && !drop(c) && !dropBlock(c));
     for (const c of kept) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
   }
+  // Cut internal / Trace on a part already processed: its new holes (or tracing) go right before the rest
+  // of that part's path (its outline), not after it: the part must not be cut loose before its holes
+  let added = fresh;
+  if (q.what !== "all" && kept.length) {
+    const into = [...kept];
+    added = [];
+    const owns = (c: CutContour, k: number) => (c.parts ?? [c.part]).includes(k);
+    for (const k of [...new Set(fresh.map((c) => c.part))]) {
+      const mine = fresh.filter((c) => c.part === k);
+      const at = into.findIndex((c) => owns(c, k));
+      if (at < 0) added.push(...mine);
+      else into.splice(at, 0, ...mine);
+    }
+    kept = into;
+  }
   // picked by hand: marked, so processing the whole sheet later keeps them first
   if (q.ordered) for (const c of fresh) c.picked = true;
   for (const c of [...first, ...fresh]) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
@@ -917,10 +939,16 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   const lastKept = kept[kept.length - 1];
   const batchFrom: Pt = lastKept ? (lastKept.leadOut[lastKept.leadOut.length - 1] ?? lastKept.pts[lastKept.pts.length - 1]) : start;
   let contours: CutContour[];
-  if (traceShortest && q.ordered && q.what === "all") contours = [...kept, ...tracesShortest(fresh, batchFrom)];
-  else if (traceShortest && !q.ordered) contours = tracesShortest([...kept, ...fresh], start);
-  else contours = [...kept, ...fresh];
+  if (traceShortest && q.ordered && q.what === "all") contours = [...kept, ...tracesShortest(added, batchFrom)];
+  else if (traceShortest && !q.ordered && q.parts && kept.length) {
+    // some parts again (Inline cut's reset): the tracing kept stays as it was, the new tracing after it
+    const kt = kept.filter((c) => c.kind === "trace" && c.pts.length > 1), lastT = kt[kt.length - 1];
+    contours = [...kt, ...tracesShortest([...kept.filter((c) => !kt.includes(c)), ...added], lastT ? lastT.pts[lastT.pts.length - 1] : start)];
+  } else if (traceShortest && !q.ordered) contours = tracesShortest([...kept, ...added], start);
+  else contours = [...kept, ...added];
   contours = [...first, ...contours];
+  // a common pierce group one of whose outlines was processed again: the one left goes back to its own leads
+  contours = tidyPierces(contours);
   return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours, keys, ...(mirrored ? { mirrored } : {}),
     ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}),
     ...(first.length ? { keptFirst: new Set(first.flatMap((c) => c.parts ?? [c.part])).size } : {}) };
@@ -1013,6 +1041,8 @@ export function shiftSheet(sheet: NestedSheet, dx: number, dy: number): NestedSh
     const contours = c0.contours.map((c) => ({
       ...c, pts: c.pts.map(mv), leadIn: c.leadIn.map(mv), leadOut: c.leadOut.map(mv),
       ...(c.bc ? { bc: { ...c.bc, plan: { ...c.bc.plan, starts: c.bc.plan.starts.map(mvStart), ...(c.bc.plan.orig ? { orig: mvStart(c.bc.plan.orig) } : {}) } } } : {}),
+      // a common pierce's point and the leads it goes back to
+      ...(c.cp ? { cp: { ...c.cp, at: mv(c.cp.at), orig: { ...c.cp.orig, leadIn: c.cp.orig.leadIn.map(mv), leadOut: c.cp.orig.leadOut.map(mv), ...(c.cp.orig.pts ? { pts: c.cp.orig.pts.map(mv) } : {}) } } } : {}),
     }));
     // a rapid's points belong to the contour before it, named by its line: named again
     const renamed = new Map(c0.contours.map((c, i) => [contourKey(c), contourKey(contours[i])]));

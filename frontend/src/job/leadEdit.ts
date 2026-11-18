@@ -5,7 +5,7 @@
 // same contour, the same point of it).
 
 import {
-  cornerAngle, cornerOnly, leadValues, leadsAt, oriented,
+  cornerAngle, cornerOnly, leadValues, leadsAt, oriented, scaledLoop,
   type CutContour, type LeadSpec, type LeadStart, type SheetCut,
 } from "./cutPath";
 import { leadRulesOf, type LeadRules, type LeadType } from "./leads";
@@ -78,7 +78,9 @@ export function loopOf(ctx: LeadCtx, c: CutContour, mirrored: boolean): { lp: Pt
   const p = ctx.sheet.parts[c.part];
   if (!p) return null;
   const f = transform(p);
-  const loops = partLoops(ctx.paths.get(p.partId) ?? "").map((lp) => lp.map(f));
+  const own = partLoops(ctx.paths.get(p.partId) ?? "");
+  // a compensated hole (the machine's hole compensation): at the size it is cut, scaled in the part's own frame as Auto cut does
+  const loops = own.map((lp, j) => (j > 0 && c.kind === "inner" && c.holeK && c.holeK !== 1 ? scaledLoop(lp, c.holeK) : lp).map(f));
   if (!loops.length) return null;
   let k = 0;
   if (c.kind === "inner") {

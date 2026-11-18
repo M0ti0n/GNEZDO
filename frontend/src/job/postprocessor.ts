@@ -159,6 +159,11 @@ export const GENERIC_POSTPROCESSOR: Postprocessor = {
   extension: ".nc",
   source: `// GNEZDO generic ISO postprocessor: absolute coordinates, kerf compensation left (G41).
 // Change it to suit the machine; see program in Settings > Machines > NC output.
+// The codes below are placeholders: set the machine's own.
+const BEAM_ON = "M07", BEAM_OFF = "M08";            // pierce and cut
+const QUICK_ON = "M07 (QUICK PIERCE)";              // after a micro joint / in a common pierce's hole
+const NO_PIERCE_ON = "M07 (NO PIERCE)";             // after a micro joint with MJ restart "none"
+const MARK_ON = "M14", MARK_OFF = "M15";            // tracing (marking): not cut through
 function postprocess(p) {
   const out = [];
   let n = 0;
@@ -167,10 +172,12 @@ function postprocess(p) {
   out.push("%", "(" + p.name + " - " + p.sheet.material + " " + p.sheet.thicknessMm + " mm)");
   N("G90 G21 G40");
   for (const c of p.contours) {
-    N("G00 X" + f(c.start.x) + " Y" + f(c.start.y));
-    const feed = c.kind !== "outer" && c.small ? (p.tech.smallHoleSpeed || p.tech.speed) : p.tech.speed;
-    const comp = c.kind === "open" || c.kind === "trace" ? "" : c.rev ? "G42 " : "G41 ";
-    N("M07");
+    // the rapid, through Process > Movement's points first
+    for (const q of [...(c.via || []), c.start]) N("G00 X" + f(q.x) + " Y" + f(q.y));
+    const trace = c.kind === "trace";
+    const feed = trace ? (p.tech.traceSpeed || p.tech.speed) : c.kind === "inner" && c.small ? (p.tech.smallHoleSpeed || p.tech.speed) : p.tech.speed;
+    const comp = c.kind === "open" || trace ? "" : c.rev ? "G42 " : "G41 ";
+    N(trace ? MARK_ON : c.restart === "none" ? NO_PIERCE_ON : c.restart === "quick" ? QUICK_ON : BEAM_ON);
     let pos = c.start;
     c.segs.forEach((s, i) => {
       const head = i === 0 ? comp + "F" + Math.round(feed || 0) + " " : "";
@@ -178,8 +185,8 @@ function postprocess(p) {
       else N(head + (s.cw ? "G02" : "G03") + " X" + f(s.to.x) + " Y" + f(s.to.y) + " I" + f(s.c.x - pos.x) + " J" + f(s.c.y - pos.y));
       pos = s.to;
     });
-    N("M08");
-    N("G40");
+    N(trace ? MARK_OFF : BEAM_OFF);
+    if (comp) N("G40");
   }
   N("G00 X0 Y0");
   N("M30");
