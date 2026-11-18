@@ -1033,8 +1033,15 @@ export function App() {
       const moved = shiftSheet(sh, dx, dy);
       // the list of parts changed (one deleted, pasted): the cut path follows the parts to their new places in it
       const cut = patch.parts && patch.cut === undefined && moved.cut ? { cut: remapCut(moved.cut, moved.parts, patch.parts) } : {};
+      // the remnant was worked out for the old size (its pieces reach the old edges): dropped, and said so
+      const sized = (patch.lengthMm !== undefined && patch.lengthMm !== sh.lengthMm) || (patch.widthMm !== undefined && patch.widthMm !== sh.widthMm);
+      if (sized && sh.remnant && patch.remnant === undefined) return { ...moved, remnant: undefined, ...patch, ...cut };
       return { ...moved, ...patch, ...cut };
     };
+    const was = sheets?.[index];
+    if (was?.remnant && patch.remnant === undefined && ((patch.lengthMm ?? was.lengthMm) !== was.lengthMm || (patch.widthMm ?? was.widthMm) !== was.widthMm)) {
+      setToast("The remnant on this sheet was worked out for its old size: work it out again in REMNANT");
+    }
     patchSol(jobId, solId, (x) => x.run?.result ? {
       ...x, run: { ...x.run, result: { ...x.run.result, sheets: x.run.result.sheets.map((sh, i) => (i === index ? resized(sh, x.origin ?? machineFor(jobId).origin) : sh)) } },
     } : x);

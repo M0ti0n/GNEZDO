@@ -35,8 +35,6 @@ export interface LeadRules {
   holeOther: LeadType;
   /** A hole's lead-in longer than its radius is cut to the radius (it starts at the center) */
   holeShorten: boolean;
-  /** Slots narrower than 2 × the lead-in: the leads go in the middle of the end arc / short edge */
-  slotMiddle: boolean;
   /** Remnant cuts (open lines): in line with the cut, in line from outside the sheet, at 90° or at an angle, from the scrap side */
   remnant: RemnantLead;
   /** Common cut, the shared lines: pierced outside the block coming in line or at an angle, or on the line's end */
@@ -66,7 +64,7 @@ export const REMNANT_LEADS: { id: RemnantLead; label: string; settings: string }
 export const DEFAULT_LEAD_RULES: LeadRules = {
   place: "bottom-right", sharpMaxDeg: 160,
   outCorner: "corner", outOther: "perp", holeCorner: "corner", holeOther: "perp",
-  holeShorten: true, slotMiddle: true, remnant: "perp", common: "inline",
+  holeShorten: true, remnant: "perp", common: "inline",
 };
 
 export const leadRulesOf = (m: Machine | undefined): LeadRules => {

@@ -140,7 +140,8 @@ export interface InlineResult { cut: SheetCut; contours: number; stretches: numb
  * The sheet's cut path with the contours of these parts (null: every part) cut inline, from `from` (the
  * machine's 0,0). `live`: the contours still good. A message when nothing can go inline.
  */
-export function inlineCut(cut: SheetCut, live: Set<CutContour>, parts: number[] | null, from: Pt, o: InlineOptions): InlineResult | string {
+/** `solid`: the parts' material from their drawings (outlines cut in pieces count too) */
+export function inlineCut(cut: SheetCut, live: Set<CutContour>, parts: number[] | null, from: Pt, o: InlineOptions, solid?: (p: Pt) => boolean): InlineResult | string {
   const want = parts && parts.length ? new Set(parts) : null;
   const cand = cut.contours.filter((c) => live.has(c) && inlineable(c) && (!want || want.has(c.part)));
   if (!cand.length) return want ? "The selected parts have no outlines or holes to cut inline (process them first: Auto cut)" : "Nothing to cut inline: process the sheet first (Auto cut)";
@@ -165,7 +166,7 @@ export function inlineCut(cut: SheetCut, live: Set<CutContour>, parts: number[] 
     (c.kind === "outer" ? s.outer : s.holes).push(loopOf(c.pts));
     solids.set(c.part, s);
   }
-  const inMaterial = (p: Pt) => [...solids.values()].some((s) => s.outer.some((lp) => lp.length > 2 && pointIn(lp, p[0], p[1])) && !s.holes.some((lp) => lp.length > 2 && pointIn(lp, p[0], p[1])));
+  const inMaterial = (p: Pt) => !!solid?.(p) || [...solids.values()].some((s) => s.outer.some((lp) => lp.length > 2 && pointIn(lp, p[0], p[1])) && !s.holes.some((lp) => lp.length > 2 && pointIn(lp, p[0], p[1])));
 
   // the passes: corridors of the first axis, then of the other; snake from where the head is
   const pieces: CutContour[] = [];

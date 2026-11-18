@@ -15,6 +15,8 @@
 //
 // Feed: outline = cutting speed; a hole whose (width + height) / 2 is up to "small hole up to" (or
 // the contour says so: c.small, e.g. marked as a hole in the importer) = small-hole speed. F is written at every lead-in (after a rapid).
+// Restart (after a micro joint, an inline cut's stretch, a common pierce's hole): pierced again as any
+// contour (M07 M50): HACO's own macros have no quick pierce and no start without one.
 // Numbers: 3 decimals, whole numbers without them (X17, X-1.300). A full circle is one block (X0 Y0).
 // Stops (from the imported table, if set): S25 stop at the lead-out [s], S31 stop at a corner [s]
 // sharper than S92 [°].
@@ -36,19 +38,12 @@ function postprocess(p, nc) {
   const speed = Math.round(t.speed || 0);
   const stopOut = extra.S25 || 0, stopCorner = extra.S31 || 0, stopAngle = extra.S92 || 0;
 
-  // HACO's direction of a move [°] and its feed bookkeeping: F is written at a lead-in only when the
-  // feed differs from the last one; a rapid that changes direction counts as a different feed.
-  const angOf = (a, b) => {
-    let g = b.y === a.y ? 0 : Math.atan(Math.abs(b.y - a.y) / Math.abs(b.x - a.x)) * 180 / Math.PI;
-    if (b.y < a.y) g = -g;
-    if (b.x < a.x) g = 180 - g;
-    return g;
-  };
-  const RAPID = -1;
-  let feedState = 0, angPrev = 0;
+  // F is written at every lead-in (after every rapid), as HACO's own postprocessor does; the small-hole
+  // speed is for holes only (inner contours), as in its feed macro: an open cut, a remnant cut or a
+  // common cut line is cut at the cutting speed
   const feedOf = (c) => {
     // the contour's own choice (a hole marked in the importer, or changed by hand) wins over the size rule
-    const hole = c.kind !== "outer";
+    const hole = c.kind === "inner";
     const small = hole && (c.small ?? (t.smallHoleMm > 0 && (c.widthMm + c.heightMm) <= 2 * t.smallHoleMm));
     return Math.round(small && t.smallHoleSpeed ? t.smallHoleSpeed : t.speed);
   };
@@ -68,17 +63,11 @@ function postprocess(p, nc) {
       else N(`G00 G40 X${num(q.x - pos.x)} Y${num(q.y - pos.y)}`);
       if (j < all.length - 1) pos = q;
     });
-    if (Math.hypot(c.start.x - pos.x, c.start.y - pos.y) >= 0.01) {
-      if (feed !== feedState) feedState = feed;
-      const g = angOf(pos, c.start);
-      if (g !== angPrev) { feedState = RAPID; angPrev = g; }
-    }
     pos = c.start;
     // open cuts (and remnant cuts) without kerf compensation
     // an inline cut's stretch cut against its contour's direction: compensation right (G42)
     const comp = c.kind === "open" ? "" : `${c.rev ? "G42" : "G41"} ${c.kind === "inner" ? "D02" : "D01"} `;
-    let head = `${first ? "G91 " : ""}${comp}${feed !== feedState ? `F${feed} ` : ""}`;
-    feedState = feed;
+    let head = `${first ? "G91 " : ""}${comp}F${feed} `;
     let lastArc = false;
     first = false;
     let prevDir = null;
@@ -97,15 +86,12 @@ function postprocess(p, nc) {
           if (180 - turn < stopAngle) lines.push(` G04 Q${Math.round(stopCorner * 100)}`);
         }
         prevDir = dir;
-        angPrev = angOf(pos, s.to);
         emit(`G01 X${num(dx)} Y${num(dy)}`);
         lastArc = false;
       } else {
         // arc (a full circle in one block: X0 Y0)
         prevDir = null;
         emit(`${s.cw ? "G02" : "G03"} X${num(s.to.x - pos.x)} Y${num(s.to.y - pos.y)} I${num(s.c.x - pos.x)} J${num(s.c.y - pos.y)}`);
-        const end = Math.atan2(s.to.y - s.c.y, s.to.x - s.c.x) * 180 / Math.PI;
-        angPrev = s.cw ? end - 90 : end + 90;
         lastArc = true;
       }
       pos = s.to;

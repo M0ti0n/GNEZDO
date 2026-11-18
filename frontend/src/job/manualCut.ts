@@ -52,10 +52,13 @@ export function orderProblem(out: CutContour[], nameOf: (part: number) => string
   for (let i = 0; i < out.length; i++) {
     const c = out[i];
     if (c.kind !== "outer") continue;
+    // an inline outline is cut in stretches: the part falls out only at its last one
+    if (c.inline && out.some((d, j) => j > i && d.inline && d.kind === "outer" && d.part === c.part)) continue;
     const own = new Set(c.parts ?? [c.part]);
     for (let j = i + 1; j < out.length; j++) {
       const d = out[j];
-      if (d.kind === "outer") continue;
+      // inline hole stretches go in the passes with the outline's (their order is the passes')
+      if (d.kind === "outer" || (c.inline && d.inline)) continue;
       if ((d.parts ?? [d.part]).some((x) => own.has(x))) {
         return `${c.parts ? "A common cut block" : nameOf(c.part)}: its outline would be cut before its ${contourKind(d).toLowerCase()} (the part would fall out first).`;
       }

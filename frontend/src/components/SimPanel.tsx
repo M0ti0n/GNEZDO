@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { liveContours, originPoint } from "../job/cutPath";
+import { originPoint } from "../job/cutPath";
 import { rapidOf, type Machine, type Origin } from "../job/machine";
 import type { NestedSheet } from "../job/nest";
-import { clock, simAt, simTimeline } from "../job/simulation";
-import { techRowFor } from "../job/technology";
+import { clock, sheetTimeline, simAt } from "../job/simulation";
 import type { CutMode } from "./ManualNest";
 import toolSimulation from "../shell/jobtools/tool-simulation.png";
 
@@ -29,14 +28,7 @@ export function useSimulation({ index, single, sheets, parts, machine, origin }:
 }): { panel: ReactNode; cut: CutMode } {
   const sheet = sheets[index] as NestedSheet | undefined;
   const from = useMemo(() => (sheet ? originPoint(sheet, origin) : ([0, 0] as [number, number])), [sheet, origin]);
-  const tl = useMemo(() => {
-    if (!sheet) return null;
-    const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row ?? null;
-    // pre-pierce as the laser does it: the sheet's own (Post process), else its Technology row's
-    const laser = machine.technology === "laser";
-    const prePierce = laser && (sheet.prePierce ?? !!row?.prePierce);
-    return simTimeline(liveContours(sheet), from, row, rapidOf(machine), laser, prePierce);
-  }, [sheet, machine, from]);
+  const tl = useMemo(() => (sheet ? sheetTimeline(sheet, machine, origin) : null), [sheet, machine, origin]);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speedIx, setSpeedIx] = useState(3);
@@ -129,7 +121,7 @@ export function useSimulation({ index, single, sheets, parts, machine, origin }:
         </div>
         <div className="ac-field"><span>Now</span></div>
         <dl className="sim-now">
-          <dt>Part</dt><dd title={c ? (c.parts ? c.parts.map(partName).join(", ") : partName(c.part)) : ""}>{c ? (c.parts ? `Common cut block (${c.parts.length})` : partName(c.part)) : "–"}</dd>
+          <dt>Part</dt><dd title={c ? (c.parts ? c.parts.map(partName).join(", ") : partName(c.part)) : ""}>{c ? (c.parts ? `Common cut block (${c.parts.length})` : c.part < 0 ? "Remnant cut" : partName(c.part)) : "–"}</dd>
           <dt>Contour</dt><dd>{c ? `${KIND[c.kind] ?? c.kind}${pre ? (state?.phase === "rapid" ? " · rapid to its pierce" : " · pre-piercing") : state?.phase === "rapid" ? " · rapid to it" : state?.phase === "pierce" ? " · piercing" : ""}` : state?.phase === "done" ? "All cut" : "–"}</dd>
           {tl?.pre && <><dt>Pre-pierce</dt><dd>{pre ? <><b>{pre.at}</b> / {pre.of}</> : t >= tl.pre.end ? `done (${tl.pre.count})` : `${tl.pre.count} contours first`}</dd></>}
           <dt>Parts cut</dt><dd>{cutOut} / {toCut}</dd>

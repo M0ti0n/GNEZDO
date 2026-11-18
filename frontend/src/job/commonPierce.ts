@@ -175,6 +175,8 @@ export interface CommonPierceJob {
   id?: string;
   /** Break cut: the outline `k` of `base` with the lead type with a gap, the default gap; a text: why not */
   breakCut?: (base: SheetCut, k: number) => CutContour | string;
+  /** the parts' material from their drawings (outlines cut in pieces count too) */
+  solid?: (p: Pt) => boolean;
 }
 
 /**
@@ -187,7 +189,8 @@ export function commonPierce(cut: SheetCut, live: Set<CutContour>, p: Pt, ks: nu
   let base = cut;
   if (id) base = removePierce(cut, id);
   const liveNow = new Set(base.contours.filter((_, i) => live.has(cut.contours[i])));
-  const inPart = materialTest(base, liveNow);
+  const inContours = materialTest(base, liveNow);
+  const inPart = (p: Pt) => inContours(p) || !!job.solid?.(p);
   if (inPart(p)) return ks && !id ? "The middle between their lead-ins is in a part: PLACE the pierce point in the scrap by hand" : "The pierce point is in a part: it has to be in the scrap";
   const cands = (ks ?? base.contours.map((_, i) => i)).filter((k) => {
     const c = base.contours[k];
@@ -242,10 +245,14 @@ export function commonPierce(cut: SheetCut, live: Set<CutContour>, p: Pt, ks: nu
 
 /** A group with one outline left: back to its own leads. */
 function tidy(cut: SheetCut): SheetCut {
+  const out = tidyPierces(cut.contours);
+  return out === cut.contours ? cut : { ...cut, contours: out };
+}
+export function tidyPierces(contours: CutContour[]): CutContour[] {
   const n = new Map<string, number>();
-  for (const c of cut.contours) if (c.cp) n.set(c.cp.id, (n.get(c.cp.id) ?? 0) + 1);
-  if (![...n.values()].some((v) => v < 2)) return cut;
-  return { ...cut, contours: cut.contours.map((c) => (c.cp && (n.get(c.cp.id) ?? 0) < 2 ? restore(c) : c)) };
+  for (const c of contours) if (c.cp) n.set(c.cp.id, (n.get(c.cp.id) ?? 0) + 1);
+  if (![...n.values()].some((v) => v < 2)) return contours;
+  return contours.map((c) => (c.cp && (n.get(c.cp.id) ?? 0) < 2 ? restore(c) : c));
 }
 
 function restore(c: CutContour): CutContour {

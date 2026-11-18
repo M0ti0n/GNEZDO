@@ -4,6 +4,20 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Fixes from the bug report of 18 Nov (points 3 and 14 work as designed; 13 matches Libellula's own programs):
+- Process → Auto cut, **Cut internal** / **Trace** on a part already processed (Selected parts): its new holes or tracing now go right before that part's outline, not after it (the part was cut loose first)
+- Post process, **HACO plasma**: F is written at every lead-in, as HACO's own postprocessor does (it was left out when the rapid kept the same direction); the small-hole speed is for holes only: open cuts, remnant cuts and common cut lines go at the cutting speed. Import the machine file again (`POST PROCESSOR/HACO-KOMPAKT-plasma.gnezdo-machine.zip`, or paste its postprocessor) to use it
+- Hole compensation (Settings → Machines): a compensated hole keeps its size when its lead is edited, reset or deleted (Lead in / out), or broken (Break cut); it went back to the drawn size
+- Process → **Inline cut**: Manual cut and Movement work again on that sheet; an inline outline's stretches no longer count as "outline before its hole" (the part falls out at its last stretch)
+- A sheet's new size with a right or bottom 0,0 corner: **Common pierce** points move with the parts (the pierce mark and its group's leads stayed at the old place); a **remnant** worked out for the old size is dropped with a message (its cuts went missing from the NC without one)
+- **Common pierce** and **Inline cut**: a part whose outline has a break cut, micro joints or inline stretches now counts as material: a common pierce's lead or an inline run-in no longer goes through it
+- Inline cut, **Reset** / run again: tracing skipped in Auto cut (Skip trace lines, or unticked parts) stays skipped; on machines with tracing first (shortest), the tracing of the other parts keeps its order
+- DXF stock sheets: a plain rectangle is a plain rectangle again (it came as a 32-point shaped sheet); shaped sheets lose the extra points along their straight edges
+- **Simulation** pierces as the NC program does: after a micro joint as the Technology row's MJ restart says (none / pierce / quick), a quick pierce in a common pierce's hole pierced already; the remnant cuts are played at the end
+- Generic ISO postprocessor (the template for a new machine): goes through Process → Movement's points, pierces as MJ restart / Inline cut say (codes to set marked), traces with marking codes (was beam on at the cutting feed), small-hole speed for holes only
+- Settings → Machines → What it cuts → **Holes** unticked: no small-hole speed (every hole at the cutting speed) in the NC, Simulation and the reports (a laser keeps its E003 class); the unused lead rule "slot middle" is gone
+- Report: with a cut path, the times are the cut path's (as Simulation plays it); without one the rapids are estimated from the machine's 0,0 corner (it was always bottom left)
+- Process → Auto cut with Selected parts on one outline of a **Common pierce** group: the outline left alone goes back to its own lead (it kept the group's)
 - Server version (Docker): the web image builds on Debian Node (node:22-slim) instead of Alpine, where the frontend build had started to fail (no change in GNEZDO itself)
 
 ## Build 18 Nov 2026 (`8086bc6`)

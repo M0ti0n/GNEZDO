@@ -2,7 +2,7 @@
 // in the browser). A job is nested for one machine: its 0,0 corner, cutting area and gaps.
 
 /** The sheet corner where the machine's 0,0 is; nesting packs the parts towards it. */
-import { techRowFor, type TechSet } from "./technology";
+import { techRowFor, type TechRow, type TechSet } from "./technology";
 import type { LeadRules } from "./leads";
 import type { Postprocessor } from "./postprocessor";
 
@@ -77,7 +77,7 @@ export const LINE_CAPABILITIES: { id: LineCapability; label: string; help: strin
   { id: "commonCut", label: "Common cut", help: "Shared straight edges of neighbouring parts cut once" },
   { id: "openCut", label: "Open cut", help: "Cut along open lines (slits)" },
   { id: "trace", label: "Tracing", help: "Marking / engraving lines, not cut through" },
-  { id: "hole", label: "Holes", help: "Holes cut at the small-hole speed" },
+  { id: "hole", label: "Holes", help: "Holes cut at the small-hole speed (off: every hole at the cutting speed; a laser keeps its E003 class)" },
 ];
 
 /** The machine's cut order rules for Generate path, in this rank: always (not switchable) holes and
@@ -122,6 +122,11 @@ export const rapidOf = (m: Machine | undefined): number =>
 
 /** Does the machine do this line property? */
 export const machineCan = (m: Machine | undefined, c: LineCapability) => m?.lines?.[c] !== false;
+
+/** A Technology row as this machine cuts with it: Holes unticked (What it cuts), no small-hole speed (every
+ *  hole at the cutting speed). A laser keeps it: there it is the E003 class's speed, the machine's own. */
+export const rowAsCut = <R extends Pick<TechRow, "smallHoleSpeed">>(m: Machine, row: R): R =>
+  !machineCan(m, "hole") && m.technology !== "laser" ? { ...row, smallHoleSpeed: 0 } : row;
 
 export interface MachineList { defaultId: string; list: Machine[] }
 

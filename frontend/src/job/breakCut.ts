@@ -103,7 +103,8 @@ export function buildPieces(ctx: LeadCtx, base: CutContour, plan: BreakPlan, mir
   starts.sort((a, b) => ((a.pos - p0 + m.P) % m.P) - ((b.pos - p0 + m.P) % m.P));
   const sorted: BreakPlan = { ...plan, starts: starts.map((x) => ({ ...x.s, at: r2(x.s.tag === "mj" ? x.s.at : (x.at as { at: Pt }).at) })) };
   const made = starts.map((x) => leadsAt(L.lp, kind, ctx.rules, ctx.row, x.at as Exclude<typeof x.at, string>, x.s.type, x.spec, side));
-  const keep = { part: base.part, kind: base.kind } as Pick<CutContour, "part" | "kind">;
+  // the hole compensation goes with every piece (they are rebuilt from the compensated loop)
+  const keep = { part: base.part, kind: base.kind, ...(base.holeK ? { holeK: base.holeK } : {}) } as Pick<CutContour, "part" | "kind" | "holeK">;
   const one = (k: number, body: Omit<CutContour, "part" | "kind">): CutContour => ({
     ...keep, ...body, lead: starts[k].s.type, spec: starts[k].spec,
     ...(starts[k].s.tag === "mj" ? { restart: true } : {}),

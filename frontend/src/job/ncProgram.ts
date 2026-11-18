@@ -5,7 +5,7 @@
 // points (job/ncArcs.ts); each contour says which part it is (a subprogram per part, e.g. LVD G980).
 
 import { liveContours, originMirrors, originPoint, viaOf, type CutContour } from "./cutPath";
-import type { Machine, Origin } from "./machine";
+import { rowAsCut, type Machine, type Origin } from "./machine";
 import type { NestedSheet } from "./nest";
 import { fitMoves } from "./ncArcs";
 import type { NcContour, NcPart, NcProgram, NcPt } from "./postprocessor";
@@ -84,7 +84,7 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
   return {
     name,
     sheet: { lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, thicknessMm: sheet.thicknessMm, material: sheet.material },
-    tech: { ...tech.row, name: tech.tech.name, ...(sheet.prePierce !== undefined ? { prePierce: sheet.prePierce ? 1 : 0 } : {}) },
+    tech: { ...rowAsCut(machine, tech.row), name: tech.tech.name, ...(sheet.prePierce !== undefined ? { prePierce: sheet.prePierce ? 1 : 0 } : {}) },
     contours,
     parts: [...boxes].sort((a, b) => a[0] - b[0]).map(([no, box]) => ({ no, ...(partName(no) ? { name: partName(no) } : {}), box })),
   };
