@@ -18,7 +18,7 @@ import { checkGeometry, pointsAlong, roleOf } from "../import/geometry";
 import { DEFAULT_ANGLE, LEAD_TYPES, leadRulesOf, type LeadRules, type LeadType } from "./leads";
 import { commonEdges, partCommonLines, placedEdges, type CommonEdge } from "./commonCut";
 import { commonBlocks, sharedLineCut, type CommonBlock } from "./commonPath";
-import { cutOrderOf, gapsFor, machineCan, type Machine, type Origin } from "./machine";
+import { cutOrderOf, gapsFor, holeCompOf, machineCan, type Machine, type Origin } from "./machine";
 import { partLoops, pointIn, transform, type Box, type Pt } from "./manualGeom";
 import type { NestedSheet, PlacedPart } from "./nest";
 import { TRACE_SHORTEST_FROM_MM, techRowFor, traceShortestOf, type TechRow } from "./technology";
@@ -171,7 +171,7 @@ export const originMirrors = (origin: Origin) => origin.startsWith("top") === or
 // ------------------------------------------------------------------ tracing and open cut lines of a part
 
 /** Tracing and open cut lines; grain: lines along the grain, only shown (never cut or traced). */
-export type Marks = { trace: Pt[][]; open: Pt[][]; grain?: Pt[][]; foil?: boolean };
+export type Marks = { trace: Pt[][]; open: Pt[][]; grain?: Pt[][]; foil?: boolean; holes?: Box[] };
 const markCache = new Map<string, { at: number; marks: Promise<Marks> }>();
 
 /** Parts were saved (their drawings may have changed): their marks are read again. */
@@ -192,12 +192,17 @@ async function loadMarks(partId: string): Promise<Marks> {
   const ents = g?.entities ?? [];
   const marks = ents.filter((e) => roleOf(e) === "trace" || roleOf(e) === "openCut");
   const surf = g?.marks;
-  if (!marks.length && !surf?.grain && !surf?.foil) return { trace: [], open: [] };
+  const slow = ents.some((e) => e.slow && roleOf(e) === "cut");
+  if (!marks.length && !surf?.grain && !surf?.foil && !slow) return { trace: [], open: [] };
   const report = checkGeometry(ents);
   const box = report.contours.find((c) => c.closed && c.outer)?.box ?? report.box;
   const f = (q: { x: number; y: number }): Pt => [q.x - box.minX, box.maxY - q.y];
   const runs = (role: string) => chain(marks.filter((e) => roleOf(e) === role).map((e) => pointsAlong(e).map(f)));
-  return { trace: runs("trace"), open: runs("openCut"), ...(surf?.grain ? { grain: grainLines(box.maxX - box.minX, box.maxY - box.minY, surf.grain) } : {}), ...(surf?.foil ? { foil: true } : {}) };
+  // the holes marked with the Hole tool (their boxes, in the same frame): the machine's hole compensation
+  const byId = new Map(ents.map((e) => [e.id, e]));
+  const holes: Box[] = slow ? report.contours.filter((c) => c.closed && !c.outer && c.entityIds.some((id) => byId.get(id)?.slow))
+    .map((c) => ({ x0: c.box.minX - box.minX, y0: box.maxY - c.box.maxY, x1: c.box.maxX - box.minX, y1: box.maxY - c.box.minY })) : [];
+  return { trace: runs("trace"), open: runs("openCut"), ...(surf?.grain ? { grain: grainLines(box.maxX - box.minX, box.maxY - box.minY, surf.grain) } : {}), ...(surf?.foil ? { foil: true } : {}), ...(holes.length ? { holes } : {}) };
 }
 
 /** Three lines along the grain in the middle of the part (its frame: y down, box corner at 0,0). */
@@ -576,13 +581,27 @@ const totalLen = (pts: Pt[]) => pts.reduce((s, p, i) => (i ? s + len(sub(p, pts[
 
 interface PartGeo { i: number; outer: Pt[]; holes: Pt[][]; trace: Pt[][]; open: Pt[][]; box: Box; area: number }
 
-async function partGeos(sheet: NestedSheet, paths: Map<string, string>, idx: number[], wantMarks: boolean, mirrored: boolean): Promise<PartGeo[]> {
+/** A loop scaled about the middle of its box by k (hole compensation). */
+function scaledLoop(lp: Pt[], k: number): Pt[] {
+  const b = boxOf(lp), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+  return lp.map(([x, y]) => [cx + (x - cx) * k, cy + (y - cy) * k]);
+}
+
+/** holeK: the machine's hole compensation (1: as drawn): holes marked with the Hole tool are cut that much bigger or smaller. */
+async function partGeos(sheet: NestedSheet, paths: Map<string, string>, idx: number[], wantMarks: boolean, mirrored: boolean, holeK = 1): Promise<PartGeo[]> {
   return Promise.all(idx.map(async (i) => {
     const p = sheet.parts[i];
     const path = paths.get(p.partId) ?? "";
     const f = transform(p);
-    const loops = partLoops(path).map((lp) => lp.map(f));
-    const marks = wantMarks ? await partMarks(p.partId) : { trace: [], open: [] };
+    const read = wantMarks || holeK !== 1 ? await partMarks(p.partId) : null;
+    const marks = read && wantMarks ? read : { trace: [], open: [] };
+    // a hole marked with the Hole tool (its box matches): scaled by the hole compensation, in the part's own frame
+    const marked = holeK !== 1 ? read?.holes ?? [] : [];
+    const isMarked = (lp: Pt[]) => {
+      const b = boxOf(lp), tol = Math.max(0.2, 0.03 * Math.max(b.x1 - b.x0, b.y1 - b.y0));   // the outline path is rounded, curves drawn in pieces
+      return marked.some((h) => Math.abs(h.x0 - b.x0) < tol && Math.abs(h.x1 - b.x1) < tol && Math.abs(h.y0 - b.y0) < tol && Math.abs(h.y1 - b.y1) < tol);
+    };
+    const loops = partLoops(path).map((lp, k) => (k > 0 && marked.length && isMarked(lp) ? scaledLoop(lp, holeK) : lp)).map((lp) => lp.map(f));
     const outer = loops[0] ? oriented(loops[0], !mirrored) : [];
     return {
       i, outer, holes: loops.slice(1).map((lp) => oriented(lp, mirrored)),
@@ -717,7 +736,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     const done = new Set(first.flatMap((c) => c.parts ?? [c.part]));
     idx = idx.filter((k) => !done.has(k));
   }
-  const geos = await partGeos(sheet, q.paths, idx, q.what !== "internal" && (canTrace || canOpen), mirrored);
+  const geos = await partGeos(sheet, q.paths, idx, q.what !== "internal" && (canTrace || canOpen), mirrored, holeCompOf(machine));
   const from = originPoint(sheet, q.origin);
   const lastOfFirst = first[first.length - 1];
   const start: Pt = lastOfFirst ? (lastOfFirst.leadOut[lastOfFirst.leadOut.length - 1] ?? lastOfFirst.pts[lastOfFirst.pts.length - 1]) : from;
