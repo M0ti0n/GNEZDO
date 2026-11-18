@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 18 Nov 2026 (`8086bc6`)
+
 - 3D Extractor: new icons for **One face**, **Fixed face** and **Top side** (Fab's)
 - Settings → Machines → machine: new **Hole compensation** (%): holes marked with the **Hole** tool in Import 2D are cut that size on that machine, e.g. 115 % on the plasma cuts them 15 % bigger (a Ø20 hole Ø23); 50 to 200 %, empty or 100 = as drawn. Other holes and the outline are cut as drawn, the kerf compensation stays as it is. It goes with the machine file
 - 3D Extractor: new icons for **Measure 3D** and **Measure 2D** (Fab's); Flat distance is now called **Measure 2D**
