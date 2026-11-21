@@ -87,6 +87,70 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
         Assert.Equal(HttpStatusCode.OK, (await api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(40, null))).StatusCode);
     }
 
+    private async Task<HttpResponseMessage> AsPage(HttpMethod how, string url, string page, string user, object? body = null)
+    {
+        var m = new HttpRequestMessage(how, url) { Content = body is null ? null : JsonContent.Create(body) };
+        m.Headers.Add("X-Gnezdo-Page", page);
+        m.Headers.Add("X-Gnezdo-User", user);
+        return await api.Client.SendAsync(m);
+    }
+
+    [Fact]
+    public async Task A_job_open_on_another_computer_is_not_opened_or_saved_over_until_it_is_closed_there()
+    {
+        var ids = await PartIds(1);
+        object Req(int qty) => new { name = "Locked job", parts = new[] { new { partId = ids[0], qty, no = 1 } }, nest = Nest(1) };
+        // made in Fab's tab: open there
+        var made = await AsPage(HttpMethod.Post, "/api/jobs", "page-a", "Fab", Req(1));
+        var id = (await made.Content.ReadFromJsonAsync<JobSavedDto>())!.Id;
+        Assert.Equal(HttpStatusCode.OK, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/open", "page-a", "Fab")).StatusCode);
+        // another computer: refused, told who has it; so is its save, and its renewal
+        var b = await AsPage(HttpMethod.Post, $"/api/jobs/{id}/open", "page-b", "Mia");
+        Assert.Equal(HttpStatusCode.Locked, b.StatusCode);
+        var why = (await b.Content.ReadFromJsonAsync<JsonObject>())!;
+        Assert.Equal("Fab", why["user"]!.GetValue<string>());
+        Assert.Contains("Locked job is open on another computer by Fab", why["message"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.Locked, (await AsPage(HttpMethod.Put, $"/api/jobs/{id}", "page-b", "Mia", Req(5))).StatusCode);
+        Assert.Equal(HttpStatusCode.Locked, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/keep", "page-b", "Mia")).StatusCode);
+        // the same user in another browser: the same
+        Assert.Equal(HttpStatusCode.Locked, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/open", "page-c", "Fab")).StatusCode);
+        // the page that has it saves and renews; someone else's close does not let it go
+        Assert.Equal(HttpStatusCode.OK, (await AsPage(HttpMethod.Put, $"/api/jobs/{id}", "page-a", "Fab", Req(2))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/keep", "page-a", "Fab")).StatusCode);
+        await AsPage(HttpMethod.Post, $"/api/jobs/{id}/close", "page-b", "Mia");
+        Assert.Equal(HttpStatusCode.Locked, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/open", "page-b", "Mia")).StatusCode);
+        // closed there (as the page's beacon does it: ?page=): it opens here
+        Assert.Equal(HttpStatusCode.NoContent, (await api.Client.PostAsync($"/api/jobs/{id}/close?page=page-a", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/open", "page-b", "Mia")).StatusCode);
+        Assert.Equal(HttpStatusCode.Locked, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/open", "page-a", "Fab")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await AsPage(HttpMethod.Post, "/api/jobs/999999/open", "page-a", "Fab")).StatusCode);
+    }
+
+    private sealed class Clock : TimeProvider
+    {
+        public DateTimeOffset Now = new(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Fact]
+    public void A_job_held_by_a_computer_that_stopped_renewing_lets_go_after_the_lapse()
+    {
+        var clock = new Clock();
+        var locks = new JobLocks(clock);
+        Assert.True(locks.TryTake(1, "a", "Fab", out _));
+        clock.Now += JobLocks.Lapse / 2;
+        Assert.False(locks.TryTake(1, "b", "Mia", out var other));
+        Assert.Equal("Fab", other!.User);
+        Assert.True(locks.Keep(1, "a", "Fab"));
+        clock.Now += JobLocks.Lapse - TimeSpan.FromSeconds(1);
+        Assert.NotNull(locks.Other(1, "b"));
+        clock.Now += TimeSpan.FromSeconds(2);
+        Assert.Null(locks.Other(1, "b"));
+        Assert.True(locks.TryTake(1, "b", "Mia", out _));
+        // the stopped computer comes back: it lost the job
+        Assert.False(locks.Keep(1, "a", "Fab"));
+    }
+
     [Fact]
     public async Task Saving_again_replaces_parts_and_without_a_nest_it_is_a_draft()
     {
