@@ -10,7 +10,7 @@ import type {
 } from "./types";
 import { otherParts, testJobParts } from "./sampleParts";
 import type { Entity } from "../import/geometry";
-import { diag, diagHeaders } from "../job/diag";
+import { diag, diagHeaders, pageId } from "../job/diag";
 
 // Until the backend exists, the app runs on sample data.
 // Set VITE_USE_API=true (e.g. in .env.local) to call the real server instead.
@@ -501,6 +501,18 @@ export const api = {
       parts: d.parts.map((jp) => ({ partId: jp.part.id, qty: jp.qty, qtyMax: jp.qtyMax ?? jp.qty, no: jp.no, ...jobOwn(jp) })),
     };
     return id ? post<JobSaved>(`/api/jobs/${id}`, body, "PUT") : post<JobSaved>("/api/jobs", body);
+  },
+  /** Opens a saved job in this page: refused (status 423, data.user: who) while it is open in another page,
+   *  on another computer or in another browser. Always fine in the demo. */
+  openJobLock: (id: string): Promise<void> => (useApi ? post<void>(`/api/jobs/${id}/open`, {}).then(() => undefined) : Promise.resolve()),
+  /** Keeps the job open in this page (every half minute); refused (423) when it was lost to another page. */
+  keepJobLock: (id: string): Promise<void> => (useApi ? post<void>(`/api/jobs/${id}/keep`, {}).then(() => undefined) : Promise.resolve()),
+  /** The job is closed in this page: anyone may open it. beacon: as the page closes (it still goes out). */
+  closeJobLock: (id: string, beacon = false): void => {
+    if (!useApi) return;
+    const url = `/api/jobs/${id}/close?page=${encodeURIComponent(pageId)}`;
+    if (beacon && navigator.sendBeacon?.(url)) return;
+    void fetch(url, { method: "POST", keepalive: true, headers: diagHeaders() }).catch(() => { /* it lapses by itself */ });
   },
   /** A saved job's stock sheets and saved nest; null when it has none (sample jobs). */
   job: (id: string): Promise<JobDetail | null> =>

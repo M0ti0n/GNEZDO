@@ -4,6 +4,13 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+**A job is open in one place at a time:**
+- Opening a saved job that is open on another computer, in another browser or in another GNEZDO tab is refused, and says who has it and since when ("26-0409 Flanges is open on another computer by Mia (since 14:02): close it there first"). This applies to the same user too. Once it is closed there, it opens.
+- Saving over a job that is open somewhere else is refused the same way; SAVE AS still saves your changes as a new job.
+- A job is let go when its tab is closed or the page is closed. A computer that switches off or loses the network without closing it loses the job after 2 minutes. If that computer comes back after someone else has opened the job, it is told once, and its saves are refused.
+- Restoring unsaved work of a job that is open somewhere else restores it as a new job, so nothing is saved over theirs.
+- Long messages at the bottom of the screen stay longer, so they can be read.
+
 From the QA report (batch 1: a program that looks right but is not):
 - **Post process checks the sheet first** and does not write its program when:
   - a part on it is **not processed**: moved, or added since Auto cut (it was left out of the program without a word);

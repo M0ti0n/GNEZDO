@@ -68,6 +68,17 @@ const USER_NAME = "Fab"; // where there is no sign-in (the demo; the desktop bui
 const snapOf = (parts: JobPart[], stock: StockSheet[], sols: Solution[], machine: string) =>
   JSON.stringify({ p: parts.map((jp) => [jp.part.id, jp.qty, jp.qtyMax, jp.no, jp.part.material, jp.part.thicknessMm]), stock, n: nestsOfJob(sols, null)?.solutions ?? [], machine });
 
+/** A refusal from the server's job locks (423): who has the job open, since when. */
+type LockError = Error & { status?: number; data?: { user?: string; since?: string } };
+/** "26-0412 Brackets is open on another computer by Fab (since 14:02)" */
+const lockedText = (name: string, d?: { user?: string; since?: string }) => {
+  const at = d?.since ? new Date(d.since) : null;
+  const when = !at || isNaN(+at) ? ""
+    : at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : at.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return `${name} is open on another computer by ${d?.user || "someone"}${when ? ` (since ${when})` : ""}`;
+};
+
 export function App() {
   const [state, dispatch] = useReducer(shellReducer, initialShell);
   const [drawer, setDrawer] = useState<DrawerMode | null>(null);
@@ -201,7 +212,7 @@ export function App() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2600);
+    const t = setTimeout(() => setToast(null), Math.max(2600, toast.length * 55));   // long ones stay to be read
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -607,6 +618,9 @@ export function App() {
     // nest stops (nothing would show or keep its result)
     if (jid) {
       dropDraft(jid);   // closed without saving: its recovery copy goes too
+      // anyone may open it now (unless another tab here is the same job)
+      const sid = savedIdOf(jid);
+      if (sid && !state.tabs.some((x) => x.id !== tabId && x.kind === "job" && x.jobId && savedIdOf(x.jobId) === sid)) api.closeJobLock(sid);
       for (const x of solsOf(jid).list) if (x.run && !isFinished(x.run) && !x.error) void nestApi.stop(x.run.id).catch(() => {});
       const drop = <T,>(m: Record<string, T>) => { const n = { ...m }; delete n[jid]; return n; };
       setJobParts(drop); setJobStock(drop); setJobSol(drop); setJobScreen(drop); setJobServerId(drop); setJobMachine(drop); setSavedSnap(drop);
@@ -637,7 +651,23 @@ export function App() {
   const askRemove = (ids: string[]) => (ids.some((id) => history.changed(id)) ? setRemoving(ids) : removeNow(ids));
   const removingChanged = removing ? imports.filter((i) => removing.includes(i.id) && history.changed(i.id)) : [];
 
-  const openJob = (j: JobSummary) => { setJobEdited((m) => ({ ...m, [j.id]: { by: j.modifiedBy, at: j.modifiedAt } })); open(jobTab(j.id, j.name)); };
+  // A saved job is open in one page at a time (the server's job locks): opening one that is open on
+  // another computer, in another browser or in another GNEZDO tab is refused, saying who has it.
+  /** The saved job a job tab is (null: a new job, not saved yet). */
+  const savedIdOf = (jid: string) => jobServerId[jid] ?? (jid.startsWith("new-") ? null : jid);
+  const openSaved = async (id: string, name: string, edited?: { by: string; at: string }) => {
+    const here = state.tabs.find((t) => t.kind === "job" && t.jobId && savedIdOf(t.jobId) === id);
+    if (here) { dispatch({ type: "activate", id: here.id }); return; }
+    try { await api.openJobLock(id); }
+    catch (e) {
+      const err = e as LockError;
+      if (err.status === 423) { setToast(`${lockedText(name, err.data)}: close it there first`); diag("tab", `Job ${name} not opened: open elsewhere`, { job: id, by: err.data?.user }); return; }
+      // an older server (no locks) or a missing job: opened as before (the job's own load says what is wrong)
+    }
+    if (edited) setJobEdited((m) => ({ ...m, [id]: edited }));
+    open(jobTab(id, name));
+  };
+  const openJob = (j: JobSummary) => { void openSaved(j.id, j.name, { by: j.modifiedBy, at: j.modifiedAt }); };
 
   // Job search: a sheet's parts and pieces added to an open job (to fill leftover plates of other jobs):
   // parts already in the job get the pieces on top of what they need, new ones come in with that many
@@ -894,6 +924,8 @@ export function App() {
       const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: userName, machine: machineFor(jobId).id,
         ...(serverId && savedAt.current[jobId] ? { baseModifiedAt: savedAt.current[jobId] } : {}), ...(force ? { force: true } : {}) });
       savedAt.current[jobId] = r.modifiedAt;
+      // SAVE AS: the tab is the new job (open here: the server gave it to this page); the one it was is let go
+      if (asNew && known && known !== r.id && !state.tabs.some((x) => x.kind === "job" && x.jobId && x.jobId !== jobId && savedIdOf(x.jobId) === known)) api.closeJobLock(known);
       if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
       serverIds.current[jobId] = r.id;
       setJobEdited((m) => ({ ...m, [jobId]: { by: userName, at: new Date().toISOString() } }));
@@ -902,7 +934,12 @@ export function App() {
       diag("save", `Job ${title} saved${asNew ? " as new" : ""}`, { job: jobId, serverId: r.id, parts: parts.length, sheets: r.sheetCount, solutions: st.list.length });
       setToast(`${asNew ? `Saved as ${title}` : "Job saved"}${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}${r.jobFileError ? `; job file not written: ${r.jobFileError}` : r.jobFile ? "; job file written" : ""}`);
     } catch (e) {
-      const err = e as Error & { status?: number; data?: { modifiedBy?: string; modifiedAt?: string } };
+      const err = e as Error & { status?: number; data?: { modifiedBy?: string; modifiedAt?: string; user?: string; since?: string } };
+      if (err.status === 423) {
+        setToast(`Not saved: ${lockedText(title, err.data)}. Close it there first, or SAVE AS a new job`);
+        diag("save", `Job ${title} not saved: open elsewhere`, { job: jobId, by: err.data?.user });
+        return false;
+      }
       if (err.status === 409) {
         const when = err.data?.modifiedAt ? new Date(err.data.modifiedAt).toLocaleString() : "";
         setSaveConflict({ jobId, title, text: `${err.message}${when ? ` (${when})` : ""}` });
@@ -923,6 +960,33 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+
+  // The saved jobs open here, kept open every half minute (a page that stops renewing loses them after two
+  // minutes) and let go as the page closes. One taken meanwhile (this computer was asleep) is said once.
+  const heldJobs = useRef<{ id: string; title: string }[]>([]);
+  heldJobs.current = state.tabs.flatMap((t) => (t.kind === "job" && t.jobId && savedIdOf(t.jobId) ? [{ id: savedIdOf(t.jobId)!, title: t.title }] : []));
+  useEffect(() => {
+    if (demoMode) return;
+    const lost = new Set<string>();
+    const keep = () => {
+      for (const { id, title } of heldJobs.current) {
+        api.keepJobLock(id).then(() => lost.delete(id)).catch((e) => {
+          const err = e as LockError;
+          if (err.status !== 423 || lost.has(id)) return;
+          lost.add(id);
+          setToast(`${lockedText(title, err.data)} now: it was opened there while this one was away. Saving here is refused; SAVE AS keeps your changes`);
+          diag("tab", `Job ${title} taken over elsewhere`, { job: id, by: err.data?.user });
+        });
+      }
+    };
+    const t = window.setInterval(keep, 30_000);
+    const bye = () => { for (const { id } of heldJobs.current) api.closeJobLock(id, true); };
+    // back from the browser's page cache (let go as it left): taken again at once
+    const back = (e: PageTransitionEvent) => { if (e.persisted) keep(); };
+    window.addEventListener("pagehide", bye);
+    window.addEventListener("pageshow", back);
+    return () => { window.clearInterval(t); window.removeEventListener("pagehide", bye); window.removeEventListener("pageshow", back); };
+  }, []);
 
   // Another machine for a job: of another technology (laser -> plasma, ...) its solutions are out of
   // date and it has to be nested again; of the same one they stay, with a reminder to check the gaps.
@@ -997,8 +1061,17 @@ export function App() {
     for (const id of ids) {
       try {
         const c = (await drafts.get(id)).content;
+        // open on another computer: restored as a new job (its SAVE makes another job, nothing is saved over theirs)
+        let elsewhere = false;
+        if (c.jobId && !taken.has(c.jobId)) {
+          try { await api.openJobLock(c.jobId); }
+          catch (e) {
+            const err = e as LockError;
+            if (err.status === 423) { elsewhere = true; setToast(`${lockedText(c.title, err.data)}: your unsaved copy is restored as a new job`); }
+          }
+        }
         // the saved job's own tab, unless it is open already: then a new tab, saving over that job
-        const jid = c.jobId && !taken.has(c.jobId) ? c.jobId : `new-${++newJobCount.current}`;
+        const jid = c.jobId && !taken.has(c.jobId) && !elsewhere ? c.jobId : `new-${++newJobCount.current}`;
         taken.add(jid);
         const sols = solutionsFromSaved(c.nest);
         setJobParts((m) => ({ ...m, [jid]: c.parts }));
@@ -1006,7 +1079,7 @@ export function App() {
         if (machines.list.some((x) => x.id === c.machine)) setJobMachine((m) => ({ ...m, [jid]: c.machine }));
         if (sols) setJobSol((m) => ({ ...m, [jid]: sols }));
         if (c.screen) setJobScreen((m) => ({ ...m, [jid]: c.screen }));
-        if (c.jobId && jid !== c.jobId) setJobServerId((m) => ({ ...m, [jid]: c.jobId! }));
+        if (c.jobId && jid !== c.jobId && !elsewhere) setJobServerId((m) => ({ ...m, [jid]: c.jobId! }));
         setSavedSnap((m) => ({ ...m, [jid]: "restored" }));   // unsaved until SAVE
         restoredIds.current[jid] = id;
         dispatch({ type: "open", tab: jobTab(jid, c.title) });
@@ -1613,7 +1686,7 @@ export function App() {
                 setRules(r);
                 // a list that has not been touched yet follows the new defaults
                 if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller, commonCut: r.commonOnOutline }));
-              }} onOpenJob={(id, name) => open(jobTab(id, name))} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
+              }} onOpenJob={(id, name) => void openSaved(id, name)} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "remnants" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && active.kind !== "extract" && active.kind !== "special" && <PlaceholderPage tab={active} />}
             {active.kind === "extract" && <ExtractEmpty onPick={() => setDrawer("extract")} />}
           </main>

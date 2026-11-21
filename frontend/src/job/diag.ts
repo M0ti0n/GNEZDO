@@ -25,10 +25,27 @@ export const browserId: string = (() => {
   } catch { return `b-${Math.random().toString(36).slice(2, 10)}`; }
 })();
 
+/** This page's id (one browser tab of GNEZDO): a job is open in one page at a time (the server's JobLocks).
+ *  Kept over a reload of the page, new for any other page (a second tab, a duplicated one). */
+export const pageId: string = (() => {
+  const fresh = () => `p-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+  try {
+    const k = "gnezdo.pageId";
+    const nav = performance.getEntriesByType?.("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const v = sessionStorage.getItem(k);
+    if (v && nav?.type === "reload") return v;
+    const n = fresh();
+    sessionStorage.setItem(k, n);
+    return n;
+  } catch { return fresh(); }
+})();
+
 export const diagUser = () => user;
 
-/** Headers with every call, so the server's log says who it was. */
-export const diagHeaders = (): Record<string, string> => (user ? { "X-Gnezdo-User": user, "X-Gnezdo-Browser": browserId } : { "X-Gnezdo-Browser": browserId });
+/** Headers with every call, so the server's log says who it was (and which page: job locks). */
+export const diagHeaders = (): Record<string, string> => (user
+  ? { "X-Gnezdo-User": user, "X-Gnezdo-Browser": browserId, "X-Gnezdo-Page": pageId }
+  : { "X-Gnezdo-Browser": browserId, "X-Gnezdo-Page": pageId });
 
 /** Something happened here. kind: a short word (tool, nest, save, error...); msg: what, readable. */
 export function diag(kind: string, msg: string, data?: unknown) {

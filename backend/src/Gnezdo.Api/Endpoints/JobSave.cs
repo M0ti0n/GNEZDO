@@ -32,11 +32,49 @@ public static class JobSave
     {
         app.MapGet("/api/jobs/{id:int}", GetAsync);
         // signed in: the job is modified by who it really is
-        app.MapPost("/api/jobs", (JobSaveRequest r, HttpContext ctx, GnezdoDb db, TimeProvider clock, CancellationToken ct) =>
-            SaveAsync(null, r with { ModifiedBy = ctx.User.Identity?.Name ?? r.ModifiedBy }, db, clock, ct));
-        app.MapPut("/api/jobs/{id:int}", (int id, JobSaveRequest r, HttpContext ctx, GnezdoDb db, TimeProvider clock, CancellationToken ct) =>
-            SaveAsync(id, r with { ModifiedBy = ctx.User.Identity?.Name ?? r.ModifiedBy }, db, clock, ct));
+        // a new job is open in the tab that saved it
+        app.MapPost("/api/jobs", async (JobSaveRequest r, HttpContext ctx, GnezdoDb db, TimeProvider clock, JobLocks locks, CancellationToken ct) =>
+        {
+            var res = await SaveAsync(null, r with { ModifiedBy = ctx.User.Identity?.Name ?? r.ModifiedBy }, db, clock, ct);
+            if (res is IValueHttpResult { Value: JobSavedDto saved } && int.TryParse(saved.Id, out var nid) && JobLocks.PageOf(ctx) is { Length: > 0 } page)
+                locks.TryTake(nid, page, JobLocks.UserOf(ctx), out _);
+            return res;
+        });
+        // not over a job open somewhere else
+        app.MapPut("/api/jobs/{id:int}", async (int id, JobSaveRequest r, HttpContext ctx, GnezdoDb db, TimeProvider clock, JobLocks locks, CancellationToken ct) =>
+        {
+            if (locks.Other(id, JobLocks.PageOf(ctx)) is { } other)
+                return JobLocks.Refused(await NameOf(db, id, ct), other, "not saved. Close it there first, or save it as a new job (SAVE AS).");
+            return await SaveAsync(id, r with { ModifiedBy = ctx.User.Identity?.Name ?? r.ModifiedBy }, db, clock, ct);
+        });
+
+        // open in one tab at a time (JobLocks)
+        app.MapPost("/api/jobs/{id:int}/open", async (int id, HttpContext ctx, GnezdoDb db, JobLocks locks, CancellationToken ct) =>
+        {
+            if (JobLocks.PageOf(ctx) is not { Length: > 0 } page) return Results.BadRequest(new { message = "No page id (X-Gnezdo-Page)." });
+            if (!await db.Jobs.AnyAsync(j => j.Id == id, ct)) return Results.NotFound();
+            return locks.TryTake(id, page, JobLocks.UserOf(ctx), out var other)
+                ? Results.Ok(new { open = true })
+                : JobLocks.Refused(await NameOf(db, id, ct), other!, "close it there first.");
+        });
+        app.MapPost("/api/jobs/{id:int}/keep", async (int id, HttpContext ctx, GnezdoDb db, JobLocks locks, CancellationToken ct) =>
+        {
+            if (JobLocks.PageOf(ctx) is not { Length: > 0 } page) return Results.BadRequest(new { message = "No page id (X-Gnezdo-Page)." });
+            if (locks.Keep(id, page, JobLocks.UserOf(ctx))) return Results.Ok(new { open = true });
+            return locks.Other(id, page) is { } other
+                ? JobLocks.Refused(await NameOf(db, id, ct), other, "it was opened there while this computer was away.")
+                : Results.Ok(new { open = true });
+        });
+        // also from navigator.sendBeacon when the page closes (no headers: ?page=)
+        app.MapPost("/api/jobs/{id:int}/close", (int id, HttpContext ctx, JobLocks locks) =>
+        {
+            if (JobLocks.PageOf(ctx) is { Length: > 0 } page) locks.Release(id, page);
+            return Results.NoContent();
+        });
     }
+
+    private static async Task<string> NameOf(GnezdoDb db, int id, CancellationToken ct) =>
+        await db.Jobs.Where(j => j.Id == id).Select(j => j.Name).FirstOrDefaultAsync(ct) ?? $"Job {id}";
 
     private static JsonNode? Parse(string json)
     {
