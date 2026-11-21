@@ -71,8 +71,8 @@ PostgreSQL server:
 First by hand, to see that it starts:
      sudo -u gnezdo /opt/gnezdo/start.sh
 It says "Now listening on: http://0.0.0.0:8090" when it is ready (the first
-start also creates the tables). Open http://<server-name>:8090 from a PC: GNEZDO
-asks for the first user, who is an admin (see 8). Stop it with Ctrl+C.
+start also creates the tables and the user Admin). Open http://<server-name>:8090
+from a PC and sign in as Admin, without a password (see 8). Stop it with Ctrl+C.
 
 Then as a service, so it starts with the server and after a crash:
      sudo cp /opt/gnezdo/gnezdo.service /etc/systemd/system/
@@ -148,10 +148,12 @@ of it to send when something goes wrong.
 
 8. USERS AND SIGN-IN
 --------------------
-GNEZDO asks everyone to sign in. On the very first start it asks for the first
-user, who is an admin. The admin adds the others: click your name in the top
-right -> Users. A password is optional; without one, anyone who knows the name
-can sign in as that user, so give admins a password. A sign-in lasts 30 days in
+GNEZDO asks everyone to sign in. A new installation has one user, Admin, an
+admin without a password: sign in as Admin and give it a password at once
+(GNEZDO menu -> Settings -> Administration; until then anyone can sign in as
+Admin). There the admin adds the others, and the keys other apps read GNEZDO's
+status with. A password is optional; without one, anyone who knows the name can
+sign in as that user, so give admins a password. A sign-in lasts 30 days in
 that browser. The keys for it are in /opt/gnezdo/data: keep that folder.
 
 Settings -> Data shows which PostgreSQL server and database GNEZDO uses. To

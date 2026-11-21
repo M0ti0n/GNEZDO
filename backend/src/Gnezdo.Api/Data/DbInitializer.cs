@@ -41,6 +41,8 @@ public static class DbInitializer
             }
         }
 
+        await Gnezdo.Api.Auth.AuthEndpoints.EnsureAdminAsync(scope.ServiceProvider, db, logger, ct);
+
         if (options.SeedSampleData && !await db.Parts.IgnoreQueryFilters().AnyAsync(ct))
         {
             await SampleData.SeedAsync(db, DateTimeOffset.UtcNow, ct);

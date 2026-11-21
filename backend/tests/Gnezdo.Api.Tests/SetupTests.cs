@@ -90,10 +90,10 @@ public sealed class SetupTests : IAsyncLifetime
         var save = await (await _client.PostAsJsonAsync("/api/setup/save", Form(_db))).Content.ReadFromJsonAsync<JsonObject>();
         Assert.True(save!["ok"]!.GetValue<bool>(), save["message"]?.ToString());
 
-        // GNEZDO carries on: the first admin next; the connection is in config.json, Setup gone
+        // GNEZDO carries on: sign in as Admin next; the connection is in config.json, Setup gone
         Assert.False((await _client.GetFromJsonAsync<JsonObject>("/api/health"))!["setup"]!.GetValue<bool>());
         var state = (await _client.GetFromJsonAsync<JsonObject>("/api/auth/state"))!;
-        Assert.True(state["setupNeeded"]!.GetValue<bool>());
+        Assert.True(state["defaultAdmin"]!.GetValue<bool>());
         var cfg = JsonNode.Parse(await File.ReadAllTextAsync(_config))!;
         Assert.Contains(_db, cfg["ConnectionStrings"]!["Gnezdo"]!.GetValue<string>());
         Assert.Null(cfg["Gnezdo"]!["Setup"]);

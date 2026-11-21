@@ -1,4 +1,4 @@
-// Sign-in (server build): who is signed in, the first admin, users (admin), one's own password.
+// Sign-in (server build): who is signed in, users (admin: Settings -> Administration), one's own password.
 // The demo and the desktop build have no sign-in: the state says not required.
 import { demoMode } from "./api";
 import { diagHeaders } from "../job/diag";
@@ -8,7 +8,9 @@ export interface UserRow extends Me { createdAt: string; lastSignInAt: string | 
 /** A key of the status API (another app reads GNEZDO's status with it); the key itself is shown once. */
 export interface ApiKeyRow { id: number; name: string; prefix: string; createdAt: string; createdBy: string; lastUsedAt: string | null }
 export interface AuthState {
-  required: boolean; setupNeeded: boolean; user: Me | null;
+  required: boolean; user: Me | null;
+  /** The user a new database starts with (Admin, no password) is still there: the sign-in page says so. */
+  defaultAdmin?: boolean;
   /** The server has no database yet: "Set up the database" comes first. */
   dbSetup?: boolean;
 }
@@ -30,15 +32,14 @@ async function call<T>(url: string, method = "GET", body?: unknown): Promise<T> 
 
 export const auth = {
   state: async (): Promise<AuthState> => {
-    if (demoMode) return { required: false, setupNeeded: false, user: null };
+    if (demoMode) return { required: false, user: null };
     try {
       const h = (await (await fetch("/api/health", { headers: { Accept: "application/json" } })).json()) as { setup?: boolean };
-      if (h.setup) return { required: true, setupNeeded: false, user: null, dbSetup: true };
+      if (h.setup) return { required: true, user: null, dbSetup: true };
     } catch { /* answered below */ }
     try { return await call<AuthState>("/api/auth/state"); }
-    catch { return { required: false, setupNeeded: false, user: null }; }   // an older server without sign-in
+    catch { return { required: false, user: null }; }   // an older server without sign-in
   },
-  setup: (name: string, password: string) => call<Me>("/api/auth/setup", "POST", { name, password: password || null }),
   signIn: (name: string, password: string) => call<Me>("/api/auth/signin", "POST", { name, password: password || null }),
   signOut: () => call<void>("/api/auth/signout", "POST"),
   changePassword: (current: string, password: string) => call<Me>("/api/auth/password", "POST", { current: current || null, password: password || null }),

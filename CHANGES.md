@@ -4,6 +4,12 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+**Settings → Administration** (admins of the server build; also in the menu under your name):
+- **Users:** add, rename, set or remove a password, make or unmake an admin, remove. The last admin can't be removed or unmade.
+- **Status API keys** for the apps that read GNEZDO's status.
+- These were two separate dialogs under your name (Users, Status API keys). Both now live in this section.
+- **A new installation has one user, Admin, an admin without a password.** The sign-in page fills in Admin and says to sign in without a password, then give Admin a password. It stops saying so once Admin has one. This replaces the "Create the first admin" page. An existing database without users gets Admin too.
+
 **A job is open in one place at a time:**
 - Opening a saved job that is open on another computer, in another browser or in another GNEZDO tab is refused, and says who has it and since when ("26-0409 Flanges is open on another computer by Mia (since 14:02): close it there first"). This applies to the same user too. Once it is closed there, it opens.
 - Saving over a job that is open somewhere else is refused the same way; SAVE AS still saves your changes as a new job.

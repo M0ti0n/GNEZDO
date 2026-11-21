@@ -2922,3 +2922,10 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .sp-lock { color: #8a5a00; font-weight: 700; font-size: 12px; text-transform: none; letter-spacing: 0; }
 .filter-pair.is-locked .field { background: #f1f2f4; color: var(--ink-3, #6b7280); cursor: not-allowed; }
 .sp-lock-note { margin: 6px 0 0; font-size: 12.5px; color: #8a5a00; }
+
+/* Settings -> Administration */
+.admin-table { overflow-x: auto; margin: 4px 0 12px; }
+.admin-table .users-table { min-width: 640px; }
+.admin-warn { margin: 0 0 10px; padding: 8px 12px; border-radius: 8px; background: #fff4e0; border: 1px solid #f0c27a; color: #7a4a00; }
+.admin-nopw { color: #b45309; font-weight: 600; }
+.rule .users-add h4 { width: 100%; margin: 4px 0 0; font-size: 14px; }

@@ -55,8 +55,8 @@ import { diag, flush, startDiag } from "./job/diag";
 import { auth, SIGN_IN_NEEDED, type AuthState, type Me } from "./api/auth";
 import { SignInPage } from "./components/SignInPage";
 import { DatabaseSetupPage } from "./components/DatabaseSetup";
-import { ApiKeysDialog, PasswordDialog, UsersDialog } from "./components/UsersDialog";
-import { SettingsPage } from "./pages/SettingsPage";
+import { PasswordDialog } from "./components/UsersDialog";
+import { SettingsPage, type Section as SettingsSection } from "./pages/SettingsPage";
 import { HistoryStore, undoKey, type UndoState } from "./state/history";
 import type { Drawing } from "./import/geometry";
 import { VIEW_TITLE, drawingTab, initialShell, jobTab, shellReducer, type PageKind, type Tab, type ViewKind } from "./state/tabs";
@@ -139,9 +139,11 @@ export function App() {
   // every message shown is in the diagnostic log too: it is what the user saw
   const setToast = (m: string | null) => { if (m) diag("toast", m); setToastState(m); };
   // -- sign-in (server build) ------------------------------------------------------------------
-  const [authState, setAuthState] = useState<AuthState | null>(demoMode ? { required: false, setupNeeded: false, user: null } : null);
+  const [authState, setAuthState] = useState<AuthState | null>(demoMode ? { required: false, user: null } : null);
   const [me, setMe] = useState<Me | null>(null);
-  const [accountDlg, setAccountDlg] = useState<"password" | "users" | "apikeys" | null>(null);
+  const [accountDlg, setAccountDlg] = useState<"password" | null>(null);
+  /** Settings opened at a section (the user menu -> Administration); n: again, when it is open already */
+  const [settingsAt, setSettingsAt] = useState<{ section: SettingsSection; n: number } | null>(null);
   useEffect(() => { void auth.state().then((s) => { setAuthState(s); setMe(s.user); }); }, []);
   // desktop build: the PC's user is the name on saves and in the log
   const [deskUser, setDeskUser] = useState<string | null>(null);
@@ -1404,18 +1406,16 @@ export function App() {
   // first sign-in on this page: reloaded, so everything loads as this user; signed out while working:
   // the same person carries on where they were, someone else gets a fresh page
   const signedIn = (m: Me) => {
-    if (signedInAs.current && signedInAs.current === m.name) { setMe(m); setAuthState({ ...authState, setupNeeded: false, user: m }); }
+    if (signedInAs.current && signedInAs.current === m.name) { setMe(m); setAuthState({ ...authState, user: m }); }
     else window.location.reload();
   };
   if (authState.dbSetup) return <DatabaseSetupPage onDone={() => window.location.reload()} />;
-  if (authState.required && !me && !signedInAs.current) return <SignInPage setupNeeded={authState.setupNeeded} onSignedIn={signedIn} />;
+  if (authState.required && !me && !signedInAs.current) return <SignInPage defaultAdmin={authState.defaultAdmin} onSignedIn={signedIn} />;
 
   return (
     <div className="app">
-      {authState.required && !me && <div className="signin-over"><SignInPage setupNeeded={false} onSignedIn={signedIn} /></div>}
+      {authState.required && !me && <div className="signin-over"><SignInPage onSignedIn={signedIn} /></div>}
       {restoreRows && <RestoreDialog rows={restoreRows} onRestore={(ids) => void restoreDrafts(ids)} onDiscard={discardDrafts} onLater={() => setRestoreRows(null)} />}
-      {accountDlg === "users" && me && <UsersDialog me={me} onMe={setMe} onClose={() => setAccountDlg(null)} />}
-      {accountDlg === "apikeys" && me && <ApiKeysDialog onClose={() => setAccountDlg(null)} />}
       {accountDlg === "password" && me && <PasswordDialog me={me} onMe={setMe} onClose={() => setAccountDlg(null)} />}
       <TabBar
         tabs={state.tabs}
@@ -1426,12 +1426,13 @@ export function App() {
           onPick: (id) => {
             // signed out: a fresh page, so the next person does not see these tabs
             if (id === "signout") { diag("auth", `${me.name} signed out`); void flush().finally(() => auth.signOut().finally(() => window.location.reload())); }
+            else if (id === "admin") { setSettingsAt((a) => ({ section: "admin", n: (a?.n ?? 0) + 1 })); showView("settings"); }
             else setAccountDlg(id);
           },
         } : undefined}
         onActivate={(id) => dispatch({ type: "activate", id })}
         onClose={(id) => requestClose(id)}
-        onSettings={() => showView("settings")}
+        onSettings={() => { setSettingsAt(null); showView("settings"); }}
         undo={undoState}
         save={job ? { onSave: () => void saveJob(job.id, job.title), onSaveAs: () => setSaveAsFor({ jobId: job.id, name: `${job.title} copy` }) } : null}
       />
@@ -1681,7 +1682,8 @@ export function App() {
                 onSend={(list, count, own) => { addFittings(list, count, own); }} />
               </ErrorBoundary>
             )}
-            {(active.kind === "settings" || active.kind === "rules") && <SettingsPage onClose={() => showView("home")} startSection={active.kind === "rules" ? "rules" : undefined}
+            {(active.kind === "settings" || active.kind === "rules") && <SettingsPage onClose={() => showView("home")} startSection={active.kind === "rules" ? "rules" : settingsAt?.section} startNo={settingsAt?.n}
+              admin={authState.required && me?.isAdmin ? { me, onMe: setMe } : undefined}
               rules={rules} onRules={(r) => {
                 setRules(r);
                 // a list that has not been touched yet follows the new defaults
