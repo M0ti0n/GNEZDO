@@ -66,9 +66,15 @@ export function NcOutputSettings({ machine, onChange }: { machine: Machine; onCh
                 onChange={(e) => onChange({ ...pp, fileName: e.target.value || undefined })} />
             </label>
             <label className="chk"><input type="checkbox" checked={!!pp.plainName} onChange={(e) => onChange({ ...pp, plainName: e.target.checked || undefined })} /> Letters and digits only</label>
+            <label className={`ncout-ext ncout-char${pp.plainName ? "" : " is-off"}`} title="Each space, _, -, . or other character becomes this letter (or digit); empty: left out">
+              <span>others become</span>
+              <input className="field" value={pp.plainChar ?? ""} maxLength={1} placeholder="–" spellCheck={false} disabled={!pp.plainName}
+                aria-label="Letter that replaces other characters in the program name"
+                onChange={(e) => { const c = e.target.value.replace(/[^A-Za-z0-9]/g, "").slice(-1); onChange({ ...pp, plainChar: c || undefined }); }} />
+            </label>
             <label className="chk" title="Post process shows RESTART HELP: click a contour on the sheet to see where the program restarts it (LVD: the counters #530 and #529; HACO: the block N and the pierce point)">
               <input type="checkbox" checked={!!pp.restartHelp} onChange={(e) => onChange({ ...pp, restartHelp: e.target.checked || undefined })} /> Restart help in Post process</label>
-            <p className="rule-help">The file's name and the name inside the program. <code>{"{jobname}"}</code> the job's name, <code>{"{#}"}</code> the sheet's number; anything else stays as written. Example: job MIHA2280, sheet 1 → <b>{ncNameOf(pp, "MIHA2280", 1)}{pp.extension}</b>. Letters and digits only leaves out spaces, _, - and other characters, for controls that refuse them.</p>
+            <p className="rule-help">The file's name and the name inside the program. <code>{"{jobname}"}</code> the job's name, <code>{"{#}"}</code> the sheet's number; anything else stays as written. Example: job MIHA2280, sheet 1 → <b>{ncNameOf(pp, "MIHA2280", 1)}{pp.extension}</b>. Letters and digits only, for controls that refuse other characters: each space, _, -, . and so on becomes the letter in the box (e.g. X: MIHA2280_1 → MIHA2280X1), or is left out when the box is empty.</p>
           </div>
         )}
         {msg && <p className={`tech-msg${msg.bad ? " is-bad" : ""}`} role="status">{msg.text}</p>}

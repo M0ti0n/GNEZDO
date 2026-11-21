@@ -78,6 +78,9 @@ export interface Postprocessor {
   fileName?: string;
   /** Only letters and digits in the program's name (the rest left out): for controls that refuse others */
   plainName?: boolean;
+  /** With plainName: the letter (or digit) each other character becomes, e.g. "X": MIHA2280_1 → MIHA2280X1;
+   *  missing: left out */
+  plainChar?: string;
   /** Post process shows RESTART HELP: for a clicked contour, where the program restarts it (the
    *  postprocessor's counters) */
   restartHelp?: boolean;
@@ -86,10 +89,13 @@ export interface Postprocessor {
 export const DEFAULT_NC_NAME = "{jobname}_{#}";
 
 /** The NC program's name for a sheet (sheetNo from 1), without the extension. */
-export function ncNameOf(pp: Pick<Postprocessor, "fileName" | "plainName"> | undefined, jobName: string, sheetNo: number): string {
+export function ncNameOf(pp: Pick<Postprocessor, "fileName" | "plainName" | "plainChar"> | undefined, jobName: string, sheetNo: number): string {
   const t = pp?.fileName?.trim() || DEFAULT_NC_NAME;
   let name = t.replace(/\{jobname\}/gi, jobName.trim()).replace(/\{#\}/g, String(sheetNo));
-  if (pp?.plainName) name = name.replace(/[^A-Za-z0-9]+/g, "");
+  if (pp?.plainName) {
+    const c = /^[A-Za-z0-9]$/.test(pp.plainChar ?? "") ? pp.plainChar! : "";
+    name = name.trim().replace(/[^A-Za-z0-9]/g, c);
+  }
   name = name.replace(/[\\/:*?"<>|]+/g, "_").trim();   // never a character a file name cannot have
   return name || `${sheetNo}`;
 }
