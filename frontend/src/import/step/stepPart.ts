@@ -11,7 +11,7 @@ import type { Rotation } from "../rules";
 import { readStep, type Solid, type StepModel } from "./step";
 import { withCuts, type FaceCut } from "./split";
 import { textLines, textWidth } from "../singleLine";
-import { bendMarks, flatDxf, stitch, unfold, type Unfolded, type V2 } from "./unfold";
+import { bendMarks, bendMarksDown, flatDxf, stitch, unfold, type Unfolded, type V2 } from "./unfold";
 
 export const STEP_ACCEPT = ".step,.stp";
 export const isStepName = (name: string) => /\.(step|stp)$/i.test(name);
@@ -33,6 +33,8 @@ export interface StepSettings {
   markLen: number;
   markInset: number;
   marks: MarkAs;
+  /** down bends marked too (dashed marks), to Import 2D as the up bends' */
+  marksDown?: boolean;
   /** angle and UP / DOWN shown beside the bends */
   annotate: boolean;
   /** ... and engraved (traced) with the single-line font, `textMm` high (capitals) */
@@ -80,6 +82,7 @@ export interface UnfoldProfile {
   markLen: number;
   markInset: number;
   marks: MarkAs;
+  marksDown?: boolean;
   annotate: boolean;
   engraveText?: boolean;
   textMm?: number;
@@ -112,7 +115,7 @@ export function kFor(p: UnfoldProfile, material: string, thicknessMm: number | n
 }
 
 export function settingsFrom(p: UnfoldProfile): StepSettings {
-  return { profile: p.name, kFactor: p.kFactor, foil: p.foil, grain: "none", markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate, engraveText: !!p.engraveText, textMm: p.textMm ?? 6, mode: "sheet", stitch: [], comp: { side: "none", t: 0, r: 0 } };
+  return { profile: p.name, kFactor: p.kFactor, foil: p.foil, grain: "none", markLen: p.markLen, markInset: p.markInset, marks: p.marks, marksDown: !!p.marksDown, annotate: p.annotate, engraveText: !!p.engraveText, textMm: p.textMm ?? 6, mode: "sheet", stitch: [], comp: { side: "none", t: 0, r: 0 } };
 }
 
 // ------------------------------------------------------------------ unfolding
@@ -177,6 +180,8 @@ function turn90(u: Unfolded): Unfolded {
 
 /** The bend marks the settings ask for. */
 export const marksOf = (u: Unfolded, st: StepSettings) => (st.marks === "none" ? [] : bendMarks(u, st.markLen, st.markInset));
+/** The down bends' dashed marks (Down bends ticked; none when bend marks are off). */
+export const marksDownOf = (u: Unfolded, st: StepSettings) => (st.marks === "none" || !st.marksDown ? [] : bendMarksDown(u, st.markLen, st.markInset));
 
 /** A bend's label: its angle and which way it goes. */
 export const bendLabel = (b: { angleDeg: number; up: boolean }) => `${Math.round(b.angleDeg * 10) / 10}° ${b.up ? "UP" : "DOWN"}`;
@@ -275,7 +280,7 @@ export function applyThreads(u: Unfolded, st: StepSettings): { u: Unfolded; line
 /** The flat pattern as an import drawing: the outline cut, the bend marks traced (or open cut), the labels traced. */
 export function flatDrawing(id: string, name: string, u0: Unfolded, st: StepSettings): Drawing {
   const { u, lines } = applyThreads(u0, st);
-  const text = flatDxf(u, { marks: marksOf(u, st), bendLines: false, texts: bendTexts(u, st), threads: lines, fitTol: splineTolOf(loadRules()) });
+  const text = flatDxf(u, { marks: [...marksOf(u, st), ...marksDownOf(u, st)], bendLines: false, texts: bendTexts(u, st), threads: lines, fitTol: splineTolOf(loadRules()) });
   const r = readDxf(text, `${name}.dxf`);
   const role: Role = st.marks === "openCut" ? "openCut" : "trace";
   const entities = r.drawing.entities.map((e) => (e.layer === "BEND_MARK" ? { ...e, role, fileRole: role } : e.layer === "BEND_TEXT" || e.layer === "THREAD" ? { ...e, role: "trace" as Role, fileRole: "trace" as Role } : e));

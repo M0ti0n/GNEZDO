@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- 3D Extractor → **Measure 2D**: click two things: points (corners, hole centers, middles) snap; a click on an edge or a bend line takes the line, on an arc or a hole its center. Point to point: straight (with X and Y); point to line: square to the line; two lines: the distance between them (not parallel: the shortest). The picked lines are highlighted
+- 3D Extractor, flat pattern: the measured value stays readable when zoomed in (its white halo grew with the zoom and covered it)
+- 3D Extractor → Bend marks: new **Down bends too (dashed marks)**: down bends get marks as well, dashed (the up bends' stay solid), shown in the flat pattern (brown) and sent to Import 2D and the Flat DXF as the up bends' marks (Trace / Open cut). Also in the unfold profiles
+- 3D Extractor: the **Send to Import 2D** button in the part panel has an outline like the other buttons
 - Nest report:
   - the **Job** in each page's head has the sheet's number after it: **TESTJOB_2** (the operator finds the program by it)
   - the first row of the sheet's table is now **Job file name**, then **Sheet No** (they were the other way round)

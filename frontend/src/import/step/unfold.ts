@@ -331,6 +331,27 @@ export function bendMarks(u: Unfolded, len = 20, inset = 2, all = false): [V2, V
   return out;
 }
 
+/** Down bends' marks (the same places as bendMarks' for up bends), dashed: each mark as short dashes,
+ *  so the operator tells them from the up bends' solid ones. */
+export function bendMarksDown(u: Unfolded, len = 20, inset = 2): [V2, V2][] {
+  const solid: [V2, V2][] = [];
+  const downOnly: Unfolded = { ...u, bendLines: u.bendLines.filter((_, i) => u.bends[i] && !u.bends[i].up), bends: u.bends.filter((b) => b && !b.up) };
+  solid.push(...bendMarks(downOnly, len, inset, true));
+  const out: [V2, V2][] = [];
+  for (const [a, b] of solid) {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    // about 3 mm dashes, 2.5 mm gaps; at least 2 dashes
+    const n = Math.max(2, Math.round((L + 2.5) / 5.5)), dash = (L - (n - 1) * 2.5) / n;
+    if (dash <= 0.3) { out.push([a, b]); continue; }
+    const d: V2 = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+    for (let k = 0; k < n; k++) {
+      const t0 = k * (dash + 2.5);
+      out.push([[a[0] + d[0] * t0, a[1] + d[1] * t0], [a[0] + d[0] * (t0 + dash), a[1] + d[1] * (t0 + dash)]]);
+    }
+  }
+  return out;
+}
+
 /** The flat pattern as DXF (R12): outline on layer 0 (lines, arcs, circles); bend marks on BEND_MARK
  *  (traced); the bends' whole lines on BEND (for a drawing, not for cutting) unless left out. */
 export function flatDxf(u: Unfolded, o: { marks?: [V2, V2][]; bendLines?: boolean; texts?: V2[][]; threads?: V2[][]; fitTol?: number } = {}): string {

@@ -2564,7 +2564,12 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .uf-svg .uf-snap { fill: none; stroke: #e3262b; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
 .uf-svg .uf-dim path { stroke: #e3262b; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 .uf-svg .uf-dim circle { fill: #e3262b; }
-.uf-svg .uf-dim text { fill: #c8171d; font-family: var(--font-cond); font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.uf-svg .uf-dim text, .uf-svg .uf-dim-msg { fill: #c8171d; font-family: var(--font-cond); font-weight: 700; paint-order: stroke; stroke: #fff; stroke-linejoin: round; }
+.uf-svg .uf-dim-msg { fill: #8a5a00; }
+.uf-svg .uf-dim path.is-ext { stroke-dasharray: 4 3; stroke-width: 1; }
+.uf-svg .uf-snap.is-line { stroke-width: 3; opacity: .75; }
+.uf-svg .uf-m.is-down { stroke: #b4561f; }
+.uf-leg i.is-mark-down { height: 0; border: 0; border-top: 3px dashed #b4561f; border-radius: 0; }
 .uf-leg { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 6px 12px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-2); }
 .uf-leg span { display: inline-flex; align-items: center; gap: 5px; }
 .uf-leg i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; border: 1px solid #7f9296; }
