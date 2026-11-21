@@ -183,6 +183,7 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
     index: curIndex, single: full !== null && process === "postProcess", sheets, machine, origin: sol?.origin ?? machine.origin, jobName, needsSave, dirty: jobDirty, onSave: onSaveJob ?? (async () => true), onSent,
     onSheet: (k, patch) => sol && onEditSheet(sol.id, k, patch),
     partName: (sh, i) => byId.get(sh.parts[i]?.partId ?? "")?.name,
+    partOf: (id) => parts.find((jp) => jp.part.id === id)?.part,
   });
   const lio = useLeadInOut({
     index: curIndex, single: full !== null, sheets, parts: byId, machine,

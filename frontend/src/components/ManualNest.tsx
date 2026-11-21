@@ -14,6 +14,7 @@ import { arrange, arrangeAgain, mirrorGroup, partRules, stack, type PartRules } 
 import { loadNestingRules } from "../job/nestRules";
 import { loadManualView } from "../job/manualView";
 import { liveContours, originPoint, processedParts, rapidsOf, viaOf, type CutContour } from "../job/cutPath";
+import { sameStock, wrongStock } from "../job/stock";
 import { useViewPrefs } from "../job/viewPrefs";
 import { RemnantOverlay } from "./RemnantOverlay";
 import { MarkPaths, usePartMarks } from "./PartMarks";
@@ -170,6 +171,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   // parts reaching past the usable area (e.g. left outside when the sheet was made smaller)
   const outside = useMemo(() => new Set(geo.flatMap((g, i) => (g && (g.box.x0 < usable.x0 - 0.05 || g.box.y0 < usable.y0 - 0.05
     || g.box.x1 > usable.x1 + 0.05 || g.box.y1 > usable.y1 + 0.05) ? [i] : []))), [geo, usable]);
+  // parts not of the sheet's material and thickness (changed after they were nested): red, not cut
+  const wrongHere = useMemo(() => new Set(wrongStock({ ...sheet, parts: items }, (id) => jobParts.find((x) => x.part.id === id)?.part)),
+    [items, jobParts, sheet.material, sheet.thicknessMm]);   // eslint-disable-line react-hooks/exhaustive-deps
   const bad = useMemo(() => {
     const idx: number[] = [];
     geo.forEach((g, i) => g && idx.push(i));
@@ -182,8 +186,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     const find = (k: number): number => (root[k] === k ? k : (root[k] = find(root[k])));
     for (const key of sh) { const [a, b2] = key.split("|").map(Number); root[find(a)] = find(b2); }
     const b = problems(idx.map((i) => geo[i]!), usable, gap, outline, sh, (a, b2) => find(a) === find(b2));
-    return new Set([...b].map((k) => idx[k]));
-  }, [geo, usable, gap, outline, shared]);
+    return new Set([...[...b].map((k) => idx[k]), ...wrongHere]);
+  }, [geo, usable, gap, outline, shared, wrongHere]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // -- view: mm -> screen px, fitted to the canvas; wheel zooms, middle / right button pans --------
   const host = useRef<HTMLDivElement>(null);
@@ -755,6 +759,11 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   };
   /** Why the copy may not go on this sheet: a part would go over its required (or max) number. */
   const overLimit = (parts: PlacedPart[], what = "Not pasted"): string | null => {
+    // only parts of the sheet's material and thickness
+    for (const p of parts) {
+      const jp = jobParts.find((x) => x.part.id === p.partId);
+      if (jp && !sameStock(jp.part, sheet)) return `${what}: ${jp.part.name} is ${jp.part.material} ${jp.part.thicknessMm} mm, this sheet ${sheet.material} ${sheet.thicknessMm} mm.`;
+    }
     const per = sheet.cutNumber ?? 1;
     const n = new Map<string, number>();
     for (const p of parts) n.set(p.partId, (n.get(p.partId) ?? 0) + per);
@@ -1245,8 +1254,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
           })()}
           {note && <div className={`mn-note${working ? " is-working" : ""}`} role="status">{note}</div>}
           {bad.size > 0 && (() => {
-            const close = [...bad].filter((i) => !outside.has(i)).length;
+            const close = [...bad].filter((i) => !outside.has(i) && !wrongHere.has(i)).length;
             const msg = [
+              wrongHere.size ? `${wrongHere.size} ${wrongHere.size === 1 ? "part is" : "parts are"} not ${sheet.material} ${sheet.thicknessMm} mm (the sheet's): take ${wrongHere.size === 1 ? "it" : "them"} off, ${wrongHere.size === 1 ? "it is" : "they are"} not cut` : "",
               outside.size ? `${outside.size} ${outside.size === 1 ? "part reaches" : "parts reach"} past the trims or the edge` : "",
               close ? `${close} ${close === 1 ? "part overlaps or is" : "parts overlap or are"} too close` : "",
             ].filter(Boolean).join(" · ");
@@ -1313,7 +1323,7 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
   const [dir, setDir] = useState<1 | -1>(-1);
   const [all, setAll] = useState(false);
   const [menu, setMenu] = useState(false);
-  const same = (jp: JobPart) => jp.part.material.trim().toLowerCase() === sheet.material.trim().toLowerCase() && Math.abs(jp.part.thicknessMm - sheet.thicknessMm) < 1e-6;
+  const same = (jp: JobPart) => sameStock(jp.part, sheet);
   const list = useMemo(() => {
     const l = jobParts.filter((jp) => all || same(jp));
     const key = (jp: JobPart) => sortBy === "area" ? jp.part.areaMm2 : sortBy === "size" ? Math.max(jp.part.w, jp.part.h) : jp.part.project;
@@ -1380,10 +1390,13 @@ function PartsPanel({ jobParts, sheet, counts, edit }: { jobParts: JobPart[]; sh
           const xs = lp[0]?.map((p) => p[0]) ?? [0], ys = lp[0]?.map((p) => p[1]) ?? [0];
           const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0 || 1, h = Math.max(...ys) - y0 || 1;
           const c = partColor(jp.no);
+          // another material or thickness (Show all parts): shown, not put on this sheet
+          const other = !same(jp);
           return (
-            <div key={jp.part.id} className={`mn-tile${jp.qty > 0 && n >= jp.qty && n <= limit ? " is-done" : ""}${n > limit ? " is-over" : ""}${full ? " is-full" : ""}${edit ? "" : " is-off"}`}
-              draggable={edit && !full}
-              title={n > limit ? `${jp.part.name}\n${n} nested: ${n - limit} more than ${jp.qtyMax && jp.qtyMax > jp.qty ? "Qty max" : "required"} (${limit})`
+            <div key={jp.part.id} className={`mn-tile${jp.qty > 0 && n >= jp.qty && n <= limit ? " is-done" : ""}${n > limit ? " is-over" : ""}${full ? " is-full" : ""}${edit ? "" : " is-off"}${other ? " is-other" : ""}`}
+              draggable={edit && !full && !other}
+              title={other ? `${jp.part.name}\n${jp.part.material} ${jp.part.thicknessMm} mm: not this sheet's material and thickness (${sheet.material} ${sheet.thicknessMm} mm)`
+                : n > limit ? `${jp.part.name}\n${n} nested: ${n - limit} more than ${jp.qtyMax && jp.qtyMax > jp.qty ? "Qty max" : "required"} (${limit})`
                 : noQty ? `${jp.part.name}\nSet its Qty req in Work parts first`
                 : full ? `${jp.part.name}\nAll ${limit} nested${jp.qtyMax && jp.qtyMax > jp.qty ? " (Qty max)" : ""}: no more to add`
                 : `${jp.part.name}\nDrag onto the sheet (Ctrl on a part: next to it)`}

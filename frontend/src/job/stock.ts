@@ -122,6 +122,22 @@ let seq = 0;
 export const newSheet = (s: Omit<StockSheet, "id">): StockSheet =>
   ({ id: `st${Date.now().toString(36)}${++seq}`, ...s, original: s.original ?? { lengthMm: s.lengthMm, widthMm: s.widthMm, outline: s.outline } });
 
+type Stocked = { material: string; thicknessMm: number };
+/** A part of this material and thickness may go on the sheet (the same as the sheet's). */
+export const sameStock = (a: Stocked, b: Stocked) =>
+  a.material.trim().toLowerCase() === b.material.trim().toLowerCase() && Math.abs(a.thicknessMm - b.thicknessMm) < 1e-6;
+/** The parts on a sheet (their numbers) that are not of the sheet's material and thickness (e.g. the part
+ *  was changed to another thickness after it was nested): they are not cut, nor post processed. */
+export function wrongStock(sheet: Stocked & { parts: { partId: string }[] }, partOf: (id: string) => Stocked | undefined): number[] {
+  return sheet.parts.flatMap((p, i) => { const q = partOf(p.partId); return q && !sameStock(q, sheet) ? [i] : []; });
+}
+/** What a sheet with such parts says, e.g. "Sheet 2: BRACKET is S235 15 mm, the sheet HARDOX 10 mm". */
+export function wrongStockText(sheetNo: number, sheet: Stocked, wrong: { name: string; material: string; thicknessMm: number }[]): string {
+  const first = wrong[0];
+  const more = wrong.length > 1 ? ` (and ${wrong.length - 1} more)` : "";
+  return `Sheet ${sheetNo}: ${first.name} is ${first.material} ${first.thicknessMm} mm${more}, the sheet ${sheet.material} ${sheet.thicknessMm} mm. Take ${wrong.length > 1 ? "them" : "it"} off the sheet (Manual nest) or nest again`;
+}
+
 export const sheetKey = (material: string, thicknessMm: number) => `${material.trim().toLowerCase()}|${thicknessMm}`;
 
 /** Largest sheet the machine can cut [length, width] mm: Settings -> Machine -> Cutting area (setMachineLimit). */
