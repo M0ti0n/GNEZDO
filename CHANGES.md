@@ -4,6 +4,11 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Process → Auto cut, **path generation** (Left to right, Bottom to top, Right to left, Top to bottom), after the test jobs' notes:
+  - **always the same way**: Left to right cuts each column from the bottom up, then the next column (it went up and down in turn); Bottom to top each row from left to right, then the next row up
+  - **columns and rows come from the parts**: a column starts at the parts nearest the left edge and is as wide as the narrowest of them (at least the median part width); a part belongs to the column its **middle of material** lies in, so an L-shaped part counts where most of it is, not by its box. A 600 mm part a little higher than its row stays in its row (it went into the next one); a tall part does not pull the next row in
+  - **parts lying in a bigger part's box are cut before it** (small parts in an L's corner, an L nested in another L); Big parts last (Machine → Cut order) now takes only the parts lying in the big part's box (it took every part touching it, out of their column) and cuts the big parts in the rule's order
+  - a **common cut block** is ordered as one (its parts are not split between columns)
 - Settings: **Shortcuts** (the manual nest keys) and the manual nest job parts list are now under **Personal** (Settings → Personal → Shortcuts), with the other personal preferences; the separate Shortcuts page is gone. Still kept in this browser; the keys set before stay as they were
 - 3D Extractor → **Measure 2D**: click two things: points (corners, hole centers, middles) snap; a click on an edge or a bend line takes the line, on an arc or a hole its center. Point to point: straight (with X and Y); point to line: square to the line; two lines: the distance between them (not parallel: the shortest). The picked lines are highlighted
 - 3D Extractor, flat pattern: the measured value stays readable when zoomed in (its white halo grew with the zoom and covered it)

@@ -28,10 +28,10 @@ import { TRACE_SHORTEST_FROM_MM, techRowFor, traceShortestOf, type TechRow } fro
 export type CutRule = "leftRight" | "rightLeft" | "bottomTop" | "topBottom" | "shortest" | "smallBig";
 
 export const CUT_RULES: { id: CutRule; label: string; hint: string }[] = [
-  { id: "leftRight", label: "Left to right", hint: "Columns from the left edge to the right, up and down in turn" },
-  { id: "bottomTop", label: "Bottom to top", hint: "Rows from the bottom edge up, left and right in turn" },
-  { id: "rightLeft", label: "Right to left", hint: "Columns from the right edge to the left (for counter-clockwise cutting)" },
-  { id: "topBottom", label: "Top to bottom", hint: "Rows from the top edge down (for counter-clockwise cutting)" },
+  { id: "leftRight", label: "Left to right", hint: "Columns from the left edge to the right, each from the bottom up" },
+  { id: "bottomTop", label: "Bottom to top", hint: "Rows from the bottom edge up, each from left to right" },
+  { id: "rightLeft", label: "Right to left", hint: "Columns from the right edge to the left, each from the bottom up (for counter-clockwise cutting)" },
+  { id: "topBottom", label: "Top to bottom", hint: "Rows from the top edge down, each from left to right (for counter-clockwise cutting)" },
   { id: "shortest", label: "Shortest distance", hint: "Always the nearest part next" },
   { id: "smallBig", label: "Smallest to biggest", hint: "Parts by their area, the smallest first" },
 ];
@@ -617,12 +617,22 @@ async function partGeos(sheet: NestedSheet, paths: Map<string, string>, idx: num
   }));
 }
 
-interface El { parts: number[]; box: Box; area: number }
+/** A unit of the order: a part (with what lies in its holes), a common cut block, or big parts with what
+ *  lies in their box. c: the middle of its material (an L counts where its material is, not its box). */
+interface El { parts: number[]; box: Box; area: number; c: Pt }
 
 const center = (b: Box): Pt => [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
 const median = (v: number[]) => { const s = v.slice().sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0; };
 
-/** Elements in the order of the rule (columns / rows go back and forth). */
+/**
+ * Elements in the order of the rule.
+ *
+ * Left to right (the others alike): columns, the first from the parts nearest the left edge; a column is
+ * as wide as the narrowest of them (at least the parts' median width) and takes every part whose middle of
+ * material lies in it;
+ * each column from the bottom up, then the next column. Bottom to top: rows from the bottom
+ * edge, each from left to right. Always the same way (not back and forth), so the operator can follow it.
+ */
 function sortEls(els: El[], rule: CutRule, from: Pt): El[] {
   if (els.length < 2) return els.slice();
   if (rule === "smallBig") return els.slice().sort((a, b) => a.area - b.area);
@@ -631,27 +641,79 @@ function sortEls(els: El[], rule: CutRule, from: Pt): El[] {
     let at = from;
     while (left.length) {
       let k = 0, best = Infinity;
-      left.forEach((e, j) => { const d = len(sub(center(e.box), at)); if (d < best) { best = d; k = j; } });
+      left.forEach((e, j) => { const d = len(sub(e.c, at)); if (d < best) { best = d; k = j; } });
       const e = left.splice(k, 1)[0];
       out.push(e);
-      at = center(e.box);
+      at = e.c;
     }
     return out;
   }
   const cols = rule === "leftRight" || rule === "rightLeft";
-  const size = median(els.map((e) => (cols ? e.box.x1 - e.box.x0 : e.box.y1 - e.box.y0)));
-  const band = Math.max(30, Math.min(600, size || 100));
-  // distance of an element's leading edge from where the sweep starts
-  const lead = (e: El) => rule === "leftRight" ? e.box.x0 : rule === "rightLeft" ? -e.box.x1 : rule === "bottomTop" ? -e.box.y1 : e.box.y0;
-  const across = (e: El) => (cols ? -center(e.box)[1] : center(e.box)[0]);   // columns: bottom up first; rows: left first
-  const base = Math.min(...els.map(lead));
-  return els.map((e) => ({ e, b: Math.floor((lead(e) - base) / band), a: across(e) }))
-    .sort((p, q) => p.b - q.b || (p.b % 2 ? q.a - p.a : p.a - q.a))
-    .map((x) => x.e);
+  // u: across the lanes, from where the sweep starts; v: along a lane (sheet frame: y down, the bottom edge is the largest y)
+  const U = (p: Pt) => (rule === "leftRight" ? p[0] : rule === "rightLeft" ? -p[0] : rule === "bottomTop" ? -p[1] : p[1]);
+  const V = (p: Pt) => (cols ? -p[1] : p[0]);
+  const span = (e: El): [number, number] => { const a = U([e.box.x0, e.box.y0]), b = U([e.box.x1, e.box.y1]); return [Math.min(a, b), Math.max(a, b)]; };
+  const size = median(els.map((e) => { const [a, b] = span(e); return b - a; }));
+  const left = els.slice();
+  const out: El[] = [];
+  while (left.length) {
+    // the lane starts at the parts whose edge is nearest where the sweep starts (the lowest, the leftmost);
+    // it reaches as far as the shortest of them (at least the median part size), so a tall part beside
+    // short ones does not take in the next row
+    const u0 = Math.min(...left.map((e) => span(e)[0]));
+    const starts = left.filter((e) => span(e)[0] <= u0 + 0.25 * size);
+    const edge = Math.max(u0 + size, Math.min(...starts.map((e) => span(e)[1])));
+    const lane = left.filter((e) => starts.includes(e) || U(e.c) < edge);
+    lane.sort((a, b) => V(a.c) - V(b.c) || U(a.c) - U(b.c));
+    out.push(...lane);
+    for (const e of lane) left.splice(left.indexOf(e), 1);
+  }
+  return out;
 }
 
+/**
+ * Parts lying in a bigger part's box (an L's corner, a frame's inside, a part next to a long arm) are cut
+ * before it: the order stays as it is, but a part waits until the smaller ones in its box are done.
+ */
+function boxFirst(els: El[]): El[] {
+  const inBox = (b: Box, p: Pt) => p[0] > b.x0 && p[0] < b.x1 && p[1] > b.y0 && p[1] < b.y1;
+  const needs = new Map(els.map((e) => [e, els.filter((f) => f !== e && f.area < e.area && inBox(e.box, f.c))]));
+  const out: El[] = [], done = new Set<El>(), left = els.slice();
+  while (left.length) {
+    const k = left.findIndex((e) => needs.get(e)!.every((f) => done.has(f)));
+    const e = left.splice(k < 0 ? 0 : k, 1)[0];
+    out.push(e); done.add(e);
+  }
+  return out;
+}
+
+/** The middle of a part's material: its outline less its holes (area-weighted). */
+function materialMiddle(outer: Pt[], holes: Pt[][]): Pt {
+  const of = (lp: Pt[]): [number, number, number] => {
+    let a = 0, cx = 0, cy = 0;
+    for (let k = 0; k < lp.length; k++) {
+      const [x0, y0] = lp[k], [x1, y1] = lp[(k + 1) % lp.length], c = x0 * y1 - x1 * y0;
+      a += c; cx += (x0 + x1) * c; cy += (y0 + y1) * c;
+    }
+    return Math.abs(a) < 1e-9 ? [0, 0, 0] : [Math.abs(a / 2), cx / (3 * a), cy / (3 * a)];
+  };
+  const [ao, xo, yo] = of(outer);
+  if (ao <= 0) { const b = boxOf(outer); return center(b); }
+  let A = ao, X = ao * xo, Y = ao * yo;
+  for (const h of holes) { const [ah, xh, yh] = of(h); if (ah > 0 && ah < A) { A -= ah; X -= ah * xh; Y -= ah * yh; } }
+  return A > 1e-9 ? [X / A, Y / A] : [xo, yo];
+}
+const mergeEls = (l: El[]): El => {
+  const area = l.reduce((s, e) => s + e.area, 0) || 1;
+  return {
+    parts: l.flatMap((e) => e.parts), area,
+    box: l.reduce((u, e) => ({ x0: Math.min(u.x0, e.box.x0), y0: Math.min(u.y0, e.box.y0), x1: Math.max(u.x1, e.box.x1), y1: Math.max(u.y1, e.box.y1) }), l[0].box),
+    c: [l.reduce((s, e) => s + e.c[0] * e.area, 0) / area, l.reduce((s, e) => s + e.c[1] * e.area, 0) / area],
+  };
+};
+
 /** The parts in cutting order (see the top of this file). */
-function orderParts(geos: PartGeo[], rule: CutRule, machine: Machine, sheet: NestedSheet, from: Pt): number[] {
+function orderParts(geos: PartGeo[], rule: CutRule, machine: Machine, sheet: NestedSheet, from: Pt, together: number[][] = []): number[] {
   const by = new Map(geos.map((g) => [g.i, g]));
   // a part in another part's hole: that part (the smallest one holding it) is its container
   const container = new Map<number, number>();
@@ -670,9 +732,14 @@ function orderParts(geos: PartGeo[], rule: CutRule, machine: Machine, sheet: Nes
   const unitOf = (i: number): El => {
     const g = by.get(i)!;
     const inner = sortEls((kids.get(i) ?? []).map(unitOf), rule, from).flatMap((e) => e.parts);
-    return { parts: [...inner, i], box: g.box, area: g.area };
+    return { parts: [...inner, i], box: g.box, area: g.area, c: materialMiddle(g.outer, g.holes) };
   };
-  const top = geos.filter((g) => !container.has(g.i)).map((g) => unitOf(g.i));
+  let top = geos.filter((g) => !container.has(g.i)).map((g) => unitOf(g.i));
+  // a common cut block is one unit of the order (its parts are cut together)
+  for (const blk of together) {
+    const mine = top.filter((e) => e.parts.some((k) => blk.includes(k)));
+    if (mine.length > 1) top = [...top.filter((e) => !mine.includes(e)), mergeEls(mine)];
+  }
 
   const co = cutOrderOf(machine);
   const sheetArea = sheet.lengthMm * sheet.widthMm;
@@ -690,13 +757,14 @@ function orderParts(geos: PartGeo[], rule: CutRule, machine: Machine, sheet: Nes
   const taken = new Set<El>();
   const els: El[] = [];
   for (const g of groups) {
-    const members = top.filter((e) => !isBig(e) && !taken.has(e) && touches(e.box, g.box));
+    // what lies in the big parts' box (its middle of material): cut before them
+    const members = top.filter((e) => !isBig(e) && !taken.has(e) && e.c[0] > g.box.x0 && e.c[0] < g.box.x1 && e.c[1] > g.box.y0 && e.c[1] < g.box.y1);
     members.forEach((e) => taken.add(e));
-    const parts = [...sortEls(members, rule, from).flatMap((e) => e.parts), ...g.bigs.sort((x, y) => x.area - y.area).flatMap((e) => e.parts)];
-    els.push({ parts, box: g.box, area: Math.max(...g.bigs.map((e) => e.area)) });
+    const parts = [...boxFirst(sortEls(members, rule, from)).flatMap((e) => e.parts), ...sortEls(g.bigs, rule, from).flatMap((e) => e.parts)];
+    els.push({ parts, box: g.box, area: Math.max(...g.bigs.map((e) => e.area)), c: mergeEls(g.bigs).c });
   }
   for (const e of top) if (!isBig(e) && !taken.has(e)) els.push(e);
-  return sortEls(els, rule, from).flatMap((e) => e.parts);
+  return boxFirst(sortEls(els, rule, from)).flatMap((e) => e.parts);
 }
 
 // ------------------------------------------------------------------ PROCESS
@@ -746,7 +814,6 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   const from = originPoint(sheet, q.origin);
   const lastOfFirst = first[first.length - 1];
   const start: Pt = lastOfFirst ? (lastOfFirst.leadOut[lastOfFirst.leadOut.length - 1] ?? lastOfFirst.pts[lastOfFirst.pts.length - 1]) : from;
-  const order = q.ordered ? idx : orderParts(geos, q.rule, machine, sheet, start);
   const by = new Map(geos.map((g) => [g.i, g]));
 
   // common cut: parts a kerf apart along their marked lines make blocks, cut as one (job/commonPath.ts)
@@ -761,12 +828,12 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
       const edges: CommonEdge[] = lines.length ? placedEdges(p, commonEdges(q.paths.get(p.partId) ?? "", lines)) : [];
       return { i: g.i, outer: g.outer, box: g.box, edges };
     }));
-    if (withEdges.some((w) => w.edges.length)) {
-      for (const b of commonBlocks(withEdges, kerf)) for (const i of b.members) blockOf.set(i, b);
-      // a block is cut where its last part comes in the order (what lies in its parts' holes is done by then)
-      for (const i of order) { const b = blockOf.get(i); if (b) lastOf.set(b, i); }
-    }
+    if (withEdges.some((w) => w.edges.length)) for (const b of commonBlocks(withEdges, kerf)) for (const i of b.members) blockOf.set(i, b);
   }
+  // the order (a block's parts kept together)
+  const order = q.ordered ? idx : orderParts(geos, q.rule, machine, sheet, start, [...new Set(blockOf.values())].map((b) => b.members));
+  // a block is cut where its last part comes in the order (what lies in its parts' holes is done by then)
+  for (const i of order) { const b = blockOf.get(i); if (b) lastOf.set(b, i); }
 
   // -- the leads fitted to their room: clear of every other part on the sheet (processed now or not),
   // inside the sheet, and not in the part itself. A lead longer than the gap between two parts would
