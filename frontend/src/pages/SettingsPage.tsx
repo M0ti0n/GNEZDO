@@ -638,6 +638,17 @@ function DataSettings() {
         </>
       )}
       {d?.kind === "sqlite" && <section className="rule"><h3>Database file</h3><p className="data-path">{d.file}</p></section>}
+      {d?.kind === "postgres" && (
+        <section className="rule">
+          <h3>PostgreSQL database</h3>
+          <dl className="data-db">
+            <dt>Server</dt><dd>{d.server}</dd>
+            <dt>Database</dt><dd>{d.database}</dd>
+            <dt>Sign-in</dt><dd>{d.login}</dd>
+          </dl>
+          <p className="admin-only">Set in config.json on the server (ConnectionStrings → Gnezdo), used after GNEZDO is started again.</p>
+        </section>
+      )}
       {d?.kind === "sqlserver" && (
         <section className="rule">
           <h3>SQL Server database</h3>

@@ -4,7 +4,9 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- **PostgreSQL**: the server can keep its data in PostgreSQL instead of SQL Server ("Database": "postgres" in config.json, PostgreSQL 13 or newer). Names, unique names, sorting and searches ignore upper / lower case there too (as on SQL Server); GNEZDO refuses a PostgreSQL database that holds another program's tables. Settings → Data shows the PostgreSQL server and database
+- **Server for Linux**: new gnezdo-server-linux.tar.gz in the test build: unpack to /opt, give it its own PostgreSQL database, run it as a service (gnezdo.service). INSTALL.txt inside: user, PostgreSQL database, config.json, service, firewall, update, backup with pg_dump
+- Docker: `docker compose --profile postgres` starts GNEZDO with a PostgreSQL container (GNEZDO_DB_KIND=postgres in .env)
 
 ## Build 21 Nov 2026 (`c75f6c8`)
 

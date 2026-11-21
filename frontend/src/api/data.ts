@@ -6,7 +6,8 @@ export type DataInfo =
   | { kind: "demo" }
   | { kind: "file"; folder: string; file: string; sizeMb: number }
   | { kind: "sqlite"; file: string }
-  | { kind: "sqlserver"; server: string; database: string; login: string; canChange: boolean };
+  | { kind: "sqlserver"; server: string; database: string; login: string; canChange: boolean }
+  | { kind: "postgres"; server: string; database: string; login: string; canChange: false };
 
 export interface DbForm { server: string; database: string; windowsLogin: boolean; user: string; password: string; trustCertificate: boolean }
 export interface DbCheck { ok: boolean; message: string; found?: string | null }

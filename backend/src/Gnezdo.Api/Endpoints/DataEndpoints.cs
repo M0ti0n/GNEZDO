@@ -29,8 +29,14 @@ public static class DataEndpoints
                 });
             }
             var cs = config.GetConnectionString("Gnezdo") ?? "";
-            if (config["Gnezdo:Database"] is { } d && d.Equals("sqlite", StringComparison.OrdinalIgnoreCase))
+            var kind = DbKind.Of(config);
+            if (kind == DbKind.Sqlite)
                 return Results.Ok(new { kind = "sqlite", file = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(cs).DataSource });
+            if (kind == DbKind.Postgres)
+            {
+                var pg = new Npgsql.NpgsqlConnectionStringBuilder(cs);
+                return Results.Ok(new { kind = "postgres", server = pg.Port is 5432 or 0 ? pg.Host : $"{pg.Host}:{pg.Port}", database = pg.Database, login = pg.Username, canChange = false });
+            }
             var b = new SqlConnectionStringBuilder(cs);
             return Results.Ok(new
             {

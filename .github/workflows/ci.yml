@@ -23,7 +23,7 @@ jobs:
       - run: npx vite build
 
   backend:
-    name: Backend (build + tests on SQL Server and SQLite)
+    name: Backend (build + tests on SQL Server, SQLite and PostgreSQL)
     runs-on: ubuntu-latest
     services:
       sql:
@@ -33,8 +33,17 @@ jobs:
           MSSQL_SA_PASSWORD: Gnezdo_Test_123
         ports:
           - 1433:1433
+      pg:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: Gnezdo_Test_123
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       GNEZDO_TEST_SQL: Server=localhost,1433;User Id=sa;Password=Gnezdo_Test_123;TrustServerCertificate=True;Encrypt=False
+      GNEZDO_TEST_PG: Host=localhost;Port=5432;Username=postgres;Password=Gnezdo_Test_123
       DOTNET_NOLOGO: "1"
     steps:
       - uses: actions/checkout@v4
@@ -49,8 +58,8 @@ jobs:
         run: |
           # fails when the model changed without a migration (see .github/workflows/ef-migration.yml)
           dotnet tool install --global dotnet-ef --version 10.0.14 >/dev/null
-          # both databases: SQL Server (server build) and SQLite (desktop build)
-          for ctx in GnezdoDb GnezdoSqliteDb; do
+          # every database: SQL Server (server build), SQLite (desktop build), PostgreSQL (a server on it)
+          for ctx in GnezdoDb GnezdoSqliteDb GnezdoPostgresDb; do
             if ! dotnet ef migrations has-pending-model-changes --project backend/src/Gnezdo.Api --context $ctx --no-build --configuration Release > ef.log 2>&1; then
               echo "::error title=Migrations ($ctx)::$(tail -5 ef.log | sed ':a;N;$!ba;s/\n/%0A/g')"
               exit 1
@@ -73,11 +82,18 @@ jobs:
           set -o pipefail
           dotnet test backend/Gnezdo.slnx -c Release --no-build --logger "console;verbosity=normal" 2>&1 | tee test-sqlite.log
           echo "::notice title=Tests on SQLite::$(grep -E 'Passed!|Failed!|Total tests|Passed:|Failed:' test-sqlite.log | tr -s ' ' | sed ':a;N;$!ba;s/\n/%0A/g')"
+      - name: Test on PostgreSQL
+        env:
+          GNEZDO_TEST_DB: postgres
+        run: |
+          set -o pipefail
+          dotnet test backend/Gnezdo.slnx -c Release --no-build --logger "console;verbosity=normal" 2>&1 | tee test-pg.log
+          echo "::notice title=Tests on PostgreSQL::$(grep -E 'Passed!|Failed!|Total tests|Passed:|Failed:' test-pg.log | tr -s ' ' | sed ':a;N;$!ba;s/\n/%0A/g')"
       - name: Report failures as annotations
         if: failure()
         run: |
           # Put errors and failed tests where they show on the PR page.
-          for f in build.log test.log test-sqlite.log; do
+          for f in build.log test.log test-sqlite.log test-pg.log; do
             [ -f "$f" ] || continue
             msg=$(grep -E "error|Error|FAIL|Failed |Assert|Exception" "$f" | grep -v "0 Error" | sort -u | head -60 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')
             [ -n "$msg" ] && echo "::error title=$f::$msg"
@@ -123,3 +139,21 @@ jobs:
       - name: Logs
         if: always()
         run: docker compose --profile sqlserver logs --no-color --tail 200 api web
+      - name: The same on PostgreSQL (GNEZDO_DB_KIND=postgres, the bundled container)
+        run: |
+          docker compose --profile sqlserver down -v
+          rm -f smoke-cookies.txt
+          cat > .env <<'ENV'
+          GNEZDO_PORT=8080
+          GNEZDO_DB_KIND=postgres
+          PG_PASSWORD=Smoke_Test_Pass1
+          GNEZDO_DB=Host=pg;Port=5432;Database=gnezdo;Username=gnezdo;Password=Smoke_Test_Pass1
+          GNEZDO_SAMPLE_DATA=false
+          ENV
+          docker compose --profile postgres up -d --build
+          python3 .github/scripts/server_smoke.py http://localhost:8080
+          docker compose restart api
+          python3 .github/scripts/server_smoke.py http://localhost:8080 --after-restart
+      - name: Logs (PostgreSQL)
+        if: always()
+        run: docker compose --profile postgres logs --no-color --tail 200 api pg

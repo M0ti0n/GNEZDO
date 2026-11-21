@@ -14,7 +14,7 @@ public static class TextSearch
     public static string Pattern(GnezdoDb db, string text)
     {
         var e = text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
-        if (!db.Database.IsSqlite()) e = e.Replace("[", "\\[");   // a character class on SQL Server only
+        if (db.Database.IsSqlServer()) e = e.Replace("[", "\\[");   // a character class on SQL Server only
         return $"%{e}%";
     }
 }

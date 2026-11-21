@@ -1,0 +1,19 @@
+{
+  "//": "GNEZDO settings (Linux server). Copy this file to config.json in the same folder and change config.json.",
+
+  "ConnectionStrings": {
+    "//": "GNEZDO's OWN PostgreSQL database and user (see INSTALL.txt, part 3). Never the database of another program.",
+    "Gnezdo": "Host=localhost;Port=5432;Database=gnezdo;Username=gnezdo;Password=CHANGE_ME"
+  },
+
+  "//port": "Address and port GNEZDO listens on. Other PCs open http://<server-name>:8090",
+  "Urls": "http://0.0.0.0:8090",
+
+  "Gnezdo": {
+    "//database": "postgres = PostgreSQL (this file); sqlserver = Microsoft SQL Server (then a SQL Server connection above)",
+    "Database": "postgres",
+    "TimeZone": "Europe/Ljubljana",
+    "//": "true = fill an empty database with sample parts and jobs, for trying it out",
+    "SeedSampleData": false
+  }
+}

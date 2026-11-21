@@ -42,7 +42,7 @@ public sealed class MigrationTests
     [Fact]
     public async Task A_database_from_before_migrations_is_refused_with_a_clear_message()
     {
-        if (TestDb.Sqlite) return;   // only SQL Server databases were ever made that way
+        if (!TestDb.SqlServer) return;   // only SQL Server databases were ever made that way
         var cs = NewConnectionString();
         await using var sp = Services(cs);
         try

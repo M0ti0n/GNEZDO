@@ -5,6 +5,7 @@ name: Windows test build
 #                                with the web pages, start.bat, config.example.json and INSTALL.txt
 #   gnezdo-desktop-windows.zip   the desktop build for Windows: GNEZDO.exe opens GNEZDO in an Edge window
 #   gnezdo-desktop-linux.tar.gz  the desktop build for Linux (Chromium / Chrome window)
+#   gnezdo-server-linux.tar.gz   the server for Linux, on PostgreSQL (packaging/linux/INSTALL.txt)
 # Runs only when asked: Actions tab -> Windows test build -> Run workflow (on main or any branch).
 on:
   workflow_dispatch:
@@ -342,11 +343,24 @@ jobs:
           Get-Content "$data/logs/*.log" | Select-String '"kind":"desktop"' | ForEach-Object { $_.Line.Substring(0, [Math]::Min(220, $_.Line.Length)) }
           Write-Output "::notice title=Desktop smoke test::GNEZDO desktop started on Windows, nested, stopped after the window closed"
 
-  # The Linux desktop build, made on an older Ubuntu so it runs on most current distributions
+  # The Linux desktop build and the Linux server (PostgreSQL), made on an older Ubuntu so they run on
+  # most current distributions
   linux-desktop:
     runs-on: ubuntu-22.04
     env:
       DOTNET_NOLOGO: "1"
+    services:
+      # the server's smoke test runs on a real PostgreSQL, set up as in packaging/linux/INSTALL.txt
+      pg:
+        image: postgres:17
+        env:
+          POSTGRES_USER: gnezdo
+          POSTGRES_PASSWORD: Smoke_Test_Pass1
+          POSTGRES_DB: gnezdo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gnezdo -d gnezdo" --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -473,6 +487,52 @@ jobs:
           name: gnezdo-desktop-linux
           path: out/gnezdo-desktop-linux.tar.gz
 
+      # the same program and engine as a server (no window), set up for PostgreSQL
+      - name: Assemble the Linux server tar.gz
+        run: |
+          set -e
+          d=out/server/gnezdo
+          mkdir -p $d
+          cp -r out/publish $d/program
+          mv $d/program/Gnezdo.Api $d/program/GNEZDO
+          rm -f $d/program/appsettings.Development.json $d/program/web.config
+          jq '.ConnectionStrings.Gnezdo = ""' out/publish/appsettings.json > $d/program/appsettings.json
+          cp -r out/web-db $d/program/wwwroot
+          cp -r out/nesting $d/nesting
+          cp packaging/linux/config.example.json packaging/linux/start.sh packaging/linux/gnezdo.service packaging/linux/INSTALL.txt $d/
+          echo "GNEZDO server test build (Linux, PostgreSQL) $(date -u +%Y-%m-%d) from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}" > $d/VERSION.txt
+          chmod +x $d/start.sh $d/program/GNEZDO
+          tar czf out/gnezdo-server-linux.tar.gz -C out/server gnezdo
+          ls -la out/gnezdo-server-linux.tar.gz
+      - name: Server smoke test on PostgreSQL (as in INSTALL.txt)
+        run: |
+          set -e
+          mkdir -p srv && tar xzf out/gnezdo-server-linux.tar.gz -C srv
+          g=$PWD/srv/gnezdo
+          # start.sh without config.json makes it and stops
+          if $g/start.sh; then echo "::error::start.sh ran without config.json"; exit 1; fi
+          test -f $g/config.json
+          jq '.ConnectionStrings.Gnezdo = "Host=localhost;Port=5432;Database=gnezdo;Username=gnezdo;Password=Smoke_Test_Pass1"' \
+            $g/config.example.json > $g/config.json
+          $g/start.sh > server-out.txt 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://localhost:8090/api/health > health.json && break; sleep 2; done
+          cat health.json; echo
+          python3 -c "import json; h=json.load(open('health.json')); assert not h['demo'], h"
+          curl -fs http://localhost:8090/ | grep -q 'id="root"'
+          python3 .github/scripts/server_smoke.py http://localhost:8090
+          # the tables are PostgreSQL's, with case-insensitive text
+          PGPASSWORD=Smoke_Test_Pass1 psql -h localhost -U gnezdo -d gnezdo -tAc "SELECT data_type, udt_name FROM information_schema.columns WHERE table_name = 'Parts' AND column_name = 'Name'"
+          PGPASSWORD=Smoke_Test_Pass1 psql -h localhost -U gnezdo -d gnezdo -tAc "SELECT count(*) FROM \"__EFMigrationsHistory\""
+          ls $g/logs $g/data
+          echo "::notice title=Linux server::started on PostgreSQL, first admin, nest, users, sign-out"
+      - name: Server output
+        if: always()
+        run: tail -60 server-out.txt || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gnezdo-server-linux
+          path: out/gnezdo-server-linux.tar.gz
+
   release:
     needs: [smoke-test, desktop-smoke-windows, linux-desktop]
     runs-on: ubuntu-latest
@@ -493,11 +553,13 @@ jobs:
           {
             echo "**Server for Windows:** gnezdo-server-windows.zip (unzip, start.bat, open http://localhost:8090; a demo until a database is set in config.json - see INSTALL.txt)."
             echo
+            echo "**Server for Linux (PostgreSQL):** gnezdo-server-linux.tar.gz (unpack to /opt, set up its PostgreSQL database, run as a service - see INSTALL.txt inside)."
+            echo
             echo "**Desktop, one PC:** gnezdo-desktop-windows.zip (unzip, double-click GNEZDO.exe) or gnezdo-desktop-linux.tar.gz - see INSTALL.txt inside."
             echo
             gh api "repos/${GITHUB_REPOSITORY}/contents/CHANGES.md?ref=${GITHUB_SHA}" -H "Accept: application/vnd.github.raw" || true
           } > notes.md
-          gh release create test-build dl/gnezdo-server-windows.zip dl/gnezdo-desktop-windows.zip dl/gnezdo-desktop-linux.tar.gz \
+          gh release create test-build dl/gnezdo-server-windows.zip dl/gnezdo-desktop-windows.zip dl/gnezdo-desktop-linux.tar.gz dl/gnezdo-server-linux.tar.gz \
             --prerelease --target "$GITHUB_SHA" \
             --title "Test build ($(date -u +%Y-%m-%d), ${GITHUB_REF_NAME})" \
             --notes-file notes.md

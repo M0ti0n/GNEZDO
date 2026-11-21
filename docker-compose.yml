@@ -3,6 +3,8 @@
 #   cp .env.example .env      # then edit .env
 #   docker compose up -d --build                         # uses your existing SQL Server
 #   docker compose --profile sqlserver up -d --build     # also starts a SQL Server container
+#   docker compose --profile postgres up -d --build      # also starts a PostgreSQL container
+#                                                        # (GNEZDO_DB_KIND=postgres in .env)
 #
 # Open http://<server>:8080 in a browser.
 
@@ -14,6 +16,7 @@ services:
     restart: unless-stopped
     environment:
       ConnectionStrings__Gnezdo: ${GNEZDO_DB}
+      Gnezdo__Database: ${GNEZDO_DB_KIND:-sqlserver}
       Gnezdo__TimeZone: Europe/Ljubljana
       Gnezdo__SeedSampleData: ${GNEZDO_SAMPLE_DATA:-false}
     volumes:
@@ -22,6 +25,9 @@ services:
     depends_on:
       db:
         condition: service_started
+        required: false
+      pg:
+        condition: service_healthy
         required: false
 
   web:
@@ -43,7 +49,25 @@ services:
     volumes:
       - gnezdo-sql:/var/opt/mssql
 
+  # Optional PostgreSQL instead (GNEZDO_DB_KIND=postgres): a database of its own for GNEZDO.
+  pg:
+    image: postgres:17
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gnezdo
+      POSTGRES_USER: gnezdo
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gnezdo -d gnezdo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - gnezdo-pg:/var/lib/postgresql/data
+
 volumes:
   gnezdo-sql:
+  gnezdo-pg:
   gnezdo-logs:
   gnezdo-data:
