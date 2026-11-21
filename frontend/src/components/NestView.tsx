@@ -74,6 +74,8 @@ interface Props {
   jobName?: string;
   /** Settings -> Stock -> Remnants */
   remnantSettings?: RemnantSettings;
+  /** Process → Remnant changed one (Smallest edge): saved with Settings → Stock and remnants */
+  onRemnantSettings?: (s: RemnantSettings) => void;
   /** the job was never saved (Multi sheet saves it first) */
   needsSave?: boolean;
   /** Solution info -> Export to DXF: the shown solution, every sheet in one file */
@@ -129,7 +131,7 @@ export const Lock = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, initialFull = null, onFull, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, process = false, needsSave = false, jobDirty = false, onSaveJob, onSent, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS }: Props) {
+export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, onAdd, onStop, onRemove, onToggleLock, machine, stock, onEditSheet, onRenestSheet, renesting, onManual, initialFull = null, onFull, leaveManual, manualTool, openManual, onManualOpened, onDeleteSheet, process = false, needsSave = false, jobDirty = false, onSaveJob, onSent, jobName = "job", remnantSettings = DEFAULT_REMNANT_SETTINGS, onRemnantSettings }: Props) {
   const [props, setProps] = useState<number | null>(null);   // nested sheet shown in Sheet properties
   const byId = useMemo(() => new Map<string, PartRef>(parts.map((jp) =>
     [jp.part.id, { path: jp.part.path, areaMm2: jp.part.areaMm2, name: jp.part.name, no: jp.no }])), [parts]);
@@ -170,7 +172,7 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
   });
   const rm = useRemnant({
     index: Math.min(full ?? sheetNo, Math.max(0, sheets.length - 1)), single: full !== null, sheets, parts: byId, jobParts: parts, jobName,
-    settings: remnantSettings, machine, onRemnant: (k, remnant) => sol && onEditSheet(sol.id, k, { remnant }),
+    settings: remnantSettings, onSettings: onRemnantSettings, machine, onRemnant: (k, remnant) => sol && onEditSheet(sol.id, k, { remnant }),
   });
   const curIndex = Math.min(full ?? sheetNo, Math.max(0, sheets.length - 1));
   const pdel = useProcessDel({
