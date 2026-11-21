@@ -131,6 +131,7 @@ export function autoJoints(ctx: LeadCtx, k: number, mode: AutoMode, keepOrig: bo
   const c0 = cut0?.contours[k];
   if (!cut0 || !c0) return "Pick a contour";
   if (!usable(c0)) return "Micro joints go on part outlines and holes (not on common cut blocks)";
+  if (!(lengthMm > 0)) return "A micro joint needs a length above 0 mm";
   let cut: SheetCut = cut0;
   const targets = [c0, ...(all ? copiesOf(ctx, cut0, k, live).map((i) => cut0.contours[i]) : [])];
   let n = 0, why = "";

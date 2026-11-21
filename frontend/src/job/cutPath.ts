@@ -104,6 +104,10 @@ export interface SheetCut {
   contours: CutContour[];
   /** per part index: where the part was when it was processed (moved since: not processed any more) */
   keys: Record<number, string>;
+  /** per part index (as keys): its drawing when it was processed (pathSig of its outline path). A part
+   *  whose drawing changed since (replaced, another revision restored) is not processed any more.
+   *  Missing: an older cut (its drawings are taken as they are) */
+  sigs?: Record<number, string>;
   /** made for a 0,0 corner that mirrors the sheet as drawn (outlines counter-clockwise on screen); missing = not */
   mirrored?: boolean;
   /** from PROCESS only (not kept with the sheet): the leads moved or shortened to fit, and those that still do not */
@@ -117,12 +121,36 @@ export type CutWhat = "all" | "trace" | "internal";
 
 export const partKey = (p: PlacedPart) => `${p.partId}|${p.x.toFixed(3)}|${p.y.toFixed(3)}|${p.angle}|${p.mirror ? 1 : 0}`;
 
-/** The parts of the sheet whose cut path is still good. */
-export function processedParts(sheet: NestedSheet): Set<number> {
+/** A short fingerprint of a part's drawing (its outline path): FNV-1a, 32 bits, and the length. */
+export function pathSig(path: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < path.length; i++) { h ^= path.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return `${(h >>> 0).toString(36)}.${path.length.toString(36)}`;
+}
+
+/** The part's drawing now (its outline path by part id), to tell a drawing changed since processing. */
+export type PathOf = (partId: string) => string | undefined;
+
+/** The parts (indexes) whose drawing changed since they were processed (an older cut has no record: none). */
+export function changedDrawings(sheet: NestedSheet, pathOf: PathOf): Set<number> {
+  const out = new Set<number>();
+  const sigs = sheet.cut?.sigs;
+  if (!sigs) return out;
+  for (const [k, sig] of Object.entries(sigs)) {
+    const p = sheet.parts[Number(k)];
+    const path = p ? pathOf(p.partId) : undefined;
+    if (path !== undefined && pathSig(path) !== sig) out.add(Number(k));
+  }
+  return out;
+}
+
+/** The parts of the sheet whose cut path is still good (with `pathOf`: also not if their drawing changed). */
+export function processedParts(sheet: NestedSheet, pathOf?: PathOf): Set<number> {
   const c = sheet.cut;
   const out = new Set<number>();
   if (!c) return out;
-  const good = (i: number) => { const p = sheet.parts[i]; return !!p && c.keys[i] === partKey(p); };
+  const changed = pathOf ? changedDrawings(sheet, pathOf) : new Set<number>();
+  const good = (i: number) => { const p = sheet.parts[i]; return !!p && c.keys[i] === partKey(p) && !changed.has(i); };
   // a common cut block counts only while every part of it is where it was
   const bad = new Set<number>();
   for (const ct of c.contours) if (ct.parts && !ct.parts.every(good)) ct.parts.forEach((i) => bad.add(i));
@@ -155,15 +183,17 @@ export function remapCut(cut: SheetCut | undefined, before: PlacedPart[], after:
   });
   const keys: Record<number, string> = {};
   for (const [i, j] of to) keys[j] = cut.keys[i];
+  const sigs: Record<number, string> = {};
+  for (const [i, j] of to) if (cut.sigs?.[i]) sigs[j] = cut.sigs[i];
   return {
-    ...cut, keys,
+    ...cut, keys, ...(cut.sigs ? { sigs } : {}),
     contours: contours.map((c) => (c.via && c.via.after !== "origin" ? { ...c, via: { ...c.via, after: rename.get(c.via.after) ?? c.via.after } } : c)),
   };
 }
 
 /** The contours still good, in cutting order. */
-export const liveContours = (sheet: NestedSheet): CutContour[] => {
-  const ok = processedParts(sheet);
+export const liveContours = (sheet: NestedSheet, pathOf?: PathOf): CutContour[] => {
+  const ok = processedParts(sheet, pathOf);
   return (sheet.cut?.contours ?? []).filter((c) => (c.parts ?? [c.part]).every((i) => ok.has(i)));
 };
 
@@ -1026,6 +1056,15 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   // picked by hand: marked, so processing the whole sheet later keeps them first
   if (q.ordered) for (const c of fresh) c.picked = true;
   for (const c of [...first, ...fresh]) for (const k of c.parts ?? [c.part]) keys[k] = partKey(sheet.parts[k]);
+  // each processed part's drawing: now for the ones processed now, as before for the ones kept
+  const sigs: Record<number, string> = {};
+  const now = new Set(fresh.flatMap((c) => c.parts ?? [c.part]));
+  for (const k of Object.keys(keys).map(Number)) {
+    const path = sheet.parts[k] ? q.paths.get(sheet.parts[k].partId) : undefined;
+    const before = sheet.cut?.sigs?.[k];
+    if (!now.has(k) && before) sigs[k] = before;
+    else if (path !== undefined) sigs[k] = pathSig(path);
+  }
   // the tracing first, shortest rapids: on a laser the Technology row says (not set: from 4 mm up), on other
   // machines Settings -> Machines -> Cut order. Parts picked by hand (Selected parts): the tracing of the
   // parts picked this time first, then they are cut in the order picked; earlier picks stay as they are.
@@ -1048,7 +1087,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   contours = tidyPierces(contours);
   // Selected parts / Trace / Cut internal pick an order by hand: the rule of the Auto cut before stays the sheet's
   const autoRule = q.parts && q.ordered ? sheet.cut?.autoRule ?? (sheet.cut && sheet.cut.rule !== "manual" ? sheet.cut.rule : q.rule) : q.rule;
-  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, autoRule, contours, keys, ...(mirrored ? { mirrored } : {}),
+  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, autoRule, contours, keys, sigs, ...(mirrored ? { mirrored } : {}),
     ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}),
     ...(first.length ? { keptFirst: new Set(first.flatMap((c) => c.parts ?? [c.part])).size } : {}) };
 }
