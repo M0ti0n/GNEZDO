@@ -361,6 +361,13 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
   const gaps = (p: { material: string; thicknessMm: number }) => ({ ...gapsFor(machine, p.material, p.thicknessMm), ...p });
   const [props, setProps] = useState<number | null>(null);   // sheet shown in Sheet properties
   const [from, setFrom] = useState<StockSource>("parts");
+  // the size each choice adds, and whether the job's machine can cut it (as it lies): too big, grayed out
+  const sizeOf = (id: StockSource): [number, number] | null => {
+    if (id === "parts") return [settings.globalLengthMm, settings.globalWidthMm];
+    const sl = slotOf(settings, id);
+    return sl ? [sl.lengthMm, sl.widthMm] : null;
+  };
+  const tooBigFor = (id: StockSource) => { const z = sizeOf(id); return !!z && (z[0] > machine.cutLengthMm || z[1] > machine.cutWidthMm); };
   const file = useRef<HTMLInputElement>(null);
   const [tooBig, setTooBig] = useState<{ file: string; l: number; w: number } | null>(null);
   const lists = usePickLists("");
@@ -378,6 +385,7 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
   const nextPair = () => jobPairs.find((p) => !covered.has(sheetKey(p.material, p.thicknessMm))) ?? jobPairs[0] ?? { material: "", thicknessMm: 0 };
 
   const add = () => {
+    if (tooBigFor(from)) { onNotice(`${sizeOf(from)!.join(" × ")} mm is bigger than ${machine.name} can cut (${machine.cutLengthMm} × ${machine.cutWidthMm} mm): change it in Settings → Stock, or pick another`); return; }
     if (from === "parts") {
       const missing = jobPairs.filter((p) => !covered.has(sheetKey(p.material, p.thicknessMm)));
       if (!jobPairs.length) { onNotice("The job part list is empty: add parts first"); return; }
@@ -424,8 +432,9 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
         <select className="field" value={from} aria-label="Add from" title="Add from"
           onChange={(e) => setFrom(e.target.value as StockSource)}>
           {STOCK_SOURCES.map((s) => (
-            <option key={s.id} value={s.id}>
-              {optionLabel(s.id, s.label, settings)}
+            <option key={s.id} value={s.id} disabled={tooBigFor(s.id)}
+              title={tooBigFor(s.id) ? `Bigger than ${machine.name} can cut (${machine.cutLengthMm} × ${machine.cutWidthMm} mm)` : undefined}>
+              {optionLabel(s.id, s.label, settings)}{tooBigFor(s.id) ? " — too big for the machine" : ""}
             </option>
           ))}
         </select>
