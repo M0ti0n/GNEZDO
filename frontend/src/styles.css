@@ -186,7 +186,7 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
 .date-cal-head button:hover { background: var(--blue-tint); }
 .date-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .date-cal-dow { text-align: center; font-size: 11px; font-weight: 600; color: var(--ink-3); padding: 2px 0 4px; }
-.date-cal-day { height: 30px; border: 0; border-radius: 6px; background: transparent; font-size: 13px; color: var(--ink); cursor: pointer; }
+.date-cal-day { display: grid; place-items: center; height: 30px; padding: 0; text-align: center; border: 0; border-radius: 6px; background: transparent; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink); cursor: pointer; }
 .date-cal-day:hover { background: var(--blue-tint); }
 .date-cal-day.is-out { color: var(--ink-3); opacity: .55; }
 .date-cal-day.is-today { box-shadow: inset 0 0 0 1.5px var(--green); }

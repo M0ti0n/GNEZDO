@@ -332,13 +332,13 @@ function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "ta
             <li key={p.id}>
               {view === "grid" ? (
                 <button className={`part-card${on ? " is-selected" : ""}`} {...common}>
-                  <PartThumb part={p} size={58} />
+                  <PartThumb part={p} size={58} marks={p.engraved} />
                   <span className="part-name">{p.name}</span>
                   <span className="part-meta">{sizeLabel(p)}{showQty && <b>{p.qty}×</b>}</span>
                 </button>
               ) : (
                 <button className={`part-row${on ? " is-selected" : ""}`} {...common}>
-                  <PartThumb part={p} size={34} />
+                  <PartThumb part={p} size={34} marks={p.engraved} />
                   <span className="pr-name">{p.name}</span>
                   <span className="pr-qty">{showQty && `${p.qty}×`}</span>
                   <span className="pr-meta">

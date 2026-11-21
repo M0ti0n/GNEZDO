@@ -35,8 +35,19 @@ const loadMode = (): Mode => { try { return localStorage.getItem(MODE_KEY) === "
 const WHY: Record<NonNullable<CutUnit["why"]>, string> = { block: "common cut block", inline: "inline cut", pierce: "common pierce" };
 const endOf = (c: CutContour): Pt => c.leadOut[c.leadOut.length - 1] ?? c.pts[c.pts.length - 1];
 
-export function useManualCut({ index, single, sheets, parts, machine, origin, onCut }: {
+type Hist = { index: number; before: SheetCut; after: SheetCut; pos: number | null }[];
+/** What the panel holds, kept while the job's tab is closed (another tab, Parts, Settings): back on the
+ *  same sheet with the same cut path, it is all there again (picks, SELECT, the timeline, UNDO). */
+interface Kept {
+  index: number; cut: SheetCut | undefined;
+  picking: boolean; picked: number[]; next: { unit: number; part: number }[]; pos: number | null; hist: Hist;
+}
+const kept = new Map<string, Kept>();
+
+export function useManualCut({ index, single, sheets, parts, machine, origin, onCut, keepKey }: {
   index: number;
+  /** what the panel holds is kept under this (the solution) while the job's tab is closed */
+  keepKey: string;
   /** one sheet open (contours can be picked) */
   single: boolean;
   sheets: NestedSheet[];
@@ -50,22 +61,30 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
   const live = useMemo(() => new Set(liveList), [liveList]);
   const steps = useMemo(() => pathSteps(liveList), [liveList]);
   const paths = useMemo(() => new Map([...parts].map(([id, r]) => [id, r.path])), [parts]);
+  // back from another tab: what was there (only on the same sheet with the same cut path; UNDO always,
+  // it checks the cut path itself)
+  const back = useRef<Kept | null | undefined>(undefined);
+  if (back.current === undefined) {
+    const k = kept.get(keepKey);
+    back.current = k && k.index === index && k.cut === sheet?.cut ? k : null;
+  }
+  const b0 = back.current;
   const [mode, setModeState] = useState<Mode>(loadMode);
   const setMode = (m: Mode) => { setModeState(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* not kept */ } };
-  const [picking, setPicking] = useState(false);
+  const [picking, setPicking] = useState(b0?.picking ?? false);
   /** Contour cut order: indexes in sheet.cut.contours, in the order picked */
-  const [picked, setPicked] = useState<number[]>([]);
+  const [picked, setPicked] = useState<number[]>(b0?.picked ?? []);
   const [rowSel, setRowSel] = useState<number | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   /** Path cut order: the units picked (index in steps.units) and the part clicked for each, in that order */
-  const [next, setNext] = useState<{ unit: number; part: number }[]>([]);
+  const [next, setNext] = useState<{ unit: number; part: number }[]>(b0?.next ?? []);
   /** Path cut order: the steps kept (null: the whole path) */
-  const [pos, setPos] = useState<number | null>(null);
+  const [pos, setPos] = useState<number | null>(b0?.pos ?? null);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   /** UNDO: the cut paths before each change made here */
   // (the cut path itself, not its time: Lead in / out, Break cut, Micro joint, Movement, Inline cut and
   // Common pierce change it in place)
-  const [hist, setHist] = useState<{ index: number; before: SheetCut; after: SheetCut; pos: number | null }[]>([]);
+  const [hist, setHist] = useState<Hist>(() => kept.get(keepKey)?.hist ?? []);
   /** the cut path made here (the timeline stays where it was put); another one: the whole path again */
   const ours = useRef<{ cut: SheetCut; pos: number | null } | null>(null);
   /** a part lying in another part's hole: that part (it must be cut after it) */
@@ -73,13 +92,20 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
   /** the steps as they are (a part moved since processing drops out of them) */
   const sig = useMemo(() => steps.units.map((u) => u.parts.join("+")).join(","), [steps]);
   // another sheet, or the cut path changed (by any tool, processed again, moved parts): a fresh pick
+  // the sheet and path the panel's state is for (brought back from another tab: the ones it was kept with)
+  const shownFor = useRef<{ index: number; cut: SheetCut | undefined; sig: string } | null>(b0 ? { index, cut: sheet?.cut, sig } : null);
   useEffect(() => {
+    const f = shownFor.current;
+    if (f && f.index === index && f.cut === sheet?.cut && f.sig === sig) return;
+    shownFor.current = { index, cut: sheet?.cut, sig };
     setPicked([]); setRowSel(null); setPicking(false); setNext([]);
     const o = ours.current;
     setPos(o && o.cut === sheet?.cut ? o.pos : null);
     ours.current = null;
   }, [index, sheet?.cut, sig]);   // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (!single) setPicking(false); }, [single]);
+  // the tool left (another Process tool, or BACK to the sheets): the picks go (switching tabs keeps them)
+  useEffect(() => { if (!single) { setPicking(false); setPicked([]); setRowSel(null); setNext([]); } }, [single]);
+  useEffect(() => { kept.set(keepKey, { index, cut: sheet?.cut, picking, picked, next, pos, hist }); });
 
   const cutPath = sheet?.cut;
   const can = single && !!cutPath && live.size > 0;
