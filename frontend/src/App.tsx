@@ -8,6 +8,7 @@ import type { JobFilter, JobPart, JobSummary, PartSummary } from "./api/types";
 import { ImportPage } from "./pages/ImportPage";
 import { ExtractEmpty, UnfoldPage } from "./pages/UnfoldPage";
 import { FittingsPage, type FitPartState } from "./pages/FittingsPage";
+import { snapsOn } from "./import/draw";
 import { newFitSession, type FitSession, type FittingPart } from "./import/fittings";
 import { readExtract, type X3Part } from "./import/step/extract";
 import { flatDrawing, isStepName, unfoldPart } from "./import/step/stepPart";
@@ -1563,7 +1564,7 @@ export function App() {
                   ? patchItem(shownItem.id, { source: { ...shownItem.source, rotations: r.rotations, mirror: r.mirror, filler: r.filler, commonCut: r.commonCut } })
                   : setImportProps((p) => ({ ...p, rotations: r.rotations, mirror: r.mirror, filler: r.filler, commonCut: r.commonCut }))}
                 mirrorBlocked={mirrorBlocked(shownItem, rules)}
-                snaps={rules.snaps}
+                snaps={snapsOn(rules.snaps, rules.snapsKnown)}
                 fromDatabase={!!shownItem.source}
                 onEdit={(drawing, label) => editDrawing(shownItem.id, shownItem.drawing!, drawing, label)}
                 undone={undone}

@@ -462,9 +462,91 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const [box, setBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [hover, setHover] = useState(-1);
   const [moving, setMoving] = useState(false);   // selected parts being dragged
+
+  // -- aid lines from the rulers: the X ruler gives a horizontal one, the Y ruler a vertical one (blue,
+  // dashed, as Import 2D's). Click the ruler (or drag from it), then click where it goes, or type its
+  // distance from the 0,0 corner + Enter. Pick one up to move it; right click (or Esc while held): gone.
+  const [guideMap, setGuideMap] = useState<Record<number, Guide[]>>({});
+  const guides = guideMap[index] ?? [];
+  const setGuides = (f: (g: Guide[]) => Guide[]) => setGuideMap((m) => ({ ...m, [index]: f(m[index] ?? []) }));
+  const [placing, setPlacing] = useState<{ axis: "h" | "v"; mm: number | null; typed: string } | null>(null);
+  const placingRef = useRef(placing);
+  placingRef.current = placing;
+  /** Pressed on a ruler (or on an aid line), not let go yet: released over the sheet after a drag, it is placed. */
+  const guideDrag = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => { setPlacing(null); }, [index]);
+  const oRight = origin.endsWith("right"), oBottom = origin.startsWith("bottom");
+  /** Sheet mm -> the rulers' number (from the 0,0 corner), and back (the same sum). */
+  const shownOf = (axis: "h" | "v", mm: number) => (axis === "v" ? (oRight ? sheet.lengthMm - mm : mm) : (oBottom ? sheet.widthMm - mm : mm));
+  /** Where an aid line under the pointer goes: onto an edge of the sheet, the trims or a part within a few
+   *  pixels, else whole mm (tenths zoomed in) on the rulers. */
+  const guideAt = (axis: "h" | "v", px: { x: number; y: number }): number => {
+    const [x, y] = toMm(px.x, px.y), raw = axis === "v" ? x : y, s = view?.s ?? 1;
+    const edges = axis === "v"
+      ? [0, sheet.lengthMm, usable.x0, usable.x1, ...geo.flatMap((g) => (g ? [g.box.x0, g.box.x1] : []))]
+      : [0, sheet.widthMm, usable.y0, usable.y1, ...geo.flatMap((g) => (g ? [g.box.y0, g.box.y1] : []))];
+    let best: number | null = null, d = 6 / s;
+    for (const q of edges) if (Math.abs(q - raw) <= d) { best = q; d = Math.abs(q - raw); }
+    if (best !== null) return best;
+    const step = s < 4 ? 1 : 0.1;
+    return shownOf(axis, Math.round(shownOf(axis, raw) / step) * step);
+  };
+  const guideNear = (px: { x: number; y: number }): number => {
+    if (!view) return -1;
+    let k = -1, d = 5;
+    guides.forEach((g, i) => {
+      const e = Math.abs(g.axis === "v" ? g.mm * view.s + view.tx - px.x : g.mm * view.s + view.ty - px.y);
+      if (e <= d) { k = i; d = e; }
+    });
+    return k;
+  };
+  const placeGuide = (axis: "h" | "v", mm: number | null) => {
+    setPlacing(null);
+    guideDrag.current = null;
+    if (mm === null || !isFinite(mm)) return;
+    setGuides((g) => [...g, { axis, mm }]);
+    setNote(`${axis === "h" ? "Horizontal" : "Vertical"} aid line at ${axis === "h" ? "Y" : "X"} ${fmtGuide(shownOf(axis, mm))}`);
+  };
+  const startGuide = (axis: "h" | "v", e: { clientX: number; clientY: number }, mm: number | null = null) => {
+    setPaste(null); setBox(null);
+    setPlacing({ axis, mm, typed: "" });
+    guideDrag.current = { x: e.clientX, y: e.clientY };
+    setNote(`${axis === "h" ? "Horizontal" : "Vertical"} aid line: click where it goes, or type its ${axis === "h" ? "Y" : "X"} + Enter. Esc or right click: no line`);
+  };
+  useEffect(() => {
+    const up = () => { setTimeout(() => { guideDrag.current = null; }, 0); };
+    const key = (e: KeyboardEvent) => {
+      const pl = placingRef.current;
+      if (!pl) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      let typed = pl.typed;
+      if (e.key === "Escape") { setPlacing(null); setNote(null); }
+      else if (e.key === "Enter") { const v = Number(typed.replace(",", ".")); if (typed && isFinite(v)) placeGuide(pl.axis, shownOf(pl.axis, v)); }
+      else if (e.key === "Backspace") setPlacing({ ...pl, typed: typed.slice(0, -1) });
+      else if (/^[0-9.,-]$/.test(e.key)) { typed += e.key; setPlacing({ ...pl, typed }); }
+      else return;
+      e.preventDefault(); e.stopPropagation();
+    };
+    window.addEventListener("pointerup", up);
+    window.addEventListener("keydown", key, true);
+    return () => { window.removeEventListener("pointerup", up); window.removeEventListener("keydown", key, true); };
+  });
   const onPointerDown = (e: React.PointerEvent) => {
     if (middleDouble(e)) { e.preventDefault(); return; }
     if (working) return;
+    // an aid line being placed: a click puts it there, a right click drops it
+    if (placing && e.button !== 1) {
+      e.preventDefault();
+      if (e.button === 0) placeGuide(placing.axis, placing.mm ?? guideAt(placing.axis, local(e)));
+      else { setPlacing(null); setNote(null); }
+      return;
+    }
+    // an aid line picked up (to move it, or right click / Esc: gone)
+    if (e.button === 0 && !paste && !align && !cut?.onPoint && !cut?.picking) {
+      const k = guideNear(local(e));
+      if (k >= 0) { const g = guides[k]; setGuides((l) => l.filter((_, i) => i !== k)); startGuide(g.axis, e, g.mm); return; }
+    }
     if (paste) {
       if (e.button === 0) placePaste(toMm(local(e).x, local(e).y));
       else setPaste(null);
@@ -511,6 +593,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       setView((v) => v && { ...v, tx: v.tx + dx, ty: v.ty + dy });
       return;
     }
+    if (placing) { const mm = guideAt(placing.axis, p); if (mm !== placing.mm) setPlacing({ ...placing, mm, typed: "" }); return; }
     if (box) { setBox((b) => b && { ...b, x1: p.x, y1: p.y }); return; }
     if (cut?.onHover) { const q = lastPt.current!; cut.onHover(q[0], q[1], view?.s ?? 1); }
     const d = dragging.current;
@@ -537,9 +620,21 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     setHover(hit(x, y));
   };
   const onPointerUp = (e: React.PointerEvent) => {
+    // dragged from a ruler (or an aid line) and let go over the sheet: placed there
+    if (placing && guideDrag.current && e.button === 0) {
+      const d = guideDrag.current;
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) placeGuide(placing.axis, guideAt(placing.axis, local(e)));
+      guideDrag.current = null;
+      return;
+    }
     if (pan.current) {
       const pn = pan.current;
       pan.current = null;
+      // a right click on an aid line: gone
+      if (pn.button === 2 && Math.hypot(e.clientX - pn.from.x, e.clientY - pn.from.y) < 4) {
+        const k = guideNear(local(e));
+        if (k >= 0) { setGuides((l) => l.filter((_, i) => i !== k)); setNote("Aid line taken away"); return; }
+      }
       // a right click that did not pan: the lock menu for the part under it (or its selection)
       if (pn.button === 2 && edit && Math.hypot(e.clientX - pn.from.x, e.clientY - pn.from.y) < 4) {
         const q = local(e);
@@ -977,7 +1072,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
       </div>
 
       <div className="mn-stage">
-        <Ruler axis="y" view={v} size={size} />
+        <Ruler axis="y" view={v} size={size} flip={bottom} sheetMm={sheet.widthMm} onPick={(e) => startGuide("v", e)} />
         <div ref={host} className={`mn-canvas${hover >= 0 && edit ? " is-over" : ""}${paste ? " is-paste" : ""}${align ? " is-align" : ""}`}
           style={cut?.cursor ? { cursor: cut.cursor } : undefined}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
@@ -1003,9 +1098,12 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 const c = partColor(r.no);
                 if (cut) {
                   const done = cut.sim ? cut.sim.done.has(i) : cutDone.has(i), pick = cut.picked.includes(i);
+                  // not processed yet: selected and moved as without Process open, glowing red where it overlaps
+                  const on = !done && !cut.sim && sel.has(i), over = !done && !cut.sim && bad.has(i);
                   return (
-                    <path key={i} d={pathOf(g.loops)} fillRule="evenodd" className={`mn-part is-process${done ? " is-cut" : ""}${pick ? " is-picked" : ""}`}
-                      style={done ? { strokeWidth: 1.2 / v.s } : { fill: c.fill, stroke: c.stroke, strokeWidth: 1 / v.s }}>
+                    <path key={i} d={pathOf(g.loops)} fillRule="evenodd"
+                      className={`mn-part is-process${done ? " is-cut" : ""}${pick ? " is-picked" : ""}${on ? " is-sel" : ""}${over ? " is-bad" : ""}${on && moving ? " is-moving" : ""}${!done && edit && !cut.picking && !cut.onPoint ? " is-movable" : ""}`}
+                      style={done ? { strokeWidth: 1.2 / v.s } : { fill: c.fill, stroke: on ? undefined : c.stroke, strokeWidth: (on ? 2.2 : 1) / v.s }}>
                       <title>{r.name}</title>
                     </path>
                   );
@@ -1113,6 +1211,17 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
               <RemnantOverlay sheet={shownSheet} s={v.s} />
               <circle cx={right ? sheet.lengthMm : 0} cy={bottom ? sheet.widthMm : 0} r={6 / v.s} className="mn-origin" />
             </g>
+            {[...guides, ...(placing && placing.mm !== null ? [{ axis: placing.axis, mm: placing.mm, now: true }] : [])].map((g, k) => {
+              const p = g.axis === "v" ? g.mm * v.s + v.tx : g.mm * v.s + v.ty;
+              const now = "now" in g;
+              return (
+                <g key={`gd${k}`} className={`mn-guide${now ? " is-placing" : ""}`} pointerEvents="none">
+                  {g.axis === "v" ? <line x1={p} x2={p} y1={0} y2={size.h} /> : <line x1={0} x2={size.w} y1={p} y2={p} />}
+                  {now && <text x={g.axis === "v" ? p + 6 : 8} y={g.axis === "v" ? 16 : p - 6}>{g.axis === "v" ? "X" : "Y"} {fmtGuide(shownOf(g.axis, g.mm))}</text>}
+                </g>
+              );
+            })}
+            {placing?.typed && <text className="mn-guide-typed" x={8} y={size.h - 10}>{placing.axis === "h" ? "Y" : "X"} = {placing.typed}</text>}
             {box && (
               <rect className={`sel-box${box.x1 < box.x0 ? " is-crossing" : ""}`}
                 x={Math.min(box.x0, box.x1)} y={Math.min(box.y0, box.y1)} width={Math.abs(box.x1 - box.x0)} height={Math.abs(box.y1 - box.y0)} />
@@ -1150,7 +1259,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
             <rect x="6" y="6" width="8" height="8" rx="1" fill="currentColor" />
           </svg>
         </button>
-        <Ruler axis="x" view={v} size={size} />
+        <Ruler axis="x" view={v} size={size} flip={right} sheetMm={sheet.lengthMm} onPick={(e) => startGuide("h", e)} />
       </div>
 
       {cut ? cut.panel : <PartsPanel jobParts={jobParts} sheet={sheet} counts={counts} edit={edit} />}
@@ -1158,26 +1267,38 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   );
 }
 
-/** Rulers along the canvas (mm), following zoom and pan. */
-function Ruler({ axis, view, size }: { axis: "x" | "y"; view: { s: number; tx: number; ty: number }; size: { w: number; h: number } }) {
+type Guide = { axis: "h" | "v"; mm: number };
+const fmtGuide = (mm: number) => String(Math.round(mm * 10) / 10);
+
+/** Rulers along the canvas (mm), following zoom and pan; 0 where the sheet's 0,0 corner is (`flip`: the
+ *  numbers run from the right / bottom edge, `sheetMm` long). A press on one starts an aid line. */
+function Ruler({ axis, view, size, flip, sheetMm, onPick }: {
+  axis: "x" | "y"; view: { s: number; tx: number; ty: number }; size: { w: number; h: number }; flip: boolean; sheetMm: number;
+  onPick: (e: React.PointerEvent) => void;
+}) {
   const len = axis === "x" ? size.w : size.h;
   const off = axis === "x" ? view.tx : view.ty;
   // a labelled tick at least ~70 px apart: 10, 20, 50, 100, 200, 500 ... mm
   const steps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000];
   const major = steps.find((s) => s * view.s >= 70) ?? 5000;
   const minor = major / (String(major).startsWith("2") ? 4 : 5);
-  const from = Math.floor(-off / view.s / minor) * minor, to = (len - off) / view.s;
-  const ticks: { mm: number; big: boolean }[] = [];
-  for (let mm = from; mm <= to; mm += minor) ticks.push({ mm: Math.round(mm * 1000) / 1000, big: Math.abs(mm / major - Math.round(mm / major)) < 1e-6 });
+  // the ruler's numbers: sheet mm from the 0,0 corner's edge
+  const num = (mm: number) => (flip ? sheetMm - mm : mm);
+  const a = num(-off / view.s), b = num((len - off) / view.s);
+  const from = Math.floor(Math.min(a, b) / minor) * minor, to = Math.max(a, b);
+  const ticks: { u: number; big: boolean }[] = [];
+  for (let u = from; u <= to; u += minor) ticks.push({ u: Math.round(u * 1000) / 1000, big: Math.abs(u / major - Math.round(u / major)) < 1e-6 });
   const W = axis === "x" ? size.w : 26, H = axis === "x" ? 24 : size.h;
   return (
-    <svg className={`mn-ruler is-${axis}`} width={W} height={H} aria-hidden="true">
-      {ticks.map(({ mm, big }) => {
-        const p = mm * view.s + off;
+    <svg className={`mn-ruler is-${axis}`} width={W} height={H} role="button" aria-label={axis === "x" ? "X ruler: a horizontal aid line" : "Y ruler: a vertical aid line"}
+      onPointerDown={(e) => { if (e.button === 0) { e.preventDefault(); onPick(e); } }}>
+      <title>{axis === "x" ? "Click (or drag from here): a horizontal aid line" : "Click (or drag from here): a vertical aid line"}</title>
+      {ticks.map(({ u, big }) => {
+        const p = num(u) * view.s + off;
         return axis === "x" ? (
-          <g key={mm}><line x1={p} x2={p} y1={0} y2={big ? 10 : 5} />{big && <text x={p + 3} y={20}>{mm}</text>}</g>
+          <g key={u}><line x1={p} x2={p} y1={0} y2={big ? 10 : 5} />{big && <text x={p + 3} y={20}>{u}</text>}</g>
         ) : (
-          <g key={mm}><line y1={p} y2={p} x1={26} x2={big ? 16 : 21} />{big && <text x={13} y={p - 3} transform={`rotate(-90 13 ${p - 3})`}>{mm}</text>}</g>
+          <g key={u}><line y1={p} y2={p} x1={26} x2={big ? 16 : 21} />{big && <text x={13} y={p - 3} transform={`rotate(-90 13 ${p - 3})`}>{u}</text>}</g>
         );
       })}
     </svg>

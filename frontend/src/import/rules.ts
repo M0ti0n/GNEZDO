@@ -30,6 +30,8 @@ export interface ImportRules {
   colours: ColourRules;
   /** What drawing on the importer canvas snaps to (missing: everything). */
   snaps?: SnapKind[];
+  /** The kinds of snap there were when `snaps` was saved (newer kinds are on). */
+  snapsKnown?: SnapKind[];
   /** Geometry check → Splines → To polyline: how far the lines and arcs may be from the spline [mm] (missing: SPLINE_TOL_DEFAULT). */
   splineTolMm?: number;
 }

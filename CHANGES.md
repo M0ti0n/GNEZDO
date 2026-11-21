@@ -4,7 +4,11 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- Process open, parts not processed yet: a selected part is highlighted (blue) and parts that overlap or are too close glow red, as without Process open
+- Import 2D → **Markings**: the place snaps with a mark under the pointer (ends, middles, centers of circles and arcs, quadrants, intersections, and lines); it snapped before but showed nothing
+- Import 2D, drawing tools (and Markings, Dimension, Offset, Move...): new snap **On a line**: within 1 mm of a line, an arc, a circle or an aid line the point goes onto it (hourglass mark, "On line"), when nothing else snaps there. Settings → Rules → Snapping while drawing: **On a line** (on unless unticked)
+- Nest view rulers: the 0 is at the sheet's 0,0 corner: with 0,0 at the bottom the Y ruler counts up from the bottom edge, with 0,0 on the right the X ruler counts from the right edge (it was always top left)
+- Nest view: new **aid lines from the rulers** (blue, dashed, as Import 2D's): click the X ruler (or drag from it) for a horizontal line, the Y ruler for a vertical one; it follows the pointer (onto a sheet, trim or part edge within a few pixels), click to place it, or type its distance from 0,0 + Enter. Press on a line to move it; right click on it (or Esc while moving it): gone. Kept per sheet while the job is open
 
 ## Build 18 Nov 2026 (`ffabd63`)
 

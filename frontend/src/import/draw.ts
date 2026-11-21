@@ -15,7 +15,7 @@ export type Aid =
   | { id: string; kind: "carc"; c: Pt; r: number; start: number; end: number }
   | { id: string; kind: "dim"; m: Measure };
 
-export type SnapKind = "end" | "mid" | "center" | "quadrant" | "intersection" | "perpendicular" | "tangent" | "ortho";
+export type SnapKind = "end" | "mid" | "center" | "quadrant" | "intersection" | "perpendicular" | "tangent" | "nearest" | "ortho";
 export const SNAP_KINDS: { id: SnapKind; label: string; tip: string }[] = [
   { id: "end", label: "End points", tip: "Ends of lines and arcs" },
   { id: "mid", label: "Midpoints", tip: "The middle of lines, arcs and slot center lines" },
@@ -24,9 +24,20 @@ export const SNAP_KINDS: { id: SnapKind; label: string; tip: string }[] = [
   { id: "intersection", label: "Intersections", tip: "Where lines, arcs, circles and aid lines cross" },
   { id: "perpendicular", label: "Perpendicular", tip: "From the last point square onto a line (or straight onto a circle)" },
   { id: "tangent", label: "Tangent", tip: "From the last point, touching a circle or an arc" },
+  { id: "nearest", label: "On a line", tip: "Anywhere on a line, an arc, a circle or an aid line, within 1 mm of it (when nothing else snaps)" },
   { id: "ortho", label: "Horizontal / vertical", tip: "Line, Aid line and Slot: within 3° of horizontal or vertical, made exactly horizontal or vertical" },
 ];
 export const ALL_SNAPS: SnapKind[] = SNAP_KINDS.map((s) => s.id);
+/** The kinds there were before a list of snaps was saved with the kinds it knew (`snapsKnown`). */
+const FIRST_SNAPS: SnapKind[] = ["end", "mid", "center", "quadrant", "intersection", "perpendicular", "tangent", "ortho"];
+/** The snaps on: those in the saved list, and kinds newer than the list (on until unticked). */
+export function snapsOn(snaps?: SnapKind[], known?: SnapKind[]): SnapKind[] {
+  if (!snaps) return ALL_SNAPS;
+  const k = known ?? FIRST_SNAPS;
+  return ALL_SNAPS.filter((x) => snaps.includes(x) || !k.includes(x));
+}
+/** How near a line a point snaps onto it [mm] (On a line). */
+export const NEAREST_MM = 1;
 
 export interface Snap { p: Pt; kind: SnapKind }
 
@@ -128,7 +139,7 @@ function circleCircle(c1: Pt, r1: number, c2: Pt, r2: number): Pt[] {
 }
 
 /** Lower is preferred when two snaps are about as near. */
-const RANK: Record<SnapKind, number> = { end: 0, intersection: 1, center: 2, mid: 2, quadrant: 2, perpendicular: 3, tangent: 3, ortho: 4 };
+const RANK: Record<SnapKind, number> = { end: 0, intersection: 1, center: 2, mid: 2, quadrant: 2, perpendicular: 3, tangent: 3, ortho: 4, nearest: 5 };
 
 /**
  * The snap nearest the pointer (within tol mm), of the kinds allowed. `from` is the last point placed
@@ -195,7 +206,14 @@ export function findSnap(p: Pt, tol: number, ents: Entity[], aids: Aid[], allowe
     }
   }
   const b = best as (Snap & { d: number }) | null;
-  return b ? { p: b.p, kind: b.kind } : null;
+  if (b) return { p: b.p, kind: b.kind };
+  // nothing else: onto the nearest line, arc, circle or aid line within NEAREST_MM
+  if (allowed.has("nearest")) {
+    let on: Pt | null = null, dn = NEAREST_MM;
+    for (const c of curves) { const q = nearest(c, p), d = dist(q, p); if (d <= dn) { on = q; dn = d; } }
+    if (on) return { p: { ...on }, kind: "nearest" };
+  }
+  return null;
 }
 
 // ------------------------------------------------------------------ aid lines

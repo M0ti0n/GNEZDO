@@ -1737,6 +1737,11 @@ html.is-busy, html.is-busy * { cursor: progress !important; }
 .mn-ruler { display: block; background: #bfe6f2; border-radius: 4px; }
 .mn-ruler line { stroke: #2b6f86; stroke-width: 1; }
 .mn-ruler text { fill: #1f5567; font-size: 10px; font-family: var(--font-body, inherit); }
+.mn-ruler { cursor: pointer; }
+.mn-ruler:hover { background: #a9dcec; }
+.mn-guide line { stroke: #1ea0e6; stroke-width: 1.2; stroke-dasharray: 8 5; opacity: .9; }
+.mn-guide.is-placing line { stroke-width: 1.5; opacity: 1; }
+.mn-guide text, .mn-guide-typed { fill: #0f6f9e; font-size: 12px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
 .mn-parts { grid-row: 1 / span 2; grid-column: 2; display: flex; flex-direction: column; min-height: 0; background: #fff; border: 1.5px solid var(--line); border-radius: 8px; }
 .mn-parts-head { display: flex; align-items: baseline; justify-content: space-between; padding: 12px 14px 6px; }
 .mn-parts-head h2 { margin: 0; font-family: var(--font); font-size: 18px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
@@ -2209,6 +2214,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 
 /* Process -> Auto cut: the sheet and the AUTO CUT panel (after Fab's layout) */
 .mn-part.is-process { cursor: default; }
+.mn-part.is-process.is-movable { cursor: pointer; }
 .mn-part.is-process.is-picked { fill-opacity: .35; stroke: #f59f00; filter: drop-shadow(0 0 2px rgba(245, 159, 0, .95)) drop-shadow(0 0 6px rgba(245, 159, 0, .7)); }
 .mn-part.is-cut { fill: none !important; stroke: #b9bdc3; }
 .mn-part.is-cut.is-picked { fill: #f59f00 !important; fill-opacity: .18; }
