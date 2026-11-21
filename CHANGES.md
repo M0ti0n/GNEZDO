@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Settings → Machines → NC output → Program name: with **Letters and digits only**, new box **others become [ ]**: each space, _, -, . or other character becomes that letter (or digit), e.g. X: MIHA2280_1 → MIHA2280X1. Empty: left out as before. It goes with the machine file
 - Process → **Remnant**: **Smallest edge** (mm) is now in the panel, right under TRIM / RECTANGULAR / SKELET (moved from Settings → Stock and remnants). Changing it works the remnant shown out again at once and is kept for the next sheets and jobs
 - Stock: new **Default 4: 4000 × 2000** in **Add from** (Settings → Stock → Default sheets, material and size can be changed like the other three). A choice bigger than the job's machine can cut is grayed out in **Add from** ("too big for the machine"); settings saved before get Default 4 at 4000 × 2000
 - Import 2D: **dimensions can be picked and deleted**: with no tool on, click a dimension (its line or its number; Ctrl + click for more) or take it in a window with the lines, then **Delete**. It turns green when picked. **Erase** also takes one by its number now (before only its thin line, hard to hit). Undo brings it back
