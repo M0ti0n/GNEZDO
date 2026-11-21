@@ -2523,6 +2523,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .pco-rest p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
 .pco-rest-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
 .pco-rule { padding: 3px 8px; border-radius: 5px; background: #e3eff4; color: var(--blue-ink); }
+.pco-rest p.pco-warn { color: #8a5a00; }
 .mn.has-below { grid-template-rows: auto minmax(0, 1fr) auto; }
 .mn.has-below .mn-parts { grid-row: 1 / span 3; }
 .mn-below { grid-column: 1; grid-row: 3; min-width: 0; }
