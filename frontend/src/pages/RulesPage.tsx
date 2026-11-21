@@ -106,7 +106,7 @@ export function RulesTabs({ rules, onChange }: { rules: ImportRules; onChange: (
                 <span>Open cut layers</span>
                 <input className="field" value={rules.openCutLayers} onChange={(e) => set({ openCutLayers: e.target.value })} />
               </label>
-              <p className="rule-help">Parts of layer names, separated by commas, upper or lower case. A layer called <code>MARKING_1</code> matches <code>MARK</code>. Layer names win over colors.</p>
+              <p className="rule-help">Words at the start of a word in the layer name, separated by commas, upper or lower case: <code>MARK</code> matches <code>MARK</code>, <code>MARKING_1</code> and <code>LASER-MARK</code>, but not <code>REMARKS</code>; <code>SIGN</code> does not match <code>DESIGN</code>. Layer names win over colors.</p>
             </div>
           )}
         </section>

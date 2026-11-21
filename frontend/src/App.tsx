@@ -194,6 +194,7 @@ export function App() {
         if (machine) setJobMachine((m) => ({ ...m, [id]: machine! }));
         if (sols) setJobSol((m) => ({ ...m, [id]: sols }));
         setSavedSnap((m) => ({ ...m, [id]: snapOf(parts, stock, sols?.list ?? [], machineOf(machines, machine).id) }));
+        if (d?.modifiedAt) savedAt.current[id] = d.modifiedAt;
       }).catch((e) => setToast(`Could not open the job: ${(e as Error).message}`));
     }
   }, [active, jobParts]);
@@ -865,6 +866,10 @@ export function App() {
   const [jobServerId, setJobServerId] = useState<Record<string, string>>({});
   // the same, at once (POST PROCESS saves the job and records what it sent in one go)
   const serverIds = useRef<Record<string, string>>({});
+  /** per job tab: when the job was last saved as this tab knows it (opened or saved here) */
+  const savedAt = useRef<Record<string, string>>({});
+  /** a save refused because someone else saved the job since: asked whether to save over it */
+  const [saveConflict, setSaveConflict] = useState<{ jobId: string; title: string; text: string } | null>(null);
   const [closingJob, setClosingJob] = useState<{ jobId: string; title: string } | null>(null);
   const [removingSol, setRemovingSol] = useState<{ jobId: string; id: string } | null>(null);
   // Work parts -> remove a part that is on nested sheets: asked first (not nested: removed at once)
@@ -879,14 +884,16 @@ export function App() {
   };
   // SAVE writes over the job (a new one is created on its first save); SAVE AS makes a new job under
   // another name, and the tab goes on as that new job.
-  const saveJob = async (jobId: string, title: string, asNew = false) => {
+  const saveJob = async (jobId: string, title: string, asNew = false, force = false) => {
     const parts = jobParts[jobId];
     if (!parts) { setToast("The job is still loading"); return false; }
     const known = jobServerId[jobId] ?? (jobId.startsWith("new-") ? null : jobId);
     const serverId = asNew ? null : known;
     const st = solsOf(jobId);
     try {
-      const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: userName, machine: machineFor(jobId).id });
+      const r = await api.saveJob(serverId, { name: title, parts, stock: jobStock[jobId] ?? [], nest: nestsOfJob(st.list, st.sel.sol), modifiedBy: userName, machine: machineFor(jobId).id,
+        ...(serverId && savedAt.current[jobId] ? { baseModifiedAt: savedAt.current[jobId] } : {}), ...(force ? { force: true } : {}) });
+      savedAt.current[jobId] = r.modifiedAt;
       if (!serverId) setJobServerId((m) => ({ ...m, [jobId]: r.id }));
       serverIds.current[jobId] = r.id;
       setJobEdited((m) => ({ ...m, [jobId]: { by: userName, at: new Date().toISOString() } }));
@@ -895,6 +902,13 @@ export function App() {
       diag("save", `Job ${title} saved${asNew ? " as new" : ""}`, { job: jobId, serverId: r.id, parts: parts.length, sheets: r.sheetCount, solutions: st.list.length });
       setToast(`${asNew ? `Saved as ${title}` : "Job saved"}${r.sheetCount ? ` with ${r.sheetCount} ${r.sheetCount === 1 ? "sheet" : "sheets"}` : ""}${r.jobFileError ? `; job file not written: ${r.jobFileError}` : r.jobFile ? "; job file written" : ""}`);
     } catch (e) {
+      const err = e as Error & { status?: number; data?: { modifiedBy?: string; modifiedAt?: string } };
+      if (err.status === 409) {
+        const when = err.data?.modifiedAt ? new Date(err.data.modifiedAt).toLocaleString() : "";
+        setSaveConflict({ jobId, title, text: `${err.message}${when ? ` (${when})` : ""}` });
+        diag("save", `Job ${title} not saved: saved by ${err.data?.modifiedBy ?? "someone else"} since`, { job: jobId });
+        return false;
+      }
       setToast(`Not saved: ${(e as Error).message}`);
       return false;
     }
@@ -1456,6 +1470,14 @@ export function App() {
               <SheetPropertiesDialog adding index={(jobStock[addSheetFor.jobId] ?? []).length} sheet={addSheetFor.sheet}
                 machine={machineFor(addSheetFor.jobId)}
                 onSave={(s) => addSheet(addSheetFor.jobId, s)} onClose={() => setAddSheetFor(null)} />
+            )}
+            {saveConflict && (
+              <ConfirmDialog title="Saved by someone else" confirmLabel="Save over it"
+                onCancel={() => setSaveConflict(null)}
+                onConfirm={() => { const c = saveConflict; setSaveConflict(null); void saveJob(c.jobId, c.title, false, true); }}>
+                {saveConflict.text} Saving over it replaces their save with yours (their changes are lost).
+                To keep both, cancel and use <b>Save as</b> for yours.
+              </ConfirmDialog>
             )}
             {deleteAsk && (
               <ConfirmDialog title={`Delete sheet ${deleteAsk.index + 1}?`} confirmLabel="Delete sheet"

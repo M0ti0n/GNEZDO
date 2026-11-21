@@ -19,6 +19,12 @@ From the QA report (batch 2: what the program says):
 - The **E code** (E001 / E002 / E003, by the contour's longer side) no longer changes with the nest angle: the size is measured as the part is drawn (a 3.5 mm square hole was E003 at 0° and E002 at 45°), and to 0.001 mm instead of 0.1 mm (a 4.04 mm hole counted as 4.0). The Simulation's times use the same class
 - **Slot and obround ends** (half circles) are written as one arc each: about half of them ended in a straight line over the last 7.5° (0.05 mm off the drawing at R25, 0.2 mm at R100)
 - A window with **rounded corners** starts on a point of the arc: the start between two points gave a short straight stub off the radius (0.09 mm at R40)
+
+From the QA report (batch 3: import and saving):
+- Import 2D check: new **Contour inside a hole**: a closed cutting contour inside a hole of the part (an island, and what is in it) is a piece of its own; it was cut as a hole (the wrong way round, pierced in its material, after the hole dropped it). Show it, **Remove** it, or import it as a part of its own
+- Import rules: layer names match by **word** (at the start of a word in the layer name): MARK takes MARK, MARKING, MARK_2, LASER-MARK but no longer REMARKS; SIGN no longer takes DESIGN (holes on a DESIGN layer were traced instead of cut)
+- **Big drawings**: an outline of 9,000 or more short lines no longer stops the import (it ran out of stack); a plate with 51,000 holes is checked in about 4 s (it ran for more than 11 minutes)
+- **Saving a job someone else saved since you opened it** asks first: "Saved by someone else": save over it (their changes go) or cancel and use Save as. Before, the last save won without a word (a nest could be lost)
 - LVD postprocessor: at most 998 contours in a subprogram (the 999th ended at N9999, the subprogram's own end label). Import the machine file again (`POST PROCESSOR/LVD-AXEL-laser.gnezdo-machine.zip`, or Settings → Machines → NC output → Replace) to use it
 
 ## Build 21 Nov 2026 (`d7e7647`)
