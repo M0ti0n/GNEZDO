@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 21 Nov 2026 (`c75f6c8`)
+
 - Process → Manual cut: two ways, the toggle on top of the panel: **Contour cut order** (as before: contours picked one by one swap places) and the new **Path cut order**:
   - a **timeline** under the sheet goes along the cut path part by part (slider, ◀ ▶, or a click on its blocks); the parts up to it turn from colored to cut as in the Simulation, the last one cut in red
   - set it at the last part that is cut right, **SELECT**, click the parts to cut next in that order (their new numbers show on the sheet), **COMPLETE**: the path up to the timeline stays, the picked parts come next, the rest is **sorted again by the order of the sheet's last Auto cut** (shown in the panel), from where the head is then. Their contours stay as they are (leads, micro joints, break cuts)
