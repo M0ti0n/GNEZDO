@@ -7,12 +7,13 @@ import { usePickLists } from "../components/pickLists";
 import { add3, len3, lowHigh, mul3, normalAt, sub3, type Solid, type V3 } from "../import/step/step";
 import { describe, edgePick, facePick, fmtMeasure, measureSummary, refPoint, type MPick } from "../import/step/measure3d";
 import {
-  applyThreads, bendTexts, holeGroups, TAP_DRILLS, infoOf, kFor, loadProfiles, marksOf, partSolid, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
+  applyThreads, bendTexts, holeGroups, TAP_DRILLS, infoOf, kFor, loadProfiles, marksDownOf, marksOf, partSolid, saveProfiles, setCurrentProfile, solidOf, unfoldPart,
   DEFAULT_PROFILE, type Grain, type MarkAs, type StepPart, type StepSettings, type UnfoldProfile,
 } from "../import/step/stepPart";
 import { KIND_LABEL, type BodyKind } from "../import/step/extract";
 import { cutProblem, edgeAlong, keepPicks, type FaceCut } from "../import/step/split";
 import { flatDxf, type Unfolded, type V2 } from "../import/step/unfold";
+import { dimensionOf, type Measure, type Pick as DimPick } from "../import/measure";
 
 // 3D EXTRACTOR -> a part: the part and its flat pattern side by side, the Unfold panel on the right.
 // Sheet metal is unfolded across its bends; STITCH lays picked flat faces flat across their shared edges
@@ -151,7 +152,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   const useProfile = (n: string) => {
     const p = profiles.find((x) => x.name === n) ?? DEFAULT_PROFILE;
     setCurrentProfile(p.name);
-    set({ profile: p.name, kFactor: kFor(p, material, stitchMode ? (st.comp.t || null) : u.thickness), markLen: p.markLen, markInset: p.markInset, marks: p.marks, annotate: p.annotate, engraveText: !!p.engraveText, textMm: p.textMm ?? 6, foil: p.foil });
+    set({ profile: p.name, kFactor: kFor(p, material, stitchMode ? (st.comp.t || null) : u.thickness), markLen: p.markLen, markInset: p.markInset, marks: p.marks, marksDown: !!p.marksDown, annotate: p.annotate, engraveText: !!p.engraveText, textMm: p.textMm ?? 6, foil: p.foil });
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setPick(null); setEdgeA(null); } };
@@ -163,7 +164,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
   const ups = u.bends.filter((b) => b.up).length;
   const download = () => {
     const t = applyThreads(u, st);
-    const url = URL.createObjectURL(new Blob([flatDxf(t.u, { marks: marksOf(t.u, st), texts: bendTexts(t.u, st), threads: t.lines, fitTol: splineTolOf(loadRules()) })], { type: "application/dxf" }));
+    const url = URL.createObjectURL(new Blob([flatDxf(t.u, { marks: [...marksOf(t.u, st), ...marksDownOf(t.u, st)], texts: bendTexts(t.u, st), threads: t.lines, fitTol: splineTolOf(loadRules()) })], { type: "application/dxf" }));
     const a = document.createElement("a");
     a.href = url; a.download = `${name}_flat.dxf`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -204,7 +205,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
         {tool("one", "One face", pick === "one", () => setPick(pick === "one" ? null : "one"), "Click one flat face: its outline (with its holes) is the flat pattern, as it is (Stitch with one face)")}
         {tool("measure3d", "Measure 3D", pick === "measure3d", () => { setPick(pick === "measure3d" ? null : "measure3d"); setMeas([]); }, "Measure the part: click a face, an edge, a hole's edge or a corner, then a second one: offset between faces, hole sizes, distance between holes, angles")}
         {tool("look", "Face view", pick === "look", () => setPick(pick === "look" ? null : "look"), "Click a face of the part: the view turns to look straight at it")}
-        {tool("measure", "Measure 2D", pick === "measure", () => setPick(pick === "measure" ? null : "measure"), "Measure the flat pattern: click two points (corners and hole centers snap)")}
+        {tool("measure", "Measure 2D", pick === "measure", () => setPick(pick === "measure" ? null : "measure"), "Measure the flat pattern: click two things. Points (corners, hole centers, middles) snap; a click on an edge or a bend line takes the line, on an arc or a hole its center. Point to point: straight (X and Y); point to line: square to it; two lines: the distance between them")}
         <span className="uf-sep" />
         {tool("send", sent ? "Send again" : "Send to Import 2D", false, onSend, step.info.ok
           ? `Put the flat pattern into Import 2D (×${qty}) to be processed there${sent ? "; it replaces the one sent before" : ""}`
@@ -291,7 +292,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
             <PaneButtons side="flat" panes={panes} onPanes={setPanes} /></h3>
           {u.outline.length ? <FlatView u={u} st={st} measure={pick === "measure"} />
             : <div className="uf-empty">{stitchMode ? "Click the faces to stitch on the part: the first one stays, each next one must share an edge with one picked before." : "Not unfolded."}</div>}
-          <div className="uf-leg"><span><i className="is-mark" />bend marks ({st.marks === "none" ? "off" : st.marks === "trace" ? "traced" : "open cut"}, up bends)</span><span><i className="is-bend" />bend line (not cut)</span><span className="uf-up">UP</span><span className="uf-down">DOWN</span></div>
+          <div className="uf-leg"><span><i className="is-mark" />bend marks ({st.marks === "none" ? "off" : st.marks === "trace" ? "traced" : "open cut"}, up bends)</span>{st.marks !== "none" && st.marksDown && <span><i className="is-mark-down" />down bends (dashed)</span>}<span><i className="is-bend" />bend line (not cut)</span><span className="uf-up">UP</span><span className="uf-down">DOWN</span></div>
         </section>
       </div>
       <aside className="uf-panel" aria-label="Unfold">
@@ -312,7 +313,7 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
             </div>
           </div>
           {onSendOne && (
-            <button type="button" className="btn uf-send-one" disabled={!step.info.ok} onClick={onSendOne}
+            <button type="button" className="btn btn-plain uf-send-one" disabled={!step.info.ok} onClick={onSendOne}
               title={step.info.ok
                 ? `Send this part to Import 2D with its name, ${qty} ${qty === 1 ? "piece" : "pieces"} and material (no material: the Import 2D properties' one); it leaves this list and the next part opens`
                 : "Not unfolded yet: nothing to send"}>
@@ -435,6 +436,8 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
                   {m === "trace" ? "Trace" : m === "openCut" ? "Open cut" : "None"}</button>
               ))}
             </span></div>
+          <label className="chk" title="Down bends get marks too, dashed (the up bends' are solid), and they go to Import 2D and the Flat DXF like the up bends' marks">
+            <input type="checkbox" checked={!!st.marksDown} disabled={st.marks === "none"} onChange={(e) => set({ marksDown: e.target.checked })} /> Down bends too (dashed marks)</label>
           <div className="uf-row"><span>Angle, UP</span>
             <span className="cols-toggle uf-seg" role="radiogroup" aria-label="Angle and UP / DOWN beside the bends">
               {([["off", "Off"], ["show", "Shown"], ["engrave", "Engraved"]] as const).map(([k, l]) => {
@@ -1061,17 +1064,24 @@ function ViewOptions({ view, onView, onClose, material, fileColor }: {
 
 // ------------------------------------------------------------------ the flat pattern (SVG, measured)
 
+/** What Measure 2D picked on the flat pattern: a point (snapped), a straight line, or an arc / circle. */
+type FlatPick =
+  | { kind: "point"; p: V2 }
+  | { kind: "line"; a: V2; b: V2; at: V2 }
+  | { kind: "round"; c: V2; r: number; at: V2; pts: V2[] };
+
 function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measure: boolean }) {
   // threaded holes: a cross and the thread instead of the hole (as it goes to Import 2D)
   const { u, lines: threadLines } = useMemo(() => applyThreads(u0, st), [u0, st]);
   const svg = useRef<SVGSVGElement>(null);
-  const [pts, setPts] = useState<V2[]>([]);
-  const [near, setNear] = useState<{ p: V2; kind: "point" | "line" } | null>(null);
-  useEffect(() => { setPts([]); setNear(null); }, [measure, u]);
+  // Measure 2D: two picks, each a point (snapped), a straight line, or an arc / circle (its center)
+  const [picks, setPicks] = useState<FlatPick[]>([]);
+  const [near, setNear] = useState<FlatPick | null>(null);
+  useEffect(() => { setPicks([]); setNear(null); }, [measure, u]);
   const W = u.box.x1, H = u.box.y1;
   const pad = Math.max(W, H) * 0.09;
   const y = (v: number) => H - v;
-  const marks = marksOf(u, st);
+  const marks = marksOf(u, st), marksDown = marksDownOf(u, st);
   const fs = Math.max(W, H) * 0.026;
   // zoom (wheel, + / −) and move (right or middle button, or left without Measure 2D); a new flat
   // pattern size: fitted again
@@ -1102,7 +1112,9 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
   };
   const pan = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   // Measure 2D snaps to points (corners, hole centers, middles of straight edges, bend line ends and
-  // middles), else to a point on a line (the outline, a bend line)
+  // middles); else it picks the line under the pointer (a straight edge or a bend line), or an arc or a
+  // circle (its center). Two picks: point to point straight (with its X and Y), point to line square to
+  // the line, two parallel lines the distance between them.
   const snapPts = useMemo(() => {
     const out: V2[] = [];
     const mid = (a: V2, b: V2): V2 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -1114,37 +1126,59 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
     for (const [a, b] of u.bendLines) out.push(a, b, mid(a, b));
     return out;
   }, [u]);
-  const snapLines = useMemo(() => [...u.outline.map((e) => e.pts), ...u.bendLines.map(([a, b]) => [a, b])], [u]);
-  const toMm = (e: React.PointerEvent): { p: V2; snap: { p: V2; kind: "point" | "line" } | null } => {
+  const runs = useMemo(() => [
+    ...u.outline.map((e) => ({ pts: e.pts, arc: e.arc })),
+    ...u.bendLines.map(([a, b]) => ({ pts: [a, b], arc: undefined })),
+  ], [u]);
+  const pickAt = (e: React.PointerEvent): FlatPick | null => {
     const [sx, sy] = svgPt(e.clientX, e.clientY);
     const p: V2 = [sx, H - sy];
     let best: V2 | null = null, bd = 10 * upp;
     for (const c of snapPts) { const d = Math.hypot(c[0] - p[0], c[1] - p[1]); if (d < bd) { bd = d; best = c; } }
-    if (best) return { p, snap: { p: best, kind: "point" } };
-    let on: V2 | null = null, od = 8 * upp;
-    for (const run of snapLines) for (let i = 1; i < run.length; i++) {
-      const a = run[i - 1], b = run[i], vx = b[0] - a[0], vy = b[1] - a[1], L2 = vx * vx + vy * vy;
+    if (best) return { kind: "point", p: best };
+    let hit: FlatPick | null = null, od = 8 * upp;
+    for (const run of runs) for (let i = 1; i < run.pts.length; i++) {
+      const a = run.pts[i - 1], b = run.pts[i], vx = b[0] - a[0], vy = b[1] - a[1], L2 = vx * vx + vy * vy;
       if (L2 < 1e-12) continue;
       const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L2));
       const q: V2 = [a[0] + vx * t, a[1] + vy * t], d = Math.hypot(q[0] - p[0], q[1] - p[1]);
-      if (d < od) { od = d; on = q; }
+      if (d >= od) continue;
+      od = d;
+      hit = run.arc ? { kind: "round", c: run.arc.c, r: run.arc.r, at: q, pts: run.pts }
+        // a straight edge (a long polyline: the piece under the pointer)
+        : { kind: "line", a: run.pts.length === 2 ? run.pts[0] : a, b: run.pts.length === 2 ? run.pts[1] : b, at: q };
     }
-    return { p, snap: on ? { p: on, kind: "line" } : null };
+    return hit;
   };
+  const asPick = (k: FlatPick): DimPick => {
+    const P = (v: V2) => ({ x: v[0], y: v[1] });
+    return k.kind === "point" ? { kind: "point", p: P(k.p) }
+      : k.kind === "line" ? { kind: "line", id: "l", a: P(k.a), b: P(k.b), at: P(k.at) }
+      : { kind: "round", id: "r", c: P(k.c), r: k.r, full: false, at: P(k.at) };
+  };
+  const result: Measure | string | null = picks.length === 2 ? (() => { const r = dimensionOf(asPick(picks[0]), asPick(picks[1])); return r.ok ? r.m : r.message; })() : null;
   const r = 4 * upp, tf = 13 * upp;
-  const dim = (a: V2, b: V2, k: number) => {
-    const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const dim = (m: Measure) => {
+    if (m.kind !== "distance") return null;
+    const a: V2 = [m.from.x, m.from.y], b: V2 = [m.to.x, m.to.y];
+    const xy = picks.every((k) => k.kind !== "line");
     return (
-      <g key={`d${k}`} className="uf-dim">
+      <g className="uf-dim">
+        {m.ext.map(([p, q], i) => <path key={i} className="is-ext" d={`M${p.x} ${y(p.y)} L${q.x} ${y(q.y)}`} />)}
         <path d={`M${a[0]} ${y(a[1])} L${b[0]} ${y(b[1])}`} />
         <circle cx={a[0]} cy={y(a[1])} r={r * 0.75} /><circle cx={b[0]} cy={y(b[1])} r={r * 0.75} />
-        <text x={(a[0] + b[0]) / 2} y={y((a[1] + b[1]) / 2) - tf * 0.6} fontSize={tf} textAnchor="middle">{fmt(d)} (X {fmt(Math.abs(b[0] - a[0]))}, Y {fmt(Math.abs(b[1] - a[1]))})</text>
+        {/* the halo in drawing units too, so it stays round the letters at any zoom */}
+        <text x={(a[0] + b[0]) / 2} y={y((a[1] + b[1]) / 2) - tf * 0.6} fontSize={tf} textAnchor="middle" style={{ strokeWidth: 3 * upp }}>
+          {fmt(m.value)}{xy ? ` (X ${fmt(Math.abs(b[0] - a[0]))}, Y ${fmt(Math.abs(b[1] - a[1]))})` : ` · ${m.note}`}</text>
       </g>
     );
   };
-  const snapMark = (q: { p: V2; kind: "point" | "line" }) => q.kind === "point"
-    ? <circle className="uf-snap" cx={q.p[0]} cy={y(q.p[1])} r={r * 1.4} />
-    : <path className="uf-snap" d={`M${q.p[0] - r} ${y(q.p[1]) - r} L${q.p[0] + r} ${y(q.p[1]) + r} M${q.p[0] - r} ${y(q.p[1]) + r} L${q.p[0] + r} ${y(q.p[1]) - r}`} />;
+  const pickMark = (q: FlatPick, k: string) => q.kind === "point"
+    ? <circle key={k} className="uf-snap" cx={q.p[0]} cy={y(q.p[1])} r={r * 1.4} />
+    : q.kind === "line"
+      ? <path key={k} className="uf-snap is-line" d={`M${q.a[0]} ${y(q.a[1])} L${q.b[0]} ${y(q.b[1])}`} />
+      : <g key={k}><path className="uf-snap is-line" d={`M${q.pts.map((p) => `${p[0]} ${y(p[1])}`).join(" L")}`} />
+        <path className="uf-snap" d={`M${q.c[0] - r} ${y(q.c[1])} H${q.c[0] + r} M${q.c[0]} ${y(q.c[1]) - r} V${y(q.c[1]) + r}`} /></g>;
   return (
     <div className="uf-flatwrap">
     <svg ref={svg} className={`uf-svg${measure ? " is-measure" : ""}`} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
@@ -1159,16 +1193,16 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
           setVb((prev) => { const b = prev ?? fitBox; return { ...b, x: b.x - dx * upp, y: b.y - dy * upp }; });
           return;
         }
-        if (measure) setNear(toMm(e).snap);
+        if (measure) setNear(pickAt(e));
       }}
       onPointerDown={(e) => {
         // a double click with the middle button: Fit
         if (middleDoubleFlat(e)) { e.preventDefault(); pan.current = null; return; }
         // move: right or middle button, or the left one when not measuring
         if (e.button !== 0 || !measure) { pan.current = { x: e.clientX, y: e.clientY, moved: false }; (e.currentTarget as Element).setPointerCapture(e.pointerId); return; }
-        const { p, snap } = toMm(e);
-        const q = snap?.p ?? p;
-        setPts((l) => (l.length >= 2 ? [q] : [...l, q]));
+        const q = pickAt(e);
+        if (!q) return;
+        setPicks((l) => (l.length >= 2 ? [q] : [...l, q]));
       }}
       onPointerUp={() => { pan.current = null; }}
       onDoubleClick={() => { if (!measure) setVb(null); }}>
@@ -1177,6 +1211,7 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
         : <path key={i} className="uf-o" d={`M${e.pts.map((p) => `${p[0]} ${y(p[1])}`).join(" L")}`} />))}
       {u.bendLines.map(([a, b], i) => <path key={`b${i}`} className="uf-b" d={`M${a[0]} ${y(a[1])} L${b[0]} ${y(b[1])}`} />)}
       {marks.map(([a, b], i) => <path key={`m${i}`} className="uf-m" d={`M${a[0]} ${y(a[1])} L${b[0]} ${y(b[1])}`} />)}
+      {marksDown.map(([a, b], i) => <path key={`md${i}`} className="uf-m is-down" d={`M${a[0]} ${y(a[1])} L${b[0]} ${y(b[1])}`} />)}
       {threadLines.map((r, i) => <path key={`th${i}`} className="uf-eng" d={`M${r.map((p) => `${p[0]} ${y(p[1])}`).join(" L")}`} />)}
       {st.annotate && st.engraveText && bendTexts(u, st).map((r, i) => <path key={`e${i}`} className="uf-eng" d={`M${r.map((p) => `${p[0]} ${y(p[1])}`).join(" L")}`} />)}
       {st.annotate && !st.engraveText && u.bendLines.map(([a, b], i) => {
@@ -1198,9 +1233,14 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
       {st.foil && <text className="uf-foil" x={0} y={-pad * 0.35} fontSize={fs * 0.9}>TOP: FOIL / FINISH UP</text>}
       <text className="uf-size" x={W / 2} y={H + pad * 0.6} fontSize={fs} textAnchor="middle">{fmt(W)}</text>
       <text className="uf-size" x={-pad * 0.45} y={H / 2} fontSize={fs} textAnchor="middle" transform={`rotate(-90 ${-pad * 0.45} ${H / 2})`}>{fmt(H)}</text>
-      {measure && near && snapMark(near)}
-      {pts.length === 2 && dim(pts[0], pts[1], 0)}
-      {pts.length === 1 && <circle className="uf-snap" cx={pts[0][0]} cy={y(pts[0][1])} r={r} />}
+      {measure && near && pickMark(near, "near")}
+      {measure && picks.length === 1 && pickMark(picks[0], "p0")}
+      {measure && picks.length === 2 && picks.map((k, i) => (k.kind !== "point" ? pickMark(k, `p${i}`) : null))}
+      {result && typeof result !== "string" && dim(result)}
+      {typeof result === "string" && picks[1] && (
+        <text className="uf-dim-msg" x={picks[1].kind === "point" ? picks[1].p[0] : picks[1].at[0]} y={y(picks[1].kind === "point" ? picks[1].p[1] : picks[1].at[1]) - tf} fontSize={tf}
+          textAnchor="middle" style={{ strokeWidth: 3 * upp }}>{result}</text>
+      )}
     </svg>
     <div className="uf-zoom" role="group" aria-label="Zoom">
       <button type="button" className="icon-btn" onClick={() => zoomAt(1.4)} title="Zoom in (or the mouse wheel)" aria-label="Zoom in">+</button>
@@ -1256,6 +1296,7 @@ function ProfilesDialog({ profiles, onClose, onSave }: { profiles: UnfoldProfile
                 <NumInput className="field uf-num" value={p.markInset} min={0} aria-label="Inset (mm)" onCommit={(n) => setP({ markInset: n })} /><span>mm in</span></div>
               <div className="uf-row"><span>Marks as</span>
                 <select className="field" value={p.marks} onChange={(e) => setP({ marks: e.target.value as MarkAs })}><option value="trace">Trace</option><option value="openCut">Open cut</option><option value="none">None</option></select></div>
+              <label className="chk"><input type="checkbox" checked={!!p.marksDown} onChange={(e) => setP({ marksDown: e.target.checked })} /> Down bends marked too (dashed)</label>
               <label className="chk"><input type="checkbox" checked={p.annotate} onChange={(e) => setP({ annotate: e.target.checked })} /> Show angle and UP / DOWN</label>
               <label className="chk"><input type="checkbox" checked={!!p.engraveText} disabled={!p.annotate} onChange={(e) => setP({ engraveText: e.target.checked })} /> … engraved (single-line text),</label>
               <div className="uf-row"><span>Text height</span><NumInput className="field uf-num" value={p.textMm ?? 6} min={1.5} aria-label="Text height (mm)" onCommit={(n) => setP({ textMm: n })} /><small>mm</small></div>
