@@ -2,7 +2,7 @@
 
     python3 .github/scripts/server_smoke.py [http://localhost:8080] [--after-restart]
 
-Checks: the page loads, the API needs a sign-in, the first admin is made, a real nest
+Checks: the page loads, the API needs a sign-in, the default Admin (no password) signs in and sets one, a real nest
 (nestprep + PackingSolver) runs to the end, a second user signs in without a password,
 a non-admin cannot change machines, and sign-out closes the API again.
 With --after-restart: the cookie saved by the first run still works (keys kept in the volume).
@@ -77,15 +77,18 @@ s, page = call(o, "GET", "/")
 ok(s == 200 and b"<div id=\"root\"" in page, "the web page loads")
 
 s, st = call(o, "GET", "/api/auth/state")
-ok(s == 200 and st.get("required") and st.get("setupNeeded"), f"sign-in is required, no users yet ({st})")
+ok(s == 200 and st.get("required") and st.get("defaultAdmin"), f"sign-in is required, Admin has no password yet ({st})")
 s, _ = call(o, "GET", "/api/nest/status")
 ok(s == 401, "the API is closed before signing in")
 
-s, b = call(o, "POST", "/api/auth/setup", {"name": "Admin", "password": "smoke-pass-1"})
-ok(s == 200, f"the first admin is made ({s} {b})")
+s, b = call(o, "POST", "/api/auth/signin", {"name": "Admin", "password": ""})
+ok(s == 200, f"a new installation signs in as Admin without a password ({s} {b})")
+s, b = call(o, "POST", "/api/auth/password", {"current": "", "password": "smoke-pass-1"})
+ok(s == 200 and b.get("hasPassword") is True, f"Admin gives itself a password ({s} {b})")
 jar.save(ignore_discard=True, ignore_expires=True)
 s, st = call(o, "GET", "/api/auth/state")
 ok((st.get("user") or {}).get("isAdmin") is True, "and is signed in as an admin")
+ok(st.get("defaultAdmin") is False, "the sign-in page no longer suggests Admin")
 
 s, ns = call(o, "GET", "/api/nest/status")
 ok(s == 200 and ns.get("available"), f"the nesting engine is installed ({ns})")
