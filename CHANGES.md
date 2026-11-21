@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Import 2D: **dimensions can be picked and deleted**: with no tool on, click a dimension (its line or its number; Ctrl + click for more) or take it in a window with the lines, then **Delete**. It turns green when picked. **Erase** also takes one by its number now (before only its thin line, hard to hit). Undo brings it back
 - Process open, parts not processed yet: a selected part is highlighted (blue) and parts that overlap or are too close glow red, as without Process open
 - Import 2D → **Markings**: the place snaps with a mark under the pointer (ends, middles, centers of circles and arcs, quadrants, intersections, and lines); it snapped before but showed nothing
 - Import 2D, drawing tools (and Markings, Dimension, Offset, Move...): new snap **On a line**: within 1 mm of a line, an arc, a circle or an aid line the point goes onto it (hourglass mark, "On line"), when nothing else snaps there. Settings → Rules → Snapping while drawing: **On a line** (on unless unticked)

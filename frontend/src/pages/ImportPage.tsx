@@ -336,6 +336,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   const [grip, setGrip] = useState<{ id: string; g: GripKind; p: Pt; orig: Entity; now: Entity | null } | null>(null);
   const pickText = (ids: Set<string>): string => {
     if (!ids.size) return "";
+    if ([...ids].every((id) => id.startsWith("aid:"))) return `${ids.size === 1 ? "Dimension" : `${ids.size} dimensions`} picked: Delete erases ${ids.size === 1 ? "it" : "them"} (Ctrl + click for more, Esc to clear)`;
     if (ids.size > 1) return `${ids.size} picked (Ctrl + click for more, Esc to clear). Ctrl+C copies them, Delete erases them; Aid line turns them into aid lines`;
     const e = drawing.entities.find((x) => ids.has(x.id));
     if (!e) return "";
@@ -770,12 +771,15 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         const t = e.target as HTMLElement | null;
         if (!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))) {
           e.preventDefault();
+          // the lines and the dimensions picked
           const n = drawing.entities.filter((x) => pick.has(x.id)).length;
-          commit({ ...drawing, entities: drawing.entities.filter((x) => !pick.has(x.id)) }, "Delete");
+          const nd = aids.filter((x) => pick.has(`aid:${x.id}`)).length;
+          commit({ ...drawing, entities: drawing.entities.filter((x) => !pick.has(x.id)), aids: aids.filter((x) => !pick.has(`aid:${x.id}`)) }, nd && !n ? (nd === 1 ? "Erase dimension" : "Erase dimensions") : "Delete");
           setPick(new Set());
           setHoverId(null);
           setSelected(null);
-          setMessage({ text: `${n} ${n === 1 ? "line" : "lines"} deleted (Undo brings ${n === 1 ? "it" : "them"} back)` });
+          const what = [n ? `${n} ${n === 1 ? "line" : "lines"}` : "", nd ? `${nd} ${nd === 1 ? "dimension" : "dimensions"}` : ""].filter(Boolean).join(" and ");
+          setMessage({ text: `${what} deleted (Undo brings ${n + nd === 1 ? "it" : "them"} back)` });
           return;
         }
       }
@@ -1023,7 +1027,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (!tool && pr?.button === 0 && box && !isClick && view) {
       const b = box;
       setBox(null);
-      const ids = idsInBox(b, view, drawing.entities);
+      const ids = [...idsInBox(b, view, drawing.entities), ...dimsInBox(b, view, aids)];
       const more = e.ctrlKey || e.metaKey;
       const next = new Set<string>(more ? [...pick, ...ids] : ids);
       setPick(next);
@@ -1033,11 +1037,14 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (isClick && !tool && pr!.button === 0) {
       setBox(null);
       const id = lineUnder(e.clientX, e.clientY);
+      // a line, or a dimension (its line or its number)
       const en = id && !id.startsWith("aid:") ? drawing.entities.find((x) => x.id === id) : undefined;
-      if (!en) { if (pick.size) { setPick(new Set()); setMessage(null); } return; }
+      const dim = id?.startsWith("aid:") && aids.some((x) => `aid:${x.id}` === id && x.kind === "dim") ? id : undefined;
+      const key = en?.id ?? dim;
+      if (!key) { if (pick.size) { setPick(new Set()); setMessage(null); } return; }
       const more = e.ctrlKey || e.metaKey;
       const next = new Set<string>(more ? pick : []);
-      if (more && pick.has(en.id)) next.delete(en.id); else next.add(en.id);
+      if (more && pick.has(key)) next.delete(key); else next.add(key);
       setPick(next);
       setMessage(next.size ? { text: pickText(next) } : null);
       return;
@@ -1630,6 +1637,10 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               {!tool && drawing.entities.filter((e) => pick.has(e.id)).map((e) => (
                 <path key={`pk-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="scale-sel" />
               ))}
+              {!tool && aids.filter((a) => a.kind === "dim" && pick.has(`aid:${a.id}`)).map((a) => {
+                const d = aidPath(a, view, size);
+                return d ? <path key={`pkd-${a.id}`} d={d} vectorEffect="non-scaling-stroke" className="scale-sel" /> : null;
+              })}
               {grip?.now && <path d={pathOf(grip.now)} vectorEffect="non-scaling-stroke" className="pv-add" />}
               {tool && MANIP.has(tool) && rotItems.map((e) => (
                 <path key={`ro-${e.id}`} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="scale-sel" />
@@ -1666,11 +1677,12 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 <path key={`hit-${e.id}`} data-id={e.id} d={pathOf(e)} vectorEffect="non-scaling-stroke" className="ent-hit" />
               ))}
               {/* aid lines and dimensions: picked by Erase (and aid lines by Aid line / Offset; straight ones as Mirror's axis) */}
-              {(tool === "erase" || tool === "xline" || tool === "offset" || (tool === "mirror" && rotStage === 1)) && aids.map((a) => {
-                if (a.kind === "dim" && tool !== "erase") return null;
+              {(!tool || tool === "erase" || tool === "xline" || tool === "offset" || (tool === "mirror" && rotStage === 1)) && aids.map((a) => {
+                if (a.kind === "dim" && tool && tool !== "erase") return null;
+                if (!tool && a.kind !== "dim") return null;
                 if (tool === "mirror" && a.kind !== "xline" && a.kind !== "cline") return null;
-                const d = aidPath(a, view, size);
-                return d ? <path key={`hit-${a.id}`} data-id={`aid:${a.id}`} d={d} vectorEffect="non-scaling-stroke" className="ent-hit" /> : null;
+                const d = aidPath(a, view, size, false, true);
+                return d ? <path key={`hit-${a.id}`} data-id={`aid:${a.id}`} d={d} vectorEffect="non-scaling-stroke" className={`ent-hit${a.kind === "dim" ? " is-dim" : ""}`} /> : null;
               })}
               {/* aid lines (endless, dashed) and slot center lines: only on this canvas */}
               {aids.map((a) => {
@@ -1886,7 +1898,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               );
             })()}
             {(measures.length > 0 || (tool && MEASURING[tool])) && (
-              <MeasureLayer measures={measures} toScreen={(p) => toScreen(p, view)}
+              <MeasureLayer measures={measures} picked={tool ? undefined : pick} toScreen={(p) => toScreen(p, view)}
                 first={tool && MEASURING[tool] ? (firstPick?.kind === "point" ? toScreen(firstPick.p, view) : firstPick?.kind === "round" ? toScreen(firstPick.c, view) : null) : null}
                 snap={null} />
             )}
@@ -2242,6 +2254,19 @@ function idsInBox(b: { x0: number; y0: number; x1: number; y1: number }, v: View
   const crossing = b.x1 < b.x0;
   return entities.filter((e) => { const pts = pointsAlong(e); return crossing ? touchesRect(pts, rect) : pts.every((p) => inRect(p, rect)); }).map((e) => e.id);
 }
+/** The dimensions in a box (as idsInBox: left to right wholly inside, right to left any of it), as `aid:` ids. */
+function dimsInBox(b: { x0: number; y0: number; x1: number; y1: number }, v: View, aids: Aid[]): string[] {
+  const toMm = (x: number, y: number): Pt => ({ x: (x - v.tx) / v.s, y: -(y - v.ty) / v.s });
+  const a = toMm(Math.min(b.x0, b.x1), Math.max(b.y0, b.y1)), c = toMm(Math.max(b.x0, b.x1), Math.min(b.y0, b.y1));
+  const rect = { minX: a.x, minY: a.y, maxX: c.x, maxY: c.y };
+  const crossing = b.x1 < b.x0;
+  return aids.flatMap((x) => {
+    if (x.kind !== "dim") return [];
+    const m = x.m;
+    const pts = m.kind === "distance" ? [m.from, m.to] : m.kind === "diameter" ? [m.a, m.b] : m.kind === "radius" ? [m.c, m.to] : [m.at];
+    return (crossing ? touchesRect(pts, rect) : pts.every((p) => inRect(p, rect))) ? [`aid:${x.id}`] : [];
+  });
+}
 const inRect = (p: Pt, r: Rect) => p.x >= r.minX && p.x <= r.maxX && p.y >= r.minY && p.y <= r.maxY;
 
 /** Does a polyline touch the rectangle: a point inside, or a segment crossing one of its edges? */
@@ -2272,8 +2297,8 @@ const measureText = (m: Measure) =>
     : m.kind === "diameter" ? `Diameter ${num(m.d)} mm` : `Angle ${num(m.deg)}°`;
 
 /** Dimensions drawn over the part, in screen pixels (y down). */
-function MeasureLayer({ measures, toScreen, first, snap }: {
-  measures: Measure[]; toScreen: (p: Pt) => { x: number; y: number };
+function MeasureLayer({ measures, picked, toScreen, first, snap }: {
+  measures: (Measure & { aidId?: string })[]; picked?: Set<string>; toScreen: (p: Pt) => { x: number; y: number };
   first: { x: number; y: number } | null; snap: { x: number; y: number } | null;
 }) {
   // text along a line, never upside down, a little above it; moved along the line when another label is there
@@ -2298,7 +2323,8 @@ function MeasureLayer({ measures, toScreen, first, snap }: {
           <path d="M0 1.5 10 5 0 8.5z" className="meas-head" />
         </marker>
       </defs>
-      {measures.map((m, i) => {
+      {measures.map((m0, i) => <g key={`m${i}`} className={m0.aidId && picked?.has(`aid:${m0.aidId}`) ? "is-picked" : undefined}>{(() => {
+        const m: Measure = m0;
         const k = `m${i}`;
         if (m.kind === "distance" || m.kind === "diameter") {
           const a = toScreen(m.kind === "distance" ? m.from : m.a), b = toScreen(m.kind === "distance" ? m.to : m.b);
@@ -2337,7 +2363,7 @@ function MeasureLayer({ measures, toScreen, first, snap }: {
             <text x={tx} y={ty} className="meas-text" textAnchor="middle">{measureLabel(m)}</text>
           </g>
         );
-      })}
+      })()}</g>)}
       {first && <circle cx={first.x} cy={first.y} r={4.5} className="meas-first" />}
       {snap && <rect x={snap.x - 7} y={snap.y - 7} width={14} height={14} className="snap-mark" />}
     </g>
@@ -2350,7 +2376,7 @@ const ISSUE_ICON: Record<EndIssue["kind"], string> = { overshoot: "✂", gap: "�
  * An aid as a path: an endless aid line clipped to what the canvas shows, a center line, or (for picking
  * with Erase) a dimension's line. In drawing mm (inside the view's transform), or screen pixels.
  */
-function aidPath(a: Aid, v: View, size: { w: number; h: number }, screen = false): string | null {
+function aidPath(a: Aid, v: View, size: { w: number; h: number }, screen = false, label = false): string | null {
   const f = (n: number) => +n.toFixed(4);
   const out = (p: Pt, q: Pt) => {
     if (!screen) return `M${f(p.x)} ${f(p.y)}L${f(q.x)} ${f(q.y)}`;
@@ -2366,12 +2392,20 @@ function aidPath(a: Aid, v: View, size: { w: number; h: number }, screen = false
   if (a.kind === "cline") return out(a.a, a.b);
   if (a.kind === "carc") return pathOf(carcEnt(a));
   const m = a.m;
-  if (m.kind === "distance") return out(m.from, m.to);
-  if (m.kind === "diameter") return out(m.a, m.b);
-  if (m.kind === "radius") return out(m.c, m.to);
-  // an angle: its two arms near the crossing (42 px)
-  const k = 42 / v.s;
-  return `${out(m.at, { x: m.at.x + m.u1.x * k, y: m.at.y + m.u1.y * k })}${out(m.at, { x: m.at.x + m.u2.x * k, y: m.at.y + m.u2.y * k })}`;
+  // a dimension's line; for picking (`label`) also a line through its number, a little above it on screen
+  const dimLine = (p: Pt, q: Pt) => {
+    if (!label) return out(p, q);
+    let deg = Math.atan2(-(q.y - p.y), q.x - p.x) * 180 / Math.PI;
+    if (deg > 90) deg -= 180; if (deg < -90) deg += 180;
+    const r = (deg * Math.PI) / 180, k = 17 / v.s, o = { x: Math.sin(r) * k, y: Math.cos(r) * k };
+    return `${out(p, q)}${out({ x: p.x + o.x, y: p.y + o.y }, { x: q.x + o.x, y: q.y + o.y })}`;
+  };
+  if (m.kind === "distance") return dimLine(m.from, m.to);
+  if (m.kind === "diameter") return dimLine(m.a, m.b);
+  if (m.kind === "radius") return dimLine(m.c, m.to);
+  // an angle: its two arms near the crossing (42 px), and out to its number between them
+  const k = 42 / v.s, bx = m.u1.x + m.u2.x, by = m.u1.y + m.u2.y, bl = Math.hypot(bx, by) || 1, kb = 70 / v.s;
+  return `${out(m.at, { x: m.at.x + m.u1.x * k, y: m.at.y + m.u1.y * k })}${out(m.at, { x: m.at.x + m.u2.x * k, y: m.at.y + m.u2.y * k })}${out(m.at, { x: m.at.x + (bx / bl) * kb, y: m.at.y + (by / bl) * kb })}`;
 }
 
 /** Where a point snaps, and to what (AutoCAD-like marks); a cross when it does not snap. */

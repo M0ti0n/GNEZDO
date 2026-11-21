@@ -698,6 +698,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .is-processed .ent.role-cut { stroke: var(--ln-cut-done); }
 .is-processed .ent.role-openCut { stroke: var(--ln-open-done); }
 .ent-hit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; }
+.ent-hit.is-dim { stroke-width: 20; cursor: pointer; }
 .canvas.is-marking { cursor: crosshair; }
 .canvas.is-marking .ent-hit:hover { stroke: rgba(242, 183, 5, .35); }
 
@@ -1200,6 +1201,7 @@ th.num .th-sort { flex-direction: row-reverse; }
 .meas-text { font-size: 21px; font-weight: 700; fill: var(--meas); paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
 .meas-first { fill: rgba(194, 65, 12, .2); stroke: #c2410c; stroke-width: 2; }
 .meas-pick { fill: none; stroke: #c2410c; stroke-width: 3.2; opacity: .75; }
+.meas .is-picked { --meas: #1a9d44; }
 
 /* Geometry check: Remove next to "Double or tiny lines" and "Lines outside the part outline" */
 .gc-checks li { display: flex; align-items: center; gap: 6px; }
