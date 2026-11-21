@@ -9,8 +9,10 @@ using Microsoft.EntityFrameworkCore;
 namespace Gnezdo.Api.Auth;
 
 /// <summary>
-/// Sign-in for the server build: the admin adds users (a name, a password if wanted); every API call
-/// but these here needs a signed-in user. The demo (no database) and the desktop build run without.
+/// Sign-in for the server build: the admin adds users (a name, a password if wanted) in Settings ->
+/// Administration; every API call but these here needs a signed-in user. A new database starts with one
+/// user, <see cref="DefaultAdmin"/>, an admin without a password. The demo (no database) and the desktop
+/// build run without.
 /// A sign-in lasts 30 days in that browser, renewed while used; it ends when the user's password or
 /// rights change or the user is removed (the stamp).
 /// </summary>
@@ -18,6 +20,19 @@ public static class AuthEndpoints
 {
     public const string StampClaim = "gnezdo:stamp";
     public const string AdminRole = "admin";
+    /// <summary>The user a new database starts with: an admin, no password (give it one, or rename it, in Administration).</summary>
+    public const string DefaultAdmin = "Admin";
+
+    /// <summary>A database without users (just made, or from before users) gets <see cref="DefaultAdmin"/>. Sign-in on only.</summary>
+    public static async Task EnsureAdminAsync(IServiceProvider services, GnezdoDb db, ILogger logger, CancellationToken ct = default)
+    {
+        if (services.GetService<SignInState>() is not { Required: true } || await db.Users.AnyAsync(ct)) return;
+        var now = services.GetService<TimeProvider>()?.GetUtcNow() ?? DateTimeOffset.UtcNow;
+        db.Users.Add(new User { Name = DefaultAdmin, IsAdmin = true, Stamp = Passwords.NewStamp(), CreatedAt = now });
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException) { db.ChangeTracker.Clear(); return; }   // made meanwhile (two starts at once)
+        logger.LogInformation("User {Name} added (an admin, no password): sign in as {Name} and give it a password in Settings -> Administration.", DefaultAdmin, DefaultAdmin);
+    }
 
     public record SignInRequest(string? Name, string? Password);
     public record PasswordChange(string? Current, string? Password);
@@ -113,35 +128,17 @@ public static class AuthEndpoints
 
     public static void MapAuthEndpoints(this WebApplication app)
     {
-        // what the app shows first: the sign-in page, the first admin to create, or the app
+        // what the app shows first: the sign-in page or the app. defaultAdmin: the user a new database starts
+        // with is still there without a password (the sign-in page says to sign in as it)
         app.MapGet("/api/auth/state", async (HttpContext ctx, SignInState s, CancellationToken ct) =>
         {
-            if (!s.Required) return Results.Ok(new { required = false, setupNeeded = false, user = (object?)null });
+            if (!s.Required) return Results.Ok(new { required = false, defaultAdmin = false, user = (object?)null });
             var db = ctx.RequestServices.GetRequiredService<GnezdoDb>();
-            var setup = !await db.Users.AnyAsync(ct);
+            var fresh = await db.Users.AnyAsync(u => u.Name == DefaultAdmin && u.IsAdmin && u.PasswordHash == null, ct);
             object? user = null;
             if (ctx.User.Identity?.IsAuthenticated == true && int.TryParse(ctx.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id)
                 && await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id, ct) is { } u) user = View(u);
-            return Results.Ok(new { required = true, setupNeeded = setup, user });
-        });
-
-        // the very first start: the first user, an admin
-        app.MapPost("/api/auth/setup", async (SignInRequest r, HttpContext ctx, SignInState s, TimeProvider clock, DiagLog log, CancellationToken ct) =>
-        {
-            if (!s.Required) return Results.NotFound();
-            var db = ctx.RequestServices.GetRequiredService<GnezdoDb>();
-            if (await db.Users.AnyAsync(ct)) return Results.Conflict(new { message = "There are users already: sign in." });
-            if (CleanName(r.Name) is not { } name) return Invalid("name", "A name is required (up to 100 characters).");
-            var u = new User
-            {
-                Name = name, IsAdmin = true, Stamp = Passwords.NewStamp(), CreatedAt = clock.GetUtcNow(), LastSignInAt = clock.GetUtcNow(),
-                PasswordHash = string.IsNullOrEmpty(r.Password) ? null : Passwords.Hash(r.Password),
-            };
-            db.Users.Add(u);
-            await db.SaveChangesAsync(ct);
-            await SignIn(ctx, u);
-            log.Write("auth", $"First admin {name} created", null, name);
-            return Results.Ok(View(u));
+            return Results.Ok(new { required = true, defaultAdmin = fresh, user });
         });
 
         app.MapPost("/api/auth/signin", async (SignInRequest r, HttpContext ctx, SignInState s, TimeProvider clock, DiagLog log, CancellationToken ct) =>

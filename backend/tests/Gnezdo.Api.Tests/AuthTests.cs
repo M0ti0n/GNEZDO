@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Gnezdo.Api.Tests;
 
-/// <summary>Sign-in on the server build: the first admin, users, passwords, admin-only settings.</summary>
+/// <summary>Sign-in on the server build: the default Admin, users, passwords, admin-only settings.</summary>
 public sealed class AuthTests : IAsyncLifetime
 {
     private readonly WebApplicationFactory<Program> _factory;
@@ -42,31 +42,54 @@ public sealed class AuthTests : IAsyncLifetime
 
     private static async Task<JsonObject> State(HttpClient c) => (await c.GetFromJsonAsync<JsonObject>("/api/auth/state"))!;
 
+    /// <summary>Signed in as the default Admin, renamed Fab with a password (as the person installing it would).</summary>
     private async Task<HttpClient> Admin()
     {
         var c = Browser();
-        var res = await c.PostAsJsonAsync("/api/auth/setup", new { name = "Fab", password = "secret" });
+        var me = (await (await c.PostAsJsonAsync("/api/auth/signin", new { name = "Admin" })).Content.ReadFromJsonAsync<JsonObject>())!;
+        var res = await c.PutAsJsonAsync($"/api/users/{me["id"]!.GetValue<int>()}", new { name = "Fab", password = "secret" });
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         return c;
     }
 
     [Fact]
-    public async Task Nothing_without_signing_in_and_the_first_admin_is_set_up_once()
+    public async Task Nothing_without_signing_in_and_a_new_database_starts_with_Admin_without_a_password()
     {
         var c = Browser();
         var s = await State(c);
         Assert.True(s["required"]!.GetValue<bool>());
-        Assert.True(s["setupNeeded"]!.GetValue<bool>());
+        Assert.True(s["defaultAdmin"]!.GetValue<bool>());
+        Assert.Null(s["user"]);
         Assert.Equal(HttpStatusCode.Unauthorized, (await c.GetAsync("/api/jobs")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await c.GetAsync("/api/health")).StatusCode);
 
-        var admin = await Admin();
-        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/jobs")).StatusCode);
-        var me = await State(admin);
-        Assert.Equal("Fab", me["user"]!["name"]!.GetValue<string>());
+        // Admin, no password: an admin
+        Assert.Equal(HttpStatusCode.OK, (await c.PostAsJsonAsync("/api/auth/signin", new { name = "admin" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await c.GetAsync("/api/jobs")).StatusCode);
+        var me = await State(c);
+        Assert.Equal("Admin", me["user"]!["name"]!.GetValue<string>());
         Assert.True(me["user"]!["isAdmin"]!.GetValue<bool>());
-        // a second setup is refused: there is an admin
-        Assert.Equal(HttpStatusCode.Conflict, (await Browser().PostAsJsonAsync("/api/auth/setup", new { name = "Eve" })).StatusCode);
+        Assert.False(me["user"]!["hasPassword"]!.GetValue<bool>());
+        Assert.Single((await c.GetFromJsonAsync<JsonArray>("/api/users"))!);
+
+        // given a password, the sign-in page no longer says to sign in as Admin, and the password is needed
+        Assert.Equal(HttpStatusCode.OK, (await c.PostAsJsonAsync("/api/auth/password", new { password = "s3cret" })).StatusCode);
+        Assert.False((await State(Browser()))["defaultAdmin"]!.GetValue<bool>());
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Browser().PostAsJsonAsync("/api/auth/signin", new { name = "Admin" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Browser().PostAsJsonAsync("/api/auth/signin", new { name = "Admin", password = "s3cret" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_restart_does_not_add_Admin_again()
+    {
+        var admin = await Admin();   // Admin is Fab now
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GnezdoDb>();
+            await Gnezdo.Api.Auth.AuthEndpoints.EnsureAdminAsync(scope.ServiceProvider, db, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        }
+        var users = (await admin.GetFromJsonAsync<JsonArray>("/api/users"))!;
+        Assert.Equal("Fab", Assert.Single(users)!["name"]!.GetValue<string>());
     }
 
     [Fact]

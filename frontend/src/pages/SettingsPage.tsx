@@ -18,13 +18,15 @@ import { LeadsSettings } from "../components/LeadsSettings";
 import { NcOutputSettings } from "../components/NcOutputSettings";
 import { MachineFoldersSettings } from "../components/MachineFoldersSettings";
 import { ToolsSettings } from "../components/ToolsSettings";
+import { AdminSettings } from "../components/AdminSettings";
+import type { Me } from "../api/auth";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
 import { DEFAULT_CUT_ORDER, DEFAULT_RAPID_MM_MIN, LINE_CAPABILITIES, ORIGINS, TECHNOLOGIES, cutOrderOf, machineCan, newMachine, type Machine, type MachineList } from "../job/machine";
 import { DEFAULT_KEYS, KEY_ACTIONS, RESERVED_KEYS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
-type Section = "stock" | "machine" | "rules" | "tools" | "projects" | "personal" | "data" | "log";
+export type Section = "stock" | "machine" | "rules" | "tools" | "projects" | "personal" | "data" | "log" | "admin";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock and remnants", ready: true },
   { id: "machine", label: "Machines", ready: true },
@@ -34,12 +36,16 @@ const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "personal", label: "Personal", ready: true },
   { id: "data", label: "Data", ready: true },
   { id: "log", label: "Diagnostic log", ready: true },
+  { id: "admin", label: "Administration", ready: true },
 ];
 
 // The GNEZDO button -> Settings. Stock: the global sheet size and the three default sheet slots.
-export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, rules, onRules, startSection, onOpenJob }: {
-  /** the section shown first (else Stock and remnants) */
+export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, rules, onRules, startSection, startNo, onOpenJob, admin }: {
+  /** the section shown first (else Stock and remnants); shown again when startNo changes (the user menu -> Administration) */
   startSection?: Section;
+  startNo?: number;
+  /** Administration: an admin signed in to the server build (missing: no such section) */
+  admin?: { me: Me; onMe: (m: Me) => void };
   /** Projects and parts: a job a part is used in, opened */
   onOpenJob?: (id: string, name: string) => void;
   /** Close (bottom of the list): back to Home */
@@ -71,6 +77,8 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
     setMSel(list[0].id);
   };
   const [section, setSection] = useState<Section>(startSection ?? "stock");
+  useEffect(() => { if (startSection) setSection(startSection); }, [startSection, startNo]);
+  const sections = SECTIONS.filter((s) => s.id !== "admin" || admin);
   const [mPage, setMPage] = useState<"machine" | "tech" | "leads" | "nc">("machine");
   // a machine's configuration as a file: Export gives a .zip, Import adds it (or replaces one of the same name)
   const mFile = useRef<HTMLInputElement>(null);
@@ -109,7 +117,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
     <div className="settings">
       <nav className="settings-nav" aria-label="Settings">
         <h1>Settings</h1>
-        {SECTIONS.map((s) => (
+        {sections.map((s) => (
           <button key={s.id} className={`settings-link${section === s.id ? " is-on" : ""}`} disabled={!s.ready}
             onClick={() => setSection(s.id)} title={s.ready ? undefined : "Not built yet"}>
             {s.label}
@@ -124,6 +132,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
       {section === "data" && <DataSettings />}
       {section === "tools" && <ToolsSettings isAdmin={isAdmin} />}
       {section === "log" && <LogSettings isAdmin={isAdmin} />}
+      {section === "admin" && admin && <AdminSettings me={admin.me} onMe={admin.onMe} />}
 
       {section === "machine" && (
       <div className="settings-main">

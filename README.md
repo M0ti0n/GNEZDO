@@ -142,7 +142,7 @@ docker compose up -d --build
 docker compose --profile sqlserver up -d --build
 ```
 
-Open `http://<server>:8080`. The API creates its tables on first start; the first person to open it makes the admin account, who then adds the other users.
+Open `http://<server>:8080`. The API creates its tables on first start; it also makes the user `Admin`, an admin without a password. Sign in as Admin, give it a password, and add the other users in Settings → Administration.
 
 ## Develop
 
