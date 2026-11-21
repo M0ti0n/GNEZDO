@@ -590,7 +590,17 @@ function windowStarts(lp: Pt[], target: Pt, lin: number): LeadStart[] {
     while (links((k + 1) % n) && (k + 1) % n !== k0) { k = (k + 1) % n; L += lens[k]; turn += t[k]; }
     const end = (k + 1) % n;
     if (curved(end)) turn += t[end] / 2;
-    if (k !== k0 && Math.abs(turn) >= 20) cands.push(along(k0, L / 2));
+    if (k !== k0 && Math.abs(turn) >= 20) {
+      // the middle of the arc, on one of its points: a start between two of them is on a chord, and the
+      // cut there would be a short straight stub off the arc (the NC program finds the arc again from its points)
+      const mid = along(k0, L / 2);
+      if (mid.vertex) cands.push(mid);
+      else {
+        const a = mid.edge, b = (mid.edge + 1) % n;
+        const v = len(sub(mid.at, lp[a])) <= len(sub(lp[b], mid.at)) ? a : b;
+        cands.push({ at: lp[v], edge: v, vertex: true, t: unit(add(unit(sub(lp[v], lp[(v - 1 + n) % n])), unit(sub(lp[(v + 1) % n], lp[v])))) });
+      }
+    }
   }
   if (!cands.length) {
     // straight sides between corners (collinear pieces count as one side)

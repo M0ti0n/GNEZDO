@@ -13,6 +13,12 @@ From the QA report (batch 1: a program that looks right but is not):
 - Post process checks the **Technology row**: a value that is not a number, below 0 (leads, E-code limits), the E-code limits not set (0 turns one off), or Slow (E003) above Medium (E002) stops it with the field named. A value written as text ("8") is read as the number
 - Nesting: a layout the engine's own check finds **not valid** (parts on top of each other, e.g. with part gap 0) is not offered as a solution any more: the solution shows why, and Process / Post process cannot use it
 - Micro joints: length 0 is refused; joints longer than half the contour (or together three quarters of it) are refused; a break or joint whose cut would leave the contour (straight across the part) is refused instead of written
+
+From the QA report (batch 2: what the program says):
+- NC programs: names (job, parts, material, technology) in **plain ASCII**: č, š, ž → c, s, z, ß → ss, Đ → D, Ł → L, Ø → O; emoji and other signs left out (the control reads ASCII; a UTF-8 Č came out as two odd characters)
+- The **E code** (E001 / E002 / E003, by the contour's longer side) no longer changes with the nest angle: the size is measured as the part is drawn (a 3.5 mm square hole was E003 at 0° and E002 at 45°), and to 0.001 mm instead of 0.1 mm (a 4.04 mm hole counted as 4.0). The Simulation's times use the same class
+- **Slot and obround ends** (half circles) are written as one arc each: about half of them ended in a straight line over the last 7.5° (0.05 mm off the drawing at R25, 0.2 mm at R100)
+- A window with **rounded corners** starts on a point of the arc: the start between two points gave a short straight stub off the radius (0.09 mm at R40)
 - LVD postprocessor: at most 998 contours in a subprogram (the 999th ended at N9999, the subprogram's own end label). Import the machine file again (`POST PROCESSOR/LVD-AXEL-laser.gnezdo-machine.zip`, or Settings → Machines → NC output → Replace) to use it
 
 ## Build 21 Nov 2026 (`d7e7647`)
