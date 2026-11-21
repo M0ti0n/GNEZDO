@@ -1,0 +1,158 @@
+GNEZDO - SERVER FOR LINUX, WITH POSTGRESQL
+==========================================
+
+Nothing else has to be installed for GNEZDO itself: the "program" folder holds
+GNEZDO (self-contained), the "nesting" folder the nesting engine (PackingSolver
+and a Python of its own). Only the database, PostgreSQL, is installed separately.
+
+Works on 64-bit Linux (x86_64) with glibc: Ubuntu 22.04 or newer, Debian 12 or
+newer, RHEL / Rocky / Alma 9, and the like. PostgreSQL 13 or newer.
+
+The commands below are for Ubuntu / Debian; other distributions differ only in
+how PostgreSQL is installed. GNEZDO goes to /opt/gnezdo and runs as its own user
+"gnezdo".
+
+
+1. COPY GNEZDO TO THE SERVER
+----------------------------
+1. Download gnezdo-server-linux.tar.gz (the "test-build" release on GitHub) and
+   copy it to the server, e.g. into your home folder.
+2. A user for GNEZDO (it runs as this user, not as root):
+     sudo useradd --system --home-dir /opt/gnezdo --shell /usr/sbin/nologin gnezdo
+3. Unpack it to /opt (makes /opt/gnezdo) and give it to that user:
+     sudo tar xzf gnezdo-server-linux.tar.gz -C /opt
+     sudo chown -R gnezdo:gnezdo /opt/gnezdo
+
+
+2. INSTALL POSTGRESQL (skip if the server already has one)
+----------------------------------------------------------
+     sudo apt update
+     sudo apt install postgresql
+It starts by itself and starts again with the server. Check:
+     sudo systemctl status postgresql
+
+
+3. GNEZDO'S OWN DATABASE
+------------------------
+GNEZDO keeps parts, jobs and settings in a database of its OWN. Never point it
+at the database of another program (an ERP, other nesting software): GNEZDO
+refuses a database that already holds another program's tables.
+
+1. A database user and a database for GNEZDO (choose your own password):
+     sudo -u postgres psql -c "CREATE ROLE gnezdo LOGIN PASSWORD 'CHANGE_ME'"
+     sudo -u postgres psql -c "CREATE DATABASE gnezdo OWNER gnezdo ENCODING 'UTF8'"
+   GNEZDO creates its tables there by itself on the first start. It also turns
+   on PostgreSQL's "citext" (text that ignores upper / lower case, so "Fab" and
+   "fab" are the same name, as on SQL Server). That comes with PostgreSQL on
+   Ubuntu / Debian. Should the first start say it may not create it, do it once:
+     sudo -u postgres psql -d gnezdo -c "CREATE EXTENSION IF NOT EXISTS citext"
+   (on RHEL-like systems install the package postgresql-contrib first).
+
+2. The settings file: copy the example and put the password in it:
+     cd /opt/gnezdo
+     sudo -u gnezdo cp config.example.json config.json
+     sudo -u gnezdo nano config.json
+   The connection under "ConnectionStrings" -> "Gnezdo":
+     Host=localhost;Port=5432;Database=gnezdo;Username=gnezdo;Password=CHANGE_ME
+   Keep  "Database": "postgres"  under "Gnezdo". Then let only GNEZDO read it
+   (the password is in it):
+     sudo chmod 600 /opt/gnezdo/config.json
+
+PostgreSQL ON ANOTHER SERVER: put that server's name or address as Host. On the
+PostgreSQL server:
+- postgresql.conf:  listen_addresses = '*'   (or its own address)
+- pg_hba.conf, one line for GNEZDO's server (its address instead of 10.0.0.5):
+    host  gnezdo  gnezdo  10.0.0.5/32  scram-sha-256
+- restart PostgreSQL, and let port 5432 through its firewall.
+
+
+4. START GNEZDO
+---------------
+First by hand, to see that it starts:
+     sudo -u gnezdo /opt/gnezdo/start.sh
+It says "Now listening on: http://0.0.0.0:8090" when it is ready (the first
+start also creates the tables). Open http://<server-name>:8090 from a PC: GNEZDO
+asks for the first user, who is an admin (see 8). Stop it with Ctrl+C.
+
+Then as a service, so it starts with the server and after a crash:
+     sudo cp /opt/gnezdo/gnezdo.service /etc/systemd/system/
+     sudo systemctl daemon-reload
+     sudo systemctl enable --now gnezdo
+     systemctl status gnezdo
+Its messages:  journalctl -u gnezdo -f
+(gnezdo.service expects /opt/gnezdo and the user "gnezdo"; change both in it if
+you chose otherwise.)
+
+FIREWALL: let the other PCs reach port 8090, e.g. with ufw:
+     sudo ufw allow 8090/tcp
+Another port: change 8090 in "Urls" in config.json, then
+sudo systemctl restart gnezdo.
+
+If it does not start, journalctl -u gnezdo shows why. The usual reasons:
+- "password authentication failed": the password in config.json is not the one
+  given to CREATE ROLE.
+- "database ... does not exist": create it (part 3, step 1).
+- "already has ... tables of another program": the connection names a database
+  that is not GNEZDO's; give GNEZDO its own (part 3).
+- "Database not reachable yet" over and over: PostgreSQL does not run, or (on
+  another server) see "PostgreSQL ON ANOTHER SERVER" above.
+- "address already in use": another program has port 8090; change "Urls".
+
+
+5. A NEWER VERSION
+------------------
+     sudo systemctl stop gnezdo
+     sudo tar xzf gnezdo-server-linux.tar.gz -C /opt
+     sudo chown -R gnezdo:gnezdo /opt/gnezdo
+     sudo systemctl start gnezdo
+Your config.json, the "data" folder (sign-in keys) and the logs are kept: the
+archive only has config.example.json. The database updates itself on the start.
+
+
+6. BACKUP
+---------
+Everything GNEZDO knows is in its database; config.json and the "data" folder
+(the sign-in keys) are the rest. A copy of the database, while GNEZDO runs:
+     sudo -u postgres pg_dump -Fc gnezdo > gnezdo-$(date +%F).dump
+Every night at 2:00, keeping the copies in /var/backups/gnezdo:
+     sudo mkdir -p /var/backups/gnezdo && sudo chown postgres /var/backups/gnezdo
+     sudo -u postgres crontab -e
+   and add the line:
+     0 2 * * * pg_dump -Fc gnezdo > /var/backups/gnezdo/gnezdo-$(date +\%F).dump
+Back from a copy (GNEZDO stopped first, into an empty database "gnezdo"):
+     sudo systemctl stop gnezdo
+     sudo -u postgres dropdb gnezdo
+     sudo -u postgres createdb -O gnezdo gnezdo
+     sudo -u postgres pg_restore -d gnezdo gnezdo-2026-11-21.dump
+     sudo systemctl start gnezdo
+
+A database on SQL Server is not copied over to PostgreSQL by GNEZDO: a new
+PostgreSQL database starts empty.
+
+
+7. DWG DRAWINGS, NESTING, LOGS
+------------------------------
+DWG: GNEZDO reads DXF and SVG itself; a DWG is converted to DXF on the server by
+LibreDWG's dwg2dxf (on the PATH, or put it in a folder "tools" next to
+"program") or the ODA File Converter (installed under /opt). Or set its full path
+as "Gnezdo": { "DwgConverter": "..." } in config.json. Without one, a DWG in the
+import list says so: save it as DXF in your CAD.
+
+NESTING: the "nesting" folder next to "program" holds the nesting engine. Keep
+the two folders together; nothing else has to be installed.
+
+LOGS: GNEZDO's diagnostic log is in /opt/gnezdo/logs, one file a day, kept 30
+days. GNEZDO menu -> Settings -> Diagnostic log -> "Download log" gives a zip
+of it to send when something goes wrong.
+
+
+8. USERS AND SIGN-IN
+--------------------
+GNEZDO asks everyone to sign in. On the very first start it asks for the first
+user, who is an admin. The admin adds the others: click your name in the top
+right -> Users. A password is optional; without one, anyone who knows the name
+can sign in as that user, so give admins a password. A sign-in lasts 30 days in
+that browser. The keys for it are in /opt/gnezdo/data: keep that folder.
+
+Settings -> Data shows which PostgreSQL server and database GNEZDO uses. To
+change it, edit the connection in config.json and restart GNEZDO.

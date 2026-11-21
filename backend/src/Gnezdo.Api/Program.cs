@@ -48,7 +48,8 @@ if (desktopMode || builder.Configuration.GetValue<bool>("Gnezdo:Desktop"))
 }
 var demo = desktop is null && string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("Gnezdo"));
 // server zip without a database and "Gnezdo:Setup": the browser asks for the database (no demo)
-var setup = demo && builder.Configuration.GetValue<bool>("Gnezdo:Setup");
+// (SQL Server only: a server on PostgreSQL has its connection in config.json, see INSTALL-linux.txt)
+var setup = demo && builder.Configuration.GetValue<bool>("Gnezdo:Setup") && DbKind.Of(builder.Configuration) == DbKind.SqlServer;
 if (setup) demo = false;
 if (desktop is null) builder.Services.AddSingleton(new SetupState(setup,
     builder.Configuration["Gnezdo:ConfigFile"] is { Length: > 0 } cf ? cf : configFile is null ? null : Path.GetFullPath(configFile)));
@@ -76,12 +77,15 @@ builder.AddGnezdoAuth(desktop is null && AuthEndpoints.Required(builder.Configur
 builder.Services.AddSingleton<NestRunner>();
 builder.Services.AddSingleton<ServerLoad>();
 // Connection string is read when the first DbContext is created, so tests and Docker can override it.
-// "Gnezdo:Database": sqlserver (server build, the default) or sqlite (desktop build: one file).
+// "Gnezdo:Database": sqlserver (server build, the default), postgres (a server on PostgreSQL) or sqlite
+// (desktop build: one file).
 string Cs(IServiceProvider sp) => sp.GetRequiredService<IConfiguration>().GetConnectionString("Gnezdo")
     ?? throw new InvalidOperationException("Connection string 'Gnezdo' is not set.");
-var sqlite = string.Equals(builder.Configuration["Gnezdo:Database"], "sqlite", StringComparison.OrdinalIgnoreCase);
+var dbKind = DbKind.Of(builder.Configuration);
+var sqlite = dbKind == DbKind.Sqlite;
 if (desktop is not null) builder.Services.AddDbContext<GnezdoDb, GnezdoSqliteDb>(o => o.UseSqlite(desktop.Database));
 else if (!demo && sqlite) builder.Services.AddDbContext<GnezdoDb, GnezdoSqliteDb>((sp, o) => o.UseSqlite(Cs(sp)));
+else if (!demo && dbKind == DbKind.Postgres) builder.Services.AddDbContext<GnezdoDb, GnezdoPostgresDb>((sp, o) => o.UseNpgsql(Cs(sp)));
 else if (!demo) builder.Services.AddDbContext<GnezdoDb>((sp, o) => o.UseSqlServer(Cs(sp)));
 builder.Services.AddProblemDetails();
 
@@ -116,7 +120,7 @@ app.MapGet("/api/health", () => Results.Ok(new
 }));
 // the database page: on the first start, and for an admin later - Windows zip only (config.json is
 // where the connection goes; Docker sets it in docker-compose.yml)
-var dbPage = desktop is null && !demo && (setup || configFile is not null);
+var dbPage = desktop is null && !demo && dbKind == DbKind.SqlServer && (setup || configFile is not null);
 app.MapDataEndpoints(desktop, demo, dbPage);
 if (dbPage) app.MapDatabaseSetup();
 if (desktop is not null)

@@ -23,6 +23,7 @@ public static class DbInitializer
             try
             {
                 if (db.Database.IsSqlite()) await PrepareSqliteAsync(db, ct);
+                else if (db.Database.IsNpgsql()) await RefuseOtherDatabaseAsync(db, ct);
                 else await RefuseOldDatabaseAsync(db, ct);
                 var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
                 if (pending.Count > 0)
@@ -54,6 +55,30 @@ public static class DbInitializer
         if (Path.GetDirectoryName(Path.GetFullPath(file)) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
         await db.Database.OpenConnectionAsync(ct);
         try { await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", ct); }
+        finally { await db.Database.CloseConnectionAsync(); }
+    }
+
+    /// <summary>
+    /// PostgreSQL: GNEZDO needs a database of its own. One with tables but no GNEZDO migration history
+    /// belongs to another program: stop with a clear message instead of adding tables to it.
+    /// </summary>
+    private static async Task RefuseOtherDatabaseAsync(GnezdoDb db, CancellationToken ct)
+    {
+        if (!await db.Database.CanConnectAsync(ct)) return;   // no database yet: Migrate creates it
+        var conn = db.Database.GetDbConnection();
+        await db.Database.OpenConnectionAsync(ct);
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*), COUNT(*) FILTER (WHERE table_name = '__EFMigrationsHistory') FROM information_schema.tables "
+                + "WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE'";
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            await r.ReadAsync(ct);
+            if (r.GetInt64(0) > 0 && r.GetInt64(1) == 0)
+                throw new OldDatabaseException(
+                    $"Database '{conn.Database}' already has {r.GetInt64(0)} tables of another program. GNEZDO needs a database of its own: "
+                    + "create an empty one (see INSTALL-linux.txt) and put its name in the connection.");
+        }
         finally { await db.Database.CloseConnectionAsync(); }
     }
 

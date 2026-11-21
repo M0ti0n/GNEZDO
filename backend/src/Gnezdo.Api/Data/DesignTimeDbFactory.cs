@@ -21,3 +21,10 @@ public sealed class DesignTimeSqliteDbFactory : IDesignTimeDbContextFactory<Gnez
     public GnezdoSqliteDb CreateDbContext(string[] args) =>
         new(new DbContextOptionsBuilder<GnezdoSqliteDb>().UseSqlite("Data Source=design-time.db").Options);
 }
+
+/// <summary>The same for a server on PostgreSQL (dotnet ef ... --context GnezdoPostgresDb).</summary>
+public sealed class DesignTimePostgresDbFactory : IDesignTimeDbContextFactory<GnezdoPostgresDb>
+{
+    public GnezdoPostgresDb CreateDbContext(string[] args) =>
+        new(new DbContextOptionsBuilder<GnezdoPostgresDb>().UseNpgsql("Host=design-time;Database=gnezdo").Options);
+}

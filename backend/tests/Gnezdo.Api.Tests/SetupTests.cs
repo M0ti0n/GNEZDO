@@ -22,7 +22,7 @@ public sealed class SetupTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _server = new SqlConnectionStringBuilder(TestDb.NewConnectionString("x")) { InitialCatalog = "" };
+        _server = TestDb.SqlServer ? new SqlConnectionStringBuilder(TestDb.NewConnectionString("x")) { InitialCatalog = "" } : new SqlConnectionStringBuilder();
         await File.WriteAllTextAsync(_config, """{ "ConnectionStrings": { "Gnezdo": "" }, "Gnezdo": { "Setup": true, "TimeZone": "Europe/Ljubljana" } }""");
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
@@ -38,7 +38,7 @@ public sealed class SetupTests : IAsyncLifetime
     {
         await _factory.DisposeAsync();
         File.Delete(_config);
-        if (TestDb.Sqlite) return;
+        if (!TestDb.SqlServer) return;   // the browser setup is for SQL Server
         SqlConnection.ClearAllPools();
         await using var con = new SqlConnection(new SqlConnectionStringBuilder(_server.ConnectionString) { InitialCatalog = "master" }.ConnectionString);
         await con.OpenAsync();
@@ -58,7 +58,7 @@ public sealed class SetupTests : IAsyncLifetime
     [Fact]
     public async Task The_database_is_set_up_from_the_browser()
     {
-        if (TestDb.Sqlite) return;
+        if (!TestDb.SqlServer) return;   // the browser setup is for SQL Server
 
         var h = (await _client.GetFromJsonAsync<JsonObject>("/api/health"))!;
         Assert.True(h["setup"]!.GetValue<bool>());

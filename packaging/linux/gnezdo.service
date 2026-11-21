@@ -1,0 +1,29 @@
+# GNEZDO as a service: starts with the server, restarts after a crash.
+# Install (INSTALL.txt, part 4):
+#   sudo cp /opt/gnezdo/gnezdo.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now gnezdo
+# Its output:  journalctl -u gnezdo -f
+
+[Unit]
+Description=GNEZDO nesting server
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gnezdo
+Group=gnezdo
+WorkingDirectory=/opt/gnezdo
+Environment=GNEZDO_CONFIG=/opt/gnezdo/config.json
+Environment=DOTNET_NOLOGO=1
+ExecStart=/opt/gnezdo/program/GNEZDO
+Restart=on-failure
+RestartSec=5
+# GNEZDO writes only its own folder (logs, data: sign-in keys) and the temp folder (nesting runs)
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
