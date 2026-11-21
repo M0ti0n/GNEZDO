@@ -58,7 +58,8 @@ function postprocess(p) {
     if (!c.segs.length) continue;
     const key = c.inline ? "inline" : c.partNo !== undefined ? `p${c.partNo}` : c.partNos ? `b${c.partNos.join(",")}` : "rest";
     const last = units[units.length - 1];
-    if (last && last.key === key && last.contours.length < 999) last.contours.push(c);
+    // at most 998 contours a subprogram: contour 999 would end at N9999, the subprogram's own end
+    if (last && last.key === key && last.contours.length < 998) last.contours.push(c);
     else units.push({ key, contours: [c], name: c.inline ? "INLINE CUT" : c.partNo !== undefined ? c.part : c.partNos ? "COMMON CUT" : c.part || "CUT" });
   }
 

@@ -1057,8 +1057,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
 
   // processed parts (Process): their cut path, here too; a part moved since is not processed any more
   const shownSheet = useMemo(() => ({ ...sheet, parts: items }), [sheet, items]);
-  const cutDone = useMemo(() => processedParts(shownSheet), [shownSheet]);
-  const cutLive = useMemo(() => liveContours(shownSheet), [shownSheet]);
+  // (a part with another drawing since, replaced in the library: not processed either)
+  const cutDone = useMemo(() => processedParts(shownSheet, (id) => byId.get(id)?.path), [shownSheet, byId]);
+  const cutLive = useMemo(() => liveContours(shownSheet, (id) => byId.get(id)?.path), [shownSheet, byId]);
   const cutRapids = useMemo(() => rapidsOf(cutLive, originPoint(sheet, origin)), [cutLive, sheet, origin]);
   const viewPrefs = useViewPrefs();
   const pathOf = (lp: Pt[][]) => lp.map((l) => l.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(2)} ${y.toFixed(2)}`).join("") + "Z").join("");

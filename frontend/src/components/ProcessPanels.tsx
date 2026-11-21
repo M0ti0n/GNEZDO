@@ -6,6 +6,7 @@ import { foldersOf, type Machine, type Origin } from "../job/machine";
 import { countsOf, type NestedSheet } from "../job/nest";
 import { wrongStock, wrongStockText } from "../job/stock";
 import { liveContours, type CutContour } from "../job/cutPath";
+import { checkSheet } from "../job/cutCheck";
 import { contourKind, pickContour } from "../job/manualCut";
 import { sheetProgram } from "../job/ncProgram";
 import { techColumnsFor, techRowFor } from "../job/technology";
@@ -157,7 +158,7 @@ export function useProcessDel({ index, single, sheets, partName, onClear }: {
   };
 }
 
-interface Done { sheet: number; file?: string; error?: string }
+interface Done { sheet: number; file?: string; error?: string; warn?: string }
 /** What POST PROCESS sent to the machine: the sheets written, pieces per part id on each (times its cut number). */
 export interface SentReport { machine: string; all: boolean; sheets: { sheet: number; file: string; parts: Record<string, number> }[] }
 
@@ -177,7 +178,7 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
   onSheet?: (index: number, patch: Partial<NestedSheet>) => void;
   partName: (sheet: NestedSheet, i: number) => string | undefined;
   /** a job part's name, material and thickness: a sheet with parts of another material or thickness is not post processed */
-  partOf?: (partId: string) => { name: string; material: string; thicknessMm: number } | undefined;
+  partOf?: (partId: string) => { name: string; material: string; thicknessMm: number; path?: string } | undefined;
 }): { panel: ReactNode; cut: CutMode } {
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<{ ok: boolean; text: string; list: Done[] } | null>(null);
@@ -260,11 +261,15 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
       // parts changed to another material or thickness after nesting: the sheet's Technology row is not theirs
       const wrong = partOf ? wrongStock(sh, partOf) : [];
       if (wrong.length) { out.push({ sheet: i + 1, error: wrongStockText(i + 1, sh, wrong.map((k) => partOf!(sh.parts[k].partId)!)) }); continue; }
+      // the cut path is still the sheet's: every part processed as it is now, no pierce in a part
+      const check = checkSheet(sh, (id) => partOf?.(id)?.path, (k) => partName(sh, k) ?? `part ${k + 1}`);
+      if (check.errors.length) { out.push({ sheet: i + 1, error: `not post processed: ${check.errors.join("; ")}` }); continue; }
       const prog = sheetProgram(sh, machine, origin, nameOf(i), (k) => partName(sh, k));
       if ("error" in prog) { out.push({ sheet: i + 1, error: prog.error }); continue; }
       const r = runPostprocessor(pp.source, prog);
       if (!r.ok) { out.push({ sheet: i + 1, error: r.error }); continue; }
-      try { out.push({ sheet: i + 1, file: await saveNcFile(machine, fileOf(i), r.text) }); }
+      const warn = check.warns.length ? check.warns.join("; ") : undefined;
+      try { out.push({ sheet: i + 1, file: await saveNcFile(machine, fileOf(i), r.text), ...(warn ? { warn } : {}) }); }
       catch (e) { out.push({ sheet: i + 1, error: (e as Error).message }); }
     }
     setBusy(null);
@@ -274,7 +279,7 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
       sheets: out.filter((d) => d.file).map((d) => ({ sheet: d.sheet, file: fileOf(d.sheet - 1), parts: countsOf([sheets[d.sheet - 1]]) })),
     });
     diag("process", `Post process: ${good} of ${out.length}`, { job: jobName, errors: out.filter((d) => d.error).map((d) => `${d.sheet}: ${d.error}`) });
-    setDone({ ok: good === out.length, text: good === out.length ? `POST PROCESS successful: ${good} NC ${good === 1 ? "file" : "files"}` : `${good} of ${out.length} written`, list: out });
+    setDone({ ok: good === out.length, text: good === out.length ? `POST PROCESS successful: ${good} NC ${good === 1 ? "file" : "files"}${out.some((d) => d.warn) ? " (check the notes below)" : ""}` : `${good} of ${out.length} written`, list: out });
   };
 
   const panel = (
@@ -319,7 +324,7 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
         {done && (
           <div className={`pp-done${done.ok ? "" : " is-bad"}`} role="status">
             <b>{done.text}</b>
-            <ul>{done.list.map((d) => <li key={d.sheet} className={d.error ? "is-bad" : ""}>Sheet {d.sheet}: {d.error ?? d.file}</li>)}</ul>
+            <ul>{done.list.map((d) => <li key={d.sheet} className={d.error ? "is-bad" : d.warn ? "is-warn" : ""}>Sheet {d.sheet}: {d.error ?? d.file}{d.warn && <><br /><span className="pp-warn">Check: {d.warn}</span></>}</li>)}</ul>
           </div>
         )}
         <p className="rule-help ac-help">Selected sheet: the sheet open, or the one selected among all sheets. A sheet needs its cut path (Auto cut); its remnant&apos;s cuts come last.</p>

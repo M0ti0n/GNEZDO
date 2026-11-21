@@ -83,6 +83,12 @@ export function buildPieces(ctx: LeadCtx, base: CutContour, plan: BreakPlan, mir
   const side: 1 | -1 = mirrored ? -1 : 1;
   const kind = base.kind === "outer" ? "outer" : "inner";
   const m = measure(L.lp);
+  // micro joints: each shorter than half the contour, all of them together leaving most of it to cut
+  const mjs = plan.starts.filter((s) => s.tag === "mj");
+  if (mjs.some((s) => !(Math.abs(s.spec.gap) > 0))) return "A micro joint needs a length above 0 mm";
+  const held = mjs.reduce((t, s) => t + Math.abs(s.spec.gap), 0);
+  if (mjs.length && (Math.max(...mjs.map((s) => Math.abs(s.spec.gap))) >= m.P / 2 || held >= m.P * 0.75))
+    return `Micro joints of ${+Math.abs(mjs[0].spec.gap).toFixed(2)} mm do not fit this contour (${Math.round(m.P)} mm around): make them shorter`;
   // each start on the loop, with its values (a manual break's gap: from its balloons)
   const starts: { s: BreakStart; at: ReturnType<typeof startNear>; pos: number; spec: LeadSpec }[] = [];
   for (const s of plan.starts) {
@@ -111,7 +117,27 @@ export function buildPieces(ctx: LeadCtx, base: CutContour, plan: BreakPlan, mir
     ...(sorted.starts.length > 1 || sorted.starts[0].tag !== "orig" ? { bc: { plan: sorted, piece: k } } : {}),
     ...(k === 0 && base.via ? { via: base.via } : {}),
   });
-  if (starts.length === 1) return [one(0, made[0])];
+  // every piece stays on the contour (its own line, not across the part); leads are not checked here
+  const onLoop = (pieces: CutContour[]) => {
+    const near = (p: Pt) => {
+      let d = Infinity;
+      for (let i = 0; i < L.lp.length; i++) {
+        const a = L.lp[i], b = L.lp[(i + 1) % L.lp.length], ex = b[0] - a[0], ey = b[1] - a[1], l2 = ex * ex + ey * ey;
+        const t = l2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / l2)) : 0;
+        d = Math.min(d, Math.hypot(a[0] + t * ex - p[0], a[1] + t * ey - p[1]));
+      }
+      return d;
+    };
+    for (const pc of pieces) for (let i = 1; i < pc.pts.length; i++) {
+      const a = pc.pts[i - 1], b = pc.pts[i];
+      if (near(b) > 0.1 || near([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) > 0.1) return false;
+    }
+    return true;
+  };
+  if (starts.length === 1) {
+    const only = [one(0, made[0])];
+    return onLoop(only) ? only : "The cut would leave the contour: make the micro joint or break shorter";
+  }
   // pieces: from each start to the next one's end (its gap), lead-in from this start, lead-out from the next
   const out: CutContour[] = [];
   for (let k = 0; k < starts.length; k++) {
@@ -124,7 +150,7 @@ export function buildPieces(ctx: LeadCtx, base: CutContour, plan: BreakPlan, mir
     const pts = m.between(a, b, (starts[k].at as { at: Pt }).at, end).map(r2);
     out.push(one(k, { ...made[k], pts, leadOut: made[nx].leadOut }));
   }
-  return out;
+  return onLoop(out) ? out : "The cut would leave the contour: make the micro joints or breaks shorter";
 }
 
 /** The cut with the outline of contour k replaced by these pieces (where its first piece was). */

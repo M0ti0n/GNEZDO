@@ -11,7 +11,7 @@ import { fitMoves } from "./ncArcs";
 import type { NcContour, NcPart, NcProgram, NcPt } from "./postprocessor";
 import { remnantCutPaths } from "./remnantCut";
 import { reusesPierce } from "./commonPierce";
-import { techRowFor } from "./technology";
+import { techColumnsFor, techRowFor, type TechRow } from "./technology";
 
 type Pt = [number, number];
 
@@ -21,6 +21,8 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
   if (!!sheet.cut?.mirrored !== originMirrors(origin)) return { error: "the machine's 0,0 corner changed since Auto cut: run Auto cut again" };
   const tech = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm);
   if (!tech) return { error: `no Technology row for ${sheet.material} ${sheet.thicknessMm} mm (Settings → Machines → Technology)` };
+  const row = checkedRow(machine, tech.row, `${sheet.material} ${sheet.thicknessMm} mm`);
+  if (typeof row === "string") return { error: row };
   const [ox, oy] = originPoint(sheet, origin);
   // from the machine's 0,0 corner, signed: a point beyond the sheet's edge (a remnant cut's negative gap,
   // off the plate) stays beyond it, not folded back onto the sheet
@@ -30,7 +32,7 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
 
   const mapped = (pts: Pt[]): NcPt[] => pts.map(map).filter((p, i, a) => !i || Math.hypot(p.x - a[i - 1].x, p.y - a[i - 1].y) > 0.001);
 
-  const restart = (["none", "pierce", "quick"] as const)[tech.row.mjPierce ?? 1] ?? "pierce";
+  const restart = (["none", "pierce", "quick"] as const)[row.mjPierce ?? 1] ?? "pierce";
   const contour = (c: Pick<CutContour, "kind" | "pts" | "leadIn" | "leadOut" | "small" | "restart" | "inline"> & { part?: number; parts?: number[] }, part?: string): NcContour | null => {
     const { leadIn, pts, leadOut } = c;
     // lead-in, contour and lead-out each as lines and arcs (job/ncArcs.ts)
@@ -84,8 +86,33 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
   return {
     name,
     sheet: { lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, thicknessMm: sheet.thicknessMm, material: sheet.material },
-    tech: { ...rowAsCut(machine, tech.row), name: tech.tech.name, ...(sheet.prePierce !== undefined ? { prePierce: sheet.prePierce ? 1 : 0 } : {}) },
+    tech: { ...rowAsCut(machine, row), name: tech.tech.name, ...(sheet.prePierce !== undefined ? { prePierce: sheet.prePierce ? 1 : 0 } : {}) },
     contours,
     parts: [...boxes].sort((a, b) => a[0] - b[0]).map(([no, box]) => ({ no, ...(partName(no) ? { name: partName(no) } : {}), box })),
   };
+}
+
+/**
+ * The Technology row as the postprocessor gets it: every value a number (a machine file edited by hand
+ * can have "8" for 8), none below its column's least. Laser: both E-code limits set (0 turns one off) and
+ * Slow (E003) not above Medium (E002). A text, otherwise: why not.
+ */
+function checkedRow(machine: Machine, row: TechRow, of: string): TechRow | string {
+  const out: Record<string, unknown> = { ...row };
+  const where = `in the Technology row for ${of} (Settings → Machines → Technology)`;
+  for (const g of techColumnsFor(machine.technology)) for (const col of g.cols) {
+    const v = out[col.key];
+    if (v === undefined || v === null || v === "") continue;
+    const n = typeof v === "number" ? v : typeof v === "string" ? Number(v.trim().replace(",", ".")) : NaN;
+    if (!Number.isFinite(n)) return `${g.group} "${col.label}" is ${JSON.stringify(v)} ${where}: it must be a number`;
+    if (n < (col.min ?? 0)) return `${g.group} "${col.label}" is ${n} ${where}: it must be ${col.min ?? 0} or more`;
+    out[col.key] = n;
+  }
+  if (machine.technology === "laser") {
+    const mid = out.midSizeMm as number | undefined, little = out.littleSizeMm as number | undefined;
+    if (mid === undefined || mid === null || little === undefined || little === null)
+      return `"Medium (E002) up to" and "Slow (E003) up to" are not set ${where}: set them (0 turns one off)`;
+    if (mid > 0 && little > mid) return `"Slow (E003) up to" (${little} mm) is above "Medium (E002) up to" (${mid} mm) ${where}: E002 would never be used`;
+  }
+  return out as unknown as TechRow;
 }

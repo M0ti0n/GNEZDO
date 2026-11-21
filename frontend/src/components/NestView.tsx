@@ -96,8 +96,10 @@ const transformOf = (p: { x: number; y: number; angle: number; mirror: boolean }
 
 /** A nested sheet drawn to scale, every part in its own colour; with `cut`, processed parts as their cut and trace lines (Process). */
 export function SheetSvg({ sheet, parts, titles, cut = false }: { sheet: NestedSheet; parts: Map<string, PartRef>; titles?: boolean; cut?: boolean }) {
-  const done = cut ? processedParts(sheet) : null;
-  const marks = cut ? liveContours(sheet).filter((c) => c.kind === "trace" || c.kind === "open") : [];
+  // a part moved, or with another drawing since, is not processed any more
+  const pathOf = (id: string) => parts.get(id)?.path;
+  const done = cut ? processedParts(sheet, pathOf) : null;
+  const marks = cut ? liveContours(sheet, pathOf).filter((c) => c.kind === "trace" || c.kind === "open") : [];
   // parts not processed: their tracing and open cut lines from their drawings
   const partMk = usePartMarks(sheet.parts.map((p) => p.partId));
   return (
@@ -251,7 +253,7 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
           onClose={() => setFullState(null)}
           locked={sol!.locked.includes(full)} onToggleLock={() => onToggleLock(sol!.id, full)}
           onChange={(k, list) => onEditSheet(sol!.id, k, { parts: list })}
-          fixed={processedParts(sheets[full])}
+          fixed={processedParts(sheets[full], (id) => byId.get(id)?.path)}
           onInfo={(k) => setProps(k)} cut={tool.cut} />
         {propsDialog}
       </div>

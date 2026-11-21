@@ -764,19 +764,25 @@ export function App() {
         diag("error", `Nest ${runId}: no answer from the server (${(e as Error).message})`, { job: jobId });
         return;
       }
+      // a layout the engine's own check found wrong (parts on top of each other, off the sheet): never
+      // offered as a solution, it would go on to Process and Post process
+      const invalid = isFinished(run) && run.state !== "error" && run.result?.valid === false
+        ? `The layout is not valid (${run.result.errors?.[0] ?? "parts overlap"}${(run.result.errors?.length ?? 0) > 1 ? ` and ${run.result.errors!.length - 1} more` : ""}): not used. Check the part gap and sheet trims, then nest again`
+        : null;
       patchSol(jobId, solId, (x) => {
-        if (!x.base) return { ...x, run };
+        if (!x.base) return invalid ? { ...x, run, error: invalid } : { ...x, run };
         if (!isFinished(run)) return { ...x, run: mergeRun(run, x.base) };
         // continuing a solution: done, the new layout replaces it; failed, it stays as it was
-        if (run.result?.sheets && run.state !== "error") return { ...x, run: mergeRun(run, x.base), prev: undefined, base: undefined };
-        setToast(`Solution ${x.no} not continued: ${run.error ?? run.result?.errors?.[0] ?? "the nest failed"}`);
+        if (run.result?.sheets && run.state !== "error" && !invalid) return { ...x, run: mergeRun(run, x.base), prev: undefined, base: undefined };
+        setToast(`Solution ${x.no} not continued: ${invalid ?? run.error ?? run.result?.errors?.[0] ?? "the nest failed"}`);
         return { ...x, run: x.prev ?? null, prev: undefined, base: undefined };
       });
       if (isFinished(run)) {
         diag(run.state === "error" ? "error" : "nest", `Nest ${run.id} ${run.state} in ${Math.round(run.seconds)} s: ${run.result?.sheets.length ?? 0} sheets${run.result && !run.result.valid ? ", NOT VALID" : ""}`,
           { job: jobId, error: run.error, errors: run.result?.errors?.slice(0, 5), skipped: run.result?.skipped?.length, bestAt: run.result?.bestAt });
-        // a finished solution with sheets is shown
-        if (run.result?.sheets.length) setSols(jobId, (st) => ({ ...st, sel: { sol: solId, sheet: 0 } }));
+        // a finished solution with sheets is shown (an invalid one is not)
+        if (invalid) setToast(invalid);
+        else if (run.result?.sheets.length) setSols(jobId, (st) => ({ ...st, sel: { sol: solId, sheet: 0 } }));
         const cc = commonCutNote(run.result);
         if (cc) { setToast(cc.charAt(0).toUpperCase() + cc.slice(1)); diag("nest", `Nest ${run.id}: ${cc}`, { job: jobId }); }
         return;

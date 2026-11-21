@@ -4,7 +4,16 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+From the QA report (batch 1: a program that looks right but is not):
+- **Post process checks the sheet first** and does not write its program when:
+  - a part on it is **not processed**: moved, or added since Auto cut (it was left out of the program without a word);
+  - a part's **drawing changed** since Auto cut (replaced in the library, or another version restored): the old drawing was cut. Such a part also shows as not processed on the sheet. Cut paths made from this build on know their drawings; older ones are taken as they are
+  - a **pierce lies in or within 1 mm of another part** (a lead that found no room, tight nesting), an outline's pierce lies in its own part, or a hole's is not in the hole
+  - written anyway, with a note: contours pierced on their own line without a lead-in (not where a micro joint or break restarts)
+- Post process checks the **Technology row**: a value that is not a number, below 0 (leads, E-code limits), the E-code limits not set (0 turns one off), or Slow (E003) above Medium (E002) stops it with the field named. A value written as text ("8") is read as the number
+- Nesting: a layout the engine's own check finds **not valid** (parts on top of each other, e.g. with part gap 0) is not offered as a solution any more: the solution shows why, and Process / Post process cannot use it
+- Micro joints: length 0 is refused; joints longer than half the contour (or together three quarters of it) are refused; a break or joint whose cut would leave the contour (straight across the part) is refused instead of written
+- LVD postprocessor: at most 998 contours in a subprogram (the 999th ended at N9999, the subprogram's own end label). Import the machine file again (`POST PROCESSOR/LVD-AXEL-laser.gnezdo-machine.zip`, or Settings → Machines → NC output → Replace) to use it
 
 ## Build 21 Nov 2026 (`d7e7647`)
 
