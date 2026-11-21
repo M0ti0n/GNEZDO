@@ -136,6 +136,31 @@ export function pathSteps(list: CutContour[]): PathSteps {
 /** The last contour (index in steps.list) kept with the timeline at `at` steps (-1: none). */
 export const keptEnd = (steps: PathSteps, at: number) => (at <= 0 ? steps.lead - 1 : steps.units[Math.min(at, steps.units.length) - 1].end);
 
+/** Units put in order after the timeline: what lies in a unit's part's hole goes in before it. */
+function placer(steps: PathSteps, at: number, container: Map<number, number>) {
+  const kids = new Map<number, number[]>();
+  for (const [kid, box] of container) {
+    const a = steps.unitOf.get(box), b = steps.unitOf.get(kid);
+    if (a === undefined || b === undefined || a === b) continue;
+    kids.set(a, [...(kids.get(a) ?? []), b]);
+  }
+  const placed = new Set<number>(), order: number[] = [];
+  const place = (j: number) => {
+    if (placed.has(j) || j < at || j >= steps.units.length) return;
+    placed.add(j);
+    for (const k of kids.get(j) ?? []) place(k);
+    order.push(j);
+  };
+  return { order, place };
+}
+
+/** The units the picked ones bring after the timeline, in that order (the picked ones with what lies in their holes before them). */
+export function pickedPlan(steps: PathSteps, at: number, picked: number[], container: Map<number, number>): number[] {
+  const { order, place } = placer(steps, at, container);
+  picked.forEach(place);
+  return order;
+}
+
 /**
  * The cut with the first `at` steps as they are, then the picked units (indexes in steps.units) in the
  * order picked, then the others in the order of `rest` (their parts in an Auto cut rule's order; parts
@@ -146,25 +171,15 @@ export const keptEnd = (steps: PathSteps, at: number) => (at <= 0 ? steps.lead -
  */
 export function pathReorder(cut: SheetCut, steps: PathSteps, at: number, picked: number[], rest: number[], container: Map<number, number>,
   nameOf: (part: number) => string): { cut: SheetCut; next: number } | string {
+  at = Math.max(0, Math.min(Math.floor(at), steps.units.length));
+  // only units still ahead of the timeline, each once (a pick left over from an older path is dropped)
+  picked = [...new Set(picked)].filter((j) => Number.isInteger(j) && j >= at && j < steps.units.length);
   const end = keptEnd(steps, at);
   const tail = steps.units.map((_, j) => j).filter((j) => j >= at);
+  const { order, place } = placer(steps, at, container);
   const rank = new Map<number, number>();
   rest.forEach((p, k) => { const j = steps.unitOf.get(p); if (j !== undefined && !rank.has(j)) rank.set(j, k); });
   const others = tail.filter((j) => !picked.includes(j)).sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity) || a - b);
-  // what lies in a part's hole is cut before it (also when only the part was picked)
-  const kids = new Map<number, number[]>();
-  for (const [kid, box] of container) {
-    const a = steps.unitOf.get(box), b = steps.unitOf.get(kid);
-    if (a === undefined || b === undefined || a === b) continue;
-    kids.set(a, [...(kids.get(a) ?? []), b]);
-  }
-  const placed = new Set<number>(), order: number[] = [];
-  const place = (j: number) => {
-    if (placed.has(j) || j < at) return;
-    placed.add(j);
-    for (const k of kids.get(j) ?? []) place(k);
-    order.push(j);
-  };
   picked.forEach(place);
   const next = order.length;
   others.forEach(place);

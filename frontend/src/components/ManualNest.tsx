@@ -35,8 +35,8 @@ export interface CutMode {
   picked: number[];
   /** the picked parts without their order numbers (a selection, not an order) */
   noNumbers?: boolean;
-  /** the picked parts' numbers start after this one (Manual cut → Path cut order: after the timeline) */
-  pickFrom?: number;
+  /** the picked parts' numbers (missing: 1, 2, 3 ... in the order picked) */
+  pickedNos?: number[];
   /** shown picked too, without a number (cut together with a picked part) */
   pickedAlso?: number[];
   /** under the sheet (Manual cut → Path cut order: the timeline) */
@@ -139,6 +139,13 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const [sel, setSel] = useState<Set<number>>(new Set());
   const selRef = useRef(sel);
   selRef.current = sel;
+  /** the cut path played back (Simulation, Manual cut → Path cut order): look only, parts are not selected,
+   *  moved or deleted (no selection shows there) */
+  const lookOnly = !!cut?.sim;
+  const lookOnlyRef = useRef(lookOnly);
+  lookOnlyRef.current = lookOnly;
+  // a selection made with another tool would act unseen here
+  useEffect(() => { if (lookOnly) setSel(new Set()); }, [lookOnly]);
   const undo = useRef<{ back: PlacedPart[][]; fwd: PlacedPart[][] }>({ back: [], fwd: [] });
   useEffect(() => { setItems(sheet.parts); setSel(new Set()); undo.current = { back: [], fwd: [] }; }, [index]);   // another sheet
   useEffect(() => { if (sheet.parts !== itemsRef.current && !dragging.current) setItems(sheet.parts); }, [sheet.parts]);
@@ -359,7 +366,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   useEffect(() => {
     const busy = (e: KeyboardEvent) => !!document.querySelector(".dlg") || !!(e.target as HTMLElement)?.closest("input, select, textarea");
     const onDown = (e: KeyboardEvent) => {
-      if (busy(e) || workingRef.current) return;
+      if (busy(e) || workingRef.current || lookOnlyRef.current) return;
       if (e.key === "Escape") {
         if (alignRef.current) { setAlign(null); setEdgeHover(null); setNote(null); return; }
         if (pasteRef.current) { setPaste(null); return; }
@@ -569,7 +576,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     if (e.button === 1 || e.button === 2) { pan.current = { x: e.clientX, y: e.clientY, from: { x: e.clientX, y: e.clientY }, button: e.button }; return; }
     if (e.button !== 0) return;
     // Process: a tool on picks parts or points; with none on, parts not processed yet can still be moved
-    if (cut && (cut.onPoint || cut.picking || !edit)) {
+    if (cut && (cut.onPoint || cut.picking || !edit || cut.sim)) {
       if (cut.onPoint) { const [cx, cy] = toMm(p.x, p.y); cut.onPoint(cx, cy, view?.s ?? 1); }
       else if (cut.picking) { const [cx, cy] = toMm(p.x, p.y); const i = hit(cx, cy); if (i >= 0) cut.onPick(i); }
       return;
@@ -646,7 +653,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
         if (k >= 0) { setGuides((l) => l.filter((_, i) => i !== k)); setNote("Aid line taken away"); return; }
       }
       // a right click that did not pan: the lock menu for the part under it (or its selection)
-      if (pn.button === 2 && edit && Math.hypot(e.clientX - pn.from.x, e.clientY - pn.from.y) < 4) {
+      if (pn.button === 2 && edit && !lookOnly && Math.hypot(e.clientX - pn.from.x, e.clientY - pn.from.y) < 4) {
         const q = local(e);
         const [x, y] = toMm(q.x, q.y);
         const i = hit(x, y);
@@ -719,7 +726,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const onDrop = (e: React.DragEvent) => {
     const id = e.dataTransfer.getData("text/gnezdo-part");
     const ref = id ? byId.get(id) : undefined;
-    if (!edit || !ref || working) return;
+    if (!edit || !ref || working || lookOnly) return;
     e.preventDefault();
     // not beyond the part's max (or required) number
     const over = overLimit([{ partId: id, x: 0, y: 0, angle: 0, mirror: false }], "Not added");
@@ -1117,7 +1124,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                   const on = !done && !cut.sim && sel.has(i), over = !done && !cut.sim && bad.has(i);
                   return (
                     <path key={i} d={pathOf(g.loops)} fillRule="evenodd"
-                      className={`mn-part is-process${done ? " is-cut" : ""}${pick ? " is-picked" : ""}${on ? " is-sel" : ""}${over ? " is-bad" : ""}${on && moving ? " is-moving" : ""}${!done && edit && !cut.picking && !cut.onPoint ? " is-movable" : ""}`}
+                      className={`mn-part is-process${done ? " is-cut" : ""}${pick ? " is-picked" : ""}${on ? " is-sel" : ""}${over ? " is-bad" : ""}${on && moving ? " is-moving" : ""}${!done && edit && !cut.picking && !cut.onPoint && !cut.sim ? " is-movable" : ""}`}
                       style={done ? { strokeWidth: 1.2 / v.s } : { fill: c.fill, stroke: on ? undefined : c.stroke, strokeWidth: (on ? 2.2 : 1) / v.s }}>
                       <title>{r.name}</title>
                     </path>
@@ -1218,7 +1225,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                     {!cut?.noNumbers && cut?.picked.map((i, k) => {
                       const g = geo[i];
                       if (!g) return null;
-                      return <text key={`n${i}`} className="cut-no" x={(g.box.x0 + g.box.x1) / 2} y={(g.box.y0 + g.box.y1) / 2} style={{ fontSize: 16 / v.s, strokeWidth: 3 / v.s }}>{k + 1 + (cut.pickFrom ?? 0)}</text>;
+                      return <text key={`n${i}`} className="cut-no" x={(g.box.x0 + g.box.x1) / 2} y={(g.box.y0 + g.box.y1) / 2} style={{ fontSize: 16 / v.s, strokeWidth: 3 / v.s }}>{cut.pickedNos?.[k] ?? k + 1}</text>;
                     })}
                   </g>
                 );

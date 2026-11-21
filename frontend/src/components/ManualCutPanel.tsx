@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CUT_RULES, liveContours, originPoint, partContainers, rapidsOf, ruleOrder, type CutContour, type CutRule, type SheetCut } from "../job/cutPath";
+import { CUT_RULES, liveContours, originPoint, partContainers, processedParts, rapidsOf, ruleOrder, type CutContour, type CutRule, type SheetCut } from "../job/cutPath";
 import { diag } from "../job/diag";
 import type { Machine, Origin } from "../job/machine";
-import { contourKind, keptEnd, pathReorder, pathSteps, pickContour, reorderCut, type CutUnit } from "../job/manualCut";
+import { contourKind, keptEnd, pathReorder, pathSteps, pickContour, pickedPlan, reorderCut, type CutUnit } from "../job/manualCut";
 import type { Pt } from "../job/manualGeom";
 import { partColor, type NestedSheet } from "../job/nest";
 import type { CutMode } from "./ManualNest";
@@ -63,16 +63,22 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
   const [pos, setPos] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   /** UNDO: the cut paths before each change made here */
-  const [hist, setHist] = useState<{ index: number; before: SheetCut; after: string; pos: number | null }[]>([]);
+  // (the cut path itself, not its time: Lead in / out, Break cut, Micro joint, Movement, Inline cut and
+  // Common pierce change it in place)
+  const [hist, setHist] = useState<{ index: number; before: SheetCut; after: SheetCut; pos: number | null }[]>([]);
   /** the cut path made here (the timeline stays where it was put); another one: the whole path again */
-  const ours = useRef<{ at: string; pos: number | null } | null>(null);
-  // another sheet, or the cut path changed (processed again, moved parts): a fresh pick
+  const ours = useRef<{ cut: SheetCut; pos: number | null } | null>(null);
+  /** a part lying in another part's hole: that part (it must be cut after it) */
+  const container = useMemo(() => (sheet ? partContainers(sheet, paths, steps.units.flatMap((u) => u.parts)) : new Map<number, number>()), [steps, paths]);   // eslint-disable-line react-hooks/exhaustive-deps
+  /** the steps as they are (a part moved since processing drops out of them) */
+  const sig = useMemo(() => steps.units.map((u) => u.parts.join("+")).join(","), [steps]);
+  // another sheet, or the cut path changed (by any tool, processed again, moved parts): a fresh pick
   useEffect(() => {
     setPicked([]); setRowSel(null); setPicking(false); setNext([]);
     const o = ours.current;
-    setPos(o && o.at === sheet?.cut?.at ? o.pos : null);
+    setPos(o && o.cut === sheet?.cut ? o.pos : null);
     ours.current = null;
-  }, [index, sheet?.cut?.at]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [index, sheet?.cut, sig]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!single) setPicking(false); }, [single]);
 
   const cutPath = sheet?.cut;
@@ -93,16 +99,17 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
   const colorOf = (part: number) => { const p = sheet?.parts[part]; const no = p ? parts.get(p.partId)?.no : undefined; return no !== undefined ? partColor(no) : null; };
 
   const remember = (before: SheetCut, after: SheetCut, keep: number | null) => {
-    setHist((h) => [...h.filter((x) => x.index !== index || x.after === before.at).slice(-19), { index, before, after: after.at, pos }]);
-    ours.current = { at: after.at, pos: keep };
+    setHist((h) => [...h.filter((x) => x.index !== index || x.after === before).slice(-19), { index, before, after, pos }]);
+    ours.current = { cut: after, pos: keep };
     onCut(index, after);
   };
   const last = [...hist].reverse().find((h) => h.index === index);
-  const canUndo = !!last && !!cutPath && last.after === cutPath.at;
+  // only while the path is still the one made here (changed since by another tool: that would be lost)
+  const canUndo = !!last && !!cutPath && last.after === cutPath;
   const undo = () => {
     if (!last || !canUndo) return;
     setHist((h) => h.filter((x) => x !== last));
-    ours.current = { at: last.before.at, pos: last.pos };
+    ours.current = { cut: last.before, pos: last.pos };
     onCut(index, last.before);
     diag("process", `Manual cut undone on sheet ${index + 1}`, {});
     setMsg({ text: "The last change taken back" });
@@ -153,6 +160,7 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
     const j = steps.unitOf.get(i);
     if (j === undefined) { setMsg({ text: `${idOf(i)} (${nameOf(i)}) is not processed: process it first (Auto cut)`, bad: true }); return; }
     if (next.some((x) => x.unit === j)) { setNext((l) => l.filter((x) => x.unit !== j)); setMsg(null); return; }
+    if (!picking) { setMsg({ text: at >= n ? "Move the timeline back to the last part cut right, then press SELECT" : "Press SELECT first, then click the parts to cut next" }); return; }
     if (j < at) {
       setMsg({ text: `${idOf(i)} (${nameOf(i)}) is cut already at the timeline (part ${j + 1}): move the timeline back before it to change its place`, bad: true });
       return;
@@ -170,7 +178,6 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
     const from = lastC ? endOf(lastC) : originPoint(sheet, origin);
     const restUnits = steps.units.filter((_, j) => j >= at && !units.includes(j));
     const rest = ruleOrder(sheet, paths, restUnits.flatMap((u) => u.parts), rule, machine, from, restUnits.filter((u) => u.parts.length > 1).map((u) => u.parts));
-    const container = partContainers(sheet, paths, steps.units.filter((_, j) => j >= at).flatMap((u) => u.parts));
     const r = pathReorder(cutPath, steps, at, units, rest, container, (i) => `${idOf(i)} (${nameOf(i)})`);
     if (typeof r === "string") { setMsg({ text: r, bad: true }); return; }
     const keep = at + r.next;
@@ -190,8 +197,13 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
   const done = useMemo(() => new Set(steps.units.slice(0, at).flatMap((u) => u.parts)), [steps, at]);
   const lastShown = shown[shown.length - 1];
   const lastUnit = at > 0 ? steps.units[at - 1] : undefined;
-  const unitLabel = (u: CutUnit, part = u.parts[0]) => `${idOf(part)} ${nameOf(part)}${u.parts.length > 1 ? ` + ${u.parts.length - 1}` : ""}`;
-  const afterNext = next.length + at;
+  const unitLabel = (u: CutUnit, part = u.parts[0]) => `${idOf(part)} ${nameOf(part)}${u.parts.length > 1 ? ` + ${u.parts.length - 1} (${u.why ? WHY[u.why] : "cut together"})` : ""}`;
+  // the picked parts with what lies in their holes (cut before them): their places after the timeline
+  const plan = useMemo(() => pickedPlan(steps, at, next.map((x) => x.unit), container), [steps, at, next, container]);
+  const noOf = (unit: number) => at + plan.indexOf(unit) + 1;
+  /** how many units come in right before a picked one (lying in its holes) */
+  const kidsOf = (unit: number) => { let k = 0; for (let t = plan.indexOf(unit) - 1; t >= 0 && !next.some((x) => x.unit === plan[t]); t--) k++; return k; };
+  const afterNext = plan.length + at;
 
   const contourPanel = (<>
     <div className="mc-actions">
@@ -250,7 +262,9 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
     <p className="rule-help ac-help">The picked contours swap places among themselves in the cut path; pick every contour to set the whole order. A part&apos;s holes, marking and open cuts must stay before its outline.</p>
   </>);
 
-  const restCount = steps.units.filter((_, j) => j >= at && !next.some((x) => x.unit === j)).length;
+  const restCount = Math.max(0, n - at - plan.length);
+  /** parts on the sheet that are not in the cut path (added or moved since processing) */
+  const notIn = useMemo(() => (sheet ? sheet.parts.length - processedParts(sheet).size : 0), [sheet]);
   const pathPanel = (<>
     <div className="pco-kept">
       <span className="pco-swatch" aria-hidden="true" />
@@ -264,18 +278,18 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
     <div className="ac-list pane-scroll">
       <div className="ac-table pco-table">
         <div className="ac-headrow has-trace"><span /><span>Next, in this order</span><span /></div>
-        {next.map((x, j) => {
+        {next.map((x) => {
           const u = steps.units[x.unit];
           if (!u) return null;
           const col = colorOf(x.part);
           const also = u.parts.filter((p) => p !== x.part);
           return (
             <div key={x.unit} className="ac-row has-trace">
-              <span className="ac-no pco-no">{at + j + 1}</span>
+              <span className="ac-no pco-no">{noOf(x.unit)}</span>
               <span className="ac-name mc-name" title={`${idOf(x.part)} ${nameOf(x.part)} · was part ${x.unit + 1}${also.length ? ` · with ${also.map(idOf).join(", ")}` : ""}`}
                 style={col ? { borderColor: col.stroke } : undefined}>
                 <span className="mc-part">{idOf(x.part)}</span>
-                <small>{also.length ? `+ ${also.length} (${u.why ? WHY[u.why] : "together"})` : `was ${x.unit + 1}`}</small>
+                <small>{also.length ? `+ ${also.length} (${u.why ? WHY[u.why] : "together"})` : kidsOf(x.unit) ? `${kidsOf(x.unit)} in its holes first` : `was ${x.unit + 1}`}</small>
               </span>
               <button type="button" className="mc-del" onClick={() => setNext((l) => l.filter((y) => y.unit !== x.unit))} aria-label={`Take ${idOf(x.part)} out of the list`} title="Take it out of the list">
                 <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
@@ -292,6 +306,7 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
     <div className="pco-rest">
       <div className="pco-rest-head"><span>Then the rest</span><span className="pco-rule" title="The order picked under AUTO CUT the last time this sheet was processed">{ruleLabel}</span></div>
       <p>{!can || at >= n ? "Nothing left after the timeline." : `${restCount} ${restCount === 1 ? "part" : "parts"}${next.length ? `, from part ${afterNext + 1} on` : `, from part ${at + 1} on`}, sorted as the last Auto cut of this sheet. Leads, micro joints and break cuts stay as they are.`}</p>
+      {can && notIn > 0 && <p className="pco-warn">{notIn} {notIn === 1 ? "part on this sheet is" : "parts on this sheet are"} not processed (added or moved since): not in the cut path, left as {notIn === 1 ? "it is" : "they are"}. Auto cut processes {notIn === 1 ? "it" : "them"}.</p>}
     </div>
     <div className="mc-actions">
       <button type="button" className="btn btn-primary ac-process" disabled={!next.length} onClick={complete}
@@ -349,11 +364,12 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
       </div>
     ) : null;
     const pickedParts = next.map((x) => x.part);
-    const also = next.flatMap((x) => steps.units[x.unit]?.parts.filter((p) => p !== x.part) ?? []);
+    const also = plan.flatMap((j) => steps.units[j]?.parts.filter((p) => !pickedParts.includes(p)) ?? []);
     return {
       panel,
       cut: {
-        picking: can && picking, picked: pickedParts, onPick: pickPart, panel, pickFrom: at,
+        // clicks always come here (never a selection: the sheet is look only, as in the simulation)
+        picking: can, picked: pickedParts, onPick: pickPart, panel, pickedNos: next.map((x) => noOf(x.unit)),
         ...(also.length ? { pickedAlso: also } : {}),
         ...(timeline ? { below: timeline } : {}),
         ...(can ? { sim: { shown, rapids: simRapids, done, head: lastShown ? endOf(lastShown) : from, ...(at > 0 && at < n && lastShown ? { current: lastShown } : {}) } } : {}),
