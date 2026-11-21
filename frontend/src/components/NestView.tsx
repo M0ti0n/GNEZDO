@@ -222,9 +222,19 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
   const propsDialog = props !== null && sol && sheets[props] && (
     <SheetPropertiesDialog nested index={props} machine={machine}
       sheet={nestedAsStock(sheets[props], stock.find((s) => s.id === sheets[props].sheetId), machine)}
-      onSave={(s) => onEditSheet(sol.id, props, {
-        lengthMm: s.lengthMm, widthMm: s.widthMm, trims: s.trims, partGapMm: s.partGapMm, kerfMm: s.kerfMm, cutNumber: Math.max(1, s.qty || 1),
-      })}
+      // material and thickness: only while no part is on the sheet (the parts are of the sheet's)
+      lockMaterial={sheets[props].parts.length
+        ? `Locked: ${sheets[props].parts.length} ${sheets[props].parts.length === 1 ? "part is" : "parts are"} nested on this sheet, of its material and thickness. Take ${sheets[props].parts.length === 1 ? "it" : "them"} off the sheet (Manual nest) to change them.`
+        : undefined}
+      onSave={(s) => {
+        const sh = sheets[props];
+        const other = !sh.parts.length && (s.material.trim() !== sh.material || s.thicknessMm !== sh.thicknessMm);
+        onEditSheet(sol.id, props, {
+          lengthMm: s.lengthMm, widthMm: s.widthMm, trims: s.trims, partGapMm: s.partGapMm, kerfMm: s.kerfMm, cutNumber: Math.max(1, s.qty || 1),
+          // an empty sheet to another material / thickness: its cut path and remnant (of the old one) go
+          ...(other ? { material: s.material.trim(), thicknessMm: s.thicknessMm, cut: undefined, remnant: undefined } : {}),
+        });
+      }}
       onClose={() => setProps(null)}
       onDelete={!finished || !onDeleteSheet ? undefined : sol.locked.includes(props) ? `Sheet ${props + 1} is locked: unlock it to delete it`
         : () => onDeleteSheet(sol.id, props)} />

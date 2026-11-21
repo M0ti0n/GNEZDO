@@ -2870,3 +2870,6 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .annot-handle.h-e, .annot-handle.h-w { cursor: ew-resize; }
 .annot-frame { touch-action: none; }
 .annot-input { position: absolute; z-index: 1; pointer-events: auto; opacity: 0; resize: none; border: 0; padding: 0; cursor: text; }
+.sp-lock { color: #8a5a00; font-weight: 700; font-size: 12px; text-transform: none; letter-spacing: 0; }
+.filter-pair.is-locked .field { background: #f1f2f4; color: var(--ink-3, #6b7280); cursor: not-allowed; }
+.sp-lock-note { margin: 6px 0 0; font-size: 12.5px; color: #8a5a00; }

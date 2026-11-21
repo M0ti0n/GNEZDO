@@ -18,10 +18,12 @@ const SOURCE: Record<string, string> = {
 // Properties of a stock sheet (STOCK panel: [i] or double click on its name), laid out like Part
 // properties: the sheet's shape with the machine's 0,0, rotate / mirror under it; size, trims (gap from
 // each edge to the parts, by the machine's axes), part gap, cut number and cut diameter on the right.
-export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, nested = false, adding = false, onDelete }: {
+export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, nested = false, adding = false, onDelete, lockMaterial }: {
   sheet: StockSheet; index: number; machine: Machine; onSave: (s: StockSheet) => void; onClose: () => void;
   /** A sheet of a nest (not the stock): only this sheet changes; the parts stay where they are. */
   nested?: boolean;
+  /** A nested sheet with parts on it: why its material and thickness cannot change (shown); missing: they can */
+  lockMaterial?: string;
   /** A new sheet (Manual nest -> Add sheet): ADD SHEET instead of Save, to the stock and the nest. */
   adding?: boolean;
   /** A nested sheet: Delete sheet takes it out of its solution (its parts go back to the work part
@@ -74,7 +76,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
   const tooBig = s.lengthMm > 0 && s.widthMm > 0 && !fitsMachine(s.lengthMm, s.widthMm);
   const changed = JSON.stringify(s) !== JSON.stringify({ ...sheet, trims: sheet.trims ?? first.trims, partGapMm: sheet.partGapMm ?? first.partGapMm });
   // a new sheet, or a material / thickness changed: one the Technology tables have
-  const badTech = !nested && (!!adding || s.material !== sheet.material || s.thicknessMm !== sheet.thicknessMm)
+  const badTech = !lockMaterial && (!!adding || s.material !== sheet.material || s.thicknessMm !== sheet.thicknessMm)
     && !!s.material.trim() && !!s.thicknessMm && (!lists.materialOk(s.material) || !lists.thicknessOk(s.thicknessMm));
   const save = () => { onSave(s); onClose(); };
 
@@ -123,14 +125,15 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
 
           <div className="proc-form">
             <div className="proc-group">
-              <span className="proc-label">Material and thickness</span>
-              <div className="filter-pair">
+              <span className="proc-label">Material and thickness{lockMaterial && <span className="sp-lock" title={lockMaterial}> <LockGlyph /> locked</span>}</span>
+              <div className={`filter-pair${lockMaterial ? " is-locked" : ""}`} title={lockMaterial}>
                 <Combobox value={s.material} onChange={(material) => set({ material })} options={lists.strict ? lists.techMaterials : lists.materials}
-                  strict={lists.strict && !nested} strictNote="not in the Technology tables (Settings → Machines → Technology: material tags)" placeholder="Material" ariaLabel="Material" newHint="a new material" readOnly={nested} />
+                  strict={lists.strict && !lockMaterial} strictNote="not in the Technology tables (Settings → Machines → Technology: material tags)" placeholder="Material" ariaLabel="Material" newHint="a new material" readOnly={!!lockMaterial} />
                 <Combobox value={s.thicknessMm ? String(s.thicknessMm) : ""} onChange={(t) => set({ thicknessMm: Number(t.replace(",", ".").replace(/[^\d.]/g, "")) || 0 })}
-                  options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict && !nested} strictNote="no Technology row for this thickness of this material (Settings → Machines → Technology)"
-                  placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" readOnly={nested} />
+                  options={lists.strict ? lists.techThicknesses : lists.thicknesses} strict={lists.strict && !lockMaterial} strictNote="no Technology row for this thickness of this material (Settings → Machines → Technology)"
+                  placeholder="Thickness" ariaLabel="Thickness in mm" suffix="mm" numeric newHint="a new thickness" readOnly={!!lockMaterial} />
               </div>
+              {lockMaterial && <p className="sp-lock-note">{lockMaterial}</p>}
             </div>
 
             <div className="sp-grid">
@@ -215,6 +218,16 @@ function SheetPreview({ sheet, origin, trims }: { sheet: StockSheet; origin: Ori
         <rect x={left} y={top} width={L - left - rgt} height={W - top - bot} className="sp-trim" />
       )}
       <circle cx={right ? L : 0} cy={bottom ? W : 0} r={dot} className="sp-origin" />
+    </svg>
+  );
+}
+
+/** A small padlock beside "Material and thickness" when they are locked. */
+function LockGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" style={{ verticalAlign: "-2px" }}>
+      <rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="currentColor" />
+      <path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7" fill="none" stroke="currentColor" strokeWidth="1.7" />
     </svg>
   );
 }
