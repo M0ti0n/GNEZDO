@@ -25,7 +25,8 @@ const MODES: { id: SelectMode; label: string; hint: string }[] = [
 ];
 
 const RULE_KEY = "gnezdo.cutRule";
-const loadRule = (): CutRule => { try { const r = localStorage.getItem(RULE_KEY); return CUT_RULES.some((x) => x.id === r) ? (r as CutRule) : "bottomTop"; } catch { return "bottomTop"; } };
+/** The order picked under AUTO CUT last (kept in this browser). */
+export const loadRule = (): CutRule => { try { const r = localStorage.getItem(RULE_KEY); return CUT_RULES.some((x) => x.id === r) ? (r as CutRule) : "bottomTop"; } catch { return "bottomTop"; } };
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
 

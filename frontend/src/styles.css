@@ -2509,6 +2509,37 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .mc-name small { flex: none; margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
 .mc-del { justify-self: center; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1.5px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink-3); cursor: pointer; }
 .mc-del:hover { border-color: #f2c4c2; background: #fde8e8; color: var(--red); }
+.mc-actions { flex: none; display: flex; gap: 8px; }
+.mc-actions .ac-process { flex: 1; }
+.mc-undo { flex: none; height: 42px; padding: 0 16px; text-transform: uppercase; letter-spacing: .03em; }
+.mc-seg { flex: none; }
+.mc-seg button { height: 38px; font-size: 13px; letter-spacing: .03em; text-transform: uppercase; line-height: 1.1; }
+/* Manual cut -> Path cut order */
+.pco-kept { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: #f1f3f4; border: 1px solid #dde2e4; font-size: 14px; }
+.pco-swatch { flex: none; width: 12px; height: 12px; border-radius: 3px; background: #c3c8cd; }
+.pco-table { min-height: calc(26px + 6 * 34px); }
+.pco-no { border-color: #f59f00; background: #f59f00; color: #fff; }
+.pco-rest { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1.5px dashed #9fb3b6; border-radius: 8px; }
+.pco-rest p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.pco-rest-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.pco-rule { padding: 3px 8px; border-radius: 5px; background: #e3eff4; color: var(--blue-ink); }
+.mn.has-below { grid-template-rows: auto minmax(0, 1fr) auto; }
+.mn.has-below .mn-parts { grid-row: 1 / span 3; }
+.mn-below { grid-column: 1; grid-row: 3; min-width: 0; }
+.pco-tl { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 6px; background: #fff; border: 1.5px solid var(--line); border-radius: 8px; }
+.pco-tl-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pco-tl-title { flex: none; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); }
+.pco-tl-at { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 14px; }
+.pco-gap { flex: 1; }
+.pco-step { flex: none; width: 36px; height: 30px; padding: 0; display: grid; place-items: center; }
+.pco-ticks { display: grid; gap: 2px; }
+.pco-ticks.is-dense { gap: 0; }
+.pco-tick { height: 20px; min-width: 0; padding: 0; border: 1px solid transparent; border-radius: 3px; background: #dde3e5; cursor: pointer; }
+.pco-tick.is-cut { background: #c3c8cd; border-color: #b0b6bc; }
+.pco-tick.is-last { background: #e3262b; border-color: #b51d21; }
+.pco-tick.is-picked { background: #f59f00; border-color: #c27d00; }
+.pco-tick:hover { outline: 2px solid var(--ink); outline-offset: 1px; position: relative; }
+.pco-range { width: 100%; margin: 0; accent-color: #e3262b; }
 /* Process del: icon buttons (Fab's icons), the icon on the left */
 .pp-btn.pd-btn { display: flex; align-items: center; justify-content: flex-start; gap: 12px; height: 56px; padding: 4px 12px 4px 6px; text-align: left; }
 .pp-btn.pd-btn img { width: 46px; height: 46px; flex: none; padding: 2px; background: #fff; border: 1px solid #d9dedf; border-radius: 8px; }

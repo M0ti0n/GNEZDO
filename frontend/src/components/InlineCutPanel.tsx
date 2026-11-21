@@ -59,7 +59,7 @@ export function useInlineCut({ index, single, sheets, parts, machine, origin, on
 
   /** these parts (null: every one) back to the automatic cut; the sheet's cut path after it */
   const reprocess = async (sh: NestedSheet, list: number[]) => {
-    const rule: CutRule = !sh.cut || sh.cut.rule === "manual" ? "shortest" : sh.cut.rule;
+    const rule: CutRule = sh.cut?.autoRule ?? (!sh.cut || sh.cut.rule === "manual" ? "shortest" : sh.cut.rule);
     const { leadFit: _, keptFirst: _k, ...cut } = await processSheet({ sheet: sh, paths, machine, origin, rule, what: "all", parts: list, ordered: false,
       // tracing skipped on these parts (Auto cut's Skip trace lines, or unticked) stays skipped
       traceOf: (k) => !sh.cut || sh.cut.contours.some((c) => c.kind === "trace" && c.part === k) });
