@@ -11,7 +11,9 @@ namespace Gnezdo.Api.Endpoints;
 public static class SettingsEndpoints
 {
     /// <summary>Keys that may be stored (more come as settings move to the server).</summary>
-    public static readonly string[] Keys = ["machines", "specialTools"];
+    /// <summary>Settings shared by everyone, changed by an admin: the machines, special tools, stock and
+    /// remnants, import rules and nesting rules. (Personal settings stay in each browser.)</summary>
+    public static readonly string[] Keys = ["machines", "specialTools", "stock", "importRules", "nestingRules"];
 
     public record SettingSaveRequest(JsonNode? Value, string? ModifiedBy);
 

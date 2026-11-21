@@ -24,7 +24,8 @@ import { partGeometry } from "./import/toPart";
 import type { SavePart } from "./api/api";
 import { forgetPartMarks, remapCut, shiftSheet } from "./job/cutPath";
 import { loadDefaultProject } from "./job/defaultProject";
-import { applyRules, loadRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
+import { applyRules, loadRules, normalizeRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
+import { loadNestingRules, normalizeNestingRules, saveNestingRules, type NestingRules } from "./job/nestRules";
 import { quantityFromName } from "./import/geometry";
 import { NestReportPage } from "./pages/NestReportPage";
 import { CostReportPage } from "./pages/CostReportPage";
@@ -49,7 +50,7 @@ import { NewJobDialog, SaveAsDialog } from "./components/NewJobDialog";
 import { hasJobNames, suggestJobName } from "./job/jobName";
 import { setMachineLimit } from "./job/stock";
 import { exportSolutionDxf } from "./job/exportNest";
-import { loadStockSettings, newSheet, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
+import { loadStockSettings, newSheet, normalizeStock, saveStockSettings, type StockSettings, type StockSheet } from "./job/stock";
 import { SheetPropertiesDialog } from "./components/SheetPropertiesDialog";
 import { diag, flush, startDiag } from "./job/diag";
 import { auth, SIGN_IN_NEEDED, type AuthState, type Me } from "./api/auth";
@@ -107,6 +108,16 @@ export function App() {
       if (m) { setMachinesState(m); saveLocalMachines(m); }
       else if (!demoMode) void api.saveSetting("machines", machines).catch(() => {});  // first time: this browser's list
     }).catch(() => { /* server without settings: the browser's list */ });
+    // the other shared settings the same way (first time: an admin's browser gives its own; anyone else's is refused)
+    const pull = <T,>(key: string, norm: (v: unknown) => T | null, apply: (v: T) => void, mine: T) =>
+      api.setting<unknown>(key).then((v) => {
+        const n = norm(v);
+        if (n) apply(n);
+        else if (!demoMode) void api.saveSetting(key, mine).catch(() => {});
+      }).catch(() => { /* server without settings: this browser's copy */ });
+    void pull("stock", normalizeStock, (v) => { setStockSettingsState(v); saveStockSettings(v); }, stockSettings);
+    void pull("importRules", normalizeRules, (v) => { setRulesState(v); saveRules(v); }, rules);
+    void pull("nestingRules", normalizeNestingRules, (v) => { setNestingRulesState(v); saveNestingRules(v); }, nestingRules);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // the machine each job tab is nested for
@@ -115,11 +126,20 @@ export function App() {
   const [savedSnap, setSavedSnap] = useState<Record<string, string>>({});
   const machineFor = (jobId: string | undefined) => machineOf(machines, jobId ? jobMachine[jobId] : undefined);
   const [newJobOpen, setNewJobOpen] = useState<string | null>(null);   // the name offered
-  const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); saveStockSettings(s); };
+  // Stock, import and nesting rules: shared on the server like the machines; only an admin changes them
+  // (Settings is locked for the others). A remnant mode changed in Process by someone else holds on this page only.
+  const shareSetting = <T,>(key: string, label: string, v: T, keep: (v: T) => void) => {
+    if (!isAdmin) return;
+    keep(v);
+    api.saveSetting(key, v).catch((e) => setToast(`${label} not saved on the server: ${(e as Error).message}`));
+  };
+  const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); shareSetting("stock", "Stock settings", s, saveStockSettings); };
   // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
   const [imports, setImports] = useState<ImportItem[]>([]);
   const [rules, setRulesState] = useState<ImportRules>(loadRules);
-  const setRules = (r: ImportRules) => { setRulesState(r); saveRules(r); };
+  const setRules = (r: ImportRules) => { setRulesState(r); shareSetting("importRules", "Import rules", r, saveRules); };
+  const [nestingRules, setNestingRulesState] = useState<NestingRules>(loadNestingRules);
+  const setNestingRules = (r: NestingRules) => { setNestingRulesState(r); shareSetting("nestingRules", "Nesting rules", r, saveNestingRules); };
   // Properties for all parts carry over between imports and visits (kept in this browser).
   const [importProps, setImportPropsState] = useState<BatchProperties>(() => loadProperties(loadRules()));
   const setImportProps = (u: BatchProperties | ((p: BatchProperties) => BatchProperties)) =>
@@ -1688,7 +1708,7 @@ export function App() {
                 setRules(r);
                 // a list that has not been touched yet follows the new defaults
                 if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller, commonCut: r.commonOnOutline }));
-              }} onOpenJob={(id, name) => void openSaved(id, name)} stock={stockSettings} onStock={setStockSettings} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
+              }} onOpenJob={(id, name) => void openSaved(id, name)} stock={stockSettings} onStock={setStockSettings} nesting={nestingRules} onNesting={setNestingRules} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "remnants" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && active.kind !== "extract" && active.kind !== "special" && <PlaceholderPage tab={active} />}
             {active.kind === "extract" && <ExtractEmpty onPick={() => setDrawer("extract")} />}
           </main>

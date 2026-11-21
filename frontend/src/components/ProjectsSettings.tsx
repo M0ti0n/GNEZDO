@@ -24,7 +24,8 @@ const Arrow = ({ up }: { up: boolean }) => (
   </svg>
 );
 
-export function ProjectsSettings({ onOpenJob }: { onOpenJob?: (id: string, name: string) => void }) {
+/** isAdmin: may delete projects (everyone may look) */
+export function ProjectsSettings({ onOpenJob, isAdmin = true }: { onOpenJob?: (id: string, name: string) => void; isAdmin?: boolean }) {
   // the toolbar
   const [projectText, setProjectText] = useState("");
   const [partText, setPartText] = useState("");
@@ -115,6 +116,7 @@ export function ProjectsSettings({ onOpenJob }: { onOpenJob?: (id: string, name:
       <header className="settings-head">
         <h2>Projects and parts</h2>
         <p>Every saved project and its parts. A project cannot be renamed; it can be deleted while it has no parts. A part moves to another project in its Part properties (right click).</p>
+        {!isAdmin && <p className="admin-only">Only an admin can delete projects.</p>}
       </header>
 
       <div className="pj-tools" role="search">
@@ -126,8 +128,8 @@ export function ProjectsSettings({ onOpenJob }: { onOpenJob?: (id: string, name:
         <label className="pj-f pj-date"><span>to</span><DateInput value={to} onChange={setTo} aria-label="Created to" /></label>
         <label className="chk pj-empty"><input type="checkbox" checked={empty} onChange={(e) => setEmpty(e.target.checked)} /> Show projects without parts</label>
         <span className="pj-spacer" />
-        <button type="button" className="btn pj-del" disabled={!toDelete.length} onClick={() => setAsking(true)}
-          title={toDelete.length ? "Delete the ticked projects" : "Tick projects without parts to delete them (Show projects without parts)"}>
+        <button type="button" className="btn pj-del" disabled={!isAdmin || !toDelete.length} onClick={() => setAsking(true)}
+          title={!isAdmin ? "Only an admin can delete projects" : toDelete.length ? "Delete the ticked projects" : "Tick projects without parts to delete them (Show projects without parts)"}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></svg>
           Delete{toDelete.length ? ` (${toDelete.length})` : ""}
         </button>
@@ -156,7 +158,7 @@ export function ProjectsSettings({ onOpenJob }: { onOpenJob?: (id: string, name:
           <div className="pj-scroll">
             <table className="pjtab">
               <thead><tr>
-                <th className="pj-cb"><input type="checkbox" aria-label="Tick every project without parts" disabled={!deletable.length}
+                <th className="pj-cb"><input type="checkbox" aria-label="Tick every project without parts" disabled={!isAdmin || !deletable.length}
                   checked={deletable.length > 0 && deletable.every((r) => ticked.has(r.code))}
                   onChange={(e) => setTicked(e.target.checked ? new Set(deletable.map((r) => r.code)) : new Set())} /></th>
                 <th>Project</th><th className="pj-date-c">Date</th>
@@ -165,7 +167,7 @@ export function ProjectsSettings({ onOpenJob }: { onOpenJob?: (id: string, name:
                 {shown.map((r) => (
                   <tr key={r.code} className={r.code === picked ? "is-sel" : ""} onClick={() => setPicked(r.code)}>
                     <td className="pj-cb" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={ticked.has(r.code)} disabled={r.partCount > 0} aria-label={`Tick ${r.code}`}
+                      <input type="checkbox" checked={ticked.has(r.code)} disabled={!isAdmin || r.partCount > 0} aria-label={`Tick ${r.code}`}
                         title={r.partCount > 0 ? `${r.partCount} ${r.partCount === 1 ? "part" : "parts"} in it: only a project without parts can be deleted` : "Tick to delete"}
                         onChange={(e) => setTicked((s) => { const n = new Set(s); if (e.target.checked) n.add(r.code); else n.delete(r.code); return n; })} />
                     </td>

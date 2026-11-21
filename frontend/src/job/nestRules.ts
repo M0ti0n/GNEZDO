@@ -1,4 +1,5 @@
-// GNEZDO menu -> Rules -> Nesting rules. Kept in this browser for now (like the manual nest keys).
+// GNEZDO menu -> Rules -> Nesting rules. Shared on the server (an admin changes them); this browser keeps
+// the copy last loaded, which the nest reads.
 
 export interface NestingRules {
   /** Arrange (manual nest): the arranged parts go towards the machine's 0,0; off: they are packed where they are. */
@@ -16,13 +17,15 @@ export const DEFAULT_NESTING_RULES: NestingRules = { arrangeToOrigin: true, bloc
 
 const STORE = "gnezdo.nestingRules";
 
+/** Nesting rules as saved, filled up with the defaults; null: none saved. */
+export function normalizeNestingRules(raw: unknown): NestingRules | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return { ...DEFAULT_NESTING_RULES, ...(raw as Partial<NestingRules>) };
+}
+
 export function loadNestingRules(): NestingRules {
-  try {
-    const v = JSON.parse(localStorage.getItem(STORE) ?? "null") as Partial<NestingRules> | null;
-    return { ...DEFAULT_NESTING_RULES, ...(v ?? {}) };
-  } catch {
-    return DEFAULT_NESTING_RULES;
-  }
+  try { return normalizeNestingRules(JSON.parse(localStorage.getItem(STORE) ?? "null")) ?? DEFAULT_NESTING_RULES; }
+  catch { return DEFAULT_NESTING_RULES; }
 }
 
 export function saveNestingRules(r: NestingRules) {

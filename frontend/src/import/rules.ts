@@ -241,11 +241,17 @@ export function colourRole(e: { color?: number; rgb?: number }, c: ColourRules =
 
 const KEY = "gnezdo.importRules";
 
+/** This browser's copy of the import rules (the server's, as last loaded; all there is in the demo). */
 export function loadRules(): ImportRules {
+  try { return normalizeRules(JSON.parse(localStorage.getItem(KEY) ?? "null")) ?? DEFAULT_RULES; }
+  catch { return DEFAULT_RULES; }
+}
+
+/** Import rules as saved, filled up with the defaults (and older saves brought up to date); null: none saved. */
+export function normalizeRules(raw: unknown): ImportRules | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return DEFAULT_RULES;
-    const saved = JSON.parse(raw) as Partial<ImportRules> & { exactColours?: boolean };
+    const saved = raw as Partial<ImportRules> & { exactColours?: boolean };
     // saved before the color lists: "exact colors only" becomes AutoCAD red / green -> trace, cyan -> open cut
     const colours = saved.colours ?? (saved.exactColours
       ? { cut: [{ kind: "grays" }], trace: [{ kind: "aci", aci: 3 }, { kind: "aci", aci: 1 }], openCut: [{ kind: "aci", aci: 4 }], common: [], other: "cut" } as ColourRules
@@ -254,7 +260,7 @@ export function loadRules(): ImportRules {
     void _old;
     return { ...DEFAULT_RULES, ...rest, colours: { ...colours, common: colours.common ?? [] } };
   } catch {
-    return DEFAULT_RULES;
+    return null;
   }
 }
 

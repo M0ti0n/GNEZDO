@@ -4,6 +4,12 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+**Only Personal is each user's own; the rest of Settings is the admin's** (server build):
+- **Stock and remnants**, **Rules** (import and nesting rules) are now kept on the server, one copy for everyone, like the machines. They used to be kept in each browser. The first admin to open GNEZDO after the update gives them the values from their browser.
+- **Locked for users who aren't admins**, who can still look: Stock and remnants, Machines, Rules, Special tools. Deleting projects (Projects and parts) is admin-only too, and the server refuses it for anyone else.
+- A remnant setting changed in Process → Remnant by someone who isn't an admin holds only on their page until it reloads; it isn't saved for others.
+- **Personal** (job names, the cut-path view, manual nest keys) stays each user's own, in their browser.
+
 **Settings → Administration** (admins of the server build; also in the menu under your name):
 - **Users:** add, rename, set or remove a password, make or unmake an admin, remove. The last admin can't be removed or unmade.
 - **Status API keys** for the apps that read GNEZDO's status.

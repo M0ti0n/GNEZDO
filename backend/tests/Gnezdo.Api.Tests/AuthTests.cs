@@ -107,6 +107,17 @@ public sealed class AuthTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, (await alex.PutAsJsonAsync("/api/settings/machines", new { value = new JsonObject() })).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await alex.PutAsJsonAsync("/api/logs/settings", new { enabled = false })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync("/api/settings/machines", new { value = new JsonObject() })).StatusCode);
+        // stock, import and nesting rules are shared the same way: everyone reads them, only an admin changes them
+        foreach (var key in new[] { "stock", "importRules", "nestingRules" })
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, (await alex.PutAsJsonAsync($"/api/settings/{key}", new { value = new JsonObject { ["x"] = 1 } })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync($"/api/settings/{key}", new { value = new JsonObject { ["x"] = 2 } })).StatusCode);
+            Assert.Equal(2, (await alex.GetFromJsonAsync<JsonObject>($"/api/settings/{key}"))!["x"]!.GetValue<int>());
+        }
+        // and only an admin deletes a project
+        var refused = await alex.DeleteAsync("/api/projects?code=NO-SUCH-PROJECT");
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        Assert.Contains("Only an admin can delete projects", await refused.Content.ReadAsStringAsync());
     }
 
     [Fact]
