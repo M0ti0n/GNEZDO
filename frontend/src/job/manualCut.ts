@@ -66,3 +66,115 @@ export function orderProblem(out: CutContour[], nameOf: (part: number) => string
   }
   return null;
 }
+
+// ------------------------------------------------------------------ Path cut order
+//
+// The cut path as the parts drop out one after another (a step each): the timeline goes step by step.
+// What is cut as one is one step and moves as one: a common cut block, the parts of the inline passes,
+// a common pierce group. Tracing done first of all (the shortest way, before any part) stays first.
+
+/** Parts cut as one, and their contours (indexes in the live path) in cut order. */
+export interface CutUnit {
+  parts: number[];
+  ks: number[];
+  /** where its last contour is: it is cut out there */
+  end: number;
+  /** why its parts go together (none: one part) */
+  why?: "block" | "inline" | "pierce";
+}
+
+export interface PathSteps {
+  /** the live contours in cut order */
+  list: CutContour[];
+  /** the tracing at the start of the path (before any other contour): always kept first */
+  lead: number;
+  /** in the order they are cut out */
+  units: CutUnit[];
+  /** a part's unit (index in units) */
+  unitOf: Map<number, number>;
+}
+
+/** The steps of a live cut path. */
+export function pathSteps(list: CutContour[]): PathSteps {
+  const up = new Map<number, number>();
+  const find = (a: number): number => { let r = a; while (up.has(r) && up.get(r) !== r) r = up.get(r)!; up.set(a, r); return r; };
+  const join = (a: number, b: number) => { const x = find(a), y = find(b); if (x !== y) up.set(y, x); };
+  const why = new Map<number, CutUnit["why"]>();
+  const pierce = new Map<string, number>();
+  let inl: number | null = null;
+  for (const c of list) {
+    const own = c.parts ?? [c.part];
+    own.forEach((k) => find(k));
+    if (c.parts) { own.forEach((k) => { join(own[0], k); why.set(k, "block"); }); }
+    if (c.cp) { const p0 = pierce.get(c.cp.id); if (p0 === undefined) pierce.set(c.cp.id, c.part); else join(p0, c.part); if (!why.has(c.part)) why.set(c.part, "pierce"); }
+    // the inline passes cut stretches of many parts in turn: those parts go as one
+    if (c.inline) { if (inl === null) inl = c.part; else join(inl, c.part); why.set(c.part, "inline"); }
+  }
+  let lead = 0;
+  while (lead < list.length && list[lead].kind === "trace") lead++;
+  const byRoot = new Map<number, CutUnit>();
+  list.forEach((c, k) => {
+    if (k < lead) return;
+    const r = find(c.parts?.[0] ?? c.part);
+    let u = byRoot.get(r);
+    if (!u) { u = { parts: [], ks: [], end: -1 }; byRoot.set(r, u); }
+    u.ks.push(k);
+    u.end = k;
+    for (const p of c.parts ?? [c.part]) if (!u.parts.includes(p)) u.parts.push(p);
+  });
+  const units = [...byRoot.values()].sort((a, b) => a.end - b.end);
+  for (const u of units) {
+    const w = u.parts.map((p) => why.get(p)).filter(Boolean);
+    const one = w.includes("block") ? "block" : w.includes("inline") ? "inline" : w.includes("pierce") ? "pierce" : undefined;
+    if (u.parts.length > 1 && one) u.why = one;
+  }
+  const unitOf = new Map<number, number>();
+  units.forEach((u, j) => u.parts.forEach((p) => unitOf.set(p, j)));
+  return { list, lead, units, unitOf };
+}
+
+/** The last contour (index in steps.list) kept with the timeline at `at` steps (-1: none). */
+export const keptEnd = (steps: PathSteps, at: number) => (at <= 0 ? steps.lead - 1 : steps.units[Math.min(at, steps.units.length) - 1].end);
+
+/**
+ * The cut with the first `at` steps as they are, then the picked units (indexes in steps.units) in the
+ * order picked, then the others in the order of `rest` (their parts in an Auto cut rule's order; parts
+ * not in it: as they were). A part lying in a hole of another one comes before it (`container`). The
+ * contours of a unit keep their order; contours of parts not processed any more go at the end, as they
+ * were. `next`: the steps the picked units take now (with what had to come before them). An error text
+ * when a part's outline would come before something of its own.
+ */
+export function pathReorder(cut: SheetCut, steps: PathSteps, at: number, picked: number[], rest: number[], container: Map<number, number>,
+  nameOf: (part: number) => string): { cut: SheetCut; next: number } | string {
+  const end = keptEnd(steps, at);
+  const tail = steps.units.map((_, j) => j).filter((j) => j >= at);
+  const rank = new Map<number, number>();
+  rest.forEach((p, k) => { const j = steps.unitOf.get(p); if (j !== undefined && !rank.has(j)) rank.set(j, k); });
+  const others = tail.filter((j) => !picked.includes(j)).sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity) || a - b);
+  // what lies in a part's hole is cut before it (also when only the part was picked)
+  const kids = new Map<number, number[]>();
+  for (const [kid, box] of container) {
+    const a = steps.unitOf.get(box), b = steps.unitOf.get(kid);
+    if (a === undefined || b === undefined || a === b) continue;
+    kids.set(a, [...(kids.get(a) ?? []), b]);
+  }
+  const placed = new Set<number>(), order: number[] = [];
+  const place = (j: number) => {
+    if (placed.has(j) || j < at) return;
+    placed.add(j);
+    for (const k of kids.get(j) ?? []) place(k);
+    order.push(j);
+  };
+  picked.forEach(place);
+  const next = order.length;
+  others.forEach(place);
+  const live = new Set(steps.list);
+  const contours = [
+    ...steps.list.slice(0, end + 1),
+    ...order.flatMap((j) => steps.units[j].ks.filter((k) => k > end).map((k) => steps.list[k])),
+    ...cut.contours.filter((c) => !live.has(c)),
+  ];
+  const bad = orderProblem(contours, nameOf);
+  if (bad) return bad;
+  return { cut: { ...cut, contours, rule: "manual", at: new Date().toISOString() }, next };
+}

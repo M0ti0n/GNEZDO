@@ -98,6 +98,9 @@ export const viaOf = (c: CutContour, prev: CutContour | undefined): Pt[] =>
 export interface SheetCut {
   at: string;
   rule: CutRule | "manual";
+  /** the order picked under AUTO CUT the last time the sheet was processed (kept when the order is changed by
+   *  hand): Manual cut's Path cut order sorts what is left after the parts picked by it */
+  autoRule?: CutRule;
   contours: CutContour[];
   /** per part index: where the part was when it was processed (moved since: not processed any more) */
   keys: Record<number, string>;
@@ -712,10 +715,8 @@ const mergeEls = (l: El[]): El => {
   };
 };
 
-/** The parts in cutting order (see the top of this file). */
-function orderParts(geos: PartGeo[], rule: CutRule, machine: Machine, sheet: NestedSheet, from: Pt, together: number[][] = []): number[] {
-  const by = new Map(geos.map((g) => [g.i, g]));
-  // a part in another part's hole: that part (the smallest one holding it) is its container
+/** A part in another part's hole: that part (the smallest one holding it) is its container. */
+function containersOf(geos: PartGeo[]): Map<number, number> {
   const container = new Map<number, number>();
   for (const g of geos) {
     const p = g.outer[0];
@@ -727,6 +728,35 @@ function orderParts(geos: PartGeo[], rule: CutRule, machine: Machine, sheet: Nes
     }
     if (best) container.set(g.i, best.i);
   }
+  return container;
+}
+
+/** The parts' outlines and holes only, as they lie on the sheet (for the order, not for cutting). */
+function plainGeos(sheet: NestedSheet, paths: Map<string, string>, idx: number[]): PartGeo[] {
+  return idx.flatMap((i) => {
+    const p = sheet.parts[i];
+    if (!p) return [];
+    const f = transform(p);
+    const loops = partLoops(paths.get(p.partId) ?? "").map((lp) => lp.map(f));
+    if (!loops[0]?.length) return [];
+    return [{ i, outer: loops[0], holes: loops.slice(1), holeK: loops.slice(1).map(() => 1), trace: [], open: [], box: boxOf(loops[0]), area: Math.abs(signedArea(loops[0])) }];
+  });
+}
+
+/**
+ * Some parts of a processed sheet in the order of an Auto cut rule, from `from` (Manual cut → Path cut
+ * order: what is left after the parts picked); `together`: parts cut as one.
+ */
+export const ruleOrder = (sheet: NestedSheet, paths: Map<string, string>, idx: number[], rule: CutRule, machine: Machine, from: Pt, together: number[][] = []): number[] =>
+  orderParts(plainGeos(sheet, paths, idx), rule, machine, sheet, from, together);
+
+/** Each part's container (the part whose hole it lies in), among these parts. */
+export const partContainers = (sheet: NestedSheet, paths: Map<string, string>, idx: number[]) => containersOf(plainGeos(sheet, paths, idx));
+
+/** The parts in cutting order (see the top of this file). */
+function orderParts(geos: PartGeo[], rule: CutRule, machine: Machine, sheet: NestedSheet, from: Pt, together: number[][] = []): number[] {
+  const by = new Map(geos.map((g) => [g.i, g]));
+  const container = containersOf(geos);
   const kids = new Map<number, number[]>();
   for (const [c, h] of container) kids.set(h, [...(kids.get(h) ?? []), c]);
   const unitOf = (i: number): El => {
@@ -1016,7 +1046,9 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   contours = [...first, ...contours];
   // a common pierce group one of whose outlines was processed again: the one left goes back to its own leads
   contours = tidyPierces(contours);
-  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, contours, keys, ...(mirrored ? { mirrored } : {}),
+  // Selected parts / Trace / Cut internal pick an order by hand: the rule of the Auto cut before stays the sheet's
+  const autoRule = q.parts && q.ordered ? sheet.cut?.autoRule ?? (sheet.cut && sheet.cut.rule !== "manual" ? sheet.cut.rule : q.rule) : q.rule;
+  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, autoRule, contours, keys, ...(mirrored ? { mirrored } : {}),
     ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}),
     ...(first.length ? { keptFirst: new Set(first.flatMap((c) => c.parts ?? [c.part])).size } : {}) };
 }

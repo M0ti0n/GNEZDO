@@ -35,6 +35,12 @@ export interface CutMode {
   picked: number[];
   /** the picked parts without their order numbers (a selection, not an order) */
   noNumbers?: boolean;
+  /** the picked parts' numbers start after this one (Manual cut → Path cut order: after the timeline) */
+  pickFrom?: number;
+  /** shown picked too, without a number (cut together with a picked part) */
+  pickedAlso?: number[];
+  /** under the sheet (Manual cut → Path cut order: the timeline) */
+  below?: ReactNode;
   onPick: (i: number) => void;
   panel: ReactNode;
   hint: string;
@@ -1053,7 +1059,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   const right = origin.endsWith("right"), bottom = origin.startsWith("bottom");
 
   return (
-    <div className="mn">
+    <div className={`mn${cut?.below ? " has-below" : ""}`}>
       <div className="mn-top">
         <button type="button" className="mn-nav" disabled={index === 0} onClick={() => onIndex(index - 1)} aria-label="Previous sheet" title="Previous sheet">
           <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M17 4 6 12l11 8z" fill="currentColor" /></svg>
@@ -1106,7 +1112,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                 if (!g || !r) return null;
                 const c = partColor(r.no);
                 if (cut) {
-                  const done = cut.sim ? cut.sim.done.has(i) : cutDone.has(i), pick = cut.picked.includes(i);
+                  const done = cut.sim ? cut.sim.done.has(i) : cutDone.has(i), pick = cut.picked.includes(i) || !!cut.pickedAlso?.includes(i);
                   // not processed yet: selected and moved as without Process open, glowing red where it overlaps
                   const on = !done && !cut.sim && sel.has(i), over = !done && !cut.sim && bad.has(i);
                   return (
@@ -1212,7 +1218,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                     {!cut?.noNumbers && cut?.picked.map((i, k) => {
                       const g = geo[i];
                       if (!g) return null;
-                      return <text key={`n${i}`} className="cut-no" x={(g.box.x0 + g.box.x1) / 2} y={(g.box.y0 + g.box.y1) / 2} style={{ fontSize: 16 / v.s, strokeWidth: 3 / v.s }}>{k + 1}</text>;
+                      return <text key={`n${i}`} className="cut-no" x={(g.box.x0 + g.box.x1) / 2} y={(g.box.y0 + g.box.y1) / 2} style={{ fontSize: 16 / v.s, strokeWidth: 3 / v.s }}>{k + 1 + (cut.pickFrom ?? 0)}</text>;
                     })}
                   </g>
                 );
@@ -1271,6 +1277,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
         </button>
         <Ruler axis="x" view={v} size={size} flip={right} sheetMm={sheet.lengthMm} onPick={(e) => startGuide("h", e)} />
       </div>
+      {cut?.below && <div className="mn-below">{cut.below}</div>}
 
       {cut ? cut.panel : <PartsPanel jobParts={jobParts} sheet={sheet} counts={counts} edit={edit} />}
     </div>

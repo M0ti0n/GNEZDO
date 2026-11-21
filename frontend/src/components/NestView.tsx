@@ -190,7 +190,7 @@ export function NestPage({ onExportDxf, parts, solutions, selected, onSelect, on
     onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
   });
   const mc = useManualCut({
-    index: curIndex, single: full !== null && process === "manualCut", sheets, parts: byId,
+    index: curIndex, single: full !== null && process === "manualCut", sheets, parts: byId, machine, origin: sol?.origin ?? machine.origin,
     onCut: (k, cut) => sol && onEditSheet(sol.id, k, { cut }),
   });
   const mv = useMovement({
