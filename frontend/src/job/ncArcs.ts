@@ -9,6 +9,8 @@ import type { NcPt, NcSeg } from "./postprocessor";
 const TOL = 0.012;
 const MAX_CHORD = (8 * Math.PI) / 180;
 const MAX_R = 20000;
+/** How far off 180° a half circle's sweep may come out from rounded points [rad] (about 1°). */
+const HALF_TOL = 0.02;
 
 const sub = (a: NcPt, b: NcPt) => ({ x: a.x - b.x, y: a.y - b.y });
 const len = (a: NcPt) => Math.hypot(a.x, a.y);
@@ -56,10 +58,13 @@ function arcThrough(p: NcPt[], i: number, j: number, tol: number): { c: NcPt; cw
     if (ang > MAX_CHORD) return null;
     sweep += ang;
   }
-  if (sweep > Math.PI + 1e-6) return null;
+  // a half circle (a slot's end): the points are rounded to 0.01 mm, so its sweep may come out a little over
+  // 180° and its center a hair on either side of the chord; both are still that half circle
+  const half = Math.abs(sweep - Math.PI) < HALF_TOL;
+  if (sweep > Math.PI + HALF_TOL) return null;
   // the center lies on the side the path turns to
   const side = cross(sub(b, a), sub(c, a));
-  if (Math.abs(side) > 1e-9 && side > 0 !== ccw && sweep > 1e-3) return null;
+  if (!half && Math.abs(side) > 1e-9 && side > 0 !== ccw && sweep > 1e-3) return null;
   return { c, cw: !ccw };
 }
 

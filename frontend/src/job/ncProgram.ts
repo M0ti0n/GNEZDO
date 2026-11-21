@@ -46,13 +46,18 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
     const segOut = lout.length > 1 ? fitMoves([body[body.length - 1], ...lout.slice(1)]) : [];
     const segs = [...segIn, ...segBody, ...segOut];
     if (!segs.length) return null;
-    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    // its size as drawn: in the part's own frame, so a part nested at 15°, 30° or 45° keeps its size class
+    // (E001 / E002 / E003); rounded to 0.001 mm only (the limits are compared with it)
+    const ang = ((sheet.parts[c.parts?.[0] ?? c.part ?? -1]?.angle ?? 0) * Math.PI) / 180;
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const xs = pts.map(([x, y]) => x * ca + y * sa), ys = pts.map(([x, y]) => -x * sa + y * ca);
+    const size = (v: number[]) => Math.round((Math.max(...v) - Math.min(...v)) * 1000) / 1000;
     return {
       kind: c.kind, start, segs,
       leadIn: segIn.length, leadOut: segOut.length,
       // an inline cut's stretch: the whole contour's size (its size class), its own pierce
-      widthMm: c.inline ? c.inline.w : Math.round((Math.max(...xs) - Math.min(...xs)) * 10) / 10,
-      heightMm: c.inline ? c.inline.h : Math.round((Math.max(...ys) - Math.min(...ys)) * 10) / 10,
+      widthMm: c.inline ? c.inline.w : size(xs),
+      heightMm: c.inline ? c.inline.h : size(ys),
       ...(c.small ? { small: true } : {}), ...(part ? { part } : {}),
       ...(c.inline ? { inline: true, restart: c.inline.pierce, ...(c.inline.rev ? { rev: true } : {}) } : c.restart ? { restart } : {}),
       ...(c.parts?.length ? { partNos: [...c.parts] } : c.part !== undefined ? { partNo: c.part } : {}),
@@ -62,7 +67,7 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
   const contours: NcContour[] = [];
   const boxes = new Map<number, NcPart["box"]>();
   live.forEach((c, i) => {
-    const k = contour(c, c.parts?.length ? undefined : partName(c.part));
+    const k = contour(c, c.parts?.length ? undefined : plain(partName(c.part)));
     if (!k) return;
     k.cutNo = i;
     // Process → Common pierce: an outline starting in a hole pierced already starts with a quick pierce
@@ -84,11 +89,11 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
     if (c) contours.push(c);
   }
   return {
-    name,
-    sheet: { lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, thicknessMm: sheet.thicknessMm, material: sheet.material },
-    tech: { ...rowAsCut(machine, row), name: tech.tech.name, ...(sheet.prePierce !== undefined ? { prePierce: sheet.prePierce ? 1 : 0 } : {}) },
+    name: plain(name) ?? "",
+    sheet: { lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, thicknessMm: sheet.thicknessMm, material: plain(sheet.material) ?? "" },
+    tech: { ...rowAsCut(machine, row), name: plain(tech.tech.name) ?? "", ...(sheet.prePierce !== undefined ? { prePierce: sheet.prePierce ? 1 : 0 } : {}) },
     contours,
-    parts: [...boxes].sort((a, b) => a[0] - b[0]).map(([no, box]) => ({ no, ...(partName(no) ? { name: partName(no) } : {}), box })),
+    parts: [...boxes].sort((a, b) => a[0] - b[0]).map(([no, box]) => ({ no, ...(partName(no) ? { name: plain(partName(no)) } : {}), box })),
   };
 }
 
@@ -115,4 +120,20 @@ function checkedRow(machine: Machine, row: TechRow, of: string): TechRow | strin
     if (mid > 0 && little > mid) return `"Slow (E003) up to" (${little} mm) is above "Medium (E002) up to" (${mid} mm) ${where}: E002 would never be used`;
   }
   return out as unknown as TechRow;
+}
+
+/** Letters a control may not read in a comment, as plain ones (Č → C, ß → SS, Ø → O). */
+const SPELLED: Record<string, string> = { ß: "ss", ẞ: "SS", Đ: "D", đ: "d", Ł: "L", ł: "l", Ø: "O", ø: "o", Æ: "AE", æ: "ae", Œ: "OE", œ: "oe", Þ: "TH", þ: "th" };
+
+/**
+ * A name as it goes into an NC program: plain ASCII (controls such as LVD's Fanuc read ISO / ASCII, a
+ * UTF-8 Č is two odd characters there). Accents go (č, š, ž → c, s, z), a few letters are spelled out,
+ * anything else outside printable ASCII (emoji) is left out.
+ */
+export function plain(s: string | undefined): string | undefined {
+  if (s === undefined) return undefined;
+  return [...s.normalize("NFD")].map((ch) => SPELLED[ch] ?? ch).join("")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7e]/g, "")
+    .replace(/\s+/g, " ").trim();
 }

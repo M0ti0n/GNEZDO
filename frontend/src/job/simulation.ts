@@ -52,7 +52,9 @@ const accOf = (pts: Pt[]) => { const a = [0]; for (let i = 1; i < pts.length; i+
 const cutPts = (c: CutContour): Pt[] => [...c.leadIn, ...(c.leadIn.length ? c.pts.slice(1) : c.pts), ...(c.leadOut.length ? c.leadOut.slice(1) : [])];
 
 /** rapidMmMin: the machine's rapid speed (rapidOf); prePierce: pierce every contour first */
-export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | null, rapidMmMin: number, laser = false, prePierce = false): SimTimeline {
+export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | null, rapidMmMin: number, laser = false, prePierce = false,
+  /** the nest angle of a part (index): a contour's size class is measured as the part is drawn */
+  angleOf: (part: number) => number = () => 0): SimTimeline {
   const fromTech = !!row && row.speed > 0;
   const speed = fromTech ? row!.speed : FALLBACK_SPEED;
   const legs: Leg[] = [];
@@ -105,8 +107,13 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
     // its speed: laser by its class (E001 - E004, its size without the leads), else small holes slower
     let v = speed;
     if (fromTech) {
+      // (in the part's own frame, as the NC program measures it: the class does not change with the nest angle)
+      const ang = (angleOf(c.parts?.[0] ?? c.part) * Math.PI) / 180, ca = Math.cos(ang), sa = Math.sin(ang);
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (const [x, y] of c.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      for (const [px, py] of c.pts) {
+        const x = px * ca + py * sa, y = -px * sa + py * ca;
+        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+      }
       v = speedFor(row!, { kind: c.kind, w: x1 - x0, h: y1 - y0, small: c.small }, laser);
     }
     const acc = accOf(path);
@@ -131,7 +138,7 @@ export function sheetTimeline(sheet: NestedSheet, machine: Machine, origin: Orig
   const live = liveContours(sheet), last = live[live.length - 1];
   const at = last ? last.leadOut[last.leadOut.length - 1] ?? last.pts[last.pts.length - 1] : from;
   const rem = live.length ? remnantCutPaths(sheet, machine, at).map((r): CutContour => ({ part: -1, kind: "open", ...r })) : [];
-  return simTimeline([...live, ...rem], from, row, rapidOf(machine), laser, prePierce);
+  return simTimeline([...live, ...rem], from, row, rapidOf(machine), laser, prePierce, (i) => sheet.parts[i]?.angle ?? 0);
 }
 
 /** The polyline cut `d` mm along */
