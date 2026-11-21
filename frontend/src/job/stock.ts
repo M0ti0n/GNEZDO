@@ -2,7 +2,7 @@ import { DEFAULT_REMNANT_SETTINGS, type RemnantSettings } from "./remnant";
 // Stock sheets of a job (the STOCK panel of the Work parts screen).
 
 /** manual: added by Add sheet in Manual nest */
-export type StockSource = "parts" | "default1" | "default2" | "default3" | "remnant" | "dxf" | "manual";
+export type StockSource = "parts" | "default1" | "default2" | "default3" | "default4" | "remnant" | "dxf" | "manual";
 
 export interface StockSheet {
   id: string;
@@ -66,11 +66,12 @@ export const STOCK_SOURCES: { id: StockSource; label: string }[] = [
   { id: "default1", label: "Default 1" },
   { id: "default2", label: "Default 2" },
   { id: "default3", label: "Default 3" },
+  { id: "default4", label: "Default 4" },
   { id: "remnant", label: "Remnant" },
   { id: "dxf", label: "DXF" },
 ];
 
-/** One of the three default sheet slots (Settings -> Stock): material and size. */
+/** One of the four default sheet slots (Settings -> Stock): material and size. */
 export interface DefaultSlot { material: string; lengthMm: number; widthMm: number }
 
 /** Stock settings (GNEZDO menu -> Settings -> Stock). */
@@ -78,7 +79,7 @@ export interface StockSettings {
   /** Size of the sheets "Add from: Job part list" adds, one per material and thickness. */
   globalLengthMm: number;
   globalWidthMm: number;
-  slots: [DefaultSlot, DefaultSlot, DefaultSlot];
+  slots: [DefaultSlot, DefaultSlot, DefaultSlot, DefaultSlot];
   /** Process -> Remnant */
   remnant: RemnantSettings;
 }
@@ -90,6 +91,7 @@ export const DEFAULT_STOCK_SETTINGS: StockSettings = {
     { material: "", lengthMm: 3000, widthMm: 1500 },
     { material: "", lengthMm: 2500, widthMm: 1250 },
     { material: "", lengthMm: 2000, widthMm: 1000 },
+    { material: "", lengthMm: 4000, widthMm: 2000 },
   ],
   remnant: DEFAULT_REMNANT_SETTINGS,
 };
@@ -114,7 +116,7 @@ export function saveStockSettings(s: StockSettings) {
 
 /** The slot a "Default n" source uses; null for the other sources. */
 export const slotOf = (st: StockSettings, src: StockSource): DefaultSlot | null =>
-  src === "default1" ? st.slots[0] : src === "default2" ? st.slots[1] : src === "default3" ? st.slots[2] : null;
+  src === "default1" ? st.slots[0] : src === "default2" ? st.slots[1] : src === "default3" ? st.slots[2] : src === "default4" ? st.slots[3] : null;
 
 let seq = 0;
 export const newSheet = (s: Omit<StockSheet, "id">): StockSheet =>

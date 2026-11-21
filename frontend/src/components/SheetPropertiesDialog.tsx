@@ -12,7 +12,7 @@ import { gapsFor, withGaps, type Machine, type Origin } from "../job/machine";
 import { sheetFromDxf } from "../job/dxfSheet";
 
 const SOURCE: Record<string, string> = {
-  parts: "From the job part list", default1: "Default 1", default2: "Default 2", default3: "Default 3", remnant: "Remnant", dxf: "From a DXF file", manual: "Added in Manual nest",
+  parts: "From the job part list", default1: "Default 1", default2: "Default 2", default3: "Default 3", default4: "Default 4", remnant: "Remnant", dxf: "From a DXF file", manual: "Added in Manual nest",
 };
 
 // Properties of a stock sheet (STOCK panel: [i] or double click on its name), laid out like Part

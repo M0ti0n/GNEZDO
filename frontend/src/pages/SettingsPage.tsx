@@ -318,7 +318,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
 
         <section className="rule">
           <h3>Default sheets</h3>
-          <p className="rule-help">The three <b>Default</b> choices of <b>Add from</b>. Material can stay empty: the sheet then takes a material of the job.</p>
+          <p className="rule-help">The four <b>Default</b> choices of <b>Add from</b>. Material can stay empty: the sheet then takes a material of the job.</p>
           <div className="slot-table" role="table" aria-label="Default sheets">
             <div className="slot-head" role="row"><span /><span>Material</span><span>Size (length × width)</span></div>
             {stock.slots.map((s, i) => (
@@ -335,7 +335,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
               </div>
             ))}
           </div>
-          <p className="rule-help">Red: bigger than the machine can cut ({MACHINE_LIMIT.join(" × ")} mm).</p>
+          <p className="rule-help">Red: bigger than the machine can cut ({MACHINE_LIMIT.join(" × ")} mm); in a job it is grayed out in <b>Add from</b> while the job's machine is too small for it.</p>
         </section>
 
         <section className="rule">
