@@ -24,13 +24,12 @@ import { DEFAULT_CUT_ORDER, DEFAULT_RAPID_MM_MIN, LINE_CAPABILITIES, ORIGINS, TE
 import { DEFAULT_KEYS, KEY_ACTIONS, RESERVED_KEYS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
-type Section = "stock" | "machine" | "rules" | "tools" | "keys" | "projects" | "personal" | "data" | "log";
+type Section = "stock" | "machine" | "rules" | "tools" | "projects" | "personal" | "data" | "log";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock and remnants", ready: true },
   { id: "machine", label: "Machines", ready: true },
   { id: "rules", label: "Rules", ready: true },
   { id: "tools", label: "Special tools", ready: true },
-  { id: "keys", label: "Shortcuts", ready: true },
   { id: "projects", label: "Projects and parts", ready: true },
   { id: "personal", label: "Personal", ready: true },
   { id: "data", label: "Data", ready: true },
@@ -119,7 +118,6 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
         {onClose && <NavClose onClose={onClose} />}
       </nav>
 
-      {section === "keys" && <KeysSettings />}
       {section === "personal" && <PersonalSettings machines={machines} />}
       {section === "projects" && <ProjectsSettings onOpenJob={onOpenJob} />}
       {section === "rules" && <RulesTabs rules={rules} onChange={onRules} />}
@@ -388,7 +386,7 @@ function PersonalSettings({ machines }: { machines: MachineList }) {
     <div className="settings-main">
       <header className="settings-head">
         <h2>Personal</h2>
-        <p>Your own preferences, kept in this browser.</p>
+        <p>Your own preferences, kept in this browser: job names, how the cut path is drawn, and the manual nest shortcuts.</p>
       </header>
       <section className="rule">
         <h3>Job names</h3>
@@ -425,11 +423,13 @@ function PersonalSettings({ machines }: { machines: MachineList }) {
         <label className="chk"><input type="checkbox" checked={view.cutArrows} onChange={(e) => setView({ cutArrows: e.target.checked })} />
           Arrows on the cut contours (the cutting direction)</label>
       </section>
+      <ShortcutSections />
     </div>
   );
 }
 
-function KeysSettings() {
+/** Personal → Shortcuts (the manual nest keys) and the JOB PARTS list. */
+function ShortcutSections() {
   const [keys, setKeysState] = useState<KeyMap>(loadKeys);
   const [wait, setWait] = useState<{ a: KeyAction; k: 0 | 1 } | null>(null);
   const [taken, setTaken] = useState<string | null>(null);
@@ -454,15 +454,12 @@ function KeysSettings() {
     setKeys(next);
     setWait(null);
   };
-  return (
-    <div className="settings-main">
-      <header className="settings-head">
-        <h2>Shortcuts</h2>
-        <p>Keys that move and turn the selected parts in manual nesting: a press moves 1 mm or turns 1°, held down 10 steps a second.
-          A move stops at the sheet edge (the trims); parts may be moved over each other. Ctrl + a move key slides the parts up to the next part
-          or the edge (keeping the gaps). Kept in this browser.</p>
-      </header>
+  return (<>
       <section className="rule">
+        <h3>Shortcuts</h3>
+        <p className="rule-help">Keys that move and turn the selected parts in manual nesting: a press moves 1 mm or turns 1°, held down 10 steps a second.
+          A move stops at the sheet edge (the trims); parts may be moved over each other. Ctrl + a move key slides the parts up to the next part
+          or the edge (keeping the gaps).</p>
         <div className="keys-table" role="table" aria-label="Manual nest keys">
           <div className="keys-head" role="row"><span>Action</span><span>Key</span><span>Second key</span></div>
           {KEY_ACTIONS.map((a) => (
@@ -489,17 +486,16 @@ function KeysSettings() {
           Numpad keys work with Num Lock on or off.</p>
       </section>
       <section className="rule">
-        <h3>Job parts list</h3>
+        <h3>Manual nest: job parts list</h3>
         <div className="rule-row" role="radiogroup" aria-label="Job parts list">
           <label className="chk"><input type="radio" name="mn-cols" checked={view.tileColumns === 2} onChange={() => setView({ tileColumns: 2 })} /> Two columns (names cut, the whole name on hover)</label>
           <label className="chk"><input type="radio" name="mn-cols" checked={view.tileColumns === 1} onChange={() => setView({ tileColumns: 1 })} /> One column of wider tiles (whole names)</label>
         </div>
+        <div className="rule-row">
+          <button type="button" className="btn btn-plain" onClick={() => { setKeys(DEFAULT_KEYS); setView(DEFAULT_MANUAL_VIEW); }}>Shortcuts and list: reset to defaults</button>
+        </div>
       </section>
-      <footer className="settings-foot">
-        <button type="button" className="btn btn-plain" onClick={() => { setKeys(DEFAULT_KEYS); setView(DEFAULT_MANUAL_VIEW); }}>Reset to defaults</button>
-      </footer>
-    </div>
-  );
+    </>);
 }
 
 // Settings -> Diagnostic log: what the server and the browsers did, kept on the server to find out

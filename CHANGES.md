@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Settings: **Shortcuts** (the manual nest keys) and the manual nest job parts list are now under **Personal** (Settings → Personal → Shortcuts), with the other personal preferences; the separate Shortcuts page is gone. Still kept in this browser; the keys set before stay as they were
 - 3D Extractor → **Measure 2D**: click two things: points (corners, hole centers, middles) snap; a click on an edge or a bend line takes the line, on an arc or a hole its center. Point to point: straight (with X and Y); point to line: square to the line; two lines: the distance between them (not parallel: the shortest). The picked lines are highlighted
 - 3D Extractor, flat pattern: the measured value stays readable when zoomed in (its white halo grew with the zoom and covered it)
 - 3D Extractor → Bend marks: new **Down bends too (dashed marks)**: down bends get marks as well, dashed (the up bends' stay solid), shown in the flat pattern (brown) and sent to Import 2D and the Flat DXF as the up bends' marks (Trace / Open cut). Also in the unfold profiles
