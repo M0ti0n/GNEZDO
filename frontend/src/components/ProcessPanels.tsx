@@ -4,6 +4,7 @@ import { api } from "../api/api";
 import { diag } from "../job/diag";
 import { foldersOf, type Machine, type Origin } from "../job/machine";
 import { countsOf, type NestedSheet } from "../job/nest";
+import { wrongStock, wrongStockText } from "../job/stock";
 import { liveContours, type CutContour } from "../job/cutPath";
 import { contourKind, pickContour } from "../job/manualCut";
 import { sheetProgram } from "../job/ncProgram";
@@ -161,7 +162,7 @@ interface Done { sheet: number; file?: string; error?: string }
 export interface SentReport { machine: string; all: boolean; sheets: { sheet: number; file: string; parts: Record<string, number> }[] }
 
 /** POST PROCESS: the NC program of one sheet, or of every sheet (one file each: JOBNAME_#). */
-export function usePostProcess({ index, single = false, sheets, machine, origin, jobName, needsSave, dirty = false, onSave, onSheet, partName, onSent }: {
+export function usePostProcess({ index, single = false, sheets, machine, origin, jobName, needsSave, dirty = false, onSave, onSheet, partName, partOf, onSent }: {
   index: number; sheets: NestedSheet[]; machine: Machine; origin: Origin; jobName: string;
   /** the NC programs written (or downloaded): recorded with the saved job as sent to the machine (status API) */
   onSent?: (r: SentReport) => void;
@@ -175,6 +176,8 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
   /** a change to a sheet (its pre-pierce) */
   onSheet?: (index: number, patch: Partial<NestedSheet>) => void;
   partName: (sheet: NestedSheet, i: number) => string | undefined;
+  /** a job part's name, material and thickness: a sheet with parts of another material or thickness is not post processed */
+  partOf?: (partId: string) => { name: string; material: string; thicknessMm: number } | undefined;
 }): { panel: ReactNode; cut: CutMode } {
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<{ ok: boolean; text: string; list: Done[] } | null>(null);
@@ -254,6 +257,9 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
       setBusy(`Sheet ${i + 1} of ${sheets.length}`);
       await new Promise((r) => setTimeout(r, 30));   // let the spinner show
       const sh = sheets[i];
+      // parts changed to another material or thickness after nesting: the sheet's Technology row is not theirs
+      const wrong = partOf ? wrongStock(sh, partOf) : [];
+      if (wrong.length) { out.push({ sheet: i + 1, error: wrongStockText(i + 1, sh, wrong.map((k) => partOf!(sh.parts[k].partId)!)) }); continue; }
       const prog = sheetProgram(sh, machine, origin, nameOf(i), (k) => partName(sh, k));
       if ("error" in prog) { out.push({ sheet: i + 1, error: prog.error }); continue; }
       const r = runPostprocessor(pp.source, prog);

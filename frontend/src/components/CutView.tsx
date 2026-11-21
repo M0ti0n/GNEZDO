@@ -4,6 +4,7 @@ import { CUT_RULES, liveContours, processSheet, type CutRule, type CutWhat } fro
 import { diag } from "../job/diag";
 import { machineCan, type Machine, type Origin } from "../job/machine";
 import { partColor, type NestedSheet } from "../job/nest";
+import { wrongStock, wrongStockText } from "../job/stock";
 import { ConfirmDialog } from "./ConfirmDialog";
 import type { CutMode } from "./ManualNest";
 import toolAutoCut from "../shell/jobtools/tool-autoCut.png";
@@ -97,6 +98,15 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
     if (mode === "multi" && needsSave && !saved) { setAskSave(true); return; }
     if (picks && !picked.length) { setMsg({ text: "Pick the parts first: SELECT, then click them in the order to cut them", bad: true }); return; }
     if (mode === "trace" && !machineCan(machine, "trace")) { setMsg({ text: `${machine.name} does not trace (Settings → Machines → What it cuts)`, bad: true }); return; }
+    // parts of another material or thickness than their sheet (changed after nesting): not processed
+    for (const i of mode === "multi" ? sheets.map((_, k) => k) : [index]) {
+      const sh = sheets[i];
+      const wrong = wrongStock(sh, (id) => byPart.get(id)?.part);
+      if (wrong.length) {
+        setMsg({ text: `Not processed. ${wrongStockText(i + 1, sh, wrong.map((k) => byPart.get(sh.parts[k].partId)!.part))}`, bad: true });
+        return;
+      }
+    }
     setBusy(true);
     setMsg(null);
     try {

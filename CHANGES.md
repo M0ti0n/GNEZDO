@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- **Parts only on a sheet of their material and thickness** (it was possible with Manual nest → JOB PARTS → All parts):
+  - All parts still shows the others, grayed out with their material and thickness; they cannot be dragged onto the sheet. A drop or a paste (Ctrl+V from another sheet) of such a part is refused with a message (e.g. "BLIND_FLANGE_DN200 is S355 15 mm, this sheet S355 10 mm")
+  - A part already on a sheet that no longer matches it (changed to another thickness or material after nesting) glows red in Manual nest, with a note to take it off
+  - Process → Auto cut and Post process refuse such a sheet and say which part it is: the sheet's Technology row (10 mm) is not the part's (15 mm), so its program would cut it wrong
 - Settings → Machines → NC output → Program name: with **Letters and digits only**, new box **others become [ ]**: each space, _, -, . or other character becomes that letter (or digit), e.g. X: MIHA2280_1 → MIHA2280X1. Empty: left out as before. It goes with the machine file
 - Process → **Remnant**: **Smallest edge** (mm) is now in the panel, right under TRIM / RECTANGULAR / SKELET (moved from Settings → Stock and remnants). Changing it works the remnant shown out again at once and is kept for the next sheets and jobs
 - Stock: new **Default 4: 4000 × 2000** in **Add from** (Settings → Stock → Default sheets, material and size can be changed like the other three). A choice bigger than the job's machine can cut is grayed out in **Add from** ("too big for the machine"); settings saved before get Default 4 at 4000 × 2000
