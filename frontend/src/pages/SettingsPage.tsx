@@ -19,6 +19,7 @@ import { NcOutputSettings } from "../components/NcOutputSettings";
 import { MachineFoldersSettings } from "../components/MachineFoldersSettings";
 import { ToolsSettings } from "../components/ToolsSettings";
 import { AdminSettings } from "../components/AdminSettings";
+import type { NestingRules } from "../job/nestRules";
 import type { Me } from "../api/auth";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
@@ -40,10 +41,13 @@ const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
 ];
 
 // The GNEZDO button -> Settings. Stock: the global sheet size and the three default sheet slots.
-export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, rules, onRules, startSection, startNo, onOpenJob, admin }: {
+export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, rules, onRules, startSection, startNo, onOpenJob, admin , nesting, onNesting}: {
   /** the section shown first (else Stock and remnants); shown again when startNo changes (the user menu -> Administration) */
   startSection?: Section;
   startNo?: number;
+  /** Rules -> Nesting rules */
+  nesting: NestingRules;
+  onNesting: (r: NestingRules) => void;
   /** Administration: an admin signed in to the server build (missing: no such section) */
   admin?: { me: Me; onMe: (m: Me) => void };
   /** Projects and parts: a job a part is used in, opened */
@@ -127,8 +131,8 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
       </nav>
 
       {section === "personal" && <PersonalSettings machines={machines} />}
-      {section === "projects" && <ProjectsSettings onOpenJob={onOpenJob} />}
-      {section === "rules" && <RulesTabs rules={rules} onChange={onRules} />}
+      {section === "projects" && <ProjectsSettings onOpenJob={onOpenJob} isAdmin={isAdmin} />}
+      {section === "rules" && <RulesTabs rules={rules} onChange={onRules} nesting={nesting} onNesting={onNesting} shared={shared} isAdmin={isAdmin} />}
       {section === "data" && <DataSettings />}
       {section === "tools" && <ToolsSettings isAdmin={isAdmin} />}
       {section === "log" && <LogSettings isAdmin={isAdmin} />}
@@ -310,7 +314,9 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
         <header className="settings-head">
           <h2>Stock and remnants</h2>
           <p>Sheet sizes the STOCK panel of a job adds. Sizes are length × width in millimeters.</p>
+          {!isAdmin && <p className="admin-only">Only an admin can change the stock and remnant settings.</p>}
         </header>
+        <fieldset className="admin-lock" disabled={!isAdmin}>
 
         <section className="rule">
           <h3>Global sheet size</h3>
@@ -365,9 +371,10 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
         </section>
 
         <footer className="settings-foot">
-          Saved in this browser.{" "}
+          {shared ? "Saved on the server, for everyone." : "Saved in this browser."}{" "}
           <button className="link" onClick={() => onStock(DEFAULT_STOCK_SETTINGS)}>Reset to defaults</button>
         </footer>
+        </fieldset>
       </div>
       )}
     </div>

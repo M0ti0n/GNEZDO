@@ -110,7 +110,10 @@ password at once (GNEZDO menu -> Settings -> Administration; until then anyone
 can sign in as Admin). There the admin adds the others, and the keys other apps
 read GNEZDO's status with. A password is optional; without one, anyone who knows
 the name can sign in as that user, so give admins a password.
-Only an admin can change the machines and switch the diagnostic log on or off.
+Only Settings -> Personal is each user's own. Everything else in Settings is
+shared by everyone and only an admin changes it: stock and remnants, machines,
+rules, special tools, deleting projects, the diagnostic log switch, the database
+and Administration. The others can look at it.
 Everyone can set or change their own password (click your name).
 A sign-in lasts 30 days in that browser. The keys for it are in the "data"
 folder next to config.json: keep that folder when updating.

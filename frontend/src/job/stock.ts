@@ -98,16 +98,18 @@ export const DEFAULT_STOCK_SETTINGS: StockSettings = {
 
 const KEY = "gnezdo.stockSettings";
 
+/** Stock settings as saved (on the server, or in this browser), filled up with the defaults; null: none saved. */
+export function normalizeStock(raw: unknown): StockSettings | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const v = raw as Partial<StockSettings>;
+  const slots = DEFAULT_STOCK_SETTINGS.slots.map((d, i) => ({ ...d, ...(v.slots?.[i] ?? {}) })) as StockSettings["slots"];
+  return { ...DEFAULT_STOCK_SETTINGS, ...v, slots, remnant: { ...DEFAULT_REMNANT_SETTINGS, ...(v.remnant ?? {}) } };
+}
+
+/** This browser's copy (the server's, as last loaded; all there is in the demo). */
 export function loadStockSettings(): StockSettings {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return DEFAULT_STOCK_SETTINGS;
-    const v = JSON.parse(raw) as Partial<StockSettings>;
-    const slots = DEFAULT_STOCK_SETTINGS.slots.map((d, i) => ({ ...d, ...(v.slots?.[i] ?? {}) })) as StockSettings["slots"];
-    return { ...DEFAULT_STOCK_SETTINGS, ...v, slots, remnant: { ...DEFAULT_REMNANT_SETTINGS, ...(v.remnant ?? {}) } };
-  } catch {
-    return DEFAULT_STOCK_SETTINGS;
-  }
+  try { return normalizeStock(JSON.parse(localStorage.getItem(KEY) ?? "null")) ?? DEFAULT_STOCK_SETTINGS; }
+  catch { return DEFAULT_STOCK_SETTINGS; }
 }
 
 export function saveStockSettings(s: StockSettings) {

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { NumInput } from "../components/NumInput";
 import { DEFAULT_RULES, ROTATIONS, SPLINE_TOL_DEFAULT, SPLINE_TOL_MAX, SPLINE_TOL_MIN, splineTolOf, type ImportRules } from "../import/rules";
 import { ColourLists } from "./ColourLists";
-import { DEFAULT_NESTING_RULES, SEARCH_GROWTH_MAX, SEARCH_GROWTH_MIN, loadNestingRules, saveNestingRules, type NestingRules } from "../job/nestRules";
+import { DEFAULT_NESTING_RULES, SEARCH_GROWTH_MAX, SEARCH_GROWTH_MIN, type NestingRules } from "../job/nestRules";
 
 type Tab = "import" | "nesting";
 
@@ -15,7 +15,10 @@ const TABS: { id: Tab; label: string }[] = [
 const TAB_KEY = "gnezdo.rulesTab";
 
 // Settings -> Rules, a tab each: Import rules decide how new drawings are read; Nesting rules how parts are nested.
-export function RulesTabs({ rules, onChange }: { rules: ImportRules; onChange: (r: ImportRules) => void }) {
+/** shared: on the server, for everyone (else this browser: the demo); isAdmin: may change them */
+export function RulesTabs({ rules, onChange, nesting, onNesting, shared, isAdmin }: {
+  rules: ImportRules; onChange: (r: ImportRules) => void; nesting: NestingRules; onNesting: (r: NestingRules) => void; shared: boolean; isAdmin: boolean;
+}) {
   const [tab, setTabState] = useState<Tab>(() => { try { return localStorage.getItem(TAB_KEY) === "nesting" ? "nesting" : "import"; } catch { return "import"; } });
   const setTab = (t: Tab) => { setTabState(t); try { localStorage.setItem(TAB_KEY, t); } catch { /* not kept */ } };
   const set = (patch: Partial<ImportRules>) => onChange({ ...rules, ...patch });
@@ -29,9 +32,11 @@ export function RulesTabs({ rules, onChange }: { rules: ImportRules; onChange: (
             <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? "is-on" : ""} onClick={() => setTab(t.id)}>{t.label}</button>
           ))}
         </div>
+        {!isAdmin && <p className="admin-only">Only an admin can change the rules.</p>}
       </header>
 
-      {tab === "nesting" ? <NestingRulesPane /> : <>
+      <fieldset className="admin-lock" disabled={!isAdmin}>
+      {tab === "nesting" ? <NestingRulesPane r={nesting} set={onNesting} shared={shared} /> : <>
         <p className="rules-lead">How new drawings are read. Changes apply to files imported from now on; parts already in the import list keep their lines.</p>
 
         <section className="rule">
@@ -165,17 +170,16 @@ export function RulesTabs({ rules, onChange }: { rules: ImportRules; onChange: (
         </section>
 
         <footer className="settings-foot">
-          Saved in this browser.{" "}
+          {shared ? "Saved on the server, for everyone." : "Saved in this browser."}{" "}
           <button className="link" onClick={() => onChange(DEFAULT_RULES)}>Reset to defaults</button>
         </footer>
       </>}
+      </fieldset>
     </div>
   );
 }
 
-function NestingRulesPane() {
-  const [r, setR] = useState<NestingRules>(loadNestingRules);
-  const set = (n: NestingRules) => { setR(n); saveNestingRules(n); };
+function NestingRulesPane({ r, set, shared }: { r: NestingRules; set: (n: NestingRules) => void; shared: boolean }) {
   return (
     <>
       <p className="rules-lead">How parts are nested. Changes apply from the next use.</p>
@@ -222,7 +226,7 @@ function NestingRulesPane() {
       </section>
 
       <footer className="settings-foot">
-        Saved in this browser.{" "}
+        {shared ? "Saved on the server, for everyone." : "Saved in this browser."}{" "}
         <button className="link" onClick={() => set(DEFAULT_NESTING_RULES)}>Reset to defaults</button>
       </footer>
     </>

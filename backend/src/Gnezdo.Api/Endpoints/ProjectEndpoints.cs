@@ -1,3 +1,4 @@
+using Gnezdo.Api.Auth;
 using Gnezdo.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -72,8 +73,9 @@ public static class ProjectEndpoints
     }
 
     /// <summary>DELETE /api/projects?code=: only a project without parts (409 otherwise).</summary>
-    public static async Task<IResult> DeleteAsync(string? code, GnezdoDb db, CancellationToken ct)
+    public static async Task<IResult> DeleteAsync(string? code, GnezdoDb db, HttpContext ctx, CancellationToken ct)
     {
+        if (!AuthEndpoints.Admin(ctx)) return Results.Json(new { message = "Only an admin can delete projects." }, statusCode: StatusCodes.Status403Forbidden);
         var c = code?.Trim() ?? "";
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Code == c, ct);
         if (project is null) return Results.NotFound(new { message = $"There is no project {c}." });
