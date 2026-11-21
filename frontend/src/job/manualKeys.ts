@@ -1,4 +1,4 @@
-// Keys for manual nesting (GNEZDO menu -> Settings -> Manual nest): two keys per action, kept in
+// Keys for manual nesting (GNEZDO menu -> Settings -> Personal -> Shortcuts): two keys per action, kept in
 // this browser. Keys are physical keys (KeyboardEvent.code), so numpad 5 is not the 5 above the letters.
 
 export type KeyAction = "up" | "down" | "left" | "right" | "rotCcw1" | "rotCcw45" | "rotCw1" | "rotCw45" | "commonSnap";

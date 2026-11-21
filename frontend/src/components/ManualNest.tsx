@@ -57,7 +57,7 @@ export interface CutMode {
 }
 
 // Manual nesting of one sheet (EDIT / VIEW on a sheet card). The parts on the sheet are moved with
-// the mouse or the keys (Settings -> Manual nest), parts come from the JOB PARTS panel by drag and
+// the mouse or the keys (Settings -> Personal -> Shortcuts), parts come from the JOB PARTS panel by drag and
 // drop, overlapping parts glow red. Every finished change goes to the solution at once; FINISH
 // goes back to the sheets.
 /** A small open arrowhead at p pointing along d (unit), `size` long (sheet mm): its path. */
