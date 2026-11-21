@@ -57,6 +57,37 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
     }
 
     [Fact]
+    public async Task A_save_over_someone_elses_save_since_is_refused_unless_forced()
+    {
+        var ids = await PartIds(1);
+        object Req(int qty, DateTimeOffset? seen, bool force = false) => new
+        {
+            name = "Conflict job", parts = new[] { new { partId = ids[0], qty, qtyMax = qty, no = 1 } },
+            stock = new JsonArray(), nest = Nest(1), modifiedBy = "A", baseModifiedAt = seen, force,
+        };
+        var created = (await (await api.Client.PostAsJsonAsync("/api/jobs", Req(1, null))).Content.ReadFromJsonAsync<JobSavedDto>())!;
+        await Task.Delay(30);
+        // A saves over the version both opened: fine
+        var a = await api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(10, created.ModifiedAt));
+        Assert.Equal(HttpStatusCode.OK, a.StatusCode);
+        var aSaved = (await a.Content.ReadFromJsonAsync<JobSavedDto>())!;
+        // B still has the version from before A's save: refused, told who saved
+        var b = await api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(20, created.ModifiedAt));
+        Assert.Equal(HttpStatusCode.Conflict, b.StatusCode);
+        var why = (await b.Content.ReadFromJsonAsync<JsonObject>())!;
+        Assert.True(why["conflict"]!.GetValue<bool>());
+        Assert.Contains("saved by", why["message"]!.GetValue<string>());
+        var parts = (await api.Client.GetFromJsonAsync<List<JobPartDto>>($"/api/jobs/{created.Id}/parts"))!;
+        Assert.Equal(10, parts[0].Qty);
+        // asked and saved over it; A's own next save from its version goes on
+        Assert.Equal(HttpStatusCode.OK, (await api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(20, created.ModifiedAt, force: true))).StatusCode);
+        Assert.Equal(20, (await api.Client.GetFromJsonAsync<List<JobPartDto>>($"/api/jobs/{created.Id}/parts"))![0].Qty);
+        Assert.Equal(HttpStatusCode.Conflict, (await api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(30, aSaved.ModifiedAt))).StatusCode);
+        // a client that does not say what it saw (older pages) saves as before
+        Assert.Equal(HttpStatusCode.OK, (await api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(40, null))).StatusCode);
+    }
+
+    [Fact]
     public async Task Saving_again_replaces_parts_and_without_a_nest_it_is_a_draft()
     {
         var ids = await PartIds(3);

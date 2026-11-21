@@ -360,13 +360,17 @@ const detailOf = (p: PartSummary): PartDetail =>
     filler: extra.get(p.id)?.filler ?? false, commonCut: extra.get(p.id)?.commonCut ?? false, sourceFile: extra.get(p.id)?.sourceFile ?? "" });
 
 /** What a job tab saves (Work parts SAVE). The stock and nest are kept as the tab has them. */
-export interface JobSaveData { name: string; parts: JobPart[]; stock: unknown[]; nest: unknown | null; modifiedBy?: string; machine?: string }
+export interface JobSaveData {
+  name: string; parts: JobPart[]; stock: unknown[]; nest: unknown | null; modifiedBy?: string; machine?: string;
+  /** when the job was last saved as this tab knows it: the server refuses (409) a save over someone else's since, unless `force` */
+  baseModifiedAt?: string; force?: boolean;
+}
 /** jobFile: the job's file in the machine's job folder; jobFileError: why it was not written (the job is saved anyway). */
 /** A sheet of a saved job sent to a machine (its NC program written), and whether the operator marked it as cut. */
 export interface SheetSentRow { sheet: number; file: string; machine: string; sentAt: string; sentBy: string; cutAt: string | null; cutBy: string }
 export interface JobSaved { id: string; name: string; status: JobStatus; sheetCount: number; modifiedAt: string; jobFile?: string | null; jobFileError?: string | null }
 /** A saved job's stock sheets and saved nest (its parts: jobParts). */
-export interface JobDetail { id: string; name: string; status: JobStatus; sheetCount: number; stock: unknown[] | null; nest: unknown | null; machine?: string }
+export interface JobDetail { id: string; name: string; status: JobStatus; sheetCount: number; stock: unknown[] | null; nest: unknown | null; machine?: string; modifiedAt?: string; modifiedBy?: string }
 
 // sample mode: saved jobs live in this tab
 const savedJobDetails = new Map<string, JobDetail>();
@@ -493,6 +497,7 @@ export const api = {
     if (!useApi) return delay(0).then(() => mockSaveJob(id, d));
     const body = {
       name: d.name, stock: d.stock, nest: d.nest, modifiedBy: d.modifiedBy ?? "", machine: d.machine ?? "",
+      ...(d.baseModifiedAt ? { baseModifiedAt: d.baseModifiedAt } : {}), ...(d.force ? { force: true } : {}),
       parts: d.parts.map((jp) => ({ partId: jp.part.id, qty: jp.qty, qtyMax: jp.qtyMax ?? jp.qty, no: jp.no, ...jobOwn(jp) })),
     };
     return id ? post<JobSaved>(`/api/jobs/${id}`, body, "PUT") : post<JobSaved>("/api/jobs", body);

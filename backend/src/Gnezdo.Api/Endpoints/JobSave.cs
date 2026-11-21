@@ -14,7 +14,10 @@ public record JobPartSave(string PartId, int Qty, int? QtyMax, int? No, string? 
 /// sheets and its nesting, as the tab keeps them: { selected, solutions: [{ id, ..., result: { sheets } }] }
 /// (null = not nested). The solution chosen for Process is picked there later.
 /// </summary>
-public record JobSaveRequest(string Name, IReadOnlyList<JobPartSave> Parts, JsonArray? Stock, JsonObject? Nest, string? ModifiedBy, string? Machine = null);
+/// <param name="BaseModifiedAt">When the job was last saved as this client knows it (opened or saved by it): a
+/// save over a job saved since by someone else is refused (409) unless <paramref name="Force"/>.</param>
+public record JobSaveRequest(string Name, IReadOnlyList<JobPartSave> Parts, JsonArray? Stock, JsonObject? Nest, string? ModifiedBy, string? Machine = null,
+    DateTimeOffset? BaseModifiedAt = null, bool Force = false);
 
 /// <summary>JobFile: the job's file in the machine's job folder (when the machine writes one); JobFileError: why it was not written (the job is saved anyway).</summary>
 public record JobSavedDto(string Id, string Name, string Status, int SheetCount, DateTimeOffset ModifiedAt, string? JobFile = null, string? JobFileError = null);
@@ -98,6 +101,14 @@ public static class JobSave
         {
             job = await db.Jobs.Include(j => j.Parts).FirstOrDefaultAsync(j => j.Id == id, ct);
             if (job is null) return Results.NotFound();
+            // saved by someone else since this client opened or saved it: not over their save without asking
+            // (1 ms: a database may keep the time to the microsecond, the browser to the millisecond)
+            if (!r.Force && r.BaseModifiedAt is { } seen && Math.Abs((job.ModifiedAt - seen).TotalMilliseconds) > 1)
+                return Results.Json(new
+                {
+                    message = $"{job.Name} was saved by {(job.ModifiedBy is { Length: > 0 } who ? who : "someone else")} since you opened it.",
+                    modifiedBy = job.ModifiedBy, modifiedAt = job.ModifiedAt, conflict = true,
+                }, statusCode: StatusCodes.Status409Conflict);
             job.Name = name;
             db.JobParts.RemoveRange(job.Parts);
             job.Parts.Clear();

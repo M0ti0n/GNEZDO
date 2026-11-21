@@ -263,6 +263,21 @@ export function saveRules(r: ImportRules) {
 }
 
 const words = (s: string) => s.split(",").map((w) => w.trim().toUpperCase()).filter(Boolean);
+const tokens = (s: string) => s.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+
+/**
+ * A layer name holds a rule word at the start of one of its words: MARK takes MARK, MARKING, MARK_2,
+ * LASER-MARK, not REMARKS; SIGN not DESIGN. A rule of several words (OPEN CUT) takes them in a row,
+ * the last at the start of a word.
+ */
+export function layerHas(layer: string, word: string): boolean {
+  const l = tokens(layer), w = tokens(word);
+  if (!w.length) return false;
+  for (let i = 0; i + w.length <= l.length; i++) {
+    if (w.every((t, k) => (k === w.length - 1 ? l[i + k].startsWith(t) : l[i + k] === t))) return true;
+  }
+  return false;
+}
 
 /**
  * Gives each line its role when a file is read. Layer names win over colors
@@ -271,9 +286,8 @@ const words = (s: string) => s.split(",").map((w) => w.trim().toUpperCase()).fil
  */
 export function roleFromRules(e: Entity, rules: ImportRules): ColourList {
   if (!rules.allLayersAsOne && e.layer) {
-    const layer = e.layer.toUpperCase();
-    if (words(rules.openCutLayers).some((w) => layer.includes(w))) return "openCut";
-    if (words(rules.traceLayers).some((w) => layer.includes(w))) return "trace";
+    if (words(rules.openCutLayers).some((w) => layerHas(e.layer!, w))) return "openCut";
+    if (words(rules.traceLayers).some((w) => layerHas(e.layer!, w))) return "trace";
   }
   if (rules.coloursAsCuts) return colourRole(e, rules.colours);
   return "cut";

@@ -67,7 +67,7 @@ export interface Contour {
   outer: boolean;          // the largest contour is the outside of the part
 }
 
-export type CheckId = "noOutline" | "doubles" | "separate" | "crossing" | "insideOpen" | "outsideOpen" | "outerNotCut" | "closedOpenCut" | "outsidePart" | "splines";
+export type CheckId = "noOutline" | "doubles" | "separate" | "crossing" | "insideOpen" | "outsideOpen" | "outerNotCut" | "closedOpenCut" | "outsidePart" | "islands" | "splines";
 
 export interface CheckResult {
   id: CheckId;
@@ -87,6 +87,71 @@ export interface GeometryReport {
 
 /** Two end points closer than this are joined. */
 export const JOIN_TOLERANCE_MM = 0.01;
+
+/* ---- Big drawings: points and boxes found through a grid, not by looking at every one ------ */
+
+/** End points clustered into nodes (within JOIN_TOLERANCE_MM: the first node made there), through a grid. */
+function nodeClusters() {
+  const nodes: Pt[] = [];
+  const cells = new Map<string, number[]>();
+  const s = JOIN_TOLERANCE_MM * 2;
+  const key = (cx: number, cy: number) => `${cx},${cy}`;
+  const nodeOf = (p: Pt) => {
+    const cx = Math.floor(p.x / s), cy = Math.floor(p.y / s);
+    let best = -1;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      for (const i of cells.get(key(cx + dx, cy + dy)) ?? []) {
+        if ((best < 0 || i < best) && Math.hypot(nodes[i].x - p.x, nodes[i].y - p.y) <= JOIN_TOLERANCE_MM) best = i;
+      }
+    }
+    if (best >= 0) return best;
+    nodes.push(p);
+    const k = key(cx, cy);
+    const l = cells.get(k);
+    if (l) l.push(nodes.length - 1); else cells.set(k, [nodes.length - 1]);
+    return nodes.length - 1;
+  };
+  return { nodes, nodeOf };
+}
+
+/** Union-find over n items, without recursion (a chain of thousands of lines is fine). */
+function unionFind(n: number) {
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const size = new Array<number>(n).fill(1);
+  const find = (i: number): number => {
+    let r = i;
+    while (parent[r] !== r) r = parent[r];
+    while (parent[i] !== r) { const nx = parent[i]; parent[i] = r; i = nx; }
+    return r;
+  };
+  const join = (a: number, b: number) => {
+    let x = find(a), y = find(b);
+    if (x === y) return;
+    if (size[x] < size[y]) [x, y] = [y, x];
+    parent[y] = x; size[x] += size[y];
+  };
+  return { find, join };
+}
+
+/** Boxes in a grid: which of them may hold a point (its cell's, and the very big ones always). */
+function boxGrid(boxes: Box[]) {
+  const sides = boxes.map((b) => Math.max(b.maxX - b.minX, b.maxY - b.minY)).sort((a, b) => a - b);
+  const s = Math.max(1, sides[Math.floor(sides.length / 2)] ?? 1);
+  const cells = new Map<string, number[]>();
+  const big: number[] = [];
+  boxes.forEach((b, i) => {
+    const x0 = Math.floor(b.minX / s), x1 = Math.floor(b.maxX / s), y0 = Math.floor(b.minY / s), y1 = Math.floor(b.maxY / s);
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 64) { big.push(i); return; }
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      const k = `${x},${y}`;
+      const l = cells.get(k);
+      if (l) l.push(i); else cells.set(k, [i]);
+    }
+  });
+  /** indexes, in order */
+  const at = (p: Pt): number[] => [...(cells.get(`${Math.floor(p.x / s)},${Math.floor(p.y / s)}`) ?? []), ...big].sort((a, b) => a - b);
+  return { at };
+}
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 const onCircle = (c: Pt, r: number, deg: number): Pt => ({ x: c.x + r * Math.cos(rad(deg)), y: c.y + r * Math.sin(rad(deg)) });
@@ -162,13 +227,7 @@ export function pathOf(e: Entity): string {
 /** Joins entities whose end points meet into contours (closed loops or open chains). */
 export function buildContours(entities: Entity[]): Contour[] {
   // Cluster end points: each cluster is a node, each entity an edge between two nodes.
-  const nodes: Pt[] = [];
-  const nodeOf = (p: Pt) => {
-    const i = nodes.findIndex((n) => Math.hypot(n.x - p.x, n.y - p.y) <= JOIN_TOLERANCE_MM);
-    if (i >= 0) return i;
-    nodes.push(p);
-    return nodes.length - 1;
-  };
+  const { nodes, nodeOf } = nodeClusters();
   const edges = entities.map((e) => {
     const ends = endsOf(e);
     return ends ? [nodeOf(ends[0]), nodeOf(ends[1])] as const : null;
@@ -178,9 +237,8 @@ export function buildContours(entities: Entity[]): Contour[] {
   edges.forEach((ed) => { if (ed) { degree[ed[0]]++; degree[ed[1]]++; } });
 
   // Union-find over nodes to get the connected chains.
-  const parent = nodes.map((_, i) => i);
-  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-  edges.forEach((ed) => { if (ed) parent[find(ed[0])] = find(ed[1]); });
+  const { find, join } = unionFind(nodes.length);
+  edges.forEach((ed) => { if (ed) join(ed[0], ed[1]); });
 
   const groups = new Map<number, number[]>();
   const contours: Contour[] = [];
@@ -191,7 +249,8 @@ export function buildContours(entities: Entity[]): Contour[] {
       return;
     }
     const root = find(ed[0]);
-    groups.set(root, [...(groups.get(root) ?? []), i]);
+    const g = groups.get(root);
+    if (g) g.push(i); else groups.set(root, [i]);
   });
   for (const idx of groups.values()) {
     const nodeIds = new Set(idx.flatMap((i) => [...edges[i]!]));
@@ -243,6 +302,9 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   const crossing = crossingContours(entities, rest.filter((c) => c.closed));
   const marks = markRuleBreaks(entities);
   const outsidePart = marksOutsidePart(entities.filter((e) => !doubleSet.has(e.id)), rest);
+  // (contours that cross are reported as such: one is partly in the other, not an island)
+  const crossed = new Set(crossing.groups.flat());
+  const islands = islandsOf(entities, rest.filter((c) => !c.entityIds.some((id) => crossed.has(id))));
 
   // lines, but none of them cutting (all tracing / open cut): nothing would be cut out
   const noOutline = entities.length > 0 && !contours.length;
@@ -272,6 +334,8 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
       id: "outsidePart", label: "Tracing or open cut outside part", count: outsidePart.length,
       entityIds: outsidePart.flat(), points: [],
     },
+    // a closed contour in a hole of the part (and whatever is in it): a piece of its own, not a hole
+    { id: "islands", label: "Contour inside a hole", count: islands.length, entityIds: islands.flat(), points: [] },
     { id: "splines", label: "Splines", count: splines.length, entityIds: splines.map((e) => e.id), points: [] },
   ];
 
@@ -383,6 +447,39 @@ function outsideOutline(entities: Entity[], outer: Contour, others: Contour[]): 
 }
 
 /**
+ * Closed cutting contours lying in a hole of the part (an "island": inside the outline and inside one
+ * of its holes, and what lies in such an island): GNEZDO cuts every inner contour as a hole, so an
+ * island would be cut the wrong way round, pierced in its material and too late (the hole drops it).
+ * It is a part of its own: drawn as one, or removed. Each, as its entity ids.
+ */
+function islandsOf(entities: Entity[], contours: Contour[]): string[][] {
+  const closed = contours.filter((c) => c.closed);
+  if (closed.length < 3) return [];
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const grid = boxGrid(closed.map((c) => c.box));
+  const segs: (Seg[] | undefined)[] = closed.map(() => undefined);
+  const segsOf = (i: number) => (segs[i] ??= segmentsOf(closed[i], byId));
+  const out: string[][] = [];
+  closed.forEach((c, i) => {
+    if (c.outer) return;
+    const e = byId.get(c.entityIds[0]);
+    if (!e) return;
+    const p = pointsAlong(e)[0];
+    // how many other closed contours hold it: the outline is 1, an island in a hole 2 or more
+    let depth = 0;
+    for (const j of grid.at(p)) {
+      if (j === i) continue;
+      const b = closed[j].box;
+      if (p.x < b.minX || p.x > b.maxX || p.y < b.minY || p.y > b.maxY) continue;
+      if (inside(p, segsOf(j))) depth++;
+      if (depth >= 2) break;
+    }
+    if (depth >= 2) out.push(c.entityIds);
+  });
+  return out;
+}
+
+/**
  * Tracing and open cut lines must lie on the material: inside the outside contour and
  * not inside a window. A point is on material when an odd number of closed contours
  * contain it (outside = 1, inside a window = 2, on an island in a window = 3 ...).
@@ -475,8 +572,11 @@ export function findDoubles(entities: Entity[]): string[] {
   });
   const T = OVERLAP_MM;
   const boxes = live.map(boxOf);
+  // a lies on b only inside b's box, so b's box holds a's middle: only those are looked at
+  const grid = boxGrid(boxes.map((b) => ({ minX: b.minX - T, minY: b.minY - T, maxX: b.maxX + T, maxY: b.maxY + T })));
   for (let i = 0; i < live.length; i++) {
-    for (let j = 0; j < live.length; j++) {
+    const a0 = boxes[i];
+    for (const j of grid.at({ x: (a0.minX + a0.maxX) / 2, y: (a0.minY + a0.maxY) / 2 })) {
       if (i === j || out.has(live[j].id) || roleOf(live[i]) !== roleOf(live[j])) continue;
       const a = boxes[i], b = boxes[j];
       // a can only lie on b when a's box is inside b's box
@@ -535,8 +635,16 @@ function crossingContours(entities: Entity[], closed: Contour[]): { groups: stri
   const points: Pt[] = [];
   const overlaps = (a: Box, b: Box) => a.minX <= b.maxX + 1e-6 && b.minX <= a.maxX + 1e-6 && a.minY <= b.maxY + 1e-6 && b.minY <= a.maxY + 1e-6;
   const segBox = (s: { a: Pt; b: Pt }): Box => ({ minX: Math.min(s.a.x, s.b.x), minY: Math.min(s.a.y, s.b.y), maxX: Math.max(s.a.x, s.b.x), maxY: Math.max(s.a.y, s.b.y) });
+  // contours in order of their left edge: each is compared only with the ones its box reaches along X
+  const byX = closed.map((_, i) => i).sort((a, b) => closed[a].box.minX - closed[b].box.minX);
+  const reach = new Map<number, number[]>();
+  byX.forEach((i, k) => {
+    const out: number[] = [];
+    for (let m = k + 1; m < byX.length && closed[byX[m]].box.minX <= closed[i].box.maxX + 1e-6; m++) out.push(byX[m]);
+    reach.set(i, out);
+  });
   for (let i = 0; i < closed.length; i++) {
-    for (let j = i + 1; j < closed.length; j++) {
+    for (const j of reach.get(i)!) {
       if (!overlaps(closed[i].box, closed[j].box)) continue;
       let at: Pt | null = null;
       for (const s of segs[i]) {
@@ -553,7 +661,9 @@ function crossingContours(entities: Entity[], closed: Contour[]): { groups: stri
     // joint itself, a hair off by rounding (an arc's end computed from its center), not a figure eight
     const own = segs[i], boxes = own.map(segBox);
     const atEnd = (p: Pt, s: { a: Pt; b: Pt }) => Math.hypot(p.x - s.a.x, p.y - s.a.y) <= JOIN_TOLERANCE_MM || Math.hypot(p.x - s.b.x, p.y - s.b.y) <= JOIN_TOLERANCE_MM;
-    outer: for (let x = 0; x < own.length; x++) for (let y = x + 1; y < own.length; y++) {
+    const ord = own.map((_, k) => k).sort((a, b) => boxes[a].minX - boxes[b].minX);
+    outer: for (let ox = 0; ox < ord.length; ox++) for (let oy = ox + 1; oy < ord.length && boxes[ord[oy]].minX <= boxes[ord[ox]].maxX + 1e-6; oy++) {
+      const x = Math.min(ord[ox], ord[oy]), y = Math.max(ord[ox], ord[oy]);
       if (!overlaps(boxes[x], boxes[y])) continue;
       const at = segsMeet(own[x].a, own[x].b, own[y].a, own[y].b, true);
       if (at && !(atEnd(at, own[x]) && atEnd(at, own[y]))) { hit.add(i); points.push(at); break outer; }
@@ -585,13 +695,7 @@ export function markRuleBreaks(entities: Entity[]): { outer: string[]; outerNotC
   const list = entities.filter((e) => !doubles.has(e.id));
   if (!list.length) return none;
 
-  const nodes: Pt[] = [];
-  const nodeOf = (p: Pt) => {
-    const i = nodes.findIndex((n) => Math.hypot(n.x - p.x, n.y - p.y) <= JOIN_TOLERANCE_MM);
-    if (i >= 0) return i;
-    nodes.push(p);
-    return nodes.length - 1;
-  };
+  const { nodes, nodeOf } = nodeClusters();
   interface Edge { e: Entity; a: number; b: number; pts: Pt[] }
   const edges: Edge[] = [];
   const circles: Entity[] = [];
@@ -616,11 +720,10 @@ export function markRuleBreaks(entities: Entity[]): { outer: string[]; outerNotC
   const closedOpenCut = list.filter((e) => roleOf(e) === "openCut" && (loopIds.has(e.id) || e.kind === "circle")).map((e) => e.id);
 
   // groups of loops; the one with the largest extents is the part's outside
-  const parent = nodes.map((_, i) => i);
-  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-  for (const i of alive) parent[find(edges[i].a)] = find(edges[i].b);
+  const { find, join } = unionFind(nodes.length);
+  for (const i of alive) join(edges[i].a, edges[i].b);
   const groups = new Map<number, number[]>();
-  for (const i of alive) { const r = find(edges[i].a); groups.set(r, [...(groups.get(r) ?? []), i]); }
+  for (const i of alive) { const r = find(edges[i].a); const g = groups.get(r); if (g) g.push(i); else groups.set(r, [i]); }
   const area = (b: Box) => (b.maxX - b.minX) * (b.maxY - b.minY);
   type Cand = { box: Box; circle?: Entity; edges?: number[] };
   const cands: Cand[] = [
