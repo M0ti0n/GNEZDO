@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Sheet properties ([i]) of a nested sheet: **material and thickness can be changed when no part is on the sheet** (they never could, with no sign why). With parts on it they are locked, and say so: a padlock, grayed fields and a note ("Locked: 4 parts are nested on this sheet… Take them off to change them"). The gaps follow the new Technology row, and the old cut path and remnant go
 - **Parts only on a sheet of their material and thickness** (it was possible with Manual nest → JOB PARTS → All parts):
   - All parts still shows the others, grayed out with their material and thickness; they cannot be dragged onto the sheet. A drop or a paste (Ctrl+V from another sheet) of such a part is refused with a message (e.g. "BLIND_FLANGE_DN200 is S355 15 mm, this sheet S355 10 mm")
   - A part already on a sheet that no longer matches it (changed to another thickness or material after nesting) glows red in Manual nest, with a note to take it off
