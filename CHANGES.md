@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Nest report:
+  - the **Job** in each page's head has the sheet's number after it: **TESTJOB_2** (the operator finds the program by it)
+  - the first row of the sheet's table is now **Job file name**, then **Sheet No** (they were the other way round)
+  - new **Add full page sheet view** box above each page with a sheet drawing: ticked, a page is added at the end of the report with a small head (machine, job_sheet) and the sheet drawn across the rest of the page; on a landscape A4 page for a sheet wider than tall, portrait for a taller one. Printed and counted like the other pages (Print pages, Print only changes); the ticks are kept for the job
 - Sheet properties ([i]) of a nested sheet: **material and thickness can be changed when no part is on the sheet** (they never could, with no sign why). With parts on it they are locked, and say so: a padlock, grayed fields and a note ("Locked: 4 parts are nested on this sheet… Take them off to change them"). The gaps follow the new Technology row, and the old cut path and remnant go
 - **Parts only on a sheet of their material and thickness** (it was possible with Manual nest → JOB PARTS → All parts):
   - All parts still shows the others, grayed out with their material and thickness; they cannot be dragged onto the sheet. A drop or a paste (Ctrl+V from another sheet) of such a part is refused with a message (e.g. "BLIND_FLANGE_DN200 is S355 15 mm, this sheet S355 10 mm")

@@ -17,6 +17,8 @@ interface Page {
   key: string;            // sheet index : page of that sheet
   sheet: number;
   first: boolean;
+  /** the sheet across the whole page (ADD FULL PAGE SHEET VIEW): after the other pages */
+  full?: boolean;
   rows: SheetReport["parts"];
   rowFrom: number;
   signature: string;      // what is printed: changes when the sheet does
@@ -27,6 +29,11 @@ export interface ReportJob { id: string; title: string; machine: Machine; origin
 const fmtKg = (n: number) => (n >= 100 ? n.toFixed(0) : n.toFixed(1));
 const stamp = (d: Date) => `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}  ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 const PRINTED_KEY = (job: string) => `gnezdo.nestReportPrinted.${job}`;
+const FULL_KEY = (job: string) => `gnezdo.nestReportFull.${job}`;
+/** The job's name with the sheet's number: TESTJOB_2 (as the operator finds the program) */
+const jobSheet = (title: string, sheet: number) => `${title}_${sheet + 1}`;
+/** A full page sheet view lies across (landscape) unless the sheet is taller than wide. */
+const across = (sh: NestedSheet) => sh.lengthMm >= sh.widthMm;
 
 function loadPrinted(job: string): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(PRINTED_KEY(job)) ?? "{}"); } catch { return {}; }
@@ -42,6 +49,16 @@ export function NestReportPage({ job, sheets, jobParts }: { job: ReportJob; shee
   const shown = JSON.stringify(snap.sheets.map((s) => [s.parts, s.material, s.thicknessMm, s.lengthMm, s.widthMm, s.cutNumber]));
   const outdated = live !== shown;
   const reports = useMemo(() => snap.sheets.map((s) => sheetReport(s, snap.jobParts, job.machine, job.origin)), [snap, job.machine, job.origin]);
+  // ADD FULL PAGE SHEET VIEW: the sheets that get a page of their own drawing (kept for the job)
+  const [full, setFull] = useState<Set<number>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(FULL_KEY(job.id)) ?? "[]") as number[]); } catch { return new Set(); }
+  });
+  const toggleFull = (i: number) => setFull((f) => {
+    const n = new Set(f);
+    if (n.has(i)) n.delete(i); else n.add(i);
+    try { localStorage.setItem(FULL_KEY(job.id), JSON.stringify([...n])); } catch { /* kept for now */ }
+    return n;
+  });
   const pages = useMemo<Page[]>(() => {
     const out: Page[] = [];
     snap.sheets.forEach((sh, i) => {
@@ -51,8 +68,14 @@ export function NestReportPage({ job, sheets, jobParts }: { job: ReportJob; shee
       for (let k = FIRST_ROWS, n = 1; k < rows.length; k += MORE_ROWS, n++)
         out.push({ key: `${i}:${n}`, sheet: i, first: false, rows: rows.slice(k, k + MORE_ROWS), rowFrom: k, signature: `${sig}#${k}` });
     });
+    // the full page sheet views asked for, at the end
+    snap.sheets.forEach((sh, i) => {
+      if (!full.has(i)) return;
+      const sig = JSON.stringify([sh.parts, sh.material, sh.thicknessMm, sh.lengthMm, sh.widthMm, sh.cutNumber, sh.trims]);
+      out.push({ key: `${i}:full`, sheet: i, first: false, full: true, rows: [], rowFrom: 0, signature: `${sig}#full` });
+    });
     return out;
-  }, [snap, reports]);
+  }, [snap, reports, full]);
 
   const [mode, setMode] = useState<"all" | "changes" | "pages">("all");
   const [pageText, setPageText] = useState("");
@@ -92,7 +115,7 @@ export function NestReportPage({ job, sheets, jobParts }: { job: ReportJob; shee
   useEffect(() => {
     const el = area.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setScale(Math.max(0.3, Math.min(1, (el.clientHeight - 40) / 1123))));
+    const ro = new ResizeObserver(() => setScale(Math.max(0.3, Math.min(1, (el.clientHeight - 74) / 1123))));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -101,11 +124,20 @@ export function NestReportPage({ job, sheets, jobParts }: { job: ReportJob; shee
     <div className="report">
       <div className="report-pages pane-scroll" ref={area}>
         {!snap.sheets.length && <p className="report-empty">Nothing nested yet: nest the job, then GENERATE.</p>}
-        {pages.map((p, i) => (
-          <div key={p.key} className={`report-thumb${chosen.includes(i + 1) ? " is-chosen" : ""}`} style={{ width: 794 * scale, height: 1123 * scale }}>
-            <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0" }}>{pageEls([i + 1])}</div>
-          </div>
-        ))}
+        {pages.map((p, i) => {
+          const wide = p.full && across(snap.sheets[p.sheet]);
+          return (
+            <div key={p.key} className="report-col">
+              {/* above a page with the sheet drawing: its full page view, added at the end */}
+              <label className={`chk report-full${p.first ? "" : " is-none"}`} title="A page more, at the end: the sheet across the whole page (landscape for a sheet wider than tall)">
+                {p.first && <><input type="checkbox" checked={full.has(p.sheet)} onChange={() => toggleFull(p.sheet)} /> Add full page sheet view</>}
+              </label>
+              <div className={`report-thumb${chosen.includes(i + 1) ? " is-chosen" : ""}`} style={{ width: (wide ? 1123 : 794) * scale, height: (wide ? 794 : 1123) * scale }}>
+                <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0" }}>{pageEls([i + 1])}</div>
+              </div>
+            </div>
+          );
+        })}
       </div>
       <aside className="report-panel">
         <h2>Nest report</h2>
@@ -121,7 +153,7 @@ export function NestReportPage({ job, sheets, jobParts }: { job: ReportJob; shee
           <input className="field report-pages-in" value={pageText} placeholder="3,4,8 or 2-5" onFocus={() => setMode("pages")} onChange={(e) => setPageText(e.target.value)} />
         </div>
         {note && <p className="report-warn">{note}</p>}
-        <p className="report-help">{pages.length} pages: one per sheet, more when a sheet has many parts. Times are estimated from the machine's Technology table until the cut path is generated.</p>
+        <p className="report-help">{pages.length} pages: one per sheet, more when a sheet has many parts, and the full page sheet views ticked above the pages (at the end). Times are estimated from the machine's Technology table until the cut path is generated.</p>
       </aside>
       {printing && createPortal(<div className="print-root">{pageEls(printing)}</div>, document.body)}
     </div>
@@ -134,10 +166,11 @@ function ReportPage({ page, no, total, job, sheet, rep, at }: {
   const st = rep.stats;
   const t = sheet.trims;
   const qty = sheet.parts.length;
+  if (page.full) return <FullSheetPage no={no} total={total} job={job} sheet={sheet} sheetNo={page.sheet} rep={rep} />;
   const head = (
     <header className="rp-head">
       <div className="rp-hcell"><span>Machine</span><b>{job.machine.name}</b></div>
-      <div className="rp-hcell rp-job"><span>Job</span><b>{job.title}</b></div>
+      <div className="rp-hcell rp-job"><span>Job</span><b>{jobSheet(job.title, page.sheet)}</b></div>
       <div className="rp-hcell rp-page"><span>Page</span><b>{no} / {total}</b></div>
       <div className="rp-hcell"><span>Date and hour</span><b>{stamp(at)}</b></div>
       <div className="rp-hcell"><span>Solution</span><b>{job.solutionNo ? `Solution ${job.solutionNo}` : "—"}</b></div>
@@ -149,7 +182,7 @@ function ReportPage({ page, no, total, job, sheet, rep, at }: {
       {head}
       {page.first ? (<>
         <div className="rp-grid">
-          <F k="Sheet No" v={`${page.sheet + 1}`} /><F k="Job file name" v={job.title} /><F k="Qty parts" v={`${qty}`} />
+          <F k="Job file name" v={job.title} /><F k="Sheet No" v={`${page.sheet + 1}`} /><F k="Qty parts" v={`${qty}`} />
           <F k="Material" v={sheet.material} /><F k="Sheet size" v={`${sheet.lengthMm} × ${sheet.widthMm}`} /><F k="Cutting number" v={`${sheet.cutNumber ?? 1}`} />
           <F k="Thickness" v={`${sheet.thicknessMm} mm`} /><F k="Cut area" v={`${Math.round(st.cutX)} × ${Math.round(st.cutY)}`} />
           <F k="Trims" v={t ? `X− ${t.xMinus}  X+ ${t.xPlus}  Y− ${t.yMinus}  Y+ ${t.yPlus}` : "—"} />
@@ -160,7 +193,7 @@ function ReportPage({ page, no, total, job, sheet, rep, at }: {
         <SheetDrawing sheet={sheet} rep={rep} />
       </>) : (
         <div className="rp-grid rp-grid-more">
-          <F k="Sheet No" v={`${page.sheet + 1}`} /><F k="Job file name" v={job.title} /><F k="Qty parts" v={`${qty}`} />
+          <F k="Job file name" v={job.title} /><F k="Sheet No" v={`${page.sheet + 1}`} /><F k="Qty parts" v={`${qty}`} />
         </div>
       )}
       <table className="rp-table">
@@ -197,13 +230,34 @@ function ReportPage({ page, no, total, job, sheet, rep, at }: {
   );
 }
 
+/** ADD FULL PAGE SHEET VIEW: a small head (machine, job_sheet) and the sheet across the rest of the page,
+ *  landscape for a sheet wider than tall. */
+function FullSheetPage({ no, total, job, sheet, sheetNo, rep }: { no: number; total: number; job: ReportJob; sheet: NestedSheet; sheetNo: number; rep: SheetReport }) {
+  const wide = across(sheet);
+  return (
+    <section className={`rp rp-full${wide ? " is-landscape" : ""}`} aria-label={`Page ${no}`}>
+      <header className="rp-head rp-head-mini">
+        <div className="rp-hcell"><span>Machine</span><b>{job.machine.name}</b></div>
+        <div className="rp-hcell rp-job"><span>Job</span><b>{jobSheet(job.title, sheetNo)}</b></div>
+      </header>
+      <div className="rp-full-sheet">
+        <SheetDrawing sheet={sheet} rep={rep} W={wide ? 1000 : 660} H={wide ? 590 : 900} />
+      </div>
+      <footer className="rp-foot">
+        <span>GNEZDO · {job.title} · sheet {sheetNo + 1} · {sheet.material} {sheet.thicknessMm} mm · {sheet.lengthMm} × {sheet.widthMm}</span>
+        <span>Page {no} / {total}</span>
+      </footer>
+    </section>
+  );
+}
+
 function F({ k, v, est, strong }: { k: string; v: string; est?: boolean; strong?: boolean }) {
   return <div className={`rp-f${strong ? " is-strong" : ""}`}><span>{k}{est && v !== "—" ? <i> est.</i> : null}</span><b>{v}</b></div>;
 }
 
 /** The sheet to scale with its parts numbered (small ones by a line from the margin), and rulers. */
-function SheetDrawing({ sheet, rep }: { sheet: NestedSheet; rep: SheetReport }) {
-  const W = 690, H = 360;                  // drawing area in page px (the rulers outside it)
+function SheetDrawing({ sheet, rep, W = 690, H = 360 }: { sheet: NestedSheet; rep: SheetReport; W?: number; H?: number }) {
+  // W × H: the drawing area in page px (the rulers outside it)
   const s = Math.min(W / sheet.lengthMm, H / sheet.widthMm);
   const w = sheet.lengthMm * s, h = sheet.widthMm * s;
   const byId = new Map(rep.parts.map((p) => [p.partId, p.jp]));

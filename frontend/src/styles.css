@@ -2115,6 +2115,9 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .report-pages { display: flex; gap: 18px; align-items: flex-start; overflow-x: auto; overflow-y: hidden; padding: 6px 4px 14px; min-height: 0; }
 .report-thumb { flex: none; box-shadow: 0 2px 10px rgba(27,42,48,.18); background: #fff; overflow: hidden; outline: 2px solid transparent; outline-offset: 3px; border-radius: 2px; }
 .report-thumb.is-chosen { outline-color: var(--green); }
+.report-col { flex: none; display: flex; flex-direction: column; gap: 8px; }
+.report-full { height: 26px; display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+.report-full.is-none { visibility: hidden; }
 .report-empty { color: var(--ink-2); margin: 20px; }
 .report-panel { display: flex; flex-direction: column; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-height: 0; overflow: auto; }
 .report-panel h2 { margin: 0 0 2px; font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .04em; font-size: 18px; }
@@ -2197,6 +2200,11 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .cp-list { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-content: start; min-height: 120px; max-height: 260px; overflow-x: hidden; overflow-y: auto; }
 .cp-li { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-list .chk { display: flex; }
+.rp.is-landscape { width: 1123px; height: 794px; }
+.rp-head-mini { grid-template-columns: 1fr 1.6fr; }
+.rp-head-mini .rp-hcell { border-bottom: 0; padding: 3px 9px; }
+.rp-head-mini .rp-hcell:nth-child(2) { border-right: 0; }
+.rp-full-sheet { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
 .cp-prices { border-top: 1.5px solid var(--line); padding-top: 8px; display: grid; gap: 8px; }
 .cp-ph { display: flex; justify-content: space-between; align-items: center; font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .04em; font-size: 12px; color: var(--ink-2); font-weight: 600; }
 .cp-ph label { display: inline-flex; gap: 6px; align-items: center; text-transform: none; letter-spacing: 0; font-family: var(--font); }
@@ -2215,6 +2223,9 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
   .print-root { display: block; }
   .print-root .rp { break-after: page; page-break-after: always; box-shadow: none; }
   .print-root .rp:last-child { break-after: auto; page-break-after: auto; }
+  /* a full page sheet view of a sheet wider than tall: on a landscape page */
+  @page landscape { size: A4 landscape; margin: 0; }
+  .print-root .rp.is-landscape { page: landscape; }
   html, body { background: #fff !important; }
 }
 
