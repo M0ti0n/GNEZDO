@@ -46,7 +46,7 @@ const MARKING: Record<string, { role: Role; hint: string }> = {
 const SNAP_PX = 12;
 const HOLE_HINT = "Click a closed cutting contour, or drag a window, to mark it as a hole: cut at slower speed by machines that can (e.g. plasma). Again to unmark.";
 const COMMON_HINT = "Common cut: with Common cut ticked (Properties), every straight line of the outline may be shared with a neighbouring part and cut once (blue). Click a line, or drag a window, to leave it out (it is cut on its own, dashed); again to take it back.";
-const MARK_HINT = "Markings: click where the marking goes (points snap), then pick the marking, type an annotation if it needs one (Enter), and pick the size: SMALL, MEDIUM or BIG. It is traced (engraved). Esc steps back.";
+const MARK_HINT = "Markings: click where the marking goes (ends, middles, centers and lines snap), then pick the marking, type an annotation if it needs one (Enter), and pick the size: SMALL, MEDIUM or BIG. It is traced (engraved). Esc steps back.";
 const ANNOT_HINT = "Annotation: drag a box (or click) and type; the text is in the single-line font and is traced (engraved) on the part. Its height is set above the box; Enter starts a new line. Until it is placed, drag the box's frame to move it, its handles to resize it. Click outside the box or OK to place it, Esc to drop it.";
 /** Annotation: the text's lines laid out in the box (mm): words wrap at the box's width, Enter starts a line. */
 const ANNOT_PAD = 0.3, ANNOT_LEAD = 1.6;
@@ -105,7 +105,7 @@ const manipNext = (tool: string | null) => (tool === "mirror" ? MIRROR_AXIS : to
 const CHAMFER_HINT = "Click a corner where two straight lines meet (nearer the line for the first distance), type distance 1 [Tab] distance 2 + Enter.";
 const JOIN_HINT = "Ctrl + click two straight lines: both are lengthened (or cut back) to where they cross.";
 /** What a snap mark says. */
-const SNAP_LABEL: Record<SnapKind, string> = { end: "End", mid: "Mid", center: "Center", quadrant: "Quadrant", intersection: "Intersection", perpendicular: "Perpendicular", tangent: "Tangent", ortho: "H" };
+const SNAP_LABEL: Record<SnapKind, string> = { end: "End", mid: "Mid", center: "Center", quadrant: "Quadrant", intersection: "Intersection", perpendicular: "Perpendicular", tangent: "Tangent", nearest: "On line", ortho: "H" };
 
 /** The circle through three points (null when they are on one line). */
 function circleThrough(a: Pt, b: Pt, c: Pt): { c: Pt; r: number } | null {
@@ -931,7 +931,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
     if (tool === "markings" && view && e.button !== 1) {
       if (e.button === 2) { if (mark) { setMark(null); setMessage({ text: "Marking dropped" }); } return; }
       const prefs = loadMarkPrefs();
-      setMark({ at: snapAt(e.clientX, e.clientY, view).p, step: 1, shape: mark?.shape ?? prefs.shape, text: "", size: prefs.size });
+      setMark({ at: snapAt(e.clientX, e.clientY, view, null).p, step: 1, shape: mark?.shape ?? prefs.shape, text: "", size: prefs.size });
       return;
     }
     if (e.button === 0 && tool && (MARKING[tool] || tool === "hole" || tool === "commonCut" || tool === "annotate" || tool === "scale" || (MANIP.has(tool) && rotStage === 0))) {
@@ -979,7 +979,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
         return;
       }
       if ((tool === "fillet" || tool === "chamfer") && view) { setCornerHover(corner ? null : cornerAt(drawing.entities, toModel(e.clientX, e.clientY, view), SNAP_PX / view.s)?.at ?? null); return; }
-      if ((tool && DRAWING_TOOLS.has(tool) || tool === "dimension" || (tool === "markings" && !mark)) && view) { setCursor(snapAt(e.clientX, e.clientY, view)); return; }
+      if ((tool && DRAWING_TOOLS.has(tool) || tool === "dimension" || (tool === "markings" && !mark)) && view) { setCursor(snapAt(e.clientX, e.clientY, view, tool === "markings" ? null : undefined)); return; }
       if (tool === "mirror" && rotStage === 1) { setMirAxis(axisUnder(e.clientX, e.clientY)); return; }
       if ((tool === "rotate" || tool === "move" || tool === "patternL" || tool === "patternC") && rotStage > 0 && view) { setCursor(snapAt(e.clientX, e.clientY, view, (tool === "move" || tool === "patternL") && rotStage === 2 ? rotPivot : null)); return; }
       // hover with Trim / Extend: preview the result
@@ -1891,6 +1891,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                 snap={null} />
             )}
             {tool === "dimension" && cursor?.snapped && <SnapMark c={toScreen(cursor.p, view)} kind={cursor.kind} />}
+            {tool === "markings" && !mark && cursor && <SnapMark c={toScreen(cursor.p, view)} kind={cursor.snapped ? cursor.kind : undefined} dir={cursor.dir} />}
             {mark && tool === "markings" && (() => {
               // the marking as it will be: at the size picked last (step 3: the size under choice)
               const shape = MARKINGS.find((x) => x.id === mark.shape) ?? MARKINGS[0];
@@ -2392,6 +2393,7 @@ function SnapMark({ c, kind, dir }: { c: { x: number; y: number }; kind?: SnapKi
     : kind === "quadrant" ? <path d={`M${x} ${y - k - 1}L${x + k + 1} ${y}L${x} ${y + k + 1}L${x - k - 1} ${y}Z`} />
     : kind === "intersection" ? <path d={`M${x - k} ${y - k}L${x + k} ${y + k}M${x - k} ${y + k}L${x + k} ${y - k}`} />
     : kind === "perpendicular" ? <path d={`M${x - k} ${y - k}V${y + k}H${x + k}M${x - k} ${y}H${x}V${y + k}`} />
+    : kind === "nearest" ? <path d={`M${x - k} ${y - k}H${x + k}L${x - k} ${y + k}H${x + k}Z`} />
     : <><circle cx={x} cy={y} r={k - 1} /><path d={`M${x - k - 3} ${y - k + 1}H${x + k + 3}`} /></>;
   return (
     <g className={`snap-glyph is-${kind}`} pointerEvents="none">

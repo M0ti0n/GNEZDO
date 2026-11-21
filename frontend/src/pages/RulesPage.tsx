@@ -1,4 +1,4 @@
-import { ALL_SNAPS, SNAP_KINDS } from "../import/draw";
+import { ALL_SNAPS, SNAP_KINDS, snapsOn } from "../import/draw";
 import { useState } from "react";
 import { NumInput } from "../components/NumInput";
 import { DEFAULT_RULES, ROTATIONS, SPLINE_TOL_DEFAULT, SPLINE_TOL_MAX, SPLINE_TOL_MIN, splineTolOf, type ImportRules } from "../import/rules";
@@ -144,11 +144,11 @@ export function RulesTabs({ rules, onChange }: { rules: ImportRules; onChange: (
           <p className="rule-help">What points snap to on the import canvas (drawing tools, dimensions, offset). Perpendicular and tangent work from the last point placed.</p>
           <div className="rule-row">
             {SNAP_KINDS.map((k) => {
-              const on = (rules.snaps ?? ALL_SNAPS).includes(k.id);
+              const now = snapsOn(rules.snaps, rules.snapsKnown), on = now.includes(k.id);
               return (
                 <label key={k.id} className="chk chk-box" title={k.tip}>
                   <input type="checkbox" checked={on}
-                    onChange={(e) => set({ snaps: e.target.checked ? ALL_SNAPS.filter((x) => x === k.id || (rules.snaps ?? ALL_SNAPS).includes(x)) : (rules.snaps ?? ALL_SNAPS).filter((x) => x !== k.id) })} />
+                    onChange={(e) => set({ snaps: e.target.checked ? ALL_SNAPS.filter((x) => x === k.id || now.includes(x)) : now.filter((x) => x !== k.id), snapsKnown: ALL_SNAPS })} />
                   {k.label}
                 </label>
               );
