@@ -16,6 +16,7 @@ Run it as a web app on your work server, or as a desktop app on Windows and Linu
 
 [**⬇ Download test build**](#download-a-test-build) ·
 [**Test parts**](https://github.com/M0ti0n/GNEZDO/raw/main/test-parts/GNEZDO%20TEST%20PARTS.zip) ·
+[**User manual (PDF)**](https://github.com/M0ti0n/GNEZDO/raw/main/docs/GNEZDO_User_Manual-eng.pdf) ·
 [Roadmap](#roadmap) ·
 [Run on a server](#run-on-the-server-docker)
 
