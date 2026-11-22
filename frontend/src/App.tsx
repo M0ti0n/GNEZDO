@@ -28,6 +28,7 @@ import { loadDefaultProject } from "./job/defaultProject";
 import { applyRules, loadRules, normalizeRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
 import { loadNestingRules, normalizeNestingRules, saveNestingRules, type NestingRules } from "./job/nestRules";
 import type { SettingsBundle } from "./job/settingsFile";
+import { setSharedRefresher } from "./job/freshSettings";
 import { replaceToolsSetting, toolsSetting } from "./tools/toolStore";
 import { quantityFromName } from "./import/geometry";
 import { NestReportPage } from "./pages/NestReportPage";
@@ -103,8 +104,47 @@ export function App() {
   const setMachines = (m: MachineList) => {
     setMachinesState(m);
     saveLocalMachines(m);
-    api.saveSetting("machines", m).catch((e) => setToast(`Machines not saved on the server: ${(e as Error).message}`));
+    api.saveSetting("machines", m).catch((e) => savedConflict("Machines", e));
   };
+  /** A shared setting not saved: someone saved it since this page read it (409): read again, and said. */
+  const savedConflict = (label: string, e: unknown) => {
+    const err = e as Error & { status?: number };
+    if (err.status === 409) {
+      void refreshSharedNow(true);
+      setToast(`${label} not saved: ${err.message} They are loaded again as they are now: make your change again`);
+    } else setToast(`${label} not saved on the server: ${err.message}`);
+  };
+  // the shared settings read again where the server has a newer version (job/freshSettings.ts); the
+  // machines as they are now. `all`: every one (after a refused save)
+  const refreshSharedNow = async (all = false): Promise<MachineList | null> => {
+    if (demoMode) return null;
+    const now = await api.settingVersions();
+    const stale = (k: string) => all || (now[k] !== undefined && now[k] !== "none" && now[k] !== api.settingVersion(k));
+    let fresh: MachineList | null = null;
+    const changed: string[] = [];
+    if (stale("machines")) {
+      const m = normalizeMachines(await api.setting<MachineList>("machines"));
+      if (m) { setMachinesState(m); saveLocalMachines(m); fresh = m; changed.push("machines"); }
+    }
+    const read = async <T,>(key: string, label: string, norm: (v: unknown) => T | null, apply: (v: T) => void) => {
+      if (!stale(key)) return;
+      const v = norm(await api.setting<unknown>(key));
+      if (v) { apply(v); changed.push(label); setUnshared((u) => u.filter((x) => x !== key)); }
+    };
+    await read("stock", "stock", normalizeStock, (v) => { setStockSettingsState(v); saveStockSettings(v); });
+    await read("importRules", "import rules", normalizeRules, (v) => { setRulesState(v); saveRules(v); });
+    await read("nestingRules", "nesting rules", normalizeNestingRules, (v) => { setNestingRulesState(v); saveNestingRules(v); });
+    if (changed.length && !all) diag("settings", `Read again (changed on the server): ${changed.join(", ")}`);
+    return fresh ?? machinesRef.current;
+  };
+  useEffect(() => {
+    if (demoMode) return;
+    setSharedRefresher(() => refreshSharedNow());
+    const tick = () => { if (document.visibilityState === "visible") void refreshSharedNow().catch(() => {}); };
+    const t = window.setInterval(tick, 60_000);
+    window.addEventListener("focus", tick);
+    return () => { window.clearInterval(t); window.removeEventListener("focus", tick); setSharedRefresher(null); };
+  });
   useEffect(() => {
     api.setting<MachineList>("machines").then((v) => {
       const m = normalizeMachines(v);
@@ -136,7 +176,7 @@ export function App() {
     if (!isAdmin) return;
     keep(v);
     api.saveSetting(key, v).then(() => setUnshared((u) => u.filter((k) => k !== key)))
-      .catch((e) => setToast(`${label} not saved on the server: ${(e as Error).message}`));
+      .catch((e) => savedConflict(label, e));
   };
   /** Shared settings not on the server yet (each browser uses its own copy): Settings → Data shares them. */
   const [unshared, setUnshared] = useState<string[]>([]);
@@ -1162,6 +1202,7 @@ export function App() {
       const content: DraftContent = {
         title: t.title, jobId: jobServerId[jid] ?? (jid.startsWith("new-") ? null : jid), machine,
         parts, stock, nest: nestsOfJob(st.list, st.sel.sol), screen: jobScreen[jid],
+        ...(savedAt.current[jid] ? { baseModifiedAt: savedAt.current[jid] } : {}),
       };
       drafts.put(id, content).catch(() => { delete draftSnap.current[jid]; });   // tried again next time
     }
@@ -1208,6 +1249,11 @@ export function App() {
         if (sols) setJobSol((m) => ({ ...m, [jid]: sols }));
         if (c.screen) setJobScreen((m) => ({ ...m, [jid]: c.screen }));
         if (c.jobId && jid !== c.jobId && !elsewhere) setJobServerId((m) => ({ ...m, [jid]: c.jobId! }));
+        // the version these changes were made on (an older draft: the job's version now, as before)
+        if (c.jobId && !elsewhere) {
+          const base = c.baseModifiedAt ?? (await api.job(c.jobId).catch(() => null))?.modifiedAt;
+          if (base) savedAt.current[jid] = base;
+        }
         setSavedSnap((m) => ({ ...m, [jid]: "restored" }));   // unsaved until SAVE
         restoredIds.current[jid] = id;
         dispatch({ type: "open", tab: jobTab(jid, c.title) });

@@ -114,6 +114,21 @@ public sealed class AuthTests : IAsyncLifetime
             Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync($"/api/settings/{key}", new { value = new JsonObject { ["x"] = 2 } })).StatusCode);
             Assert.Equal(2, (await alex.GetFromJsonAsync<JsonObject>($"/api/settings/{key}"))!["x"]!.GetValue<int>());
         }
+        // two admins change the same settings from the version both loaded: the second is refused, told who
+        var got = await admin.GetAsync("/api/settings/stock");
+        var v = got.Headers.ETag!.Tag;
+        var versions = (await admin.GetFromJsonAsync<JsonObject>("/api/settings/versions"))!;
+        Assert.Equal(v.Trim('"'), versions["stock"]!.GetValue<string>());
+        var first = await admin.PutAsJsonAsync("/api/settings/stock", new { value = new JsonObject { ["x"] = 3 }, @base = v });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.NotEqual(v, first.Headers.ETag!.Tag);
+        var second = await admin.PutAsJsonAsync("/api/settings/stock", new { value = new JsonObject { ["x"] = 4 }, @base = v });
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Contains("changed these settings since you loaded them", await second.Content.ReadAsStringAsync());
+        Assert.Equal(3, (await admin.GetFromJsonAsync<JsonObject>("/api/settings/stock"))!["x"]!.GetValue<int>());
+        // from the version now there: saved
+        Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync("/api/settings/stock", new { value = new JsonObject { ["x"] = 4 }, @base = first.Headers.ETag!.Tag })).StatusCode);
+        Assert.NotEqual("none", (await admin.GetFromJsonAsync<JsonObject>("/api/settings/versions"))!["stock"]!.GetValue<string>());
         // and only an admin deletes a project
         var refused = await alex.DeleteAsync("/api/projects?code=NO-SUCH-PROJECT");
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);

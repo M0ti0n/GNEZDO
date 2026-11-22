@@ -4,6 +4,16 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+**QA round 2, batch 2: several users and computers:**
+- **Settings saved by two admins no longer overwrite each other.** A change made on settings someone else saved since you loaded them is refused, names who changed them, and the settings are loaded again as they are now, so you can make your change on top.
+- **Every page reads changed settings again:** every minute, when its window comes back to the front, and always right before Auto cut and Post process. It used to keep what it read when it opened, so the same job could get other E codes, tech program or leads depending on which computer posted it.
+- **Post process refuses a sheet whose Technology row or cutting settings changed since Auto cut** (leads, gaps, kerf, E code sizes, ...): "process the sheet again". It used to take the new E codes and tech program with the old leads.
+- **Auto cut of a whole sheet asks before throwing away changes made by hand** (micro joints, breaks, leads, inline cuts): **Keep them** leaves those parts as they are, in the order of the rule, and processes the rest; **Make all again** redoes everything.
+- **A lead-in shorter than the kerf is now warned about** when posting: the kerf compensation may notch the contour where it comes on.
+- **NC files are written whole:** into a temporary file, then put in place, so the machine never reads a half-written program. Two users posting the same name wait for each other instead of failing.
+- **NC file names:** a long name is shortened with its extension kept, Windows device names (NUL, CON, COM1, ...) get a "_" in front, and a name that is only an extension becomes program plus that extension.
+- **Saving a job is watertight:** saves of one job go one at a time, so of several saves at the same moment from the same version only one goes in. A save that doesn't say which version of the job it changes (an older page, a script) is refused. Unsaved work restored after a crash keeps the version it was made on.
+
 **QA round 2, batch 1: G-code that looked right and wasn't:**
 - **Gentle arcs (15° or less) were cut as two straight lines,** up to 1.3 mm off the drawing on an R600. Arcs now always keep at least 6 points, so the NC program cuts them as arcs. Arcs too big for G2/G3 (over R20000) are cut as lines within 0.005 mm. This applies to parts imported or saved from now on; parts already saved keep their outline until they are imported or saved again.
 - **Round contours on parts nested at 5°, 15°, 30°, 45° and so on had flat 7.5° chords** (0.1–0.2 mm off). The cut path now keeps its points to 0.001 mm instead of 0.01 mm, so circles, slots and obrounds are cut as arcs at every angle.

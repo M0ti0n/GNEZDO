@@ -40,12 +40,16 @@ public static class JobSave
                 locks.TryTake(nid, page, JobLocks.UserOf(ctx), out _);
             return res;
         });
-        // not over a job open somewhere else
+        // not over a job open somewhere else; saves of one job one at a time, so "saved by someone else since"
+        // is decided on what is really there (eight saves at once with one version: one went in, not six)
         app.MapPut("/api/jobs/{id:int}", async (int id, JobSaveRequest r, HttpContext ctx, GnezdoDb db, TimeProvider clock, JobLocks locks, CancellationToken ct) =>
         {
             if (locks.Other(id, JobLocks.PageOf(ctx)) is { } other)
                 return JobLocks.Refused(await NameOf(db, id, ct), other, "not saved. Close it there first, or save it as a new job (SAVE AS).");
-            return await SaveAsync(id, r with { ModifiedBy = ctx.User.Identity?.Name ?? r.ModifiedBy }, db, clock, ct);
+            var gate = Saving.GetOrAdd(id, _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync(ct);
+            try { return await SaveAsync(id, r with { ModifiedBy = ctx.User.Identity?.Name ?? r.ModifiedBy }, db, clock, ct); }
+            finally { gate.Release(); }
         });
 
         // open in one tab at a time (JobLocks)
@@ -72,6 +76,8 @@ public static class JobSave
             return Results.NoContent();
         });
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, SemaphoreSlim> Saving = new();
 
     private static async Task<string> NameOf(GnezdoDb db, int id, CancellationToken ct) =>
         await db.Jobs.Where(j => j.Id == id).Select(j => j.Name).FirstOrDefaultAsync(ct) ?? $"Job {id}";
@@ -139,6 +145,13 @@ public static class JobSave
         {
             job = await db.Jobs.Include(j => j.Parts).FirstOrDefaultAsync(j => j.Id == id, ct);
             if (job is null) return Results.NotFound();
+            // a save must say which version of the job it changes (an older client or a script overwrote anything)
+            if (!r.Force && r.BaseModifiedAt is null)
+                return Results.Json(new
+                {
+                    message = $"Not saved: this save does not say which version of {job.Name} it changes. Open the job again, or save it as a new job.",
+                    conflict = true,
+                }, statusCode: StatusCodes.Status428PreconditionRequired);
             // saved by someone else since this client opened or saved it: not over their save without asking
             // (1 ms: a database may keep the time to the microsecond, the browser to the millisecond)
             if (!r.Force && r.BaseModifiedAt is { } seen && Math.Abs((job.ModifiedAt - seen).TotalMilliseconds) > 1)

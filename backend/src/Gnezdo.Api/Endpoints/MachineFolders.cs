@@ -41,13 +41,64 @@ public static class MachineFolders
         return new Folders(Str(f["jobs"]).Trim(), Str(f["nc"]).Trim(), Bool(f["jobFile"]), Bool(f["ncDownload"]));
     }
 
-    /// <summary>A file name safe on Windows and Linux (no folders in it).</summary>
+    /// <summary>Names Windows keeps for devices (with any extension): "NUL.CNC" is written nowhere.</summary>
+    private static readonly HashSet<string> Devices = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
+
+    /// <summary>
+    /// A file name safe on Windows and Linux (no folders in it). Shortened to 150 characters with its
+    /// extension kept (a 300-character name lost its .CNC); a device name gets a "_" in front (NUL was
+    /// "written" to the null device); nothing left but an extension: the fallback's name with it.
+    /// </summary>
     public static string SafeName(string? name, string fallback)
     {
         var bad = "<>:\"/\\|?*".ToHashSet();
         var s = new string((name ?? "").Select(c => c < 32 || bad.Contains(c) ? '_' : c).ToArray()).Trim().TrimEnd('.', ' ');
-        if (s.Length > 150) s = s[..150];
-        return s.Length == 0 || s.All(c => c == '.') ? fallback : s;
+        if (s.Length == 0 || s.All(c => c == '.')) return fallback;
+        var ext = Path.GetExtension(s);
+        if (ext.Length > 12) ext = "";
+        var stem = s[..^ext.Length].TrimEnd('.', ' ');
+        if (stem.Length == 0) stem = Path.GetFileNameWithoutExtension(fallback);
+        if (stem.Length + ext.Length > 150) stem = stem[..(150 - ext.Length)].TrimEnd('.', ' ');
+        var first = stem.Split('.')[0].TrimEnd(' ');
+        if (Devices.Contains(first)) stem = "_" + stem;
+        return stem + ext;
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> Writing = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Writes the file whole or not at all: into a temporary file in the same folder, then moved over the
+    /// name. The machine reading the folder never sees a half-written program (it did, in 22 of 50 reads,
+    /// while two users posted the same name). Writes of one name wait for each other; a name the machine
+    /// holds open is tried again for a few seconds.
+    /// </summary>
+    public static async Task WriteWholeAsync(string path, string content, CancellationToken ct)
+    {
+        var gate = Writing.GetOrAdd(Path.GetFullPath(path), _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        var tmp = Path.Combine(Path.GetDirectoryName(path) ?? ".", $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await File.WriteAllTextAsync(tmp, content, ct);
+            for (var attempt = 1; ; attempt++)
+            {
+                try { File.Move(tmp, path, overwrite: true); return; }
+                catch (Exception e) when ((e is IOException or UnauthorizedAccessException) && attempt < 15)
+                {
+                    await Task.Delay(200, ct);
+                }
+            }
+        }
+        finally
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* left behind: harmless */ }
+            gate.Release();
+        }
     }
 
     /// <summary>Why the server cannot write there, or null when it can.</summary>
@@ -119,7 +170,7 @@ public static class MachineFolders
             var path = Path.Combine(f.Nc, SafeName(r.Name, "program.nc"));
             try
             {
-                await File.WriteAllTextAsync(path, r.Content ?? "", ct);
+                await WriteWholeAsync(path, r.Content ?? "", ct);
                 return Results.Ok(new { path });
             }
             catch (Exception e) when (e is UnauthorizedAccessException or IOException)
@@ -170,7 +221,7 @@ public static class MachineFolders
         var path = Path.Combine(f.Jobs, $"{SafeName(job.Name, "job")} ({job.Id}).gnezdo-job.json");
         try
         {
-            await File.WriteAllTextAsync(path, doc.ToJsonString(Indented), ct);
+            await WriteWholeAsync(path, doc.ToJsonString(Indented), ct);
             return (path, null);
         }
         catch (Exception e) when (e is UnauthorizedAccessException or IOException)
