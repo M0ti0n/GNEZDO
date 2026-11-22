@@ -23,7 +23,7 @@ import { dimensionOf, type Measure, type Pick as DimPick } from "../import/measu
 
 type Pick = "base" | "top" | "stitch" | "edge" | "deledge" | "one" | "measure3d" | "measure" | "look" | null;
 
-const K = "#1b1b1b", G = "#1d9641", R = "#e3262b", B = "#1d7fd0";
+const K = "#1b1b1b", R = "#e3262b", B = "#1d7fd0";
 
 /** How the part is shown in 3D (kept for next time, on this computer). */
 interface ViewPrefs {
@@ -61,8 +61,10 @@ const ICONS: Record<string, ReactNode> = {
   // Fab's icon: a flat pattern with its width dimensioned (red), its bends (blue)
   measure: <Ico><path d="M14.2 1.7H34.6V7.6H40.7V30.6H34.6V36.2H14.2V30.6H8.4V7.6H14.2Z" fill="#dcdcdc" stroke={K} strokeWidth="1.9" strokeLinejoin="miter" /><path d="M14.2 9.6V14M14.2 24.2V28.6M34.6 9.6V14M34.6 24.2V28.6M16.2 7.6H20.4M28.4 7.6H32.6M16.2 30.6H20.4M28.4 30.6H32.6" stroke="#1d8fd6" strokeWidth="1.6" /><path d="M8.4 32V45M40.7 32V45M10.4 41.6H38.7" stroke={R} strokeWidth="1.8" /><path d="M9.2 41.6L12.8 39.7V43.5ZM39.9 41.6L36.3 39.7V43.5Z" fill={R} /></Ico>,
   look: <Ico><path d="M10 12h28v24H10z" fill="#d6e8f8" stroke={K} strokeWidth="2.2" /><circle cx="24" cy="24" r="6" stroke={B} strokeWidth="2.6" /><circle cx="24" cy="24" r="2" fill={B} /><path d="M24 4v6M24 38v6M4 24h6M38 24h6" stroke={R} strokeWidth="2.2" /></Ico>,
-  send: <Ico><rect x="4" y="10" width="26" height="28" stroke={K} strokeWidth="2.2" /><path d="M4 24h26" stroke={G} strokeWidth="2.4" strokeDasharray="5 4" /><path d="M28 24h16M38 18l6 6-6 6" stroke={G} strokeWidth="3" /></Ico>,
-  dxf: <Ico><path d="M10 4h18l10 10v30H10z" stroke={K} strokeWidth="2.2" /><path d="M24 18v16M18 28l6 6 6-6" stroke={G} strokeWidth="2.6" /></Ico>,
+  // a part with a bend line (dotted green), and a red arrow: into the Import 2D list
+  send: <Ico><path d="M6.3 9.8H35.7L40.7 14.7V28.7H14.4V22.3H6.3Z" stroke={K} strokeWidth="2.4" /><path d="M24.7 10.8V28.2" stroke="#22b14c" strokeWidth="2.2" strokeDasharray="2.2 2.4" strokeLinecap="butt" /><path d="M11.5 38.4H32.5" stroke={R} strokeWidth="2.4" /><path d="M31.4 35.6L38.4 38.4L31.4 41.2Z" fill={R} /></Ico>,
+  // a sheet of paper with a part (blue) on it, and "DXF" in red
+  dxf: <Ico><path d="M18.8 38.7H9.6V6.6H26.5L31.9 11.8V29" stroke={K} strokeWidth="2.4" /><path d="M16.2 11.8H27.6V25.3H12.9V14.9Z" stroke="#1d8fd6" strokeWidth="2.2" /><circle cx="18.8" cy="21.8" r="1.8" stroke="#1d8fd6" strokeWidth="1.8" /><text x="21" y="42" fontFamily="Arial, Helvetica, sans-serif" fontSize="12.5" fill={R}>DXF</text></Ico>,
 };
 
 export function UnfoldPage({ name, kind, section, qty, sent, step, material, partMaterial, fileMaterial = "", onChange, onSend, onSendOne, onName }: {
@@ -219,7 +221,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
           ? `Put the flat pattern into Import 2D (×${qty}) to be processed there${sent ? "; it replaces the one sent before" : ""}`
           : flatOff ? `${KIND_LABEL[kind].replace(/s$/, "")}: cut to length, not unfolded (Unfold anyway, on the right, makes a flat pattern)`
           : "The flat pattern is not ready (not unfolded, or the outline is open)", !ready)}
-        {tool("dxf", "Flat DXF", false, download, "Download the flat pattern as DXF (with the whole bend lines on layer BEND)", !u.outline.length || flatOff)}
+        {tool("dxf", "Export to DXF", false, download, "Save the flat pattern as a DXF file (with the whole bend lines on layer BEND)", !u.outline.length || flatOff)}
       </div>
       <div className={`uf-panes is-${panes}`}>
         <section className={`uf-pane uf-3d${panes === "flat" ? " is-shut" : ""}`}>
@@ -456,7 +458,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
                   {m === "trace" ? "Trace" : m === "openCut" ? "Open cut" : "None"}</button>
               ))}
             </span></div>
-          <label className="chk" title="Down bends get marks too, dashed (the up bends' are solid), and they go to Import 2D and the Flat DXF like the up bends' marks">
+          <label className="chk" title="Down bends get marks too, dashed (the up bends' are solid), and they go to Import 2D and the exported DXF like the up bends' marks">
             <input type="checkbox" checked={!!st.marksDown} disabled={st.marks === "none"} onChange={(e) => set({ marksDown: e.target.checked })} /> Down bends too (dashed marks)</label>
           <div className="uf-row"><span>Angle, UP</span>
             <span className="cols-toggle uf-seg" role="radiogroup" aria-label="Angle and UP / DOWN beside the bends">
@@ -1023,7 +1025,7 @@ export function ExtractEmpty({ onPick }: { onPick: () => void }) {
       <div className="itools">
         {tools.map(t)}
         <span className="uf-sep" />
-        {([["send", "Send to Import 2D"], ["dxf", "Flat DXF"]] as [string, string][]).map(t)}
+        {([["send", "Send to Import 2D"], ["dxf", "Export to DXF"]] as [string, string][]).map(t)}
       </div>
       <div className="uf-panes is-both">
         <section className="uf-pane"><h3>Part</h3>
