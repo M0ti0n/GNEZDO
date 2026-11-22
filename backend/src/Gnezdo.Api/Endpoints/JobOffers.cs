@@ -83,7 +83,7 @@ public sealed class JobOffers(TimeProvider clock)
 
     public record OfferItem(string PartId, int Qty);
     public record OfferRequest(int JobId, OfferItem[] Parts, string? Note);
-    public record OpenJobDto(string Id, string Name, string User, DateTimeOffset Since, MaterialDto[] Materials);
+    public record OpenJobDto(string Id, string Name, string User, DateTimeOffset Since, MaterialDto[] Materials, bool Done = false, bool Here = false);
     public record MaterialDto(string Material, decimal ThicknessMm);
     public record IncomingItem(PartDto Part, int Qty);
     public record IncomingDto(string Id, string JobId, string JobName, string FromUser, DateTimeOffset At, string Note, IncomingItem[] Parts);
@@ -92,18 +92,21 @@ public sealed class JobOffers(TimeProvider clock)
     public static void Map(WebApplication app)
     {
         // the jobs open on other computers, with who has them and the materials and thicknesses in them
-        app.MapGet("/api/jobs/open", async (HttpContext ctx, GnezdoDb db, JobLocks locks, CancellationToken ct) =>
+        // (all=true: this page's own too, marked Here: the home page's "Open now")
+        app.MapGet("/api/jobs/open", async (HttpContext ctx, GnezdoDb db, JobLocks locks, bool? all, CancellationToken ct) =>
         {
             var page = JobLocks.PageOf(ctx);
-            var open = locks.Open().Where(o => o.Holder.Page != page).ToList();
+            var open = locks.Open().Where(o => all == true || o.Holder.Page != page).ToList();
             var ids = open.Select(o => o.Job).ToList();
             var names = await db.Jobs.AsNoTracking().Where(j => ids.Contains(j.Id)).ToDictionaryAsync(j => j.Id, j => j.Name, ct);
             var mats = (await db.JobParts.AsNoTracking().Where(jp => ids.Contains(jp.JobId))
                     .Select(jp => new { jp.JobId, Material = jp.Material ?? jp.Part.Material.Name, Thickness = jp.ThicknessMm ?? jp.Part.ThicknessMm })
                     .Distinct().ToListAsync(ct))
                 .GroupBy(x => x.JobId).ToDictionary(g => g.Key, g => g.OrderBy(x => x.Material).ThenBy(x => x.Thickness).Select(x => new MaterialDto(x.Material, x.Thickness)).ToArray());
+            var done = await HomeEndpoints.DoneAsync(db, ids, ct);
             return Results.Ok(open.Where(o => names.ContainsKey(o.Job)).OrderBy(o => names[o.Job], StringComparer.OrdinalIgnoreCase)
-                .Select(o => new OpenJobDto(o.Job.ToString(), names[o.Job], o.Holder.User, o.Holder.Since, mats.GetValueOrDefault(o.Job) ?? [])));
+                .Select(o => new OpenJobDto(o.Job.ToString(), names[o.Job], o.Holder.User, o.Holder.Since, mats.GetValueOrDefault(o.Job) ?? [],
+                    done.GetValueOrDefault(o.Job), o.Holder.Page == page)));
         });
 
         app.MapPost("/api/offers", async (OfferRequest r, HttpContext ctx, GnezdoDb db, JobLocks locks, JobOffers offers, CancellationToken ct) =>

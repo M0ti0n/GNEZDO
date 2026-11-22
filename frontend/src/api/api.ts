@@ -146,7 +146,11 @@ const sampleJobs: (JobSummary & { lines: JobPart[] })[] = sampleJobRows.map((j) 
     lines,
   };
 });
-const summary = ({ lines: _lines, ...j }: JobSummary & { lines: JobPart[] }): JobSummary => j;
+const summary = ({ lines, ...j }: JobSummary & { lines: JobPart[] }): JobSummary => ({
+  ...j, done: j.status === "cut",
+  kinds: [...new Map(lines.map((l) => [`${l.part.material}|${l.part.thicknessMm}`, { material: l.part.material, thicknessMm: l.part.thicknessMm }])).values()]
+    .sort((a, b) => text(a.material, b.material) || a.thicknessMm - b.thicknessMm),
+});
 
 const dayStart = (ymd: string) => new Date(`${ymd}T00:00:00`).getTime();
 const inDate = (iso: string, f?: { mode: string; date: string }) => {
@@ -543,7 +547,8 @@ export const api = {
   /** Opens a saved job in this page: refused (status 423, data.user: who) while it is open in another page,
    *  on another computer or in another browser. Always fine in the demo. */
   /** Jobs open on other computers (server build): where parts can be sent. */
-  openJobs: (): Promise<OpenJob[]> => (useApi ? get<OpenJob[]>("/api/jobs/open") : Promise.resolve([])),
+  /** The jobs open on other computers (all: this page's own too). */
+  openJobs: (all = false): Promise<OpenJob[]> => (useApi ? get<OpenJob[]>(`/api/jobs/open${all ? "?all=true" : ""}`) : Promise.resolve([])),
   /** Sends saved parts to a job open on another computer: that page is asked to accept them. */
   sendParts: (jobId: string, parts: { partId: string; qty: number }[], note: string): Promise<{ id: string; to: string; job: string }> =>
     post("/api/offers", { jobId: Number(jobId), parts, note }),
@@ -684,12 +689,22 @@ export const api = {
     useApi ? get<JobSummary[]>(`/api/jobs/recent?take=${take}`) : delay(sampleJobs.slice(0, take).map(summary)),
   recentProjects: (take = 8) =>
     useApi ? get<ProjectSummary[]>(`/api/projects/recent?take=${take}`) : delay(sampleProjects.slice(0, take)),
+  /** The parts added to the library last, newest first. */
+  recentParts: (take = 10) =>
+    useApi ? get<PartSummary[]>(`/api/parts?sort=created&dir=desc&take=${take}`)
+      : delay([...sampleParts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, take)),
   recentImports: (take = 8) =>
     useApi ? get<ImportSummary[]>(`/api/imports/recent?take=${take}`) : delay(sampleImports.slice(0, take)),
 };
 
 /** A job open on another computer (GET /api/jobs/open). */
-export interface OpenJob { id: string; name: string; user: string; since: string; materials: { material: string; thicknessMm: number }[] }
+export interface OpenJob {
+  id: string; name: string; user: string; since: string; materials: { material: string; thicknessMm: number }[];
+  /** every part nested and every sheet post processed */
+  done?: boolean;
+  /** open on this page */
+  here?: boolean;
+}
 /** Parts someone sends to a job open here. */
 export interface IncomingOffer { id: string; jobId: string; jobName: string; fromUser: string; at: string; note: string; parts: { part: PartSummary; qty: number }[] }
 /** What became of parts this page sent: accepted, refused, or gone (the job closed before an answer). */

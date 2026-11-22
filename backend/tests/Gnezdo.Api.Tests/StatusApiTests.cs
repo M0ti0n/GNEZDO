@@ -183,4 +183,52 @@ public sealed class StatusApiTests(ApiFixture api) : IClassFixture<ApiFixture>
         Assert.False(none["projectFound"]!.GetValue<bool>());
         Assert.Equal("missing", none["items"]![0]!["status"]!.GetValue<string>());
     }
+
+    [Fact]
+    public async Task The_home_page_shows_a_job_nested_once_every_part_is_nested_and_every_sheet_post_processed()
+    {
+        var part = (await api.Client.GetFromJsonAsync<List<PartDto>>("/api/parts"))!.First();
+        JsonObject Nest(int n) => new()
+        {
+            ["selected"] = "s1",
+            ["solutions"] = new JsonArray(new JsonObject
+            {
+                ["id"] = "s1",
+                ["result"] = new JsonObject
+                {
+                    ["sheets"] = new JsonArray(
+                        new JsonObject { ["lengthMm"] = 3000, ["widthMm"] = 1500, ["parts"] = new JsonArray(new JsonObject { ["partId"] = part.Id }) },
+                        new JsonObject { ["lengthMm"] = 3000, ["widthMm"] = 1500, ["parts"] = new JsonArray(new JsonObject { ["partId"] = part.Id }) }),
+                    ["nested"] = new JsonObject { [part.Id] = n },
+                },
+            }),
+        };
+        async Task<string> Save(string name, JsonObject nest)
+        {
+            var res = await api.Client.PostAsJsonAsync("/api/jobs", new
+            {
+                name, parts = new[] { new { partId = part.Id, qty = 4, qtyMax = 4, no = 1, thicknessMm = 7.5m } }, stock = new JsonArray(), nest, modifiedBy = "Test",
+            });
+            Assert.Equal(HttpStatusCode.Created, res.StatusCode);
+            return (await res.Content.ReadFromJsonAsync<JsonObject>())!["id"]!.GetValue<string>();
+        }
+        var whole = await Save("HOME_DONE", Nest(4));
+        var short_ = await Save("HOME_SHORT", Nest(3));
+        Task Sent(string id, params int[] sheets) => api.Client.PostAsJsonAsync($"/api/jobs/{id}/sent",
+            new { machine = "laser", all = false, sheets = sheets.Select(n => new { sheet = n, file = $"H_{n}.nc", parts = new Dictionary<string, int> { [part.Id] = 2 } }).ToArray() });
+
+        async Task<JsonNode> Row(string id) => (await api.Client.GetFromJsonAsync<JsonArray>("/api/jobs/recent?take=50"))!.First(j => j!["id"]!.GetValue<string>() == id)!;
+        Assert.False((await Row(whole))["done"]!.GetValue<bool>());                 // nested, not post processed
+        await Sent(whole, 1);
+        Assert.False((await Row(whole))["done"]!.GetValue<bool>());                 // one sheet of two
+        await Sent(whole, 2);
+        Assert.True((await Row(whole))["done"]!.GetValue<bool>());
+        await Sent(short_, 1, 2);
+        Assert.False((await Row(short_))["done"]!.GetValue<bool>());                // 3 of 4 nested
+
+        // the job's own thickness, with the part's material
+        var kinds = (await Row(whole))["kinds"]!.AsArray();
+        Assert.Equal(7.5m, Assert.Single(kinds)!["thicknessMm"]!.GetValue<decimal>());
+        Assert.Equal(part.Material, kinds[0]!["material"]!.GetValue<string>());
+    }
 }

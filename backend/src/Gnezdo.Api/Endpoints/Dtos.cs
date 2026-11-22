@@ -23,7 +23,13 @@ public record JobSummaryDto(
     /// <summary>All thicknesses in the job, thin to thick.</summary>
     IReadOnlyList<decimal> Thicknesses,
     /// <summary>The machine the job is nested for (id in the "machines" setting); empty = the default machine.</summary>
-    string Machine = "");
+    string Machine = "",
+    /// <summary>Done: every part nested (as many as asked for) and every sheet post processed, or the job marked as cut.</summary>
+    bool Done = false,
+    /// <summary>The materials and thicknesses in the job (its own where set on the work part list), A–Z, thin to thick.</summary>
+    IReadOnlyList<MaterialThicknessDto>? Kinds = null);
+
+public record MaterialThicknessDto(string Material, decimal ThicknessMm);
 
 /// <summary>A part of a job: Qty req, Qty max and its ID number in the job's part list.</summary>
 /// <summary>A part of a job. Material / ThicknessMm: set in this job only (null = the part's own, in Part).</summary>

@@ -1,96 +1,114 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "../api/api";
-import type { ImportSummary, JobStatus, JobSummary } from "../api/types";
+import type { OpenJob } from "../api/api";
+import type { JobSummary } from "../api/types";
 import { IconImport, IconNewJob } from "../components/Icons";
-import { Tile } from "../components/Tile";
+import { PartThumb } from "../components/PartThumb";
+import { UserTag } from "../components/SendPartsDialogs";
 import { fullDate, mm, when } from "../components/format";
 
 export type HomeAction =
-  | { kind: "import" }
-  | { kind: "newJob" }
+  | { kind: "parts" }
   | { kind: "jobSearch" }
-  | { kind: "openJob"; job: JobSummary }
-  | { kind: "openImport"; imp: ImportSummary };
-
-
-const STATUS_LABEL: Record<JobStatus, string> = {
-  draft: "Draft",
-  nested: "Nested",
-  released: "Released",
-  cut: "Cut",
-};
+  | { kind: "openJob"; job: Pick<JobSummary, "id" | "name"> & Partial<Pick<JobSummary, "modifiedBy" | "modifiedAt">> };
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ok"; data: T };
 
-function useLoad<T>(fn: () => Promise<T>): [Load<T>, () => void] {
+function useLoad<T>(fetch: () => Promise<T>, every = 0): [Load<T>, () => void] {
   const [v, setV] = useState<Load<T>>({ state: "loading" });
   const [n, setN] = useState(0);
   useEffect(() => {
     let alive = true;
-    setV({ state: "loading" });
-    fn().then(
-      (data) => alive && setV({ state: "ok", data }),
-      (e: Error) => alive && setV({ state: "error", message: e.message }),
-    );
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [n]);
+    const run = (quiet: boolean) => {
+      if (!quiet) setV({ state: "loading" });
+      fetch().then(
+        (data) => alive && setV({ state: "ok", data }),
+        (e: Error) => alive && !quiet && setV({ state: "error", message: e.message }),
+      );
+    };
+    run(false);
+    // kept up to date (who has which job open), without "Loading…" in between
+    const t = every ? window.setInterval(() => { if (!document.hidden) run(true); }, every) : 0;
+    return () => { alive = false; if (t) window.clearInterval(t); };
+  }, [n]);   // eslint-disable-line react-hooks/exhaustive-deps
   return [v, () => setN((x) => x + 1)];
 }
 
-export function HomePage({ onAction }: { onAction: (a: HomeAction) => void }) {
-  const [imports, reloadImports] = useLoad(() => api.recentImports(8));
-  const [jobs, reloadJobs] = useLoad(() => api.recentJobs(8));
+type Kind = { material: string; thicknessMm: number };
+const kindsOf = (j: JobSummary): Kind[] => j.kinds ?? (j.material ? [{ material: j.material, thicknessMm: j.thicknessMm }] : []);
+
+/** Home: the parts added last, and the jobs made or changed last (server: the jobs open now on top, with who has them). */
+export function HomePage({ onAction, server = false }: { onAction: (a: HomeAction) => void; server?: boolean }) {
+  const [parts, reloadParts] = useLoad(() => api.recentParts(10));
+  const [jobs, reloadJobs] = useLoad(() => api.recentJobs(server ? 14 : 10), server ? 15_000 : 0);
+  const [open] = useLoad(() => (server ? api.openJobs(true) : Promise.resolve([] as OpenJob[])), server ? 15_000 : 0);
+  const openIds = new Set(open.state === "ok" ? open.data.map((o) => o.id) : []);
+  const notOpen: Load<JobSummary[]> = jobs.state === "ok" ? { state: "ok", data: jobs.data.filter((j) => !openIds.has(j.id)).slice(0, 10) } : jobs;
 
   return (
     <div className="home">
-      <section className="tiles" aria-label="Shortcuts">
-        <Tile tone="blue" icon={<IconImport size={30} />} title="Import" onClick={() => onAction({ kind: "import" })}
-          description="Add DXF, DWG or SVG drawings to the parts library" />
-        <Tile tone="green" icon={<IconNewJob size={30} />} title="New job" onClick={() => onAction({ kind: "newJob" })}
-          description="Pick parts and stock sheets, then nest" />
-      </section>
-
       <div className="recent-row">
-        <Panel tone="blue" icon={<IconImport size={18} />} title="Recent imports"
-          more="Open import" onMore={() => onAction({ kind: "import" })}>
-          <Body load={imports} retry={reloadImports}
-            empty="Nothing imported yet. Use Import to add your first drawings."
-            render={(rows) => rows.map((r) => (
-              <Row key={r.id} onOpen={() => onAction({ kind: "openImport", imp: r })}
-                title={r.source}
-                aside={<span className="count">{r.partCount}<small>parts</small></span>}
-                meta={<>
-                  <span>{r.project}</span>
-                  <span>{r.materials.join(", ")}</span>
-                  {r.warnings > 0 && <span className="warn">{r.warnings} to check</span>}
-                </>}
-                when={r.importedAt} who={r.importedBy} />
-            ))} />
+        <Panel tone="blue" icon={<IconImport size={18} />} title="Recently added parts" more="All parts" onMore={() => onAction({ kind: "parts" })}>
+          <ul className="rows">
+            <Body load={parts} retry={reloadParts} empty="No parts yet. Import drawings in Import 2D."
+              render={(rows) => rows.map((p) => (
+                <li key={p.id}>
+                  <button className="row part-row" onClick={() => onAction({ kind: "parts" })} title={p.description || undefined}>
+                    <span className="part-row-thumb"><PartThumb part={p} size={40} /></span>
+                    <span className="part-row-text">
+                      <span className="row-title">{p.name}</span>
+                      <span className="row-meta">{p.project && <span>{p.project}</span>}<MatChip material={p.material} thicknessMm={p.thicknessMm} /></span>
+                    </span>
+                    <span className="part-row-when" title={fullDate(p.createdAt)}>{when(p.createdAt)}</span>
+                  </button>
+                </li>
+              ))} />
+          </ul>
         </Panel>
 
-        <Panel tone="green" icon={<IconNewJob size={18} />} title="Recent jobs"
-          more="All jobs" onMore={() => onAction({ kind: "jobSearch" })}>
-          <Body load={jobs} retry={reloadJobs}
-            empty="No jobs yet. Start one with New job."
-            render={(rows) => rows.map((j) => (
-              <Row key={j.id} onOpen={() => onAction({ kind: "openJob", job: j })}
-                title={j.name}
-                aside={<span className={`status status-${j.status}`}>{STATUS_LABEL[j.status]}</span>}
-                meta={<>
-                  <span>{j.material} {mm(j.thicknessMm)}</span>
-                  <span>{j.partCount} {j.partCount === 1 ? "part" : "parts"}</span>
-                  <span>{j.sheetCount ? `${j.sheetCount} ${j.sheetCount === 1 ? "sheet" : "sheets"}` : "not nested"}</span>
-                </>}
-                when={j.modifiedAt} who={j.modifiedBy} />
-            ))} />
+        <Panel tone="green" icon={<IconNewJob size={18} />} title="Recent jobs" more="All jobs" onMore={() => onAction({ kind: "jobSearch" })}>
+          {server && open.state === "ok" && open.data.length > 0 && <>
+            <h3 className="home-sub is-open"><span className="home-live" aria-hidden="true" />Open now</h3>
+            <ul className="rows home-open">
+              {open.data.map((o) => (
+                <li key={o.id}>
+                  <JobRow name={o.name} done={!!o.done} kinds={o.materials} user={o.user} here={o.here}
+                    onOpen={() => onAction({ kind: "openJob", job: { id: o.id, name: o.name } })} />
+                </li>
+              ))}
+            </ul>
+            <h3 className="home-sub">Recent, not open</h3>
+          </>}
+          <ul className="rows">
+            <Body load={notOpen} retry={reloadJobs} empty="No jobs yet. Start one with New job."
+              render={(rows) => rows.map((j) => (
+                <li key={j.id}>
+                  <JobRow name={j.name} done={!!j.done} kinds={kindsOf(j)} onOpen={() => onAction({ kind: "openJob", job: j })} />
+                </li>
+              ))} />
+          </ul>
         </Panel>
-
       </div>
     </div>
   );
 }
+
+/** A job: its name (and who has it open), its materials and thicknesses, Nested or In progress. */
+function JobRow({ name, done, kinds, user, here, onOpen }: { name: string; done: boolean; kinds: Kind[]; user?: string; here?: boolean; onOpen: () => void }) {
+  return (
+    <button className="row job-row" onClick={onOpen}
+      title={done ? "Nested: every part nested and every sheet post processed" : "In progress: not every part nested, or not every sheet post processed yet"}>
+      <span className="job-row-name"><span className="row-title">{name}</span>{user && <UserTag name={here ? `${user} (here)` : user} />}</span>
+      <span className="row-aside"><span className={`status ${done ? "status-done" : "status-progress"}`}>{done ? "Nested" : "In progress"}</span></span>
+      <span className="row-meta job-row-mats">
+        {kinds.length ? kinds.map((k) => <MatChip key={`${k.material}|${k.thicknessMm}`} {...k} />) : <span>no parts yet</span>}
+      </span>
+    </button>
+  );
+}
+
+const MatChip = ({ material, thicknessMm }: Kind) => <span className="sp-mat">{material} · {mm(thicknessMm)}</span>;
 
 function Panel({ tone, icon, title, more, onMore, children }: {
   tone: string; icon: ReactNode; title: string; more: string; onMore: () => void; children: ReactNode;
@@ -103,26 +121,10 @@ function Panel({ tone, icon, title, more, onMore, children }: {
         <h2 id={id}>{title}</h2>
         <button className="link" onClick={onMore}>{more}</button>
       </div>
-      <ul className="rows">{children}</ul>
+      {children}
     </section>
   );
 }
-
-function Row({ title, meta, aside, when: at, who, onOpen }: {
-  title: ReactNode; meta: ReactNode; aside: ReactNode; when: string; who?: string; onOpen: () => void;
-}) {
-  return (
-    <li>
-      <button className="row" onClick={onOpen}>
-        <span className="row-title">{title}</span>
-        <span className="row-aside">{aside}</span>
-        <span className="row-meta">{meta}</span>
-        <span className="row-when" title={fullDate(at)}>{when(at)}{who ? `, ${who}` : ""}</span>
-      </button>
-    </li>
-  );
-}
-
 
 function Body<T>({ load, retry, empty, render }: {
   load: Load<T[]>; retry: () => void; empty: string; render: (rows: T[]) => ReactNode;
