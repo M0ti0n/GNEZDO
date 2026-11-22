@@ -23,7 +23,7 @@ import { dimensionOf, type Measure, type Pick as DimPick } from "../import/measu
 
 type Pick = "base" | "top" | "stitch" | "edge" | "deledge" | "one" | "measure3d" | "measure" | "look" | null;
 
-const K = "#1b1b1b", G = "#1d9641", R = "#e3262b", B = "#1d7fd0";
+const K = "#1b1b1b", R = "#e3262b", B = "#1d7fd0";
 
 /** How the part is shown in 3D (kept for next time, on this computer). */
 interface ViewPrefs {
