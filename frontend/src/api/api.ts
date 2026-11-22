@@ -18,6 +18,9 @@ const useApi = import.meta.env.VITE_USE_API === "true";
 /** Sample data only: nothing is saved (shown as DEMO in the green bar). */
 export const demoMode = !useApi;
 
+/** The version of each shared setting as this page read or saved it (the server's ETag). */
+const settingVersion = new Map<string, string>();
+
 async function get<T>(url: string): Promise<T> {
   let res: Response;
   try { res = await fetch(url, { headers: { Accept: "application/json", ...diagHeaders() } }); }
@@ -479,10 +482,45 @@ export const api = {
     const out = new Set(names);
     setLocalRemnants(localRemnants().filter((r) => !out.has(r.name)));
   },
-  /** A setting shared by everyone (on the server); null when it was never saved, or in the demo. */
-  setting: async <T,>(key: string): Promise<T | null> => (useApi ? get<T | null>(`/api/settings/${key}`) : null),
+  /** A setting shared by everyone (on the server); null when it was never saved, or in the demo. Its
+   *  version is kept (settingVersion): a save from it is refused when someone saved since (409). */
+  setting: async <T,>(key: string): Promise<T | null> => {
+    if (!useApi) return null;
+    const url = `/api/settings/${key}`;
+    let res: Response;
+    try { res = await fetch(url, { headers: { Accept: "application/json", ...diagHeaders() } }); }
+    catch (e) { diag("error", `Server not reached: GET ${url}`); throw e; }
+    if (res.status === 401) { window.dispatchEvent(new Event("gnezdo:signin-needed")); throw new Error("Sign in first."); }
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`);
+    const v = res.headers.get("ETag");
+    if (v) settingVersion.set(key, v.replace(/"/g, ""));
+    return (await res.json()) as T | null;
+  },
+  /** Every shared setting's version on the server now (to read again what changed). */
+  settingVersions: async (): Promise<Record<string, string>> => (useApi ? get<Record<string, string>>("/api/settings/versions") : {}),
+  /** The version of a shared setting this page has (missing: not read yet). */
+  settingVersion: (key: string): string | undefined => settingVersion.get(key),
   saveSetting: async <T,>(key: string, value: T): Promise<void> => {
-    if (useApi) await post<unknown>(`/api/settings/${key}`, { value, modifiedBy: "" }, "PUT");
+    if (!useApi) return;
+    const url = `/api/settings/${key}`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "PUT",
+        headers: { Accept: "application/json", "Content-Type": "application/json", ...diagHeaders() },
+        body: JSON.stringify({ value, modifiedBy: "", ...(settingVersion.has(key) ? { base: settingVersion.get(key) } : {}) }),
+      });
+    } catch (e) { diag("error", `Server not reached: PUT ${url}`); throw e; }
+    if (res.status === 401) { window.dispatchEvent(new Event("gnezdo:signin-needed")); throw new Error("Sign in first."); }
+    if (!res.ok) {
+      let data: Record<string, unknown> | undefined;
+      try { data = await res.json(); } catch { /* not JSON */ }
+      const detail = (data?.message as string | undefined) ?? `${res.status} ${res.statusText}`;
+      diag("api", `PUT ${url}: ${res.status} ${detail}`);
+      throw Object.assign(new Error(detail), { status: res.status, data });
+    }
+    const v = res.headers.get("ETag");
+    if (v) settingVersion.set(key, v.replace(/"/g, ""));
   },
   /** A saved part's drawing (entities with roles, mm, y up); null when it was saved without one. */
   partGeometry: async (id: string): Promise<{ entities: Entity[]; marks?: { grain?: "x" | "y"; foil?: boolean }; aids?: Aid[] } | null> => {

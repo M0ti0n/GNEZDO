@@ -10,10 +10,13 @@ interface Props {
   notice?: boolean;
   /** The red button stays off until this is false (e.g. a word to type first). */
   confirmDisabled?: boolean;
+  /** a second choice beside the confirm button */
+  altLabel?: string;
+  onAlt?: () => void;
 }
 
 // A short question before something that loses work (red button = go ahead, Cancel = keep).
-export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCancel, notice = false, confirmDisabled = false }: Props) {
+export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCancel, notice = false, confirmDisabled = false, altLabel, onAlt }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
     window.addEventListener("keydown", onKey);
@@ -38,6 +41,7 @@ export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCanc
             ? <button type="button" className="btn btn-save" onClick={onConfirm} autoFocus>{confirmLabel}</button>
             : <>
                 <button type="button" className="btn btn-plain" onClick={onCancel} autoFocus>Cancel</button>
+                {altLabel && onAlt && <button type="button" className="btn btn-plain" onClick={onAlt}>{altLabel}</button>}
                 <button type="button" className="btn btn-replace" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</button>
               </>}
         </footer>

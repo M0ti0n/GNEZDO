@@ -83,8 +83,25 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
         Assert.Equal(HttpStatusCode.OK, (await api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(20, created.ModifiedAt, force: true))).StatusCode);
         Assert.Equal(20, (await api.Client.GetFromJsonAsync<List<JobPartDto>>($"/api/jobs/{created.Id}/parts"))![0].Qty);
         Assert.Equal(HttpStatusCode.Conflict, (await api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(30, aSaved.ModifiedAt))).StatusCode);
-        // a client that does not say what it saw (older pages) saves as before
-        Assert.Equal(HttpStatusCode.OK, (await api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(40, null))).StatusCode);
+        // a save that does not say which version it changes (an older client, a script): refused
+        var blind = await api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(40, null));
+        Assert.Equal(HttpStatusCode.PreconditionRequired, blind.StatusCode);
+        Assert.Equal(20, (await api.Client.GetFromJsonAsync<List<JobPartDto>>($"/api/jobs/{created.Id}/parts"))![0].Qty);
+    }
+
+    [Fact]
+    public async Task Saves_of_one_job_at_the_same_moment_from_the_same_version_let_only_one_in()
+    {
+        var ids = await PartIds(1);
+        object Req(int qty, DateTimeOffset? seen) => new
+        {
+            name = "Race job", parts = new[] { new { partId = ids[0], qty, no = 1 } }, nest = Nest(1), modifiedBy = "A", baseModifiedAt = seen,
+        };
+        var created = (await (await api.Client.PostAsJsonAsync("/api/jobs", Req(1, null))).Content.ReadFromJsonAsync<JobSavedDto>())!;
+        await Task.Delay(30);
+        var all = await Task.WhenAll(Enumerable.Range(2, 8).Select(q => api.Client.PutAsJsonAsync($"/api/jobs/{created.Id}", Req(q, created.ModifiedAt))));
+        Assert.Equal(1, all.Count(r => r.StatusCode == HttpStatusCode.OK));
+        Assert.Equal(7, all.Count(r => r.StatusCode == HttpStatusCode.Conflict));
     }
 
     private async Task<HttpResponseMessage> AsPage(HttpMethod how, string url, string page, string user, object? body = null)
@@ -99,10 +116,11 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
     public async Task A_job_open_on_another_computer_is_not_opened_or_saved_over_until_it_is_closed_there()
     {
         var ids = await PartIds(1);
-        object Req(int qty) => new { name = "Locked job", parts = new[] { new { partId = ids[0], qty, no = 1 } }, nest = Nest(1) };
+        object Req(int qty, DateTimeOffset? seen = null) => new { name = "Locked job", parts = new[] { new { partId = ids[0], qty, no = 1 } }, nest = Nest(1), baseModifiedAt = seen };
         // made in Fab's tab: open there
         var made = await AsPage(HttpMethod.Post, "/api/jobs", "page-a", "Fab", Req(1));
-        var id = (await made.Content.ReadFromJsonAsync<JobSavedDto>())!.Id;
+        var madeDto = (await made.Content.ReadFromJsonAsync<JobSavedDto>())!;
+        var id = madeDto.Id;
         Assert.Equal(HttpStatusCode.OK, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/open", "page-a", "Fab")).StatusCode);
         // another computer: refused, told who has it; so is its save, and its renewal
         var b = await AsPage(HttpMethod.Post, $"/api/jobs/{id}/open", "page-b", "Mia");
@@ -110,12 +128,12 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
         var why = (await b.Content.ReadFromJsonAsync<JsonObject>())!;
         Assert.Equal("Fab", why["user"]!.GetValue<string>());
         Assert.Contains("Locked job is open on another computer by Fab", why["message"]!.GetValue<string>());
-        Assert.Equal(HttpStatusCode.Locked, (await AsPage(HttpMethod.Put, $"/api/jobs/{id}", "page-b", "Mia", Req(5))).StatusCode);
+        Assert.Equal(HttpStatusCode.Locked, (await AsPage(HttpMethod.Put, $"/api/jobs/{id}", "page-b", "Mia", Req(5, madeDto.ModifiedAt))).StatusCode);
         Assert.Equal(HttpStatusCode.Locked, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/keep", "page-b", "Mia")).StatusCode);
         // the same user in another browser: the same
         Assert.Equal(HttpStatusCode.Locked, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/open", "page-c", "Fab")).StatusCode);
         // the page that has it saves and renews; someone else's close does not let it go
-        Assert.Equal(HttpStatusCode.OK, (await AsPage(HttpMethod.Put, $"/api/jobs/{id}", "page-a", "Fab", Req(2))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await AsPage(HttpMethod.Put, $"/api/jobs/{id}", "page-a", "Fab", Req(2, madeDto.ModifiedAt))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/keep", "page-a", "Fab")).StatusCode);
         await AsPage(HttpMethod.Post, $"/api/jobs/{id}/close", "page-b", "Mia");
         Assert.Equal(HttpStatusCode.Locked, (await AsPage(HttpMethod.Post, $"/api/jobs/{id}/open", "page-b", "Mia")).StatusCode);
@@ -223,6 +241,7 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
         {
             name = "Test job 2b",
             parts = new[] { new { partId = ids[2], qty = 5 } },
+            baseModifiedAt = (await first.Content.ReadFromJsonAsync<JobSavedDto>())!.ModifiedAt,
         });
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var saved = (await res.Content.ReadFromJsonAsync<JobSavedDto>())!;

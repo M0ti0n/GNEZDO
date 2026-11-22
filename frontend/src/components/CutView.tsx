@@ -1,6 +1,7 @@
+import { refreshShared } from "../job/freshSettings";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { JobPart } from "../api/types";
-import { CUT_RULES, liveContours, processSheet, type CutRule, type CutWhat } from "../job/cutPath";
+import { CUT_RULES, handEdited, keepHandEdits, liveContours, processSheet, type CutRule, type CutWhat } from "../job/cutPath";
 import { diag } from "../job/diag";
 import { machineCan, type Machine, type Origin } from "../job/machine";
 import { partColor, type NestedSheet } from "../job/nest";
@@ -74,6 +75,7 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [askSave, setAskSave] = useState(false);
+  const [askHand, setAskHand] = useState<{ n: number; saved: boolean } | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   /** the row chosen in the list (part index), moved by Up / Down */
   const [rowSel, setRowSel] = useState<number | null>(null);
@@ -94,9 +96,15 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
     return n;
   });
 
-  const run = async (saved = false) => {
+  const run = async (saved = false, hand?: "keep" | "redo") => {
     if (busy) return;
     if (mode === "multi" && needsSave && !saved) { setAskSave(true); return; }
+    // the whole sheet again: parts changed by hand (joints, breaks, leads, inline cuts) kept, or made again?
+    const whole = mode === "multi" || mode === "sheet";
+    if (whole && !hand) {
+      const n = (mode === "multi" ? sheets : [sheets[index]]).reduce((t, sh) => t + (sh?.cut ? liveContours(sh).filter(handEdited).length : 0), 0);
+      if (n) { setAskHand({ n, saved }); return; }
+    }
     if (picks && !picked.length) { setMsg({ text: "Pick the parts first: SELECT, then click them in the order to cut them", bad: true }); return; }
     if (mode === "trace" && !machineCan(machine, "trace")) { setMsg({ text: `${machine.name} does not trace (Settings → Machines → What it cuts)`, bad: true }); return; }
     // parts of another material or thickness than their sheet (changed after nesting): not processed
@@ -114,15 +122,18 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
       const what: CutWhat = mode === "trace" ? "trace" : mode === "internal" ? "internal" : "all";
       const list = mode === "multi" ? sheets.map((_, i) => i) : [index];
       let contours = 0, metres = 0, fitted = 0, tight = 0, keptFirst = 0;
+      // the machine as it is on the server now (an admin may have changed it on another computer)
+      const mNow = (await refreshShared())?.list.find((x) => x.id === machine.id) ?? machine;
       for (const i of list) {
         const sh = sheets[i];
         const { leadFit, keptFirst: kf, ...cut } = await processSheet({
-          sheet: sh, paths, machine, origin, rule, what,
+          sheet: sh, paths, machine: mNow, origin, rule, what,
           parts: picks ? picked : null, ordered: picks,
           traceOf: (k) => (picks ? !noTrace.has(k) : !skipTrace),
         });
         fitted += leadFit?.fitted ?? 0; tight += leadFit?.tight ?? 0; keptFirst += kf ?? 0;
-        onCut(i, cut);
+        // (kept: made with the same settings only; settings changed since, Post process asks for them again)
+        onCut(i, hand === "keep" ? keepHandEdits(sh, cut) : cut);
         const live = liveContours({ ...sh, cut });
         contours += live.length;
         metres += live.reduce((s, c) => s + c.pts.reduce((a, p, k) => (k ? a + Math.hypot(p[0] - c.pts[k - 1][0], p[1] - c.pts[k - 1][1]) : 0), 0), 0) / 1000;
@@ -222,12 +233,23 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
   );
 
 
-  const dialog = askSave && (
-    <ConfirmDialog title="Save the job first?" confirmLabel="Save and process" onCancel={() => setAskSave(false)}
-      onConfirm={() => { setAskSave(false); void onSave().then((ok) => { if (ok) void run(true); }); }}>
-      Multi sheet processes every sheet of the solution: the job is saved first, so the cut paths are kept with it.
-    </ConfirmDialog>
-  );
+  const dialog = <>
+    {askSave && (
+      <ConfirmDialog title="Save the job first?" confirmLabel="Save and process" onCancel={() => setAskSave(false)}
+        onConfirm={() => { setAskSave(false); void onSave().then((ok) => { if (ok) void run(true); }); }}>
+        Multi sheet processes every sheet of the solution: the job is saved first, so the cut paths are kept with it.
+      </ConfirmDialog>
+    )}
+    {askHand && (
+      <ConfirmDialog title="Keep the changes made by hand?" confirmLabel="Keep them" altLabel="Make all again"
+        onCancel={() => setAskHand(null)}
+        onAlt={() => { const a = askHand; setAskHand(null); void run(a.saved, "redo"); }}
+        onConfirm={() => { const a = askHand; setAskHand(null); void run(a.saved, "keep"); }}>
+        {askHand.n} {askHand.n === 1 ? "contour was" : "contours were"} changed by hand after Auto cut (micro joints, breaks, leads, inline cuts).
+        {" "}Keep them: those parts stay as they are, in the order of the rule; the rest is processed again. Make all again: every part as Auto cut makes it, the changes go.
+      </ConfirmDialog>
+    )}
+  </>;
   return {
     panel: <>{panel}{dialog}</>,
     cut: {

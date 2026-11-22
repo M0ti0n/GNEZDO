@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/api";
 import { diag } from "../job/diag";
-import { foldersOf, type Machine, type Origin } from "../job/machine";
+import { foldersOf, gapsFor, type Machine, type Origin } from "../job/machine";
 import { countsOf, type NestedSheet } from "../job/nest";
 import { wrongStock, wrongStockText } from "../job/stock";
-import { changedMarks, liveContours, type CutContour } from "../job/cutPath";
+import { changedMarks, cutSettingsSig, liveContours, type CutContour } from "../job/cutPath";
+import { refreshShared } from "../job/freshSettings";
 import { checkSheet } from "../job/cutCheck";
 import { contourKind, pickContour } from "../job/manualCut";
 import { sheetProgram } from "../job/ncProgram";
@@ -254,6 +255,10 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
     const list = all ? sheets.map((_, i) => i) : [index];
     const out: Done[] = [];
     setDone(null);
+    // the machine as it is on the server now (an admin may have changed it on another computer since this
+    // page read it): its Technology row and postprocessor are the ones written
+    const mNow = (await refreshShared())?.list.find((x) => x.id === machine.id) ?? machine;
+    const ppNow = mNow.postprocessor?.source ? mNow.postprocessor : pp;
     for (const i of list) {
       setBusy(`Sheet ${i + 1} of ${sheets.length}`);
       await new Promise((r) => setTimeout(r, 30));   // let the spinner show
@@ -264,11 +269,13 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
       // the cut path is still the sheet's: every part processed as it is now, no pierce in a part
       // the tracing and open cut lines as they are now in the database (another browser may have changed them)
       const remarked = await changedMarks(sh);
-      const check = checkSheet(sh, (id) => partOf?.(id)?.path, (k) => partName(sh, k) ?? `part ${k + 1}`, remarked);
+      const kerfMm = sh.kerfMm ?? gapsFor(mNow, sh.material, sh.thicknessMm).kerfMm;
+      const check = checkSheet(sh, (id) => partOf?.(id)?.path, (k) => partName(sh, k) ?? `part ${k + 1}`, remarked,
+        { settingsNow: cutSettingsSig(mNow, sh), kerfMm });
       if (check.errors.length) { out.push({ sheet: i + 1, error: `not post processed: ${check.errors.join("; ")}` }); continue; }
-      const prog = sheetProgram(sh, machine, origin, nameOf(i), (k) => partName(sh, k));
+      const prog = sheetProgram(sh, mNow, origin, nameOf(i), (k) => partName(sh, k));
       if ("error" in prog) { out.push({ sheet: i + 1, error: prog.error }); continue; }
-      const r = runPostprocessor(pp.source, prog);
+      const r = runPostprocessor(ppNow!.source, prog);
       if (!r.ok) { out.push({ sheet: i + 1, error: r.error }); continue; }
       const warn = check.warns.length ? check.warns.join("; ") : undefined;
       try { out.push({ sheet: i + 1, file: await saveNcFile(machine, fileOf(i), r.text), ...(warn ? { warn } : {}) }); }

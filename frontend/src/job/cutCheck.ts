@@ -42,10 +42,14 @@ const listOf = (names: string[], max = 4) => {
   return u.length <= max ? u.join(", ") : `${u.slice(0, max).join(", ")} and ${u.length - max} more`;
 };
 
-/** marksChanged: the parts whose tracing or open cut lines changed since Auto cut (changedMarks, read before) */
-export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: number) => string, marksChanged?: Set<number>): SheetCheck {
+/** marksChanged: the parts whose tracing or open cut lines changed since Auto cut (changedMarks, read before);
+ *  settingsNow: the machine's cutting settings for the sheet now (cutSettingsSig); kerfMm: the kerf it is cut with */
+export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: number) => string, marksChanged?: Set<number>,
+  opts?: { settingsNow?: string; kerfMm?: number }): SheetCheck {
   const errors: string[] = [], warns: string[] = [];
   if (!sheet.cut) return { errors, warns };
+  if (opts?.settingsNow && sheet.cut.techSig && sheet.cut.techSig !== opts.settingsNow)
+    errors.push(`the Technology row for ${sheet.material} ${sheet.thicknessMm} mm or the machine's cutting settings changed since Auto cut (leads, gaps, E code sizes, ...): process the sheet again`);
   // -- every part processed, as it is now
   const changed = changedDrawings(sheet, pathOf);
   const ok = processedParts(sheet, pathOf);
@@ -137,5 +141,18 @@ export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: nu
   if (inOwn.length) errors.push(`an outline's pierce lies in its own part: ${listOf(inOwn)}. Move the lead (Lead in / out)`);
   if (outOfHole.length) errors.push(`a hole's pierce is not in the hole: ${listOf(outOfHole)}. Move the lead (Lead in / out)`);
   if (onLine.length) warns.push(`pierced on the contour itself, without a lead-in: ${listOf(onLine)}`);
+  // a lead-in shorter than the kerf: the kerf compensation (G41) has no room to come on before the contour,
+  // its start-up move notches the contour (QA R2-11)
+  const kerf = opts?.kerfMm ?? 0;
+  if (kerf > 0) {
+    const short: string[] = [];
+    for (const c of liveContours(sheet, pathOf)) {
+      if ((c.kind !== "outer" && c.kind !== "inner") || c.common || c.inline || c.leadIn.length < 2) continue;
+      let L = 0;
+      for (let i = 1; i < c.leadIn.length; i++) L += Math.hypot(c.leadIn[i][0] - c.leadIn[i - 1][0], c.leadIn[i][1] - c.leadIn[i - 1][1]);
+      if (L < kerf - 1e-6) short.push(own(c));
+    }
+    if (short.length) warns.push(`a lead-in shorter than the kerf (${kerf} mm): ${listOf(short)}. The kerf compensation may notch the contour where it comes on: make the lead longer (Lead in / out)`);
+  }
   return { errors, warns };
 }

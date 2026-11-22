@@ -23,6 +23,36 @@ public sealed class FolderTests(ApiFixture api) : IClassFixture<ApiFixture>, IDi
         Assert.Equal(HttpStatusCode.OK, put.StatusCode);
     }
 
+    [Theory]
+    [InlineData("SHEET 1.CNC", "SHEET 1.CNC")]
+    [InlineData("NUL", "_NUL")]
+    [InlineData("nul.CNC", "_nul.CNC")]
+    [InlineData("COM1.CNC", "_COM1.CNC")]
+    [InlineData(".CNC", "program.CNC")]
+    [InlineData("", "program.nc")]
+    [InlineData("26-0412 Brackets.v2.CNC", "26-0412 Brackets.v2.CNC")]
+    public void NC_file_names_are_safe_and_keep_their_extension(string name, string expected) =>
+        Assert.Equal(expected, Gnezdo.Api.Endpoints.MachineFolders.SafeName(name, "program.nc"));
+
+    [Fact]
+    public void A_long_NC_file_name_is_shortened_with_its_extension_kept()
+    {
+        var s = Gnezdo.Api.Endpoints.MachineFolders.SafeName(new string('J', 300) + ".CNC", "program.nc");
+        Assert.Equal(150, s.Length);
+        Assert.EndsWith(".CNC", s);
+    }
+
+    [Fact]
+    public async Task An_NC_file_is_written_whole_and_writes_of_one_name_wait_for_each_other()
+    {
+        var dir = Directory.CreateDirectory(Path.Combine(_dir, "whole")).FullName;
+        var path = Path.Combine(dir, "SAME.CNC");
+        var big = new string('X', 400_000);
+        await Task.WhenAll(Enumerable.Range(0, 8).Select(i => Gnezdo.Api.Endpoints.MachineFolders.WriteWholeAsync(path, $"{i}{big}", default)));
+        Assert.Equal(400_001, (await File.ReadAllTextAsync(path)).Length);
+        Assert.Single(Directory.GetFiles(dir));   // no temporary file left behind
+    }
+
     [Fact]
     public async Task A_folder_is_checked_by_the_server()
     {
@@ -82,7 +112,7 @@ public sealed class FolderTests(ApiFixture api) : IClassFixture<ApiFixture>, IDi
         await Machines(new JsonObject { ["nc"] = nc, ["jobs"] = jobs, ["jobFile"] = false });
         var again = await (await api.Client.PutAsJsonAsync($"/api/jobs/{saved.Id}", new
         {
-            name = "Folder job", machine = "p1", parts = new[] { new { partId = part.Id, qty = 3 } },
+            name = "Folder job", machine = "p1", parts = new[] { new { partId = part.Id, qty = 3 } }, baseModifiedAt = saved.ModifiedAt,
         })).Content.ReadFromJsonAsync<JobSavedDto>();
         Assert.Null(again!.JobFile);
         Assert.Equal(2, JsonNode.Parse(await File.ReadAllTextAsync(saved.JobFile!))!["parts"]![0]!["qty"]!.GetValue<int>());

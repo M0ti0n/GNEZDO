@@ -20,6 +20,9 @@ export interface DraftContent {
   /** Finished solutions (a nest still running is not kept). */
   nest: JobNests | null;
   screen?: "parts" | "nest" | "nestReport" | "costReport";
+  /** The saved job's version these changes were made on (its modifiedAt when it was opened or saved): a save
+   *  after restoring is refused when someone saved it since. Missing in older drafts. */
+  baseModifiedAt?: string;
 }
 
 const headers = (json = false): Record<string, string> => ({ Accept: "application/json", ...(json ? { "Content-Type": "application/json" } : {}), ...diagHeaders() });

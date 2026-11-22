@@ -62,6 +62,8 @@ export interface CutContour {
   lead?: LeadType;
   /** the lead values set by hand (Process → Lead in / out); missing: the Technology row's */
   spec?: LeadSpec;
+  /** its lead moved, set or deleted by hand (Process → Lead in / out; Reset takes it off) */
+  edited?: boolean;
   /** a common cut block's outline: every part of the block (the cut path is good while they all stay put) */
   parts?: number[];
   /** a shared common cut line (cut once for two parts, along the middle of the kerf gap) */
@@ -117,6 +119,10 @@ export interface SheetCut {
    *  fingerprint does not see them: a part whose marking or open cut changed (replaced, edited in another
    *  browser) was posted with the old lines (QA R2-03). Post process reads them again and compares. */
   msigs?: Record<number, string>;
+  /** the settings the sheet was processed with (cutSettingsSig): the Technology row and the machine's cutting
+   *  settings. Changed since (an admin, another computer), Post process refuses: the program took the new E
+   *  codes and tech program with the old leads (QA GB-11). Missing: an older cut */
+  techSig?: string;
   /** made for a 0,0 corner that mirrors the sheet as drawn (outlines counter-clockwise on screen); missing = not */
   mirrored?: boolean;
   /** from PROCESS only (not kept with the sheet): the leads moved or shortened to fit, and those that still do not */
@@ -203,6 +209,37 @@ export function remapCut(cut: SheetCut | undefined, before: PlacedPart[], after:
 }
 
 /** The contours still good, in cutting order. */
+/** Changed by hand after Auto cut: a lead moved or set, micro joints, breaks, an inline cut, a common pierce. */
+export const handEdited = (c: CutContour) => !!(c.edited || c.spec || c.bc || c.inline || c.cp);
+
+/**
+ * A whole sheet processed again with the parts changed by hand kept as they were: the new cut, with each such
+ * part's old contours where the new ones of that part are (its tracing where its new tracing is, the rest where
+ * its new holes and outline are), so the order rule still holds. Only parts that stayed where they were, with
+ * the same drawing. A new Auto cut threw joints, breaks and hand-set leads away without asking (QA R2-10).
+ */
+export function keepHandEdits(sheet: NestedSheet, fresh: SheetCut, pathOf?: PathOf): SheetCut {
+  const old = sheet.cut;
+  if (!old) return fresh;
+  const live = liveContours(sheet, pathOf);
+  const hand = new Set<number>();
+  for (const c of live) if (!c.parts && handEdited(c)) hand.add(c.part);
+  for (const p of [...hand]) if (old.keys[p] !== fresh.keys[p] || (old.sigs?.[p] ?? fresh.sigs?.[p]) !== fresh.sigs?.[p]) hand.delete(p);
+  if (!hand.size) return fresh;
+  const trace = (c: CutContour) => c.kind === "trace";
+  const oldOf = (p: number, t: boolean) => live.filter((c) => !c.parts && c.part === p && trace(c) === t).map(({ via: _via, ...c }) => c);
+  const out: CutContour[] = [];
+  const placed = new Set<string>();
+  for (const c of fresh.contours) {
+    if (c.parts || !hand.has(c.part)) { out.push(c); continue; }
+    const key = `${c.part}|${trace(c)}`;
+    if (!placed.has(key)) { placed.add(key); out.push(...oldOf(c.part, trace(c))); }
+  }
+  // a part that had tracing, or cuts, the new cut has none of (a setting changed): at the end
+  for (const p of hand) for (const t of [true, false]) if (!placed.has(`${p}|${t}`)) out.push(...oldOf(p, t));
+  return { ...fresh, contours: out };
+}
+
 export const liveContours = (sheet: NestedSheet, pathOf?: PathOf): CutContour[] => {
   const ok = processedParts(sheet, pathOf);
   return (sheet.cut?.contours ?? []).filter((c) => (c.parts ?? [c.part]).every((i) => ok.has(i)));
@@ -982,6 +1019,19 @@ export interface CutRequest {
 }
 
 /** The sheet's cut path after PROCESS (every part: a new one; chosen parts: theirs replaced, put after the others). */
+/** A fingerprint of what Auto cut takes from the machine for this sheet: its Technology row (leads, gaps, kerf,
+ *  E code limits, ...) and the machine's cutting settings (origin, trims, gaps, kerf, hole compensation,
+ *  lines it can do, cut order, lead rules), and the sheet's own gaps. Not its size, postprocessor or folders. */
+export function cutSettingsSig(machine: Machine, sheet: Pick<NestedSheet, "material" | "thicknessMm" | "kerfMm" | "partGapMm" | "trims">): string {
+  const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row ?? null;
+  const m = {
+    technology: machine.technology, origin: machine.origin, trims: machine.trims, partGapMm: machine.partGapMm, kerfMm: machine.kerfMm,
+    holeCompPct: machine.holeCompPct, lines: machine.lines, cutOrder: machine.cutOrder, leads: machine.leads,
+  };
+  const sh = { kerfMm: sheet.kerfMm, partGapMm: sheet.partGapMm, trims: sheet.trims };
+  return pathSig(JSON.stringify({ row, m, sh }));
+}
+
 export async function processSheet(q: CutRequest): Promise<SheetCut> {
   const { sheet, machine } = q;
   let idx = q.parts ?? sheet.parts.map((_, i) => i);
@@ -1243,7 +1293,11 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   contours = tidyPierces(contours);
   // Selected parts / Trace / Cut internal pick an order by hand: the rule of the Auto cut before stays the sheet's
   const autoRule = q.parts && q.ordered ? sheet.cut?.autoRule ?? (sheet.cut && sheet.cut.rule !== "manual" ? sheet.cut.rule : q.rule) : q.rule;
-  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, autoRule, contours, keys, sigs, ...(Object.keys(msigs).length ? { msigs } : {}), ...(mirrored ? { mirrored } : {}),
+  // the settings it was cut with; some parts only, with others cut with other settings before: those stay
+  // (Post process asks for the whole sheet to be processed again)
+  const sigNow = cutSettingsSig(machine, sheet);
+  const techSig = q.parts && sheet.cut && sheet.cut.techSig !== undefined && sheet.cut.techSig !== sigNow && sheet.cut.contours.length ? sheet.cut.techSig : sigNow;
+  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, autoRule, contours, keys, sigs, techSig, ...(Object.keys(msigs).length ? { msigs } : {}), ...(mirrored ? { mirrored } : {}),
     ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}),
     ...(first.length ? { keptFirst: new Set(first.flatMap((c) => c.parts ?? [c.part])).size } : {}) };
 }

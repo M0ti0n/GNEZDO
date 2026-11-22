@@ -182,8 +182,9 @@ export function editLead(ctx: LeadCtx, k: number, op: LeadOp, all: boolean, live
     const v = spec ?? leadValues(kind, ctx.row, type);
     const made = leadsAt(L.lp, kind, ctx.rules, ctx.row, s, type, v, side);
     const rest: CutContour = { ...c };
-    delete rest.spec; delete rest.small;
-    contours[i] = { ...rest, ...made, lead: type, ...(spec ? { spec } : {}) };
+    delete rest.spec; delete rest.small; delete rest.edited;
+    // set by hand (a new Auto cut asks before throwing it away); Reset: as Auto cut makes it
+    contours[i] = { ...rest, ...made, lead: type, ...(spec ? { spec } : {}), ...(op.op !== "reset" ? { edited: true } : {}) };
     n++;
     return null;
   };
