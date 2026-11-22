@@ -76,6 +76,7 @@ var dataDir = builder.Configuration["Gnezdo:DataDir"] is { Length: > 0 } dd ? dd
 builder.AddGnezdoAuth(desktop is null && AuthEndpoints.Required(builder.Configuration, demo), Path.Combine(dataDir, "keys"));
 builder.Services.AddSingleton<NestRunner>();
 builder.Services.AddSingleton<JobLocks>();
+builder.Services.AddSingleton<JobOffers>();
 builder.Services.AddSingleton<ServerLoad>();
 // Connection string is read when the first DbContext is created, so tests and Docker can override it.
 // "Gnezdo:Database": sqlserver (server build, the default), postgres (a server on PostgreSQL) or sqlite
@@ -142,6 +143,7 @@ if (!demo)
     app.MapProjectEndpoints();
     app.MapHomeEndpoints();
     app.MapJobEndpoints();
+    JobOffers.Map(app);
     app.MapSettingsEndpoints();
     app.MapMachineFolderEndpoints();
     app.MapRemnantEndpoints();

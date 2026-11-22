@@ -19,9 +19,10 @@ import { ProcessDialog, type ProcessValues } from "./import/ProcessDialog";
 import { CloseUnsavedDialog } from "./import/CloseUnsavedDialog";
 import { SketchNameDialog } from "./import/SketchNameDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
+import { IncomingPartsDialog, SendPartsDialog } from "./components/SendPartsDialogs";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { partGeometry } from "./import/toPart";
-import type { SavePart } from "./api/api";
+import type { IncomingOffer, OfferAnswer, SavePart } from "./api/api";
 import { forgetPartMarks, remapCut, shiftSheet } from "./job/cutPath";
 import { loadDefaultProject } from "./job/defaultProject";
 import { applyRules, loadRules, normalizeRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
@@ -1010,6 +1011,73 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // Server build: parts sent to a job someone else has open (Parts list -> Send to someone's job). Every few
+  // seconds the server is asked for parts sent to the jobs open here (asked one offer at a time) and for
+  // the answers to this page's own (said in the toast).
+  const serverMode = !demoMode && !!authState?.required && !!me;
+  const [sendParts, setSendParts] = useState<PartSummary[] | null>(null);
+  const [inbox, setInbox] = useState<IncomingOffer[]>([]);
+  const [answering, setAnswering] = useState(false);
+  const answered = useRef(new Set<string>());
+  useEffect(() => {
+    if (!serverMode) return;
+    let alive = true;
+    const told = (a: OfferAnswer) => {
+      const what = `${a.partCount} ${a.partCount === 1 ? "part" : "parts"} (${a.pieces} ${a.pieces === 1 ? "piece" : "pieces"})`;
+      return a.state === "accepted" ? `${a.toUser} accepted your ${what} into ${a.jobName}`
+        : a.state === "refused" ? `${a.toUser} refused your ${what} for ${a.jobName}`
+        : `${a.jobName} was closed before ${a.toUser} answered: your ${what} were not added`;
+    };
+    const poll = () => api.offers().then((r) => {
+      if (!alive) return;
+      if (r.answers.length) {
+        setToast(r.answers.map(told).join(". "));
+        r.answers.forEach((a) => diag("tab", told(a), { offer: a.id }));
+      }
+      setInbox((q) => {
+        const now = r.incoming.filter((o) => !answered.current.has(o.id));
+        // the server's list is the truth (an offer gone meanwhile disappears); the order stays
+        return [...q.filter((o) => now.some((x) => x.id === o.id)), ...now.filter((o) => !q.some((x) => x.id === o.id))];
+      });
+    }).catch(() => { /* the server away: asked again */ });
+    void poll();
+    const t = window.setInterval(() => void poll(), 4000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [serverMode]);   // eslint-disable-line react-hooks/exhaustive-deps
+  /** Parts accepted from someone: into the job's work parts (a part already there: its quantity goes up). */
+  const addOffered = (jid: string, title: string, items: { part: PartSummary; qty: number }[]) => {
+    setJobParts((m) => {
+      const list = m[jid] ?? [];
+      let next = list.reduce((n, jp) => Math.max(n, jp.no ?? 0), 0);
+      const updated = list.map((jp) => {
+        const x = items.find((i) => i.part.id === jp.part.id);
+        return x ? { ...jp, qty: jp.qty + x.qty, qtyMax: (jp.qtyMax ?? jp.qty) + x.qty } : jp;
+      });
+      const fresh = items.filter((i) => !list.some((jp) => jp.part.id === i.part.id))
+        .map((i) => ({ part: i.part, qty: i.qty, qtyMax: i.qty, no: ++next, nested: 0 }));
+      return { ...m, [jid]: [...updated, ...fresh] };
+    });
+    const pieces = items.reduce((n, i) => n + i.qty, 0);
+    setToast(`Added ${items.length} ${items.length === 1 ? "part" : "parts"} (${pieces} ${pieces === 1 ? "piece" : "pieces"}) to ${title}`);
+  };
+  const answerOffer = async (o: IncomingOffer, accept: boolean) => {
+    setAnswering(true);
+    const tab = state.tabs.find((t) => t.kind === "job" && t.jobId && savedIdOf(t.jobId) === o.jobId);
+    try {
+      if (accept && !tab?.jobId) throw new Error(`${o.jobName} is not open here any more`);
+      await api.answerOffer(o.id, accept);
+      if (accept && tab?.jobId) addOffered(tab.jobId, tab.title, o.parts);
+      else if (!accept) setToast(`Refused the parts from ${o.fromUser}: they are told`);
+      diag("tab", `Parts from ${o.fromUser} for ${o.jobName} ${accept ? "accepted" : "refused"}`, { offer: o.id });
+    } catch (e) {
+      setToast(`Could not answer ${o.fromUser}: ${(e as Error).message}`);
+    } finally {
+      answered.current.add(o.id);
+      setInbox((q) => q.filter((x) => x.id !== o.id));
+      setAnswering(false);
+    }
+  };
+
   // The saved jobs open here, kept open every half minute (a page that stops renewing loses them after two
   // minutes) and let go as the page closes. One taken meanwhile (this computer was asleep) is said once.
   const heldJobs = useRef<{ id: string; title: string }[]>([]);
@@ -1490,6 +1558,7 @@ export function App() {
           onMode={(m) => { setDrawer(m); if (m === "remnants") showView("remnants"); }}
           targetJob={job}
           onAddToJob={(parts) => job && addParts(job.id, job.title, parts)}
+          onSendParts={serverMode ? setSendParts : undefined}
           onJobSearch={runJobSearch}
           onRemnantSearch={runRemnantSearch}
           remnant={{ selected: remnantSel, onChanged: (name) => { setRemnantPick(name); setRemnantSearch((s) => ({ ...s, run: s.run + 1 })); showView("remnants"); } }}
@@ -1592,6 +1661,11 @@ export function App() {
                 machine={machineFor(addSheetFor.jobId)}
                 onSave={(s) => addSheet(addSheetFor.jobId, s)} onClose={() => setAddSheetFor(null)} />
             )}
+            {sendParts && (
+              <SendPartsDialog parts={sendParts} qtyOf={(p) => (rules.qtyFromName && p.qty > 0 ? p.qty : 1)}
+                onClose={() => setSendParts(null)} onSent={(text) => { setSendParts(null); setToast(text); }} />
+            )}
+            {inbox[0] && <IncomingPartsDialog offer={inbox[0]} more={inbox.length - 1} busy={answering} onAnswer={(a) => void answerOffer(inbox[0], a)} />}
             {saveConflict && (
               <ConfirmDialog title="Saved by someone else" confirmLabel="Save over it"
                 onCancel={() => setSaveConflict(null)}

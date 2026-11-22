@@ -28,6 +28,8 @@ interface Props {
   onMode: (m: DrawerMode | null) => void;
   targetJob: { id: string; title: string } | null; // job tab that is open now
   onAddToJob: (parts: PartSummary[]) => void;
+  /** Server build: sends the chosen parts to a job open on another computer (missing: no such button) */
+  onSendParts?: (parts: PartSummary[]) => void;
   onJobSearch: (filter: JobFilter) => void;   // results open on the main screen
   onRemnantSearch: (filter: RemnantFilter) => void;   // results open on the main screen
   /** the remnant picked on the Remnants screen; a remnant imported / changed in the panel */
@@ -52,7 +54,7 @@ export type RailSection = "import" | "extract" | "special" | "jobs" | "remnants"
 
 // Left side: a rail that opens a docked panel for finding imported parts
 // (to drag into a job), searching jobs, or importing new drawings.
-export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRemnantSearch, remnant, homeActive, onHome, onNewJob, importPanel, extractPanel, showQty, machines, onRail, screen }: Props) {
+export function Drawer({ mode, onMode, targetJob, onAddToJob, onSendParts, onJobSearch, onRemnantSearch, remnant, homeActive, onHome, onNewJob, importPanel, extractPanel, showQty, machines, onRail, screen }: Props) {
   const waiting = importPanel.items.filter((i) => !i.processed).length;
   const toggle = (m: DrawerMode) => onMode(mode === m ? null : m);
   return (
@@ -95,7 +97,7 @@ export function Drawer({ mode, onMode, targetJob, onAddToJob, onJobSearch, onRem
       </div>
       {mode && (
         <div className="drawer-panel">
-          {mode === "parts" && <PartsPanel targetJob={targetJob} onAddToJob={onAddToJob} showQty={showQty} onClose={() => onMode(null)} />}
+          {mode === "parts" && <PartsPanel targetJob={targetJob} onAddToJob={onAddToJob} onSendParts={onSendParts} showQty={showQty} onClose={() => onMode(null)} />}
           {mode === "jobs" && <JobsPanel onSearch={onJobSearch} onClose={() => onMode(null)} machines={machines} />}
           {mode === "remnants" && <RemnantsPanel onSearch={onRemnantSearch} onClose={() => onMode(null)} selected={remnant?.selected ?? null} onChanged={remnant?.onChanged ?? (() => {})} />}
           {mode === "import" && <ImportPanel {...importPanel} onClose={() => onMode(null)} />}
@@ -171,7 +173,7 @@ function toFilter(d: Draft): PartFilter {
 
 const sameFilter = (a: PartFilter, b: PartFilter) => JSON.stringify(a) === JSON.stringify(b);
 
-function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "targetJob" | "onAddToJob" | "showQty"> & { onClose: () => void }) {
+function PartsPanel({ targetJob, onAddToJob, onSendParts, showQty, onClose }: Pick<Props, "targetJob" | "onAddToJob" | "onSendParts" | "showQty"> & { onClose: () => void }) {
   const [d, setD] = useState<Draft>(EMPTY_DRAFT);
   const [applied, setApplied] = useState<PartFilter>(toFilter(EMPTY_DRAFT));
   const [more, setMore] = useState(false);   // extended filters open
@@ -372,13 +374,19 @@ function PartsPanel({ targetJob, onAddToJob, showQty, onClose }: Pick<Props, "ta
           onRestored={(now) => { setParts((list) => list?.map((x) => (x.id === now.id ? now : x)) ?? list); setHistory(now); }} />
       )}
 
-      <div className="drawer-foot">
+      <div className={`drawer-foot${onSendParts ? " has-send" : ""}`}>
         {targetJob ? (
           <button className="btn btn-primary" disabled={!chosen.length} onClick={() => { onAddToJob(chosen); setSelected(new Set()); }}>
             Add {chosen.length || ""} to {targetJob.title}
           </button>
         ) : (
           <p className="hint">Right click a part for its properties. Open a job, then drag parts into it.</p>
+        )}
+        {onSendParts && (
+          <button className="btn btn-plain drawer-send" disabled={!chosen.length} title="Send the ticked parts to a job someone else has open: they accept them into it, or refuse"
+            onClick={() => { onSendParts(chosen); setSelected(new Set()); }}>
+            Send {chosen.length || ""} to someone's job…
+          </button>
         )}
       </div>
     </>

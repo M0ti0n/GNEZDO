@@ -58,6 +58,13 @@ public sealed class JobLocks(TimeProvider clock)
         lock (_gate) { if (_held.TryGetValue(job, out var h) && h.Page == page) _held.TryRemove(job, out _); }
     }
 
+    /// <summary>The jobs open now, and where.</summary>
+    public IReadOnlyList<(int Job, Holder Holder)> Open() =>
+        _held.Where(kv => Live(kv.Value)).Select(kv => (kv.Key, kv.Value)).ToList();
+
+    /// <summary>The page holding the job now (null: nobody).</summary>
+    public Holder? HolderOf(int job) => _held.TryGetValue(job, out var h) && Live(h) ? h : null;
+
     public static string PageOf(HttpContext ctx) =>
         ctx.Request.Headers["X-Gnezdo-Page"].FirstOrDefault() is { Length: > 0 and <= 64 } p ? p
         : ctx.Request.Query["page"].FirstOrDefault() is { Length: > 0 and <= 64 } q ? q : "";
