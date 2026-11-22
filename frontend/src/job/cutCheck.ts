@@ -122,7 +122,9 @@ export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: nu
   };
   const offParts: string[] = [];
   placed.forEach((g, j) => { if (g && !g.loops[0].every(onSheet)) offParts.push(nameOf(j)); });
-  if (offParts.length) errors.push(`${listOf(offParts)} ${offParts.length === 1 ? "lies" : "lie"} outside the sheet, wholly or partly: move ${offParts.length === 1 ? "it" : "them"} onto the sheet`);
+  // (by name: copies of one part are one name, said once)
+  const one = new Set(offParts).size === 1 && offParts.length === 1;
+  if (offParts.length) errors.push(`${listOf(offParts)}${offParts.length > new Set(offParts).size ? " (copies)" : ""} ${one ? "lies" : "lie"} outside the sheet, wholly or partly: move ${one ? "it" : "them"} onto the sheet`);
   const offCuts: string[] = [];
   for (const c of liveContours(sheet, pathOf)) {
     const mine = c.parts ?? [c.part];
