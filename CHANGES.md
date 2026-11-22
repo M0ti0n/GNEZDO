@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 22 Nov 2026, 4 (`de86398`)
+
 - **A new home screen:** two columns, without the Import and New job tiles.
   - **Recently added parts:** the last ten parts added to the library, each with a small picture, its project, its material and thickness, and when it was added. Clicking one opens the Parts panel.
   - **Recent jobs:** each job's name, its materials and thicknesses, and one of two states. **Nested** means every part is nested and every sheet is post processed (or the job is marked as cut). **In progress** is everything else.
