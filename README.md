@@ -2,7 +2,7 @@
 
 # GNEZDO
 
-**Laser nesting software built by a metal-shop engineer, for metal shops.**
+**Laser plasma nesting software built for metal shops.**
 
 Run it as a web app on your work server, or as a desktop app on Windows and Linux.
 
@@ -34,7 +34,6 @@ I work as a mechanical engineer in a metal processing company. The commercial ne
 
 It is meant for professional industrial shops, not just hobbyists.
 
-*Why the name?* Every "nest" and "nesting" name was already taken, and "gnezdo" means "nest" in my language. :)
 
 ## Features
 
@@ -52,7 +51,7 @@ Coming:
 
 - **Part import from DWG and SVG**
 - **Remnant database**
-- **Processing and post-processing**: cut order, lead-ins, toolpaths and machine-specific features
+- **Processing and post-processing**: cut order, lead-ins, tool paths and machine-specific features
 - **Nesting and cost reports**
 
 ## Roadmap
@@ -230,4 +229,4 @@ If GNEZDO is useful to you, you can support development:
 
 ## Contact
 
-For more info, write to **fab.go3d(4ttt)gmail.com**.
+For more info, write to **gnezdo.nest@proton.me**.
