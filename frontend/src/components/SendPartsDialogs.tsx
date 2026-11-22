@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, type IncomingOffer, type OpenJob } from "../api/api";
 import type { PartSummary } from "../api/types";
 import { PartThumb } from "./PartThumb";
@@ -16,6 +16,16 @@ const mm = (n: number) => `${Number(n.toFixed(2))} mm`;
 /** A material and thickness as a bubble (like Used in jobs in Projects and parts); green: the same as the parts sent. */
 const MatChip = ({ material, thicknessMm, fit = false }: { material: string; thicknessMm: number; fit?: boolean }) => (
   <span className={`sp-mat${fit ? " is-fit" : ""}`} title={fit ? "The same material and thickness as parts you are sending" : undefined}>{material} · {mm(thicknessMm)}</span>
+);
+/** Each user's own color, the same on every computer (from the name). */
+const USER_COLORS = ["#2f7fc1", "#c0392b", "#8e44ad", "#d35400", "#138d75", "#34495e", "#b7950b", "#c2185b", "#6d4c41", "#3f8f2a", "#5c6bc0", "#00838f"];
+export const userColor = (name: string) => {
+  let h = 0;
+  for (const c of name.trim().toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return USER_COLORS[h % USER_COLORS.length];
+};
+export const UserTag = ({ name }: { name: string }) => (
+  <span className="sp-user" style={{ background: userColor(name) }}><UserIcon />{name}</span>
 );
 const UserIcon = () => (
   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -48,8 +58,25 @@ export function SendPartsDialog({ parts, qtyOf, onClose, onSent }: {
   }, [onClose, busy]);
   const kinds = new Set(parts.map((p) => `${p.material.toLowerCase()}|${p.thicknessMm}`));
   const same = (m: { material: string; thicknessMm: number }) => kinds.has(`${m.material.toLowerCase()}|${m.thicknessMm}`);
-  const fits = (j: OpenJob) => j.materials.some(same);
-  const sorted = jobs ? [...jobs].sort((a, b) => Number(fits(b)) - Number(fits(a))) : null;
+  const mats = new Set(parts.map((p) => p.material.toLowerCase()));
+  // the most relevant first: more of the parts' materials and thicknesses in it, then the same materials
+  // (other thicknesses), then jobs with nothing saved yet, then the rest; by name within each
+  const score = (j: OpenJob) => {
+    if (!j.materials.length) return 1;
+    const exact = new Set(j.materials.filter(same).map((m) => `${m.material.toLowerCase()}|${m.thicknessMm}`)).size;
+    const near = new Set(j.materials.filter((m) => mats.has(m.material.toLowerCase())).map((m) => m.material.toLowerCase())).size;
+    return exact * 100 + near * 10;
+  };
+  const sorted = jobs ? [...jobs].sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name)) : null;
+  // four jobs show, the rest scroll
+  const list = useRef<HTMLUListElement>(null);
+  const [listMax, setListMax] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!el || el.children.length <= 4) { setListMax(undefined); return; }
+    const fourth = el.children[3] as HTMLElement;
+    setListMax(fourth.offsetTop + fourth.offsetHeight + 2);   // (the list is the offset parent)
+  }, [sorted?.length]);
   const send = async () => {
     const job = jobs?.find((j) => j.id === pick);
     if (!job) return;
@@ -71,11 +98,11 @@ export function SendPartsDialog({ parts, qtyOf, onClose, onSent }: {
           {sorted === null && <p className="sp-empty">Looking for open jobs…</p>}
           {sorted?.length === 0 && !error && <p className="sp-empty">Nobody has a saved job open on another computer right now.</p>}
           {!!sorted?.length && (
-            <ul className="sp-jobs" role="listbox" aria-label="Open jobs">
+            <ul ref={list} className="sp-jobs" role="listbox" aria-label="Open jobs" style={listMax ? { maxHeight: listMax } : undefined}>
               {sorted.map((j) => (
                 <li key={j.id} role="option" aria-selected={pick === j.id} className={`sp-job${pick === j.id ? " is-on" : ""}`} onClick={() => setPick(j.id)}>
                   <span className="sp-job-name">{j.name}</span>
-                  <span className="sp-job-who"><span className="sp-user"><UserIcon />{j.user}</span><span className="sp-since">open since {timeOf(j.since)}</span></span>
+                  <span className="sp-job-who" title={`Open since ${timeOf(j.since)}`}><UserTag name={j.user} /></span>
                   <span className="sp-job-mats">
                     {j.materials.length
                       ? j.materials.map((m) => <MatChip key={`${m.material}|${m.thicknessMm}`} {...m} fit={same(m)} />)
@@ -130,7 +157,7 @@ export function IncomingPartsDialog({ offer, more, busy, onAnswer }: {
         <header className="dlg-head">
           <span className="dlg-icon" aria-hidden="true"><SendIcon /></span>
           <div className="dlg-title">
-            <h2 id="in-title">{offer.fromUser} is sending you {n === 1 ? "a part" : `${n} parts`}</h2>
+            <h2 id="in-title"><UserTag name={offer.fromUser} /> is sending you {n === 1 ? "a part" : `${n} parts`}</h2>
             <p>To nest in your job {offer.jobName} · {pieces} {pieces === 1 ? "piece" : "pieces"} · sent at {timeOf(offer.at)}{more ? ` · ${more} more waiting` : ""}</p>
           </div>
         </header>
