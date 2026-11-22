@@ -4,6 +4,13 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- **3D Extractor: tubes, pipes and profiles are no longer unfolded.**
+  - A tube or profile with holes, notches or mitered ends used to be taken for sheet metal (or "other"), and a flat pattern was made from one of its walls or its end. It is now sorted under **Tubes** or **Profiles** like a plain one.
+  - Square and rectangular tubes are listed under Tubes too.
+  - The list shows the section and length (Ø48.3 × 2.6 · L 1200, 40 × 40 × 3 · L 1000) instead of a flat size.
+  - Opened, a tube or profile shows no flat pattern and can't be sent to Import 2D; **Unfold anyway** makes one if you really want it.
+  - Long parts bent from sheet (angles, channels) are sheet metal, with or without holes (without holes they used to be listed as profiles), and so are strips with holes. A long part counts as sheet metal when its flat pattern is the whole section laid out. A rolled angle, which unfolds to one flange only, is a profile.
+  - A plain flat plate more than 20 times as wide as it is thick is sheet metal (it used to be listed as a profile); narrower plain bars stay profiles.
 - **Arc leads in rectangular holes no longer pierce on the hole's edge.** With a short lead-in and a larger arc radius, the lead was put so near a corner that its pierce landed on the next side of the hole, so the pierce mark was on the part. The lead now starts at least twice its radius from a corner, and an arc lead that would still reach the contour (at the pierce, or where the lead-out ends) is made smaller.
 
 ## Build 22 Nov 2026, 2 (`02ee03a`)

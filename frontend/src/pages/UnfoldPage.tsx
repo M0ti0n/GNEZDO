@@ -65,9 +65,11 @@ const ICONS: Record<string, ReactNode> = {
   dxf: <Ico><path d="M10 4h18l10 10v30H10z" stroke={K} strokeWidth="2.2" /><path d="M24 18v16M18 28l6 6 6-6" stroke={G} strokeWidth="2.6" /></Ico>,
 };
 
-export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial, fileMaterial = "", onChange, onSend, onSendOne, onName }: {
+export function UnfoldPage({ name, kind, section, qty, sent, step, material, partMaterial, fileMaterial = "", onChange, onSend, onSendOne, onName }: {
   name: string;
   kind: BodyKind;
+  /** a tube or profile: its section and length */
+  section?: string;
   qty: number;
   /** its flat pattern is in Import 2D */
   sent: boolean;
@@ -124,7 +126,13 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
     setEdgeA(null);
     setCuts([...cuts, c], `Edge ${cuts.length + 1} added`);
   };
-  const u = useMemo(() => unfoldPart(step.text, st, step.body), [step.text, st, step.body]);
+  const u0 = useMemo(() => unfoldPart(step.text, st, step.body), [step.text, st, step.body]);
+  // a tube or a profile is cut to length (saw, tube laser), not laid flat: no flat pattern unless asked for
+  const cutToLength = kind === "tube" || kind === "profile";
+  const [anyway, setAnyway] = useState(false);
+  const flatOff = cutToLength && !anyway;
+  const u = useMemo(() => (flatOff ? { ...u0, skinFaces: [] } : u0), [u0, flatOff]);
+  const ready = step.info.ok && !flatOff;
   const [pick, setPick] = useState<Pick>(stitchMode && !st.stitch.length ? "stitch" : null);
   // DEL: no added edges left, nothing to delete
   useEffect(() => { if (pick === "deledge" && !cuts.length) setPick(null); }, [pick, cuts.length]);
@@ -207,10 +215,11 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
         {tool("look", "Face view", pick === "look", () => setPick(pick === "look" ? null : "look"), "Click a face of the part: the view turns to look straight at it")}
         {tool("measure", "Measure 2D", pick === "measure", () => setPick(pick === "measure" ? null : "measure"), "Measure the flat pattern: click two things. Points (corners, hole centers, middles) snap; a click on an edge or a bend line takes the line, on an arc or a hole its center. Point to point: straight (X and Y); point to line: square to it; two lines: the distance between them")}
         <span className="uf-sep" />
-        {tool("send", sent ? "Send again" : "Send to Import 2D", false, onSend, step.info.ok
+        {tool("send", sent ? "Send again" : "Send to Import 2D", false, onSend, ready
           ? `Put the flat pattern into Import 2D (×${qty}) to be processed there${sent ? "; it replaces the one sent before" : ""}`
-          : "The flat pattern is not ready (not unfolded, or the outline is open)", !step.info.ok)}
-        {tool("dxf", "Flat DXF", false, download, "Download the flat pattern as DXF (with the whole bend lines on layer BEND)", !u.outline.length)}
+          : flatOff ? `${KIND_LABEL[kind].replace(/s$/, "")}: cut to length, not unfolded (Unfold anyway, on the right, makes a flat pattern)`
+          : "The flat pattern is not ready (not unfolded, or the outline is open)", !ready)}
+        {tool("dxf", "Flat DXF", false, download, "Download the flat pattern as DXF (with the whole bend lines on layer BEND)", !u.outline.length || flatOff)}
       </div>
       <div className={`uf-panes is-${panes}`}>
         <section className={`uf-pane uf-3d${panes === "flat" ? " is-shut" : ""}`}>
@@ -281,23 +290,25 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
               )}
             </div>
           )}
-          <div className="uf-leg">{stitchMode
+          <div className="uf-leg">{flatOff ? null : stitchMode
             ? <><span><i className="is-stitch" />stitched</span><span><i className="is-base" />first face (stays)</span><span><i className="is-other" />other faces</span></>
             : <><span><i className="is-skin" />unfolded side</span><span><i className="is-other" />other faces</span><span><i className="is-base" />fixed face</span><span><i className="is-bad" />not unfolded</span></>}</div>
         </section>
         <section className={`uf-pane uf-flat${panes === "3d" ? " is-shut" : ""}`}>
           <button type="button" className="uf-strip" onClick={() => setPanes("both")} title="Show the flat pattern again">
             <PaneIcon dir="left" /><span>Flat pattern</span></button>
-          <h3>Flat pattern <em>{u.outline.length ? `${fmt(u.box.x1)} × ${fmt(u.box.y1)} mm · ` : ""}{stitchMode && st.comp.side === "none" ? "faces as they are" : stitchMode && st.comp.side === "direct" ? `direct: −2 × ${fmt(st.comp.t)} mm on down bends` : `K ${st.kFactor}`} · top side up{st.foil ? " (foil / finish)" : ""}</em>
+          <h3>Flat pattern <em>{flatOff ? "not unfolded" : <>{u.outline.length ? `${fmt(u.box.x1)} × ${fmt(u.box.y1)} mm · ` : ""}{stitchMode && st.comp.side === "none" ? "faces as they are" : stitchMode && st.comp.side === "direct" ? `direct: −2 × ${fmt(st.comp.t)} mm on down bends` : `K ${st.kFactor}`} · top side up{st.foil ? " (foil / finish)" : ""}</>}</em>
             <PaneButtons side="flat" panes={panes} onPanes={setPanes} /></h3>
-          {u.outline.length ? <FlatView u={u} st={st} measure={pick === "measure"} />
+          {flatOff ? <div className="uf-empty"><div><p>{KIND_LABEL[kind].replace(/s$/, "")}{section ? ` ${section}` : ""}: cut to length, not on the laser, so it is not unfolded.</p>
+              <button type="button" className="btn btn-plain uf-anyway" onClick={() => setAnyway(true)}>Unfold anyway</button></div></div>
+            : u.outline.length ? <FlatView u={u} st={st} measure={pick === "measure"} />
             : <div className="uf-empty">{stitchMode ? "Click the faces to stitch on the part: the first one stays, each next one must share an edge with one picked before." : "Not unfolded."}</div>}
           <div className="uf-leg"><span><i className="is-mark" />bend marks ({st.marks === "none" ? "off" : st.marks === "trace" ? "traced" : "open cut"}, up bends)</span>{st.marks !== "none" && st.marksDown && <span><i className="is-mark-down" />down bends (dashed)</span>}<span><i className="is-bend" />bend line (not cut)</span><span className="uf-up">UP</span><span className="uf-down">DOWN</span></div>
         </section>
       </div>
       <aside className="uf-panel" aria-label="Unfold">
         <header><h2>{KIND_LABEL[kind] === "Other parts" ? "Part" : KIND_LABEL[kind].replace(/s$/, "")} <small>×{qty}</small></h2>
-          <span className={`uf-pill${step.info.ok ? " is-ok" : " is-warn"}`}>{sent ? "Sent" : step.info.ok ? (stitchMode ? "Stitched" : "Unfolded") : stitchMode ? "Pick faces" : "Check it"}</span></header>
+          <span className={`uf-pill${ready || flatOff ? " is-ok" : " is-warn"}`}>{sent ? "Sent" : flatOff ? "Cut to length" : step.info.ok ? (stitchMode ? "Stitched" : "Unfolded") : stitchMode ? "Pick faces" : "Check it"}</span></header>
         <div className="uf-body">
           <div className="uf-row uf-name">
             <label htmlFor="uf-name">Name</label>
@@ -312,11 +323,15 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
                 placeholder={material && !partMaterial ? `${material} (Import 2D)` : "Material"} ariaLabel="Material" newHint="a new material" />
             </div>
           </div>
+          {cutToLength && (
+            <p className="uf-note uf-cut">{section && <b>{section}</b>}{section ? ": " : ""}{KIND_LABEL[kind] === "Tubes" ? "a tube" : "a profile"}, cut to length, not on the laser: {anyway ? "unfolded only because you asked." : "not unfolded."}{" "}
+              <button type="button" className="link" onClick={() => setAnyway(!anyway)}>{anyway ? "Don't unfold" : "Unfold anyway"}</button></p>
+          )}
           {onSendOne && (
-            <button type="button" className="btn btn-plain uf-send-one" disabled={!step.info.ok} onClick={onSendOne}
-              title={step.info.ok
+            <button type="button" className="btn btn-plain uf-send-one" disabled={!ready} onClick={onSendOne}
+              title={ready
                 ? `Send this part to Import 2D with its name, ${qty} ${qty === 1 ? "piece" : "pieces"} and material (no material: the Import 2D properties' one); it leaves this list and the next part opens`
-                : "Not unfolded yet: nothing to send"}>
+                : flatOff ? "Cut to length, not unfolded: nothing to send (Unfold anyway makes a flat pattern)" : "Not unfolded yet: nothing to send"}>
               <span className="uf-send-ic" aria-hidden="true">{ICONS.send}</span>Send to Import 2D
             </button>
           )}
@@ -340,12 +355,17 @@ export function UnfoldPage({ name, kind, qty, sent, step, material, partMaterial
             </select>
             <button type="button" className="btn btn-plain uf-mini" onClick={() => setEditProfiles(true)}>Edit…</button>
           </div>
-          <dl className="uf-facts">
+          {flatOff ? (
+            <dl className="uf-facts">
+              <dt>Section</dt><dd>{section ?? "–"}</dd>
+              <dt>Material</dt><dd>{material || <em>Import 2D properties</em>}</dd>
+            </dl>
+          ) : <dl className="uf-facts">
             <dt>Thickness</dt><dd>{u.thickness !== null ? `${fmt(u.thickness)} mm` : stitchMode ? <em>Import 2D properties</em> : "not found"}</dd>
             <dt>Material</dt><dd>{material || <em>Import 2D properties</em>}</dd>
             <dt>Bends</dt><dd>{u.bends.length}{u.bends.length ? ` · ${ups} up, ${u.bends.length - ups} down` : ""}</dd>
             <dt>Flat size</dt><dd>{u.outline.length ? `${fmt(u.box.x1)} × ${fmt(u.box.y1)}` : "–"}</dd>
-          </dl>
+          </dl>}
           {stitchMode ? (<>
             <div className="uf-lbl">Stitched faces</div>
             <div className="uf-row"><span>Faces</span><span className="uf-val">{st.stitch.length}</span>
@@ -984,7 +1004,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
           });
         }}
       />
-      {!stitchMode && <span className="uf-top">{flip ? "Top side: the other side (grey)" : "Top side: the green side"}</span>}
+      {!stitchMode && u.skinFaces.length > 0 && <span className="uf-top">{flip ? "Top side: the other side (grey)" : "Top side: the green side"}</span>}
     </div>
   );
 }
