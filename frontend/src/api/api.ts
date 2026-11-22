@@ -504,6 +504,19 @@ export const api = {
   },
   /** Opens a saved job in this page: refused (status 423, data.user: who) while it is open in another page,
    *  on another computer or in another browser. Always fine in the demo. */
+  /** Jobs open on other computers (server build): where parts can be sent. */
+  openJobs: (): Promise<OpenJob[]> => (useApi ? get<OpenJob[]>("/api/jobs/open") : Promise.resolve([])),
+  /** Sends saved parts to a job open on another computer: that page is asked to accept them. */
+  sendParts: (jobId: string, parts: { partId: string; qty: number }[], note: string): Promise<{ id: string; to: string; job: string }> =>
+    post("/api/offers", { jobId: Number(jobId), parts, note }),
+  /** Offers waiting for this page's answer, and answers to its own (polled; quiet when the server is away). */
+  offers: async (): Promise<OfferInbox> => {
+    if (!useApi) return { incoming: [], answers: [] };
+    const res = await fetch("/api/offers", { headers: { Accept: "application/json", ...diagHeaders() } });
+    if (!res.ok) throw new Error(`${res.status}`);
+    return (await res.json()) as OfferInbox;
+  },
+  answerOffer: (id: string, accept: boolean): Promise<void> => post<void>(`/api/offers/${id}/answer`, { accept }),
   openJobLock: (id: string): Promise<void> => (useApi ? post<void>(`/api/jobs/${id}/open`, {}).then(() => undefined) : Promise.resolve()),
   /** Keeps the job open in this page (every half minute); refused (423) when it was lost to another page. */
   keepJobLock: (id: string): Promise<void> => (useApi ? post<void>(`/api/jobs/${id}/keep`, {}).then(() => undefined) : Promise.resolve()),
@@ -636,3 +649,11 @@ export const api = {
   recentImports: (take = 8) =>
     useApi ? get<ImportSummary[]>(`/api/imports/recent?take=${take}`) : delay(sampleImports.slice(0, take)),
 };
+
+/** A job open on another computer (GET /api/jobs/open). */
+export interface OpenJob { id: string; name: string; user: string; since: string; materials: { material: string; thicknessMm: number }[] }
+/** Parts someone sends to a job open here. */
+export interface IncomingOffer { id: string; jobId: string; jobName: string; fromUser: string; at: string; note: string; parts: { part: PartSummary; qty: number }[] }
+/** What became of parts this page sent: accepted, refused, or gone (the job closed before an answer). */
+export interface OfferAnswer { id: string; jobName: string; toUser: string; state: "accepted" | "refused" | "gone"; partCount: number; pieces: number }
+export interface OfferInbox { incoming: IncomingOffer[]; answers: OfferAnswer[] }

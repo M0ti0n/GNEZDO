@@ -126,6 +126,62 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
         Assert.Equal(HttpStatusCode.NotFound, (await AsPage(HttpMethod.Post, "/api/jobs/999999/open", "page-a", "Fab")).StatusCode);
     }
 
+    [Fact]
+    public async Task Parts_sent_to_a_job_open_on_another_computer_are_offered_there_and_the_sender_is_told_the_answer()
+    {
+        var ids = await PartIds(2);
+        var made = await AsPage(HttpMethod.Post, "/api/jobs", "rx-a", "Fab",
+            new { name = "Offer job", parts = new[] { new { partId = ids[0], qty = 1, no = 1 } }, nest = Nest(1) });
+        var job = (await made.Content.ReadFromJsonAsync<JobSavedDto>())!.Id;
+        // Mia sees it open, by Fab, with what is in it; Fab does not see his own
+        var open = (await (await AsPage(HttpMethod.Get, "/api/jobs/open", "tx-b", "Mia")).Content.ReadFromJsonAsync<JsonArray>())!;
+        var row = open.Single(j => j!["id"]!.GetValue<string>() == job)!;
+        Assert.Equal("Fab", row["user"]!.GetValue<string>());
+        Assert.NotEmpty(row["materials"]!.AsArray());
+        var mine = (await (await AsPage(HttpMethod.Get, "/api/jobs/open", "rx-a", "Fab")).Content.ReadFromJsonAsync<JsonArray>())!;
+        Assert.DoesNotContain(mine, j => j!["id"]!.GetValue<string>() == job);
+
+        // sent: Fab's page is asked, with the parts
+        var send = new { jobId = int.Parse(job), parts = new[] { new { partId = ids[1], qty = 3 } }, note = "for the frame" };
+        var sent = await AsPage(HttpMethod.Post, "/api/offers", "tx-b", "Mia", send);
+        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+        var inbox = (await (await AsPage(HttpMethod.Get, "/api/offers", "rx-a", "Fab")).Content.ReadFromJsonAsync<JsonObject>())!;
+        var offer = Assert.Single(inbox["incoming"]!.AsArray())!;
+        Assert.Equal("Mia", offer["fromUser"]!.GetValue<string>());
+        Assert.Equal("for the frame", offer["note"]!.GetValue<string>());
+        Assert.Equal(3, offer["parts"]![0]!["qty"]!.GetValue<int>());
+        Assert.Equal(ids[1], offer["parts"]![0]!["part"]!["id"]!.GetValue<string>());
+        var offerId = offer["id"]!.GetValue<string>();
+        // nobody else answers it; Mia has no answer yet
+        Assert.Equal(HttpStatusCode.NotFound, (await AsPage(HttpMethod.Post, $"/api/offers/{offerId}/answer", "tx-b", "Mia", new { accept = true })).StatusCode);
+        var outbox = (await (await AsPage(HttpMethod.Get, "/api/offers", "tx-b", "Mia")).Content.ReadFromJsonAsync<JsonObject>())!;
+        Assert.Empty(outbox["answers"]!.AsArray());
+        // Fab accepts: Mia is told once
+        Assert.Equal(HttpStatusCode.NoContent, (await AsPage(HttpMethod.Post, $"/api/offers/{offerId}/answer", "rx-a", "Fab", new { accept = true })).StatusCode);
+        outbox = (await (await AsPage(HttpMethod.Get, "/api/offers", "tx-b", "Mia")).Content.ReadFromJsonAsync<JsonObject>())!;
+        var answer = Assert.Single(outbox["answers"]!.AsArray())!;
+        Assert.Equal("accepted", answer["state"]!.GetValue<string>());
+        Assert.Equal("Fab", answer["toUser"]!.GetValue<string>());
+        Assert.Equal(3, answer["pieces"]!.GetValue<int>());
+        outbox = (await (await AsPage(HttpMethod.Get, "/api/offers", "tx-b", "Mia")).Content.ReadFromJsonAsync<JsonObject>())!;
+        Assert.Empty(outbox["answers"]!.AsArray());
+
+        // refused
+        await AsPage(HttpMethod.Post, "/api/offers", "tx-b", "Mia", send);
+        inbox = (await (await AsPage(HttpMethod.Get, "/api/offers", "rx-a", "Fab")).Content.ReadFromJsonAsync<JsonObject>())!;
+        offerId = inbox["incoming"]![0]!["id"]!.GetValue<string>();
+        await AsPage(HttpMethod.Post, $"/api/offers/{offerId}/answer", "rx-a", "Fab", new { accept = false });
+        outbox = (await (await AsPage(HttpMethod.Get, "/api/offers", "tx-b", "Mia")).Content.ReadFromJsonAsync<JsonObject>())!;
+        Assert.Equal("refused", outbox["answers"]![0]!["state"]!.GetValue<string>());
+
+        // the job closed before an answer: not delivered; and nothing can be sent to a job open nowhere
+        await AsPage(HttpMethod.Post, "/api/offers", "tx-b", "Mia", send);
+        await AsPage(HttpMethod.Post, $"/api/jobs/{job}/close", "rx-a", "Fab");
+        outbox = (await (await AsPage(HttpMethod.Get, "/api/offers", "tx-b", "Mia")).Content.ReadFromJsonAsync<JsonObject>())!;
+        Assert.Equal("gone", outbox["answers"]![0]!["state"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.Conflict, (await AsPage(HttpMethod.Post, "/api/offers", "tx-b", "Mia", send)).StatusCode);
+    }
+
     private sealed class Clock : TimeProvider
     {
         public DateTimeOffset Now = new(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);

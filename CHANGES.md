@@ -4,6 +4,12 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+**Send parts to someone's job** (server build):
+- In the Parts list, tick parts and click **Send to someone's job…**. It lists the saved jobs open on other computers, with who has them open and the materials and thicknesses in them. Jobs with the same material and thickness as your parts come first. Set how many of each, add a note if you like, and send.
+- The person with that job open gets a pop-up: "Mia is sending you 3 parts", with the job, the parts, the quantities and the note. **Accept** adds them to the job's work parts; a part already there gets the quantity added. **Refuse** doesn't.
+- The sender is told the answer: accepted, refused, or that the job was closed before an answer, so the parts weren't added.
+- Several offers at once are shown one after another. Offers are kept by the server until answered; a restart of the server forgets the unanswered ones.
+
 **Settings → Data → Settings file** (admins):
 - **Export settings** saves the shared settings as one readable file (gnezdo-settings-date.json): machines, stock and remnants, import rules, nesting rules and added special tools. Keep it with the backups, or use it to set up a new installation or move from the desktop to the server.
 - **Import settings…** loads such a file. It lists what it replaces and asks first; whatever the file doesn't have stays as it is. A file that isn't a GNEZDO settings file, or comes from a newer GNEZDO, is refused.
