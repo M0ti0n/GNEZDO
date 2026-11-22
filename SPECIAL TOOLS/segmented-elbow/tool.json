@@ -1,0 +1,124 @@
+{
+  "format": "gnezdo-tool",
+  "version": 1,
+  "id": "segmented-elbow",
+  "name": "Segmented elbow",
+  "toolVersion": "1.0",
+  "description": "A round elbow of N middle sections and two end sections (half as wide), seam at the side. From the HVAC Fittings workbench.",
+  "countLabel": "Elbows",
+  "script": "tool.js",
+  "icon": "icon.svg",
+  "diagram": "diagram.svg",
+  "fields": [
+    {
+      "key": "d",
+      "type": "number",
+      "label": "D",
+      "title": "D: diameter (neutral)",
+      "unit": "mm",
+      "default": 300,
+      "min": 0,
+      "at": [
+        59,
+        95
+      ],
+      "color": "blue"
+    },
+    {
+      "key": "r",
+      "type": "number",
+      "label": "R",
+      "title": "R: centerline radius",
+      "unit": "mm",
+      "default": 450,
+      "min": 0,
+      "at": [
+        36,
+        72
+      ],
+      "color": "green"
+    },
+    {
+      "key": "a",
+      "type": "number",
+      "label": "A",
+      "title": "A: elbow angle",
+      "unit": "°",
+      "default": 90,
+      "min": 0,
+      "at": [
+        13,
+        92
+      ],
+      "color": "purple"
+    },
+    {
+      "key": "n",
+      "type": "int",
+      "label": "N",
+      "title": "N: middle sections",
+      "unit": "middle",
+      "default": 3,
+      "min": 0,
+      "at": [
+        76,
+        38
+      ],
+      "color": "brown"
+    },
+    {
+      "key": "pieces",
+      "type": "choice",
+      "label": "Pieces",
+      "group": "Pieces",
+      "default": "separate",
+      "options": [
+        {
+          "value": "separate",
+          "label": "Separate sections"
+        },
+        {
+          "value": "stacked",
+          "label": "Stacked in one rectangle"
+        }
+      ],
+      "note": "Seam always at the side, so the sections fit together; stacked, open cuts separate them (every other section turned round)."
+    },
+    {
+      "key": "foldsOn",
+      "type": "check",
+      "label": "Fold marks",
+      "title": "Fold marks: tracing lines on the fold lines",
+      "group": "Fold marks",
+      "default": true
+    },
+    {
+      "key": "folds",
+      "type": "int",
+      "label": "Around",
+      "title": "How many fold lines around",
+      "unit": "lines",
+      "group": "Fold marks",
+      "default": 24,
+      "min": 1
+    },
+    {
+      "key": "markLen",
+      "type": "number",
+      "label": "Mark length",
+      "unit": "mm",
+      "group": "Fold marks",
+      "default": 15,
+      "min": 0.5
+    },
+    {
+      "key": "markGap",
+      "type": "number",
+      "label": "In from the edge",
+      "unit": "mm",
+      "group": "Fold marks",
+      "default": 2,
+      "min": 0
+    }
+  ]
+}

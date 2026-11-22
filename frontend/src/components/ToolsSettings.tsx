@@ -54,7 +54,7 @@ export function ToolsSettings({ isAdmin }: { isAdmin: boolean }) {
     <div className="settings-main">
       <header className="settings-head">
         <h2>Special tools</h2>
-        <p>Tools that make parts from values, added without a new GNEZDO build. They sit in Special tools beside the fittings.</p>
+        <p>Tools that make parts from values, added without a new GNEZDO build; they are in Special tools. GNEZDO comes with none: the fittings (elbow, transitions, flanges, screw flight) are tools to add, in SPECIAL TOOLS on GitHub.</p>
       </header>
 
       <section className="rule">

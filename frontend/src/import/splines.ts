@@ -3,7 +3,7 @@
 // keeping the spline's role and the rest of its marks.
 // Lines and arcs can be trimmed, extended, measured and cut cleanly; a spline cannot.
 
-import { circleThrough, fitPoints, type P2 } from "./fittings/arcs";
+import { circleThrough, fitPoints, type P2 } from "./arcs";
 import { splinePoints, type Entity } from "./geometry";
 import { SPLINE_TOL_DEFAULT } from "./rules";
 

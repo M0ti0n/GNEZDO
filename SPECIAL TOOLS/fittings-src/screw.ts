@@ -5,7 +5,7 @@
 // Shop practice: the blank is extended until its two cut ends are GAP apart at the inner edge
 // (blank angle = 360 - 2 asin(GAP / 2 / Ri)). Pieces = ceil(L / P).
 
-import { Lines, seg, type P2, type Seg } from "./arcs";
+import { Lines, seg, type P2, type Seg } from "../../frontend/src/import/arcs";
 
 export interface ScrewValues { od: number; id: number; p: number; l: number; gap: number }
 

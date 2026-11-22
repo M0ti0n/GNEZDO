@@ -1,0 +1,149 @@
+{
+  "format": "gnezdo-tool",
+  "version": 1,
+  "id": "branch-reducer",
+  "name": "Branch reducer",
+  "toolVersion": "1.0",
+  "description": "A round reducer with a round branch at an angle; D1 = D2 makes a tee or a lateral. From the HVAC Fittings workbench.",
+  "countLabel": "Fittings",
+  "script": "tool.js",
+  "icon": "icon.svg",
+  "diagram": "diagram.svg",
+  "fields": [
+    {
+      "key": "d1",
+      "type": "number",
+      "label": "D1",
+      "title": "D1: reducer diameter at the top",
+      "unit": "mm",
+      "default": 200,
+      "min": 0,
+      "at": [
+        43,
+        6
+      ],
+      "color": "blue"
+    },
+    {
+      "key": "d2",
+      "type": "number",
+      "label": "D2",
+      "title": "D2: reducer diameter at the bottom",
+      "unit": "mm",
+      "default": 400,
+      "min": 0,
+      "at": [
+        43,
+        82
+      ],
+      "color": "green"
+    },
+    {
+      "key": "h1",
+      "type": "number",
+      "label": "H1",
+      "title": "H1: reducer height",
+      "unit": "mm",
+      "default": 400,
+      "min": 0,
+      "at": [
+        15,
+        50
+      ],
+      "color": "purple"
+    },
+    {
+      "key": "h2",
+      "type": "number",
+      "label": "H2",
+      "title": "H2: height where the branch axis meets the reducer's side",
+      "unit": "mm",
+      "default": 200,
+      "min": 0,
+      "at": [
+        43,
+        62
+      ],
+      "color": "brown"
+    },
+    {
+      "key": "d3",
+      "type": "number",
+      "label": "D3",
+      "title": "D3: branch diameter",
+      "unit": "mm",
+      "default": 160,
+      "min": 0,
+      "at": [
+        86,
+        14
+      ],
+      "color": "blue"
+    },
+    {
+      "key": "l",
+      "type": "number",
+      "label": "L",
+      "title": "L: along the branch axis to its end",
+      "unit": "mm",
+      "default": 250,
+      "min": 0,
+      "at": [
+        82,
+        50
+      ],
+      "color": "green"
+    },
+    {
+      "key": "a",
+      "type": "number",
+      "label": "A",
+      "title": "A: branch angle above the horizontal (negative: down)",
+      "unit": "°",
+      "default": 30,
+      "min": -89,
+      "at": [
+        82,
+        66
+      ],
+      "color": "red"
+    },
+    {
+      "key": "foldsOn",
+      "type": "check",
+      "label": "Fold marks",
+      "title": "Fold marks: tracing lines on the fold lines",
+      "group": "Fold marks",
+      "default": true
+    },
+    {
+      "key": "folds",
+      "type": "int",
+      "label": "Around",
+      "title": "How many fold lines around",
+      "unit": "lines",
+      "group": "Fold marks",
+      "default": 24,
+      "min": 1
+    },
+    {
+      "key": "markLen",
+      "type": "number",
+      "label": "Mark length",
+      "unit": "mm",
+      "group": "Fold marks",
+      "default": 15,
+      "min": 0.5
+    },
+    {
+      "key": "markGap",
+      "type": "number",
+      "label": "In from the edge",
+      "unit": "mm",
+      "group": "Fold marks",
+      "default": 2,
+      "min": 0
+    }
+  ],
+  "note": "Seams: the reducer's straight through the middle of the branch hole (two half holes), the branch's on its shortest line. D1 = D2: a straight pipe (tee or lateral); a negative angle points the branch down."
+}

@@ -1,0 +1,85 @@
+{
+  "format": "gnezdo-tool",
+  "version": 1,
+  "id": "screw-flight",
+  "name": "Screw flight",
+  "toolVersion": "1.0",
+  "description": "The blank of one pitch of a screw flight (an annular ring with a gap); L / P of them for the screw. From the HVAC Fittings workbench.",
+  "countLabel": "Screws",
+  "script": "tool.js",
+  "icon": "icon.svg",
+  "diagram": "diagram.svg",
+  "fields": [
+    {
+      "key": "od",
+      "type": "number",
+      "label": "OD",
+      "title": "OD: outer diameter of the flight",
+      "unit": "mm",
+      "default": 315,
+      "min": 0,
+      "at": [
+        14,
+        22
+      ],
+      "color": "blue"
+    },
+    {
+      "key": "id",
+      "type": "number",
+      "label": "ID",
+      "title": "ID: inner diameter of the flight (the shaft)",
+      "unit": "mm",
+      "default": 101.6,
+      "min": 0,
+      "at": [
+        50,
+        50
+      ],
+      "color": "purple"
+    },
+    {
+      "key": "p",
+      "type": "number",
+      "label": "P",
+      "title": "P: pitch",
+      "unit": "mm",
+      "default": 300,
+      "min": 0,
+      "at": [
+        15,
+        83
+      ],
+      "color": "green"
+    },
+    {
+      "key": "l",
+      "type": "number",
+      "label": "L",
+      "title": "L: screw length",
+      "unit": "mm",
+      "default": 1000,
+      "min": 0,
+      "at": [
+        32,
+        93
+      ],
+      "color": "brown"
+    },
+    {
+      "key": "gap",
+      "type": "number",
+      "label": "Gap",
+      "title": "Gap between the cut ends at the inner edge",
+      "unit": "mm",
+      "default": 6,
+      "min": 0,
+      "at": [
+        76,
+        8
+      ],
+      "color": "orange"
+    }
+  ],
+  "note": "The blank is extended past the calculated angle until the cut ends are Gap apart at the inner edge. The part's label gives the blank's angle and radii; pieces = L / P, up."
+}

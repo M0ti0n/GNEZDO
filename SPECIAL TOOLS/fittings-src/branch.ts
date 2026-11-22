@@ -5,7 +5,7 @@
 // Reducer seam: through the middle of the hole (a half hole on each seam edge). Branch seam: its
 // shortest line.
 
-import { Lines, fitPoints, marksOnLine, rev, seg, type P2, type Seg } from "./arcs";
+import { Lines, fitPoints, marksOnLine, rev, seg, type P2, type Seg } from "../../frontend/src/import/arcs";
 
 export interface BranchValues {
   d1: number; d2: number; h1: number; h2: number;

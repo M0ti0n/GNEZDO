@@ -4,7 +4,7 @@
 // Seam on the longer side, straight down from the round. Pieces: Combined (one), Short side (its triangle
 // and the two corner fans: half the round), Long side (the flat triangle).
 
-import { Lines, fitPoints, mapSeg, rev, seg, marksOnLine, type P2, type Seg } from "./arcs";
+import { Lines, fitPoints, mapSeg, rev, seg, marksOnLine, type P2, type Seg } from "../../frontend/src/import/arcs";
 
 export interface TransitionValues {
   a: number; b: number; e: number; f: number;

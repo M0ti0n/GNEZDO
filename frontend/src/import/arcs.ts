@@ -1,8 +1,8 @@
-// FITTINGS: curves as arcs and lines only (no splines: the machines cut arcs). Each arc runs through
+// Curves as arcs and lines only (no splines: the machines cut arcs). Each arc runs through
 // three points on the true curve (both ends and the middle), so the arcs of a chain meet exactly; an
 // arc is kept when it stays within `tol` (0.01 mm) of the curve.
 
-import type { Entity, Pt, Role } from "../geometry";
+import type { Entity, Pt, Role } from "./geometry";
 
 export type P2 = [number, number];
 

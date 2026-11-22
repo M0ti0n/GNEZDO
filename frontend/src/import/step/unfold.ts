@@ -10,7 +10,7 @@
 //  4. The flat pattern: the skin's edges that only one skin face has (outline, holes); the bends'
 //     middle lines as bend lines.
 
-import { circleThrough, fitPoints } from "../fittings/arcs";
+import { circleThrough, fitPoints } from "../arcs";
 import { add3, cross3, dot3, len3, lowHigh, mul3, normalAt, sub3, unit3, type Face, type Solid, type V3 } from "./step";
 
 export type V2 = [number, number];
