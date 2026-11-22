@@ -6,6 +6,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 - User manual (English, PDF) added to docs/, with a download link at the top of the README: white cover, descriptions checked against the app, real screenshots and buttons from the current build.
 - Slovenian user manual (GNEZDO_Navodila_za_uporabo-slo.pdf) added to docs/, with its own download link at the top of the README.
+- The last mention of another nesting program's name in the change log replaced with a general one.
 
 
 ## Build 22 Nov 2026, 5 (`1a8e3c8`)
@@ -191,7 +192,7 @@ From the QA report (batch 3: import and saving):
 
 ## Build 18 Nov 2026 (`ffabd63`)
 
-Fixes from the bug report of 18 Nov (points 3 and 14 work as designed; 13 matches Libellula's own programs):
+Fixes from the bug report of 18 Nov (points 3 and 14 work as designed; 13 matches what commercial nesting programs do):
 - Process → Auto cut, **Cut internal** / **Trace** on a part already processed (Selected parts): its new holes or tracing now go right before that part's outline, not after it (the part was cut loose first)
 - Post process, **HACO plasma**: F is written at every lead-in, as HACO's own postprocessor does (it was left out when the rapid kept the same direction); the small-hole speed is for holes only: open cuts, remnant cuts and common cut lines go at the cutting speed. Import the machine file again (`POST PROCESSOR/HACO-KOMPAKT-plasma.gnezdo-machine.zip`, or paste its postprocessor) to use it
 - Hole compensation (Settings → Machines): a compensated hole keeps its size when its lead is edited, reset or deleted (Lead in / out), or broken (Break cut); it went back to the drawn size
