@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- **Arc leads in rectangular holes no longer pierce on the hole's edge.** With a short lead-in and a larger arc radius, the lead was put so near a corner that its pierce landed on the next side of the hole, so the pierce mark was on the part. The lead now starts at least twice its radius from a corner, and an arc lead that would still reach the contour (at the pierce, or where the lead-out ends) is made smaller.
 
 ## Build 22 Nov 2026, 2 (`02ee03a`)
 

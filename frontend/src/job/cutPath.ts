@@ -380,6 +380,17 @@ export function oriented(lp: Pt[], cw: boolean): Pt[] {
   return (signedArea(l) > 0) === cw ? l : l.reverse();
 }
 
+/** The shortest distance from p to the loop. */
+function loopDist(lp: Pt[], p: Pt): number {
+  let best = Infinity;
+  for (let i = 0; i < lp.length; i++) {
+    const a = lp[i], e = sub(lp[(i + 1) % lp.length], a), L2 = dot(e, e);
+    const u = L2 > 1e-12 ? Math.max(0, Math.min(1, dot(sub(p, a), e) / L2)) : 0;
+    best = Math.min(best, len(sub(p, add(a, mul(e, u)))));
+  }
+  return best;
+}
+
 /** Distance from p along d to the loop (Infinity: it does not meet it). */
 function rayHit(lp: Pt[], p: Pt, d: Pt): number {
   let best = Infinity;
@@ -501,6 +512,9 @@ export function leadValues(kind: "outer" | "inner", row: TechRow | null, type: L
   };
 }
 
+/** How far a lead reaches along the contour from where it starts: an arc lead its radius, the others their lead-in. */
+const leadReach = (v: LeadSpec, type: LeadType) => Math.max(v.lin, type === "arc" ? v.radius : 0);
+
 export const cornerOnly = (t: LeadType) => !!LEAD_TYPES.find((x) => x.id === t)?.cornerOnly;
 
 /** The point of the part's box the leads are put nearest to. */
@@ -534,7 +548,7 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
 
   // a window (not a round hole): the middle of a radius, else well away from its corners
   const windows: Cand[] = kind === "inner" && !isRound(lp)
-    ? windowStarts(lp, target, leadValues(kind, row, oType).lin).map((s) => ({ s, type: oType, d: far(s.at) })) : [];
+    ? windowStarts(lp, target, leadReach(leadValues(kind, row, oType), oType)).map((s) => ({ s, type: oType, d: far(s.at) })) : [];
   const corners: Cand[] = [];
   if (cornerOnly(cType)) for (let i = 0; i < n; i++) {
     if (len(sub(lp[i], prev(i))) < 0.5 || len(sub(next(i), lp[i])) < 0.5) continue;
@@ -645,14 +659,25 @@ export function leadsAt(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row
     if (lo > 0) leadOut = [end, add(end, mul(dOut, lo))];
   } else if (type === "arc") {
     const nP = scrapN(start.t, side), nE = scrapN(tEnd, side);
-    const R = Math.min(v.radius, limit(P, nP, v.radius * 2) / 2 || v.radius);
-    const c = add(P, mul(nP, R));
-    const s1 = add(c, rot(mul(nP, -R), 90)), s2 = add(c, rot(mul(nP, -R), -90));
-    const S = dot(sub(s1, P), start.t) < 0 ? s1 : s2;
-    leadIn = arcPts(c, S, P);
-    const c2 = add(end, mul(nE, R));
-    const e1 = add(c2, rot(mul(nE, -R), 90)), e2 = add(c2, rot(mul(nE, -R), -90));
-    leadOut = arcPts(c2, end, dot(sub(e1, end), tEnd) > 0 ? e1 : e2);
+    const R0 = Math.min(v.radius, limit(P, nP, v.radius * 2) / 2 || v.radius);
+    // a quarter circle from the scrap side: its far end (the pierce of the lead-in) R back along the edge and
+    // R off it. Near a corner that end can come onto the next edge (the pierce on the part's edge, or the
+    // lead-out nicking it): the arc is made smaller until its end stays at least half of it off the contour.
+    const quarter = (c0: Pt, n0: Pt, t0: Pt, back: boolean) => {
+      let R = R0, best: { c: Pt; e: Pt } | null = null;
+      for (let k = 0; k < 8; k++, R *= 0.75) {
+        const c = add(c0, mul(n0, R));
+        const a1 = add(c, rot(mul(n0, -R), 90)), a2 = add(c, rot(mul(n0, -R), -90));
+        const e = (dot(sub(a1, c0), t0) < 0) === back ? a1 : a2;
+        best = { c, e };
+        if (loopDist(lp, e) >= 0.5 * R - 1e-6) break;
+      }
+      return best!;
+    };
+    const qi = quarter(P, nP, start.t, true);
+    leadIn = arcPts(qi.c, qi.e, P);
+    const qo = quarter(end, nE, tEnd, false);
+    leadOut = arcPts(qo.c, end, qo.e);
   } else {
     // perpendicular (90°) or at an angle to the edge, from the scrap side
     const aIn = type === "angled" ? v.aIn : 90, aOut = type === "angled" ? v.aOut : 90;
@@ -694,6 +719,7 @@ function isRound(lp: Pt[]): boolean {
  * middle of a side too short for that), nearest the target. The caller takes the one nearest the target.
  */
 function windowStarts(lp: Pt[], target: Pt, lin: number): LeadStart[] {
+  // lin: how far the lead reaches along the side (leadReach)
   const n = lp.length;
   const t = turns(lp);
   const curved = (i: number) => Math.abs(t[i]) >= 0.5 && Math.abs(t[i]) < 25;
