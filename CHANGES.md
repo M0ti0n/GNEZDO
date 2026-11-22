@@ -5,6 +5,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 ## Next build
 
 - User manual (English, PDF) added to docs/, with a download link at the top of the README: white cover, descriptions checked against the app, real screenshots and buttons from the current build.
+- Slovenian user manual (GNEZDO_Navodila_za_uporabo-slo.pdf) added to docs/, with its own download link at the top of the README.
 
 
 ## Build 22 Nov 2026, 5 (`1a8e3c8`)
