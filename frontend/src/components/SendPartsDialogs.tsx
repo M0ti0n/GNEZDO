@@ -88,13 +88,14 @@ export function SendPartsDialog({ parts, qtyOf, onClose, onSent }: {
   };
   return (
     <div className="dlg-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
-      <div className="dlg sp-dlg" role="dialog" aria-modal="true" aria-labelledby="sp-title">
+      <div className="dlg sp-dlg is-two" role="dialog" aria-modal="true" aria-labelledby="sp-title">
         <header className="dlg-head">
           <span className="dlg-icon" aria-hidden="true"><SendIcon /></span>
           <div className="dlg-title"><h2 id="sp-title">Send to a job</h2><p>To someone who has the job open: they accept the parts into it, or refuse them.</p></div>
         </header>
-        <div className="sp-body">
-          <h3>Job</h3>
+        <div className="sp-body sp-cols">
+          <section className="sp-col">
+          <h3>Job to send to</h3>
           {sorted === null && <p className="sp-empty">Looking for open jobs…</p>}
           {sorted?.length === 0 && !error && <p className="sp-empty">Nobody has a saved job open on another computer right now.</p>}
           {!!sorted?.length && (
@@ -112,7 +113,9 @@ export function SendPartsDialog({ parts, qtyOf, onClose, onSent }: {
               ))}
             </ul>
           )}
-          <h3>Parts</h3>
+          </section>
+          <section className="sp-col">
+          <h3>Parts to send ({parts.length})</h3>
           <table className="sp-parts">
             <thead><tr><th /><th>Part</th><th>Material</th><th>Qty</th></tr></thead>
             <tbody>
@@ -130,6 +133,7 @@ export function SendPartsDialog({ parts, qtyOf, onClose, onSent }: {
           <label className="sp-note"><span>Note (optional)</span>
             <input value={note} maxLength={300} placeholder="e.g. urgent, for the frame" onChange={(e) => setNote(e.target.value)} /></label>
           {error && <p className="log-msg is-bad" role="alert">{error}</p>}
+          </section>
         </div>
         <footer className="dlg-foot">
           <span className="proc-missing" />
