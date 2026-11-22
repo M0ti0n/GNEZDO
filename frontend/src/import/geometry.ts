@@ -361,6 +361,11 @@ export function chainOf(entities: Entity[], id: string): string[] {
 
 /* ---- Where tracing and open cut lines may be ----------------------------------------- */
 
+/** The fewest chords an arc is followed with (job/ncArcs.ts fits arcs of 3 chords or more). */
+const MIN_ARC_CHORDS = 6;
+/** Arcs bigger than this are cut as lines (job/ncArcs.ts MAX_R). */
+const ARC_MAX_R = 20000;
+
 /** Points along an entity, close enough together to follow arcs and splines. */
 export function pointsAlong(e: Entity, arcStepDeg = 7.5): Pt[] {
   const on = (c: Pt, r: number, d: number): Pt => ({ x: c.x + r * Math.cos(rad(d)), y: c.y + r * Math.sin(rad(d)) });
@@ -369,7 +374,11 @@ export function pointsAlong(e: Entity, arcStepDeg = 7.5): Pt[] {
     case "circle": return Array.from({ length: 49 }, (_, i) => on(e.c, e.r, i * 7.5));
     case "arc": {
       const sweep = arcSweep(e.start, e.end);
-      const n = Math.max(2, Math.ceil(sweep / arcStepDeg));
+      // At least 6 chords, so the NC program fits it as an arc again (the fit needs 3 or more; with 2, every
+      // arc of 15° or less was cut as two lines, up to 1.3 mm off on an R600: QA R2-01). An arc too big for
+      // G2 / G3 (over R20000) is cut as lines: those then keep within 0.005 mm of it.
+      const sag = e.r > ARC_MAX_R ? (2 * Math.acos(1 - 0.005 / e.r) * 180) / Math.PI : 0;
+      const n = Math.max(MIN_ARC_CHORDS, Math.ceil(sweep / arcStepDeg), sag ? Math.ceil(sweep / sag) : 0);
       return Array.from({ length: n + 1 }, (_, i) => on(e.c, e.r, e.start + (sweep * i) / n));
     }
     case "spline": return splinePoints(e);

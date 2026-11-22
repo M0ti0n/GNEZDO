@@ -46,6 +46,11 @@ export interface CutContour {
   /** a hole marked with the Hole tool, cut this much bigger or smaller (the machine's hole compensation):
    *  the lead and joint tools rebuild it from the drawing at that size */
   holeK?: number;
+  /** an island: a loop in one of the part's holes (an even number of loops deep), so the outline of a piece
+   *  of its own. Listed with the part's holes (kind "inner": the part's outline stays its only "outer"), cut
+   *  like an outline: clockwise, its lead from the scrap around it, before the hole it lies in; the NC
+   *  program gets it as an outline. Was cut as a hole: the kerf into the piece, the pierce in it (QA GB-01) */
+  island?: boolean;
   pts: Pt[];
   leadIn: Pt[];
   leadOut: Pt[];
@@ -108,6 +113,10 @@ export interface SheetCut {
    *  whose drawing changed since (replaced, another revision restored) is not processed any more.
    *  Missing: an older cut (its drawings are taken as they are) */
   sigs?: Record<number, string>;
+  /** per part index: its tracing and open cut lines when it was processed (marksSig). The outline's
+   *  fingerprint does not see them: a part whose marking or open cut changed (replaced, edited in another
+   *  browser) was posted with the old lines (QA R2-03). Post process reads them again and compares. */
+  msigs?: Record<number, string>;
   /** made for a 0,0 corner that mirrors the sheet as drawn (outlines counter-clockwise on screen); missing = not */
   mirrored?: boolean;
   /** from PROCESS only (not kept with the sheet): the leads moved or shortened to fit, and those that still do not */
@@ -185,8 +194,10 @@ export function remapCut(cut: SheetCut | undefined, before: PlacedPart[], after:
   for (const [i, j] of to) keys[j] = cut.keys[i];
   const sigs: Record<number, string> = {};
   for (const [i, j] of to) if (cut.sigs?.[i]) sigs[j] = cut.sigs[i];
+  const msigs: Record<number, string> = {};
+  for (const [i, j] of to) if (cut.msigs?.[i]) msigs[j] = cut.msigs[i];
   return {
-    ...cut, keys, ...(cut.sigs ? { sigs } : {}),
+    ...cut, keys, ...(cut.sigs ? { sigs } : {}), ...(cut.msigs ? { msigs } : {}),
     contours: contours.map((c) => (c.via && c.via.after !== "origin" ? { ...c, via: { ...c.via, after: rename.get(c.via.after) ?? c.via.after } } : c)),
   };
 }
@@ -211,8 +222,29 @@ export const originMirrors = (origin: Origin) => origin.startsWith("top") === or
 export type Marks = { trace: Pt[][]; open: Pt[][]; grain?: Pt[][]; foil?: boolean; holes?: Box[] };
 const markCache = new Map<string, { at: number; marks: Promise<Marks> }>();
 
-/** Parts were saved (their drawings may have changed): their marks are read again. */
-export const forgetPartMarks = () => markCache.clear();
+/** Parts were saved (their drawings may have changed): their marks are read again (these parts, or all). */
+export const forgetPartMarks = (ids?: Iterable<string>) => { if (!ids) markCache.clear(); else for (const id of ids) markCache.delete(id); };
+
+/** A fingerprint of a part's tracing and open cut lines (in its own frame, to 0.001 mm). */
+export function marksSig(m: Pick<Marks, "trace" | "open">): string {
+  const runs = (r: Pt[][]) => r.map((l) => l.map(([x, y]) => `${x.toFixed(3)},${y.toFixed(3)}`).join(" ")).join("|");
+  return pathSig(`T${runs(m.trace)}O${runs(m.open)}`);
+}
+
+/** The parts (indexes) whose tracing or open cut lines are not the ones they were processed with: read
+ *  again from the database (not this browser's copy, which may be older), compared with msigs. */
+export async function changedMarks(sheet: NestedSheet): Promise<Set<number>> {
+  const out = new Set<number>();
+  const msigs = sheet.cut?.msigs;
+  if (!msigs) return out;
+  const ks = Object.keys(msigs).map(Number).filter((k) => sheet.parts[k]);
+  forgetPartMarks(new Set(ks.map((k) => sheet.parts[k].partId)));
+  await Promise.all(ks.map(async (k) => {
+    const m = await partMarks(sheet.parts[k].partId).catch(() => null);
+    if (m && marksSig(m) !== msigs[k]) out.add(k);
+  }));
+  return out;
+}
 
 /** A part's trace and open cut lines in its outline's frame (as the thumbnail path: y down), joined into runs. */
 export function partMarks(partId: string): Promise<Marks> {
@@ -291,7 +323,10 @@ const unit = (a: Pt): Pt => { const l = len(a) || 1; return [a[0] / l, a[1] / l]
 const rot = (v: Pt, deg: number): Pt => { const r = (deg * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r); return [v[0] * c - v[1] * s, v[0] * s + v[1] * c]; };
 /** The scrap side of a cut going along d: left of it as the machine sees it (side -1: mirrored on screen). */
 const scrapN = (d: Pt, side: 1 | -1): Pt => [side * d[1], -side * d[0]];
-const r2 = (p: Pt): Pt => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
+// Cut path points to 0.001 mm (the NC program's own precision). Was 0.01 mm: on a part nested at 15°,
+// 30° or 45°, that second rounding (after the drawing's own) put points on a circle up to 0.014 mm off it,
+// past what the arc fit allows, and stretches of circles and slots were cut as 7.5° chords (QA R2-02).
+const r2 = (p: Pt): Pt => [Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000];
 /** Shoelace in the sheet frame: > 0 clockwise as seen on the sheet (y down). */
 const signedArea = (lp: Pt[]) => lp.reduce((s, p, i) => { const q = lp[(i + 1) % lp.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2;
 const boxOf = (pts: Pt[]): Box => {
@@ -322,6 +357,66 @@ function rayHit(lp: Pt[], p: Pt, d: Pt): number {
     if (t > 1e-4 && u >= -1e-9 && u <= 1 + 1e-9) best = Math.min(best, t);
   }
   return best;
+}
+
+/**
+ * A point on edge `edge` of the loop, put on the arc that edge is a chord of (when it is one: the loop goes
+ * round the same circle before and after it, in short chords). A micro joint, a break or a lead moved by
+ * hand starting partway along a chord of a circle was on the straight chord, up to 0.2 mm inside an R100
+ * (more on bigger ones): the NC program could not fit an arc through it, the piece's ends were cut as lines
+ * off the circle (QA R2-09). Otherwise the point as it is.
+ */
+export function onArc(lp: Pt[], edge: number, p: Pt): Pt {
+  const n = lp.length;
+  if (n < 6) return p;
+  const at = (i: number) => lp[((i % n) + n) % n];
+  const a = at(edge), b = at(edge + 1);
+  // the circle through the widest run of vertices round the edge that lies on one (least squares: the
+  // vertices are rounded to 0.01 mm, three of them alone put the middle a tenth of a millimetre off)
+  for (let w = 3; w >= 1; w--) {
+    if (2 * w + 2 > n) continue;
+    const run = Array.from({ length: 2 * w + 2 }, (_, k) => at(edge - w + k));
+    const c = fitCircle(run);
+    if (!c || c.r > 20000) continue;
+    if (run.some((q) => Math.abs(len(sub(q, c.c)) - c.r) > 0.02)) continue;
+    // a short chord of it (at most 10° of the circle): not a long straight edge between two arcs
+    if (len(sub(b, a)) > 2 * c.r * Math.sin((5 * Math.PI) / 180)) return p;
+    // every corner of the run turning the same way
+    const turn = (i: number) => { const u = sub(run[i], run[i - 1]), v = sub(run[i + 1], run[i]); return u[0] * v[1] - u[1] * v[0]; };
+    const t0 = Math.sign(turn(1));
+    if (!t0 || run.slice(1, -1).some((_, i) => Math.sign(turn(i + 1)) !== t0)) continue;
+    const d = sub(p, c.c);
+    return len(d) > 1e-9 ? add(c.c, mul(unit(d), c.r)) : p;
+  }
+  return p;
+}
+
+/** The circle nearest the points (least squares, Kasa); null: they are in a line. */
+function fitCircle(pts: Pt[]): { c: Pt; r: number } | null {
+  // centred on their mean, for the numbers' sake
+  const mx = pts.reduce((s, q) => s + q[0], 0) / pts.length, my = pts.reduce((s, q) => s + q[1], 0) / pts.length;
+  let suu = 0, svv = 0, suv = 0, suuu = 0, svvv = 0, suvv = 0, svuu = 0;
+  for (const [x, y] of pts) {
+    const u = x - mx, v = y - my;
+    suu += u * u; svv += v * v; suv += u * v;
+    suuu += u * u * u; svvv += v * v * v; suvv += u * v * v; svuu += v * u * u;
+  }
+  const det = suu * svv - suv * suv;
+  if (Math.abs(det) < 1e-12) return null;
+  const r1 = (suuu + suvv) / 2, r2v = (svvv + svuu) / 2;
+  const uc = (r1 * svv - r2v * suv) / det, vc = (r2v * suu - r1 * suv) / det;
+  const r = Math.sqrt(uc * uc + vc * vc + (suu + svv) / pts.length);
+  return { c: [uc + mx, vc + my], r };
+}
+
+/** The loop's edge a point lies on (-1: none). */
+function edgeAt(lp: Pt[], p: Pt): number {
+  for (let i = 0; i < lp.length; i++) {
+    const a = lp[i], b = lp[(i + 1) % lp.length], e = sub(b, a), L2 = dot(e, e);
+    const t = L2 ? Math.max(0, Math.min(1, dot(sub(p, a), e) / L2)) : 0;
+    if (len(sub(p, add(a, mul(e, t)))) < 1e-6 && t > 1e-9 && t < 1 - 1e-9) return i;
+  }
+  return -1;
 }
 
 /** Walks along the polyline from its start for `dist` mm (the points passed and the point reached). */
@@ -474,6 +569,11 @@ export function leadsAt(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row
   let pts = ring;
   if (v.gap > 0) pts = [...ring, ...walk(ring, v.gap).slice(1)];
   else if (v.gap < 0) pts = walk(ring, Math.max(0, totalLen(ring) + v.gap));
+  // a gap ending partway along a chord of a circle: on the circle (onArc)
+  if (v.gap !== 0 && pts.length > 1) {
+    const e = edgeAt(lp, pts[pts.length - 1]);
+    if (e >= 0) pts = [...pts.slice(0, -1), onArc(lp, e, pts[pts.length - 1])];
+  }
 
   // a hole's leads stay in the hole: at most to its middle along the lead
   const limit = (p: Pt, d: Pt, want: number) => {
@@ -626,7 +726,30 @@ const totalLen = (pts: Pt[]) => pts.reduce((s, p, i) => (i ? s + len(sub(p, pts[
 
 // ------------------------------------------------------------------ parts and their order
 
-interface PartGeo { i: number; outer: Pt[]; holes: Pt[][]; holeK: number[]; trace: Pt[][]; open: Pt[][]; box: Box; area: number }
+interface PartGeo {
+  i: number; outer: Pt[]; holes: Pt[][]; holeK: number[]; trace: Pt[][]; open: Pt[][]; box: Box; area: number; msig?: string;
+  /** per hole: an island (see CutContour.island) */
+  island: boolean[];
+  /** per hole: the holes (indexes) that lie inside it (cut before it) */
+  within: number[][];
+}
+
+/** Which of a part's loops lie inside which: per hole (loops 1 on), the other holes inside it, and whether it
+ *  is an island (inside an odd number of other holes, so an even number of loops deep with the outline). */
+export function loopNesting(holes: Pt[][]): { island: boolean[]; within: number[][] } {
+  // a point of b well inside or outside a (a vertex on a's line: touching loops), else b's first point
+  const ptOf = (b: Pt[], a: Pt[]) => b.find((q) => !a.some((v) => Math.abs(v[0] - q[0]) < 1e-3 && Math.abs(v[1] - q[1]) < 1e-3)) ?? b[0];
+  const boxes = holes.map(boxOf);
+  const inside = (b: number, a: number) => {
+    const A = boxes[a], B = boxes[b];
+    if (B.x0 < A.x0 || B.x1 > A.x1 || B.y0 < A.y0 || B.y1 > A.y1) return false;
+    const q = ptOf(holes[b], holes[a]);
+    return pointIn(holes[a], q[0], q[1]);
+  };
+  const within = holes.map((_, a) => holes.flatMap((_, b) => (b !== a && inside(b, a) ? [b] : [])));
+  const depth = holes.map((_, b) => within.filter((w) => w.includes(b)).length);
+  return { island: depth.map((d) => d % 2 === 1), within };
+}
 
 /** A loop scaled about the middle of its box by k (hole compensation). */
 export function scaledLoop(lp: Pt[], k: number): Pt[] {
@@ -652,10 +775,13 @@ async function partGeos(sheet: NestedSheet, paths: Map<string, string>, idx: num
     const ks = raw.map((lp, k) => (k > 0 && marked.length && isMarked(lp) ? holeK : 1));
     const loops = raw.map((lp, k) => (ks[k] !== 1 ? scaledLoop(lp, ks[k]) : lp)).map((lp) => lp.map(f));
     const outer = loops[0] ? oriented(loops[0], !mirrored) : [];
+    const nest = loopNesting(loops.slice(1));
     return {
-      i, outer, holes: loops.slice(1).map((lp) => oriented(lp, mirrored)), holeK: ks.slice(1),
+      i, outer, holes: loops.slice(1).map((lp, j) => oriented(lp, nest.island[j] ? !mirrored : mirrored)), holeK: ks.slice(1),
+      island: nest.island, within: nest.within,
       trace: marks.trace.map((l) => l.map(f)), open: marks.open.map((l) => l.map(f)),
       box: boxOf(outer), area: Math.abs(signedArea(outer)),
+      ...(read && wantMarks ? { msig: marksSig(read) } : {}),
     };
   }));
 }
@@ -779,7 +905,8 @@ function plainGeos(sheet: NestedSheet, paths: Map<string, string>, idx: number[]
     const f = transform(p);
     const loops = partLoops(paths.get(p.partId) ?? "").map((lp) => lp.map(f));
     if (!loops[0]?.length) return [];
-    return [{ i, outer: loops[0], holes: loops.slice(1), holeK: loops.slice(1).map(() => 1), trace: [], open: [], box: boxOf(loops[0]), area: Math.abs(signedArea(loops[0])) }];
+    return [{ i, outer: loops[0], holes: loops.slice(1), holeK: loops.slice(1).map(() => 1), trace: [], open: [], box: boxOf(loops[0]), area: Math.abs(signedArea(loops[0])),
+      ...loopNesting(loops.slice(1)) }];
   });
 }
 
@@ -990,13 +1117,24 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
       if (q.what === "trace") continue;
       if (canOpen) openRuns(g.open, i, "open");
     }
-    // the holes, the nearest next
-    const holes = g.holes.map((lp, j) => ({ ...closedContour(lp, "inner", rules, row, targetOf(boxOf(lp), rules), side, fitOf([i], lp, "inner"), fitCount),
-      ...(g.holeK[j] !== 1 ? { holeK: g.holeK[j] } : {}) }));
+    // the holes, the nearest next; a loop only once everything inside it is cut (an island before the hole
+    // it lies in, the island's holes before the island)
+    const holes = g.holes.map((lp, j) => {
+      const how = g.island[j] ? "outer" : "inner";
+      return { j, ...closedContour(lp, how, rules, row, targetOf(boxOf(lp), rules), side, fitOf([i], lp, how), fitCount),
+        ...(g.holeK[j] !== 1 ? { holeK: g.holeK[j] } : {}), ...(g.island[j] ? { island: true } : {}) };
+    });
+    const done = new Set<number>();
     while (holes.length) {
-      let k = 0, best = Infinity;
-      holes.forEach((h, j) => { const d = len(sub(startOf(h), at)); if (d < best) { best = d; k = j; } });
-      const h = holes.splice(k, 1)[0];
+      let k = -1, best = Infinity;
+      holes.forEach((h, n) => {
+        if (!g.within[h.j].every((x) => done.has(x))) return;
+        const d = len(sub(startOf(h), at));
+        if (d < best) { best = d; k = n; }
+      });
+      if (k < 0) k = 0;   // (loops inside each other both ways: cannot be; as found)
+      const { j, ...h } = holes.splice(k, 1)[0];
+      done.add(j);
       fresh.push({ part: i, kind: "inner", ...h });
       at = endOf(h);
     }
@@ -1075,6 +1213,14 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     if (!now.has(k) && before) sigs[k] = before;
     else if (path !== undefined) sigs[k] = pathSig(path);
   }
+  // and its tracing and open cut lines (when they were read: tracing or open cuts processed)
+  const msigs: Record<number, string> = {};
+  for (const k of Object.keys(keys).map(Number)) {
+    const was = sheet.cut?.msigs?.[k];
+    const g = now.has(k) ? geos.find((x) => x.i === k) : undefined;
+    if (g?.msig) msigs[k] = g.msig;
+    else if (!now.has(k) && was) msigs[k] = was;
+  }
   // the tracing first, shortest rapids: on a laser the Technology row says (not set: from 4 mm up), on other
   // machines Settings -> Machines -> Cut order. Parts picked by hand (Selected parts): the tracing of the
   // parts picked this time first, then they are cut in the order picked; earlier picks stay as they are.
@@ -1097,7 +1243,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   contours = tidyPierces(contours);
   // Selected parts / Trace / Cut internal pick an order by hand: the rule of the Auto cut before stays the sheet's
   const autoRule = q.parts && q.ordered ? sheet.cut?.autoRule ?? (sheet.cut && sheet.cut.rule !== "manual" ? sheet.cut.rule : q.rule) : q.rule;
-  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, autoRule, contours, keys, sigs, ...(mirrored ? { mirrored } : {}),
+  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, autoRule, contours, keys, sigs, ...(Object.keys(msigs).length ? { msigs } : {}), ...(mirrored ? { mirrored } : {}),
     ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}),
     ...(first.length ? { keptFirst: new Set(first.flatMap((c) => c.parts ?? [c.part])).size } : {}) };
 }

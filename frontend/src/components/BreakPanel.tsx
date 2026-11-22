@@ -101,7 +101,7 @@ export function useBreakCut({ index, single, sheets, parts, machine, onCut }: {
     // a lead is picked from about 10 mm around it (or 12 px, zoomed far out)
     const reach = Math.max(10, 12 / scale);
     if (resetOn) {
-      const parts = new Set([...live].filter((c) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.inline && !c.cp));
+      const parts = new Set([...live].filter((c) => (c.kind === "outer" || c.kind === "inner") && !c.island && !c.parts && !c.common && !c.inline && !c.cp));
       const k = pickContour(cutPath, parts, p, reach);
       if (k < 0) { setMsg({ text: "RESET: click a part", bad: true }); return; }
       const r = resetPart(ctx, k, all, live);

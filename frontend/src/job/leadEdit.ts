@@ -5,7 +5,7 @@
 // same contour, the same point of it).
 
 import {
-  cornerAngle, cornerOnly, leadValues, leadsAt, oriented, scaledLoop,
+  cornerAngle, cornerOnly, leadValues, leadsAt, onArc, oriented, scaledLoop,
   type CutContour, type LeadSpec, type LeadStart, type SheetCut,
 } from "./cutPath";
 import { leadRulesOf, type LeadRules, type LeadType } from "./leads";
@@ -54,8 +54,9 @@ const distPoly = (pts: Pt[], p: Pt) => {
   return pts.length === 1 ? len(sub(p, pts[0])) : d;
 };
 
-/** A contour this tool works on: an outline or a hole of one part (not a common cut block's). */
-export const editable = (c: CutContour) => (c.kind === "outer" || c.kind === "inner") && !c.parts && !c.common && !c.bc && !c.inline && !c.cp;
+/** A contour this tool works on: an outline or a hole of one part (not a common cut block's, not an island:
+ *  Auto cut leads those from the scrap around them, as it does outlines). */
+export const editable = (c: CutContour) => (c.kind === "outer" || c.kind === "inner") && !c.island && !c.parts && !c.common && !c.bc && !c.inline && !c.cp;
 
 /** The contour nearest the point (its leads count most: they are what is clicked), within `reach` mm. */
 export function contourAt(cut: SheetCut, live: Set<CutContour>, p: Pt, reach: number): number {
@@ -126,7 +127,8 @@ export function startNear(ctx: LeadCtx, lp: Pt[], p: Pt, type: LeadType | null, 
     : { at: lp[i], edge: i, vertex: true, t: unit(add(unit(sub(lp[i], prev(i))), unit(sub(next(i), lp[i])))) };
   if (q.t * L < 0.01) return atVertex(q.edge);
   if ((1 - q.t) * L < 0.01) return atVertex((q.edge + 1) % n);
-  return { at: q.at, edge: q.edge, vertex: false, t: unit(sub(b, a)) };
+  // partway along a chord of a circle: on the circle itself (onArc)
+  return { at: onArc(lp, q.edge, q.at), edge: q.edge, vertex: false, t: unit(sub(b, a)) };
 }
 
 export type LeadOp =

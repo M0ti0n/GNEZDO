@@ -5,7 +5,7 @@ import { diag } from "../job/diag";
 import { foldersOf, type Machine, type Origin } from "../job/machine";
 import { countsOf, type NestedSheet } from "../job/nest";
 import { wrongStock, wrongStockText } from "../job/stock";
-import { liveContours, type CutContour } from "../job/cutPath";
+import { changedMarks, liveContours, type CutContour } from "../job/cutPath";
 import { checkSheet } from "../job/cutCheck";
 import { contourKind, pickContour } from "../job/manualCut";
 import { sheetProgram } from "../job/ncProgram";
@@ -262,7 +262,9 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
       const wrong = partOf ? wrongStock(sh, partOf) : [];
       if (wrong.length) { out.push({ sheet: i + 1, error: wrongStockText(i + 1, sh, wrong.map((k) => partOf!(sh.parts[k].partId)!)) }); continue; }
       // the cut path is still the sheet's: every part processed as it is now, no pierce in a part
-      const check = checkSheet(sh, (id) => partOf?.(id)?.path, (k) => partName(sh, k) ?? `part ${k + 1}`);
+      // the tracing and open cut lines as they are now in the database (another browser may have changed them)
+      const remarked = await changedMarks(sh);
+      const check = checkSheet(sh, (id) => partOf?.(id)?.path, (k) => partName(sh, k) ?? `part ${k + 1}`, remarked);
       if (check.errors.length) { out.push({ sheet: i + 1, error: `not post processed: ${check.errors.join("; ")}` }); continue; }
       const prog = sheetProgram(sh, machine, origin, nameOf(i), (k) => partName(sh, k));
       if ("error" in prog) { out.push({ sheet: i + 1, error: prog.error }); continue; }

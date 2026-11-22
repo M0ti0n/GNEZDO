@@ -4,6 +4,8 @@
 //   revision) since Auto cut. Such a part would be left out of the program, or cut as it was drawn before;
 // - no pierce lies in a part: a lead that found no room (tight nesting) may start in the neighbouring part,
 //   an outline's pierce must be in the scrap, a hole's in the hole.
+// - every part and every cut (its leads too) is on the sheet: a part nested or moved past the edge, or
+//   a lead pushed off it, was written all the same (QA R2-08). The remnant's own cuts may leave the sheet.
 // Warnings (written anyway): a contour pierced on its own line (no lead-in), but not where a micro joint or a
 // break cut starts again (that is how those restart).
 
@@ -40,7 +42,8 @@ const listOf = (names: string[], max = 4) => {
   return u.length <= max ? u.join(", ") : `${u.slice(0, max).join(", ")} and ${u.length - max} more`;
 };
 
-export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: number) => string): SheetCheck {
+/** marksChanged: the parts whose tracing or open cut lines changed since Auto cut (changedMarks, read before) */
+export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: number) => string, marksChanged?: Set<number>): SheetCheck {
   const errors: string[] = [], warns: string[] = [];
   if (!sheet.cut) return { errors, warns };
   // -- every part processed, as it is now
@@ -55,6 +58,8 @@ export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: nu
   });
   if (redrawn.length) errors.push(`the drawing of ${listOf(redrawn)} changed since Auto cut (replaced or another version): process the sheet again`);
   if (moved.length) errors.push(`${listOf(moved)} moved since Auto cut: process ${moved.length === 1 ? "it" : "them"} again`);
+  const remarked = [...(marksChanged ?? [])].filter((k) => ok.has(k)).map(nameOf);
+  if (remarked.length) errors.push(`the tracing or open cut lines of ${listOf(remarked)} changed since Auto cut: process ${remarked.length === 1 ? "it" : "them"} again`);
   if (added.length) errors.push(`${listOf(added)} ${added.length === 1 ? "is" : "are"} not processed: Auto cut ${added.length === 1 ? "it" : "them"} first`);
 
   // -- the pierce points
@@ -68,20 +73,22 @@ export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: nu
     for (const [x, y] of loops[0]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
     return { loops, box: { x0, y0, x1, y1 } };
   });
+  /** Material is inside an odd number of the part's loops: the outline (1), an island in a hole (3), ... */
+  const solid = (loops: Pt[][], q: Pt) => loops.filter((lp) => pointIn(lp, q[0], q[1])).length % 2 === 1;
   /** In the part's material, or nearer its lines than the pierce clearance (a part's hole is scrap, but its edge is the part's). */
   const nearPart = (j: number, q: Pt) => {
     const g = placed[j];
     const c = PIERCE_CLEAR_MM;
     if (!g || q[0] < g.box.x0 - c || q[0] > g.box.x1 + c || q[1] < g.box.y0 - c || q[1] > g.box.y1 + c) return false;
     if (g.loops.some((lp) => loopDist(q, lp) < c)) return true;
-    return pointIn(g.loops[0], q[0], q[1]) && !g.loops.slice(1).some((h) => pointIn(h, q[0], q[1]));
+    return solid(g.loops, q);
   };
   /** In the part's material (not on its lines, not in its holes). */
   const inMaterial = (j: number, q: Pt) => {
     const g = placed[j];
     if (!g || q[0] < g.box.x0 || q[0] > g.box.x1 || q[1] < g.box.y0 || q[1] > g.box.y1) return false;
     if (g.loops.some((lp) => loopDist(q, lp) <= ON_LINE_MM)) return false;
-    return pointIn(g.loops[0], q[0], q[1]) && !g.loops.slice(1).some((h) => pointIn(h, q[0], q[1]));
+    return solid(g.loops, q);
   };
   const inOther: string[] = [], inOwn: string[] = [], outOfHole: string[] = [], onLine: string[] = [];
   const own = (c: CutContour) => (c.parts ? c.parts.map(nameOf).join(" + ") : nameOf(c.part));
@@ -98,10 +105,32 @@ export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: nu
       if (!c.restart && !c.bc) onLine.push(own(c));
       continue;
     }
-    if (c.kind === "outer" && mine.some((j) => inMaterial(j, q))) inOwn.push(own(c));
+    if ((c.kind === "outer" || c.island) && mine.some((j) => inMaterial(j, q))) inOwn.push(own(c));
     // (a hole cut in pieces: each piece is part of the loop only, not a loop to be inside of)
-    if (c.kind === "inner" && !c.bc && c.pts.length > 2 && !pointIn(c.pts, q[0], q[1])) outOfHole.push(own(c));
+    if (c.kind === "inner" && !c.island && !c.bc && c.pts.length > 2 && !pointIn(c.pts, q[0], q[1])) outOfHole.push(own(c));
   }
+
+  // -- on the sheet: its rectangle, and a shaped sheet's (a remnant's) outline less its cut-outs
+  const OFF_MM = 0.05;
+  const shape = sheet.outline?.length ? sheet.outline.map((lp) => lp.map(([x, y]) => [x, y] as Pt)) : null;
+  const onSheet = (q: Pt) => {
+    if (q[0] < -OFF_MM || q[1] < -OFF_MM || q[0] > sheet.lengthMm + OFF_MM || q[1] > sheet.widthMm + OFF_MM) return false;
+    if (!shape) return true;
+    const edge = (lp: Pt[]) => loopDist(q, lp) <= OFF_MM;
+    if (shape.some(edge)) return true;
+    return pointIn(shape[0], q[0], q[1]) && !shape.slice(1).some((h) => pointIn(h, q[0], q[1]));
+  };
+  const offParts: string[] = [];
+  placed.forEach((g, j) => { if (g && !g.loops[0].every(onSheet)) offParts.push(nameOf(j)); });
+  if (offParts.length) errors.push(`${listOf(offParts)} ${offParts.length === 1 ? "lies" : "lie"} outside the sheet, wholly or partly: move ${offParts.length === 1 ? "it" : "them"} onto the sheet`);
+  const offCuts: string[] = [];
+  for (const c of liveContours(sheet, pathOf)) {
+    const mine = c.parts ?? [c.part];
+    if (mine.some((j) => offParts.includes(nameOf(j)))) continue;   // said above
+    if (![...c.leadIn, ...c.pts, ...c.leadOut].every(onSheet)) offCuts.push(own(c));
+  }
+  if (offCuts.length) errors.push(`a cut or its lead leaves the sheet: ${listOf(offCuts)}. Shorten or move the lead (Lead in / out), or move the part`);
+
   if (inOther.length) errors.push(`a pierce lies in or next to another part (closer than ${PIERCE_CLEAR_MM} mm): ${listOf(inOther, 3)}. Its lead has no room: move it (Lead in / out) or nest with a bigger part gap`);
   if (inOwn.length) errors.push(`an outline's pierce lies in its own part: ${listOf(inOwn)}. Move the lead (Lead in / out)`);
   if (outOfHole.length) errors.push(`a hole's pierce is not in the hole: ${listOf(outOfHole)}. Move the lead (Lead in / out)`);
