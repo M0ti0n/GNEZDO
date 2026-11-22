@@ -13,6 +13,15 @@ const SendIcon = () => (
 );
 
 const mm = (n: number) => `${Number(n.toFixed(2))} mm`;
+/** A material and thickness as a bubble (like Used in jobs in Projects and parts); green: the same as the parts sent. */
+const MatChip = ({ material, thicknessMm, fit = false }: { material: string; thicknessMm: number; fit?: boolean }) => (
+  <span className={`sp-mat${fit ? " is-fit" : ""}`} title={fit ? "The same material and thickness as parts you are sending" : undefined}>{material} · {mm(thicknessMm)}</span>
+);
+const UserIcon = () => (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+    <circle cx="12" cy="8" r="4" /><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" />
+  </svg>
+);
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /** Send to job…: the jobs open on other computers (those with the parts' material and thickness first), how many of each, a note. */
@@ -38,7 +47,8 @@ export function SendPartsDialog({ parts, qtyOf, onClose, onSent }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, busy]);
   const kinds = new Set(parts.map((p) => `${p.material.toLowerCase()}|${p.thicknessMm}`));
-  const fits = (j: OpenJob) => j.materials.some((m) => kinds.has(`${m.material.toLowerCase()}|${m.thicknessMm}`));
+  const same = (m: { material: string; thicknessMm: number }) => kinds.has(`${m.material.toLowerCase()}|${m.thicknessMm}`);
+  const fits = (j: OpenJob) => j.materials.some(same);
   const sorted = jobs ? [...jobs].sort((a, b) => Number(fits(b)) - Number(fits(a))) : null;
   const send = async () => {
     const job = jobs?.find((j) => j.id === pick);
@@ -65,10 +75,11 @@ export function SendPartsDialog({ parts, qtyOf, onClose, onSent }: {
               {sorted.map((j) => (
                 <li key={j.id} role="option" aria-selected={pick === j.id} className={`sp-job${pick === j.id ? " is-on" : ""}`} onClick={() => setPick(j.id)}>
                   <span className="sp-job-name">{j.name}</span>
-                  <span className="sp-job-who">{j.user} · open since {timeOf(j.since)}</span>
+                  <span className="sp-job-who"><span className="sp-user"><UserIcon />{j.user}</span><span className="sp-since">open since {timeOf(j.since)}</span></span>
                   <span className="sp-job-mats">
-                    {fits(j) && <b className="sp-fit">Same material and thickness</b>}
-                    {j.materials.length ? j.materials.map((m) => `${m.material} ${mm(m.thicknessMm)}`).join(", ") : "no saved parts yet"}
+                    {j.materials.length
+                      ? j.materials.map((m) => <MatChip key={`${m.material}|${m.thicknessMm}`} {...m} fit={same(m)} />)
+                      : <span className="sp-none">no saved parts yet</span>}
                   </span>
                 </li>
               ))}
@@ -82,7 +93,7 @@ export function SendPartsDialog({ parts, qtyOf, onClose, onSent }: {
                 <tr key={p.id}>
                   <td className="sp-thumb"><PartThumb part={p} size={34} marks={p.engraved} /></td>
                   <td><span className="sp-pname">{p.name}</span><span className="sp-proj">{p.project}</span></td>
-                  <td>{p.material} {mm(p.thicknessMm)}</td>
+                  <td><MatChip material={p.material} thicknessMm={p.thicknessMm} /></td>
                   <td><input className="sp-qty" type="number" min={0} step={1} value={qty[p.id] ?? 0} aria-label={`Quantity of ${p.name}`}
                     onChange={(e) => setQty((q) => ({ ...q, [p.id]: Math.max(0, Math.round(Number(e.target.value) || 0)) }))} /></td>
                 </tr>
@@ -132,7 +143,7 @@ export function IncomingPartsDialog({ offer, more, busy, onAnswer }: {
                 <tr key={p.id}>
                   <td className="sp-thumb"><PartThumb part={p} size={34} marks={p.engraved} /></td>
                   <td><span className="sp-pname">{p.name}</span><span className="sp-proj">{p.project}</span></td>
-                  <td>{p.material} {mm(p.thicknessMm)}</td>
+                  <td><MatChip material={p.material} thicknessMm={p.thicknessMm} /></td>
                   <td className="sp-n">{qty}</td>
                 </tr>
               ))}

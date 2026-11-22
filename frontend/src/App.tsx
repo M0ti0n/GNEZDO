@@ -1662,7 +1662,7 @@ export function App() {
                 onSave={(s) => addSheet(addSheetFor.jobId, s)} onClose={() => setAddSheetFor(null)} />
             )}
             {sendParts && (
-              <SendPartsDialog parts={sendParts} qtyOf={(p) => (rules.qtyFromName && p.qty > 0 ? p.qty : 1)}
+              <SendPartsDialog parts={sendParts} qtyOf={(p) => (rules.qtyFromName ? p.qty : 0)}
                 onClose={() => setSendParts(null)} onSent={(text) => { setSendParts(null); setToast(text); }} />
             )}
             {inbox[0] && <IncomingPartsDialog offer={inbox[0]} more={inbox.length - 1} busy={answering} onAnswer={(a) => void answerOffer(inbox[0], a)} />}

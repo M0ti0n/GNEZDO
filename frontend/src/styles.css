@@ -2940,13 +2940,17 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .sp-body h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); margin: 6px 0 8px; }
 .sp-empty { color: var(--ink-3); margin: 0 0 10px; }
 .sp-jobs { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; max-height: 230px; overflow: auto; }
-.sp-job { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 8px 12px; border: 1.5px solid var(--line); border-radius: 8px; cursor: pointer; background: #fff; }
+.sp-job { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 12px; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 8px; cursor: pointer; background: #fff; }
 .sp-job:hover { border-color: var(--green); }
 .sp-job.is-on { border-color: var(--green); background: var(--green-tint); }
 .sp-job-name { font-weight: 600; }
-.sp-job-who { color: var(--ink-3); font-size: 13px; text-align: right; }
-.sp-job-mats { grid-column: 1 / -1; font-size: 12.5px; color: var(--ink-3); }
-.sp-fit { color: var(--green-ink); margin-right: 8px; }
+.sp-job-who { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.sp-user { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px 3px 8px; border-radius: 12px; background: var(--green); color: #fff; font-size: 13.5px; font-weight: 700; }
+.sp-since { color: var(--ink-3); font-size: 12.5px; }
+.sp-job-mats { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.sp-none { font-size: 12.5px; color: var(--ink-3); }
+.sp-mat { display: inline-block; padding: 2px 8px; border-radius: 10px; background: var(--blue-tint); color: var(--blue-ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.sp-mat.is-fit { background: var(--green-tint); color: var(--green-ink); box-shadow: inset 0 0 0 1.5px var(--green); }
 .sp-parts { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13.5px; }
 .sp-parts th { text-align: left; font-weight: 600; font-size: 12px; color: var(--ink-3); padding: 4px 6px; border-bottom: 1px solid var(--line); }
 .sp-parts td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
