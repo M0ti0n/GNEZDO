@@ -22,6 +22,10 @@ export interface JobSummary {
   thicknesses: number[];   // every thickness in the job, thin to thick
   /** the machine the job is nested for (id in the machines setting); empty = the default machine */
   machine?: string;
+  /** done: every part nested and every sheet post processed (or marked as cut); else in progress */
+  done?: boolean;
+  /** the materials and thicknesses in the job (its own where set on the work part list) */
+  kinds?: { material: string; thicknessMm: number }[];
 }
 
 export interface ImportSummary {

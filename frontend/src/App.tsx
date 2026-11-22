@@ -786,7 +786,9 @@ export function App() {
     if (edited) setJobEdited((m) => ({ ...m, [id]: edited }));
     open(jobTab(id, name));
   };
-  const openJob = (j: JobSummary) => { void openSaved(j.id, j.name, { by: j.modifiedBy, at: j.modifiedAt }); };
+  const openJob = (j: Pick<JobSummary, "id" | "name"> & Partial<Pick<JobSummary, "modifiedBy" | "modifiedAt">>) => {
+    void openSaved(j.id, j.name, j.modifiedBy !== undefined && j.modifiedAt ? { by: j.modifiedBy, at: j.modifiedAt } : undefined);
+  };
 
   // Job search: a sheet's parts and pieces added to an open job (to fill leftover plates of other jobs):
   // parts already in the job get the pieces on top of what they need, new ones come in with that many
@@ -865,11 +867,9 @@ export function App() {
 
   const onHome = (a: HomeAction) => {
     switch (a.kind) {
-      case "import": return onRail("import");
-      case "newJob": return newJob();
+      case "parts": return setDrawer("parts");   // "All parts", a part
       case "jobSearch": setDrawer("jobs"); return runJobSearch({}); // "All jobs"
       case "openJob": return openJob(a.job);
-      case "openImport": return onRail("import");
     }
   };
 
@@ -1660,7 +1660,7 @@ export function App() {
             : active.kind !== "jobSearch" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && toolsFor(active.kind).length > 0 &&
               <ToolStrip tools={toolsFor(active.kind).map((t) => (t.id === "import" ? { ...t, count: importPanel.items.length } : t))} onTool={onTool} />}
           <main className={`page${active.kind === "jobSearch" || active.kind === "remnants" || active.kind === "drawing" || active.kind === "rules" || active.kind === "settings" || active.kind === "extract" || active.kind === "special" ? " page-flush" : ""}`} aria-label={active.title}>
-            {active.kind === "home" && <HomePage onAction={onHome} />}
+            {active.kind === "home" && <HomePage onAction={onHome} server={serverMode} />}
             {active.kind === "job" && job && jobScreen[job.id] === "nest" && (
               <NestPage key={job.id}
                 initialFull={jobFull[job.id] ?? null}

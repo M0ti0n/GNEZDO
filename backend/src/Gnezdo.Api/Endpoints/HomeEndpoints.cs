@@ -174,9 +174,11 @@ public static class HomeEndpoints
             {
                 jp.JobId, jp.Qty, Material = jp.Part.Material.Name, jp.Part.ThicknessMm,
                 Project = jp.Part.Project != null ? jp.Part.Project.Code : null,
+                Own = jp.Material ?? jp.Part.Material.Name, OwnT = jp.ThicknessMm ?? jp.Part.ThicknessMm,
             })
             .ToListAsync(ct);
         var byJob = lines.ToLookup(l => l.JobId);
+        var done = await DoneAsync(db, ids, ct);
 
         return rows.Select(r =>
         {
@@ -192,8 +194,36 @@ public static class HomeEndpoints
                 byJob[r.Id].Select(l => l.Project).OfType<string>().Distinct().Order(StringComparer.OrdinalIgnoreCase).ToList(),
                 byJob[r.Id].Select(l => l.Material).Distinct().Order(StringComparer.OrdinalIgnoreCase).ToList(),
                 byJob[r.Id].Select(l => l.ThicknessMm).Distinct().Order().ToList(),
-                r.Machine);
+                r.Machine, done.GetValueOrDefault(r.Id),
+                byJob[r.Id].Select(l => (l.Own, l.OwnT)).Distinct().OrderBy(k => k.Own, StringComparer.OrdinalIgnoreCase).ThenBy(k => k.OwnT)
+                    .Select(k => new MaterialThicknessDto(k.Own, k.OwnT)).ToList());
         }).ToList();
+    }
+
+    /// <summary>
+    /// Which jobs are done (the home page's Nested; the rest are in progress): every part nested as many times as
+    /// the job asks for, and every sheet of the nest post processed (an NC program written); or marked as cut.
+    /// </summary>
+    internal static async Task<Dictionary<int, bool>> DoneAsync(GnezdoDb db, IReadOnlyCollection<int> ids, CancellationToken ct)
+    {
+        var jobs = await db.Jobs.AsNoTracking().Where(j => ids.Contains(j.Id))
+            .Select(j => new { j.Id, j.Nest, j.SheetCount, Cut = j.CutAt != null }).ToListAsync(ct);
+        var asked = (await db.JobParts.AsNoTracking().Where(jp => ids.Contains(jp.JobId) && jp.Qty > 0)
+            .Select(jp => new { jp.JobId, jp.PartId, jp.Qty }).ToListAsync(ct)).ToLookup(x => x.JobId);
+        var sent = (await db.NcSent.AsNoTracking().Where(s => ids.Contains(s.JobId)).Select(s => new { s.JobId, s.Sheet }).ToListAsync(ct))
+            .ToLookup(x => x.JobId, x => x.Sheet);
+        var out_ = new Dictionary<int, bool>();
+        foreach (var j in jobs)
+        {
+            if (j.Cut) { out_[j.Id] = true; continue; }
+            var parts = asked[j.Id].GroupBy(x => x.PartId).Select(g => (Id: g.Key, Qty: g.Sum(x => x.Qty))).ToList();
+            if (parts.Count == 0 || j.SheetCount <= 0) { out_[j.Id] = false; continue; }
+            var nested = StatusApi.NestedOf(j.Nest);
+            var allNested = parts.All(p => nested.GetValueOrDefault(p.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)) >= p.Qty);
+            var posted = sent[j.Id].ToHashSet();
+            out_[j.Id] = allNested && Enumerable.Range(1, j.SheetCount).All(posted.Contains);
+        }
+        return out_;
     }
 
     private static async Task<IResult> JobPartsAsync(int id, GnezdoDb db, CancellationToken ct)

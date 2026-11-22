@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- **A new home screen:** two columns, without the Import and New job tiles.
+  - **Recently added parts:** the last ten parts added to the library, each with a small picture, its project, its material and thickness, and when it was added. Clicking one opens the Parts panel.
+  - **Recent jobs:** each job's name, its materials and thicknesses, and one of two states. **Nested** means every part is nested and every sheet is post processed (or the job is marked as cut). **In progress** is everything else.
+  - **Server:** the jobs open now come first, with who has each one open (their colored name; yours says "here"), then the recent jobs nobody has open. The list updates every 15 seconds.
 - **Special tools: no tools built in.** A new installation starts with an empty Special tools; tools are added in Settings → Special tools → Add tool… (a .gnezdo-tool.zip).
   - The six fittings (segmented elbow, rect. → round, branch reducer, flange, threaded flange, screw flight) are now plug-in tools in SPECIAL TOOLS on GitHub, one zip each, with their pictures and value boxes as before. Their parts are the same.
   - Their forms change a little: on the flanges, **Sizes from the table** fills B, E, N and the slot width or thread from A (untick it to enter them), and the part's label gives the recommended thickness, the outside diameter and the tap drill. The screw flight's label gives the blank's angle and radii.
