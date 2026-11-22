@@ -1,0 +1,110 @@
+{
+  "format": "gnezdo-tool",
+  "version": 1,
+  "id": "flange",
+  "name": "Flange",
+  "toolVersion": "1.0",
+  "description": "A flat ring with N arc slots (25 mm) on the B circle, sizes from the standard table; whole or in three 120° sections. From the HVAC Fittings workbench.",
+  "countLabel": "Flanges",
+  "script": "tool.js",
+  "icon": "icon.svg",
+  "diagram": "diagram.svg",
+  "fields": [
+    {
+      "key": "table",
+      "type": "check",
+      "label": "Sizes from the table",
+      "group": "Size",
+      "default": true,
+      "note": "From the table: B, E, N (and the slot width or thread) for A from the standard sizes, A80 … A820 (an A between two sizes: as the smaller one). Untick to enter them."
+    },
+    {
+      "key": "a",
+      "type": "number",
+      "label": "A",
+      "title": "A: inner (nominal) diameter",
+      "unit": "mm",
+      "default": 400,
+      "min": 0,
+      "at": [
+        37,
+        58
+      ],
+      "color": "blue"
+    },
+    {
+      "key": "b",
+      "type": "number",
+      "label": "B",
+      "title": "B: diameter the slots lie on (not from the table)",
+      "unit": "mm",
+      "default": 435,
+      "min": 0,
+      "at": [
+        64,
+        22
+      ],
+      "color": "green"
+    },
+    {
+      "key": "m",
+      "type": "number",
+      "label": "M",
+      "title": "M: slot width (not from the table)",
+      "unit": "mm",
+      "default": 11,
+      "min": 0,
+      "at": [
+        37,
+        9
+      ],
+      "color": "purple"
+    },
+    {
+      "key": "e",
+      "type": "number",
+      "label": "E",
+      "title": "E: ring width (not from the table)",
+      "unit": "mm",
+      "default": 30,
+      "min": 0,
+      "at": [
+        84,
+        51
+      ],
+      "color": "brown"
+    },
+    {
+      "key": "n",
+      "type": "int",
+      "label": "N",
+      "title": "N: number of slots (not from the table)",
+      "unit": "slots",
+      "default": 10,
+      "min": 0,
+      "at": [
+        84,
+        70
+      ],
+      "color": "dark"
+    },
+    {
+      "key": "whole",
+      "type": "check",
+      "label": "Combined",
+      "title": "The whole ring in one piece",
+      "group": "Pieces",
+      "default": true
+    },
+    {
+      "key": "divided",
+      "type": "check",
+      "label": "Divided (3 × 120°)",
+      "title": "Three 120° sections, the first cut midway between the top slot and the next",
+      "group": "Pieces",
+      "default": false,
+      "note": "Only flanges over A 100 with 3 slots or more are divided."
+    }
+  ],
+  "note": "D = A + 2E. The parts' label says the thickness the table recommends."
+}

@@ -6,7 +6,7 @@
 //
 //   h(phi) = (R + D/2 cos phi) tan(theta / 2),   phi = 0 on the heel, x along the circumference (0 .. pi D)
 
-import { Lines, fit, mapSeg, rev, seg, type P2, type Seg } from "./arcs";
+import { Lines, fit, mapSeg, rev, seg, type P2, type Seg } from "../../frontend/src/import/arcs";
 
 export interface ElbowValues {
   d: number;        // diameter (neutral)

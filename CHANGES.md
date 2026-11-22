@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- **Special tools: no tools built in.** A new installation starts with an empty Special tools; tools are added in Settings → Special tools → Add tool… (a .gnezdo-tool.zip).
+  - The six fittings (segmented elbow, rect. → round, branch reducer, flange, threaded flange, screw flight) are now plug-in tools in SPECIAL TOOLS on GitHub, one zip each, with their pictures and value boxes as before. Their parts are the same.
+  - Their forms change a little: on the flanges, **Sizes from the table** fills B, E, N and the slot width or thread from A (untick it to enter them), and the part's label gives the recommended thickness, the outside diameter and the tap drill. The screw flight's label gives the blank's angle and radii.
+  - A GNEZDO that already has these fittings loses them with this build: add the zips to keep using them.
 - **HACO plasma machine file** (POST PROCESSOR → HACO-KOMPAKT-plasma zip): both tables (80 A and 130 A, O2 / air) are tagged with the materials **MS, Mn12 and Hardox** only (S235, S355 and St37-2 are removed). An installed plasma gets them by importing the zip again (Replace) or by changing the tags in Settings → Machines → Technology.
 
 ## Build 22 Nov 2026, 3 (`3f02c70`)

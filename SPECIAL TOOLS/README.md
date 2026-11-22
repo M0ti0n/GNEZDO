@@ -1,11 +1,20 @@
 # SPECIAL TOOLS
 
-Special tools make parts from values: the fittings come built in, and more can be added as **plug-in tools**, without a new GNEZDO build. A tool only says what values it asks for and how its parts are drawn. GNEZDO shows its form, its parts and the preview, and sends the parts to Import 2D like the fittings' parts.
+Special tools make parts from values. They are **plug-in tools**, added without a new GNEZDO build: GNEZDO comes with none, so a new installation starts with an empty Special tools. A tool only says what values it asks for and how its parts are drawn. GNEZDO shows its form, its parts and the preview, and sends the parts to Import 2D.
 
 | Here | What |
 |---|---|
-| `mounting-plate/` | The example tool: a plate with rounded corners, bolt holes and an optional center hole. Start a new tool from a copy of it. |
-| `mounting-plate.gnezdo-tool.zip` | The same, ready to add. |
+| `segmented-elbow.gnezdo-tool.zip` | Segmented elbow: a round elbow of N middle sections and two end sections. |
+| `rect-round-transition.gnezdo-tool.zip` | Rect. → round: a transition from a rectangle to a round. |
+| `branch-reducer.gnezdo-tool.zip` | Branch reducer: a round reducer with a round branch (a tee or a lateral when both ends are the same). |
+| `flange.gnezdo-tool.zip` | Flange: a flat ring with arc slots, sizes from the standard table, whole or in three sections. |
+| `threaded-flange.gnezdo-tool.zip` | Threaded flange: a flat ring with X marks to drill and tap, sizes from its own table. |
+| `screw-flight.gnezdo-tool.zip` | Screw flight: the blank of one pitch of a screw. |
+| `mounting-plate/`, `mounting-plate.gnezdo-tool.zip` | The example tool: a plate with rounded corners, bolt holes and an optional center hole. Start a new tool from a copy of it. |
+| `<tool>/` | Each fitting's files (tool.json, tool.js, icon.svg, diagram.svg). |
+| `fittings-src/` | The fittings' source (from the HVAC Fittings workbench). `node "SPECIAL TOOLS/fittings-src/build.mjs"` (after `npm install` in frontend/) makes their tool.json, tool.js and zips again. |
+
+The six fittings were built into GNEZDO before; their parts are the same.
 
 ## Adding a tool
 

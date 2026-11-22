@@ -6,7 +6,7 @@
 // Divided (A over 100, N 3 or more): three 120° sections, the first cut midway between the top hole and
 // the next one. N divisible by 3: one section x3; otherwise Section A x2 (mirror images) and B x1.
 
-import { Lines, seg, type P2, type Seg } from "./arcs";
+import { Lines, seg, type P2, type Seg } from "../../frontend/src/import/arcs";
 
 const SLOT_LENGTH = 25, MIN_WEB = 1, MIN_DIVIDE_A = 100, START = 90;
 

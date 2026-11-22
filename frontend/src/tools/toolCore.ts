@@ -11,7 +11,7 @@
 //   function title(v) { return `PLATE ${v.w}x${v.h}`; }                            // optional: the parts' name
 
 import type { Entity, Role } from "../import/geometry";
-import { Lines, fit, fitPoints, marksOnLine, seg, type P2 } from "../import/fittings/arcs";
+import { Lines, fit, fitPoints, marksOnLine, seg, type P2 } from "../import/arcs";
 
 export interface ToolPart { key: string; label: string; qty: number; suffix?: string; entities: Entity[]; w: number; h: number }
 export type ToolResult = { parts: ToolPart[]; problems: string[]; title?: string } | { error: string };

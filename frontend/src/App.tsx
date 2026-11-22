@@ -9,7 +9,7 @@ import { ImportPage } from "./pages/ImportPage";
 import { ExtractEmpty, UnfoldPage } from "./pages/UnfoldPage";
 import { FittingsPage, type FitPartState } from "./pages/FittingsPage";
 import { snapsOn } from "./import/draw";
-import { newFitSession, type FitSession, type FittingPart } from "./import/fittings";
+import { newFitSession, type FitSession, type FittingPart } from "./tools/fitSession";
 import { readExtract, type X3Part } from "./import/step/extract";
 import { flatDrawing, isStepName, unfoldPart } from "./import/step/stepPart";
 import { sampleDrawings } from "./import/sampleDrawing";
@@ -529,11 +529,11 @@ export function App() {
     openId: null as string | null,
   };
 
-  // Import 2D -> FITTINGS: fittings made from their values; their parts go into the import list
+  // SPECIAL TOOLS: parts made from values by the plug-in tools; their parts go into the import list
   const [fit, setFit] = useState<FitSession>(() => newFitSession());
   const [fitSaved, setFitSaved] = useState<Set<string>>(() => new Set());   // parts (sigs) saved to the database
   const fitState = (sig: string): FitPartState => (imports.some((i) => i.fitting === sig) ? "listed" : fitSaved.has(sig) ? "saved" : "new");
-  /** Fitting parts into the import list (`count` fittings) with their own material and thickness ("": the
+  /** A special tool's parts into the import list (`count` sets) with their own material and thickness ("": the
    *  Import 2D properties'); one waiting there already is replaced. Their item ids. */
   const addFittings = (list: { part: FittingPart; sig: string }[], count: number, own0: { material: string; thicknessMm: string }): string[] => {
     const stamp = Date.now().toString(36);
