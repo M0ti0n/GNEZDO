@@ -134,3 +134,16 @@ export function useToolStore(): State {
   return s;
 }
 let loading = false;
+
+/** The added tools and which are off, as saved (Settings → Data → Export settings). */
+export async function toolsSetting(): Promise<{ tools: AddedTool[]; off: string[] }> {
+  if (!state.loaded) await loadTools();
+  return { tools: state.added, off: state.off };
+}
+
+/** Replaces the added tools and which are off (Settings → Data → Import settings). */
+export async function replaceToolsSetting(v: unknown): Promise<void> {
+  const s = clean(v);
+  await save(s.tools, s.off ?? []);
+  dropSandboxes();
+}
