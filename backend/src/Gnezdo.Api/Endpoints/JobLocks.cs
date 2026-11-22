@@ -58,9 +58,15 @@ public sealed class JobLocks(TimeProvider clock)
         lock (_gate) { if (_held.TryGetValue(job, out var h) && h.Page == page) _held.TryRemove(job, out _); }
     }
 
-    /// <summary>The jobs open now, and where.</summary>
-    public IReadOnlyList<(int Job, Holder Holder)> Open() =>
-        _held.Where(kv => Live(kv.Value)).Select(kv => (kv.Key, kv.Value)).ToList();
+    /// <summary>The jobs open now, and where (and the ones let go by a page that stopped renewing are forgotten).</summary>
+    public IReadOnlyList<(int Job, Holder Holder)> Open()
+    {
+        lock (_gate)
+        {
+            foreach (var kv in _held.Where(kv => !Live(kv.Value)).ToList()) _held.TryRemove(kv.Key, out _);
+            return _held.Select(kv => (kv.Key, kv.Value)).ToList();
+        }
+    }
 
     /// <summary>The page holding the job now (null: nobody).</summary>
     public Holder? HolderOf(int job) => _held.TryGetValue(job, out var h) && Live(h) ? h : null;
