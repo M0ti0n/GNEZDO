@@ -222,6 +222,7 @@ h1, h2 { font-family: var(--font-cond); font-weight: 600; margin: 0; }
   border: 1px solid #c9d6d6; background: #fff; font: inherit; font-size: 14px; color: var(--ink);
 }
 .field:focus { outline: 2px solid var(--green); outline-offset: -1px; border-color: transparent; }
+input.is-bad, input.is-bad:focus { outline: 2px solid var(--red); outline-offset: -1px; border-color: transparent; background: #fdf1ef; }
 .result-bar {
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
   padding: 6px 16px; font-size: 13px; color: var(--ink-2);
@@ -2973,3 +2974,6 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
   .sp-cols { grid-template-columns: minmax(0, 1fr); }
   .sp-col + .sp-col { border-left: 0; padding-left: 0; }
 }
+
+/* Import list: a file drawn in other units, scaled to mm on request */
+.imp-units { align-self: center; height: 26px; padding: 0 8px; font-size: 12px; white-space: nowrap; margin-right: 4px; }

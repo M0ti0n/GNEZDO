@@ -316,4 +316,40 @@ public sealed class PartSaveTests(ApiFixture api)
         Assert.Contains("Rotations", body);
         Assert.Empty(await Search("?name=SAVE_D"));
     }
+
+    [Fact]
+    public async Task Too_long_names_and_bad_thicknesses_are_refused_with_what_is_wrong()
+    {
+        await EnsureProject("N26-0510");
+        async Task<string> Refused(SavePartRequest p)
+        {
+            var res = await api.Client.PostAsJsonAsync("/api/parts", new SavePartsRequest([p], "test", "Fab"));
+            Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+            return await res.Content.ReadAsStringAsync();
+        }
+        Assert.Contains("Name is longer than 200", await Refused(Part(new string('N', 201), "N26-0510")));
+        Assert.Contains("Material is longer than 60", await Refused(Part("SAVE_LEN_m", "N26-0510", material: new string('M', 61))));
+        Assert.Contains("Description is longer than 400", await Refused(Part("SAVE_LEN_d", "N26-0510", description: new string('D', 401))));
+        Assert.Contains("between 0.01 and 1000", await Refused(Part("SAVE_T_small", "N26-0510", t: 0.0001m)));
+        Assert.Contains("between 0.01 and 1000", await Refused(Part("SAVE_T_big", "N26-0510", t: 1_000_000m)));
+        Assert.Contains("at most 2 decimals", await Refused(Part("SAVE_T_fine", "N26-0510", t: 1.255m)));
+        foreach (var n in new[] { "SAVE_T_small", "SAVE_T_big", "SAVE_T_fine", "SAVE_LEN_m" }) Assert.Empty(await Search($"?name={n}"));
+
+        // the longest allowed are saved
+        var ok = await Save(Part(new string('L', 200), "N26-0510", material: new string('m', 60), t: 0.01m) with { SourceFile = new string('f', 400) + ".dxf" });
+        Assert.Equal("created", Assert.Single(ok).Status);
+    }
+
+    [Fact]
+    public async Task Editing_a_part_checks_thickness_and_lengths_too()
+    {
+        var saved = (await Save(Part("SAVE_EDIT_T", "N26-0511")))[0];
+        var r = new PartUpdateRequest("SAVE_EDIT_T", "N26-0511", "", "S355", 6.125m, [90], false, false);
+        var res = await api.Client.PutAsJsonAsync($"/api/parts/{saved.Id}", r);
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Contains("at most 2 decimals", await res.Content.ReadAsStringAsync());
+        res = await api.Client.PutAsJsonAsync($"/api/parts/{saved.Id}", r with { ThicknessMm = 6, Material = new string('M', 61) });
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Contains("Material is longer than 60", await res.Content.ReadAsStringAsync());
+    }
 }

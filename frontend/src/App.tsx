@@ -15,6 +15,8 @@ import { flatDrawing, isStepName, unfoldPart } from "./import/step/stepPart";
 import { sampleDrawings } from "./import/sampleDrawing";
 import { itemProps, loadProperties, mirrorBlocked, mirrorFor, newItem, ownOf, readItem, saveProperties, statusOf, type BatchProperties, type ImportItem } from "./import/batch";
 import { draggingFiles } from "./import/dropped";
+import { UNIT_MM } from "./import/dxf";
+import { scalePart } from "./import/scale";
 import { ProcessDialog, type ProcessValues } from "./import/ProcessDialog";
 import { CloseUnsavedDialog } from "./import/CloseUnsavedDialog";
 import { SketchNameDialog } from "./import/SketchNameDialog";
@@ -33,6 +35,7 @@ import { replaceToolsSetting, toolsSetting } from "./tools/toolStore";
 import { quantityFromName } from "./import/geometry";
 import { NestReportPage } from "./pages/NestReportPage";
 import { CostReportPage } from "./pages/CostReportPage";
+import { loadCostPrices, normalizeCostPrices, saveCostPrices, type CostPrices } from "./job/costPrices";
 import { HomePage, type HomeAction } from "./pages/HomePage";
 import { JobPage } from "./pages/JobPage";
 import { JobSearchPage, type SheetParts } from "./pages/JobSearchPage";
@@ -134,6 +137,7 @@ export function App() {
     await read("stock", "stock", normalizeStock, (v) => { setStockSettingsState(v); saveStockSettings(v); });
     await read("importRules", "import rules", normalizeRules, (v) => { setRulesState(v); saveRules(v); });
     await read("nestingRules", "nesting rules", normalizeNestingRules, (v) => { setNestingRulesState(v); saveNestingRules(v); });
+    await read("costPrices", "cost prices", normalizeCostPrices, (v) => { setCostPricesState(v); saveCostPrices(v); });
     if (changed.length && !all) diag("settings", `Read again (changed on the server): ${changed.join(", ")}`);
     return fresh ?? machinesRef.current;
   };
@@ -162,6 +166,7 @@ export function App() {
     void pull("stock", normalizeStock, (v) => { setStockSettingsState(v); saveStockSettings(v); });
     void pull("importRules", normalizeRules, (v) => { setRulesState(v); saveRules(v); });
     void pull("nestingRules", normalizeNestingRules, (v) => { setNestingRulesState(v); saveNestingRules(v); });
+    void pull("costPrices", normalizeCostPrices, (v) => { setCostPricesState(v); saveCostPrices(v); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // the machine each job tab is nested for
@@ -181,17 +186,18 @@ export function App() {
   /** Shared settings not on the server yet (each browser uses its own copy): Settings → Data shares them. */
   const [unshared, setUnshared] = useState<string[]>([]);
   /** This page's shared settings (Export settings, Share this browser's). */
-  const settingsNow = async (): Promise<SettingsBundle> => ({ machines, stock: stockSettings, importRules: rules, nestingRules, specialTools: await toolsSetting() });
+  const settingsNow = async (): Promise<SettingsBundle> => ({ machines, stock: stockSettings, importRules: rules, nestingRules, costPrices, specialTools: await toolsSetting() });
   /** Saves settings on the server (Import settings, Share this browser's), then uses them here. */
   const putSettings = async (b: SettingsBundle) => {
     if (!demoMode) {
-      for (const key of ["machines", "stock", "importRules", "nestingRules"] as const) if (b[key] !== undefined) await api.saveSetting(key, b[key]);
+      for (const key of ["machines", "stock", "importRules", "nestingRules", "costPrices"] as const) if (b[key] !== undefined) await api.saveSetting(key, b[key]);
     }
     if (b.specialTools) await replaceToolsSetting(b.specialTools);
     if (b.machines) { setMachinesState(b.machines); saveLocalMachines(b.machines); }
     if (b.stock) { setStockSettingsState(b.stock); saveStockSettings(b.stock); }
     if (b.importRules) { setRulesState(b.importRules); saveRules(b.importRules); }
     if (b.nestingRules) { setNestingRulesState(b.nestingRules); saveNestingRules(b.nestingRules); }
+    if (b.costPrices) { setCostPricesState(b.costPrices); saveCostPrices(b.costPrices); }
     setUnshared((u) => u.filter((k) => b[k as keyof SettingsBundle] === undefined));
   };
   const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); shareSetting("stock", "Stock settings", s, saveStockSettings); };
@@ -201,6 +207,9 @@ export function App() {
   const setRules = (r: ImportRules) => { setRulesState(r); shareSetting("importRules", "Import rules", r, saveRules); };
   const [nestingRules, setNestingRulesState] = useState<NestingRules>(loadNestingRules);
   const setNestingRules = (r: NestingRules) => { setNestingRulesState(r); shareSetting("nestingRules", "Nesting rules", r, saveNestingRules); };
+  // Cost report prices: shared too; only an admin changes the shared ones (the others for one report)
+  const [costPrices, setCostPricesState] = useState<CostPrices>(loadCostPrices);
+  const setCostPrices = (p: CostPrices) => { setCostPricesState(p); shareSetting("costPrices", "Cost prices", p, saveCostPrices); };
   // Properties for all parts carry over between imports and visits (kept in this browser).
   const [importProps, setImportPropsState] = useState<BatchProperties>(() => loadProperties(loadRules()));
   const setImportProps = (u: BatchProperties | ((p: BatchProperties) => BatchProperties)) =>
@@ -256,7 +265,7 @@ export function App() {
     }
     if (!isAdmin || toldUnshared.current) return;
     toldUnshared.current = true;
-    setToast("Stock and rules are not shared on the server yet: each browser uses its own. Settings → Data shares this browser's, or imports a settings file");
+    setToast("Stock, rules or cost prices are not shared on the server yet: each browser uses its own. Settings → Data shares this browser's, or imports a settings file");
   }, [unshared, isAdmin, authState]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { startDiag(userName); }, [userName]);
   const newJobCount = useRef(0);
@@ -650,6 +659,15 @@ export function App() {
         state: "ready", drawing: { ...d, entities: d.entities.some((e) => e.role) ? d.entities : applyRules(d.entities, rules) },
         checked: false, processed: false,
       }))]),
+    onUnits: (id: string) => {
+      const it = imports.find((i) => i.id === id);
+      const k = it?.declaredUnits ? UNIT_MM[it.declaredUnits] : undefined;
+      if (!it?.drawing || !k) return;
+      const s = scalePart(it.drawing.entities, k, it.drawing.points);
+      editDrawing(id, it.drawing, { ...it.drawing, entities: s.entities, ...(s.points ? { points: s.points } : {}) }, `Read as ${it.declaredUnits}`);
+      patchItem(id, { unitsApplied: true, checked: false });
+      setToast(`${it.name}: read as ${it.declaredUnits} (× ${k})`);
+    },
     openId: activeTab?.kind === "drawing" ? activeTab.drawingId ?? null : null,
     propsOpen,
     onPropsOpen: setPropsOpen,
@@ -1687,7 +1705,8 @@ export function App() {
                 editedBy: jobEdited[job.id]?.by, editedAt: jobEdited[job.id]?.at };
               return jobScreen[job.id] === "nestReport"
                 ? <NestReportPage key={`${job.id}:${sol?.id ?? ""}`} job={rj} sheets={sol?.run?.result?.sheets ?? []} jobParts={jobParts[job.id] ?? []} />
-                : <CostReportPage key={job.id} job={rj} jobParts={jobParts[job.id] ?? []} userName={userName} />;
+                : <CostReportPage key={job.id} job={rj} jobParts={jobParts[job.id] ?? []} userName={userName}
+                    prices={costPrices} onPrices={isAdmin ? setCostPrices : undefined} />;
             })()}
             {active.kind === "job" && job && jobScreen[job.id] !== "nest" && jobScreen[job.id] !== "nestReport" && jobScreen[job.id] !== "costReport" && (
               <JobPage

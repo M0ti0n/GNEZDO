@@ -25,6 +25,18 @@ public sealed class SettingsTests(ApiFixture api) : IClassFixture<ApiFixture>
     }
 
     [Fact]
+    public async Task Cost_prices_are_a_shared_setting()
+    {
+        Assert.Equal("null", await api.Client.GetStringAsync("/api/settings/costPrices"));
+        var prices = new JsonObject { ["currency"] = "€", ["fixed"] = 25, ["materials"] = new JsonObject { ["S355"] = new JsonObject { ["kg"] = 1.4, ["min"] = 2 } } };
+        Assert.Equal(HttpStatusCode.OK, (await api.Client.PutAsJsonAsync("/api/settings/costPrices", new { value = prices, modifiedBy = "Fab" })).StatusCode);
+        var back = JsonNode.Parse(await api.Client.GetStringAsync("/api/settings/costPrices"))!;
+        Assert.Equal(1.4, back["materials"]!["S355"]!["kg"]!.GetValue<double>());
+        var versions = JsonNode.Parse(await api.Client.GetStringAsync("/api/settings/versions"))!;
+        Assert.NotNull(versions["costPrices"]);
+    }
+
+    [Fact]
     public async Task A_job_keeps_its_machine()
     {
         var part = (await api.Client.GetFromJsonAsync<List<PartDto>>("/api/parts"))![0];

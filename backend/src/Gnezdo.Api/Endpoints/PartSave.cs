@@ -40,6 +40,26 @@ public static class PartSave
 {
     internal static readonly int[] AllowedRotations = [180, 90, 45, 30, 5];
 
+    // the longest the database keeps (GnezdoDb): refused with a message instead of a database error
+    internal const int MaxName = 200, MaxMaterial = 60, MaxDescription = 400, MaxProject = 60, MaxSourceFile = 260;
+
+    /// <summary>Thickness: more than 0, at most 1000 mm, in hundredths of a millimeter (as the database keeps it).</summary>
+    internal static string? ThicknessError(decimal t) =>
+        t < 0.01m || t > 1000m ? "Thickness must be between 0.01 and 1000 mm."
+        : decimal.Round(t, 2) != t ? "Thickness can have at most 2 decimals."
+        : null;
+
+    /// <summary>Names longer than the database keeps.</summary>
+    internal static IEnumerable<string> LengthErrors(string? name, string? material, string? description, string? project)
+    {
+        if ((name?.Trim().Length ?? 0) > MaxName) yield return $"Name is longer than {MaxName} characters.";
+        if ((material?.Trim().Length ?? 0) > MaxMaterial) yield return $"Material is longer than {MaxMaterial} characters.";
+        if ((description?.Trim().Length ?? 0) > MaxDescription) yield return $"Description is longer than {MaxDescription} characters.";
+        if ((project?.Trim().Length ?? 0) > MaxProject) yield return $"Project is longer than {MaxProject} characters.";
+    }
+
+    private static string Clip(string s, int max) => s.Length <= max ? s : s[..max];
+
     /// <summary>POST /api/parts/existing: which of these parts are already in the database.</summary>
     public static async Task<IResult> ExistingAsync(IReadOnlyList<PartKey> keys, GnezdoDb db, CancellationToken ct)
     {
@@ -66,7 +86,8 @@ public static class PartSave
             var e = new List<string>();
             if (string.IsNullOrWhiteSpace(p.Name)) e.Add("Name is required.");
             if (string.IsNullOrWhiteSpace(p.Material)) e.Add("Material is required.");
-            if (p.ThicknessMm <= 0) e.Add("Thickness must be more than 0.");
+            if (ThicknessError(p.ThicknessMm) is { } te) e.Add(te);
+            e.AddRange(LengthErrors(p.Name, p.Material, p.Description, p.Project));
             if (p.Rotations?.Any(r => !AllowedRotations.Contains(r)) == true) e.Add("Rotations can be 180, 90, 45, 30 or 5.");
             if (string.IsNullOrWhiteSpace(p.Geometry)) e.Add("Geometry is required.");
             if (e.Count > 0) errors[$"parts[{i}]"] = [.. e];
@@ -137,7 +158,7 @@ public static class PartSave
             part.Filler = r.Filler;
             part.CommonCut = r.CommonCut;
             part.Qty = Math.Max(0, r.Qty ?? 0);
-            part.SourceFile = r.SourceFile?.Trim() ?? "";
+            part.SourceFile = Clip(r.SourceFile?.Trim() ?? "", MaxSourceFile);
             part.ModifiedAt = now;
             results.Add((r, part, existing is null ? "created" : "replaced"));
         }
@@ -248,10 +269,29 @@ public static class PartSave
     internal static async Task<IResult?> SaveOrClashAsync(GnezdoDb db, CancellationToken ct)
     {
         try { await db.SaveChangesAsync(ct); return null; }
-        catch (DbUpdateException)
+        catch (DbUpdateException e) when (IsUniqueClash(e))
         {
             return Results.Conflict(new { message = "Someone else saved this part at the same moment. Check again and save once more." });
         }
+        // any other refusal of the database is reported as itself (the error handler), not as a clash
+    }
+
+    /// <summary>The database refused a second row with the same key (SQLite, SQL Server, PostgreSQL).</summary>
+    internal static bool IsUniqueClash(DbUpdateException e)
+    {
+        if (e is DbUpdateConcurrencyException) return true;
+        for (Exception? x = e.InnerException; x is not null; x = x.InnerException)
+        {
+            var m = x.Message;
+            if (m.Contains("UNIQUE constraint", StringComparison.OrdinalIgnoreCase)   // SQLite
+                || m.Contains("duplicate key", StringComparison.OrdinalIgnoreCase)    // SQL Server 2601/2627, PostgreSQL
+                || m.Contains("23505", StringComparison.Ordinal)                      // PostgreSQL unique_violation
+                || m.Contains("Cannot insert duplicate", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (x.GetType().GetProperty("Number")?.GetValue(x) is int n && n is 2601 or 2627) return true;
+            if (x.GetType().GetProperty("SqlState")?.GetValue(x) is "23505") return true;
+        }
+        return false;
     }
 
     private static bool Same(string? a, string? b) =>

@@ -309,6 +309,24 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
         Assert.Equal(HttpStatusCode.BadRequest, (await api.Client.PostAsJsonAsync("/api/jobs", new { name = "X", parts = new[] { new { partId = "999999", qty = 1 } } })).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await api.Client.PostAsJsonAsync("/api/jobs", new { name = "X", parts = new[] { new { partId = ids[0], qty = 1 }, new { partId = ids[0], qty = 2 } } })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await api.Client.PutAsJsonAsync("/api/jobs/999999", new { name = "X", parts = Array.Empty<object>() })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await api.Client.PostAsJsonAsync("/api/jobs", new { name = "X", parts = new[] { new { partId = ids[0], qty = 1, thicknessMm = 6.125m } } })).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_quantity_that_is_not_a_whole_number_is_a_400_with_a_message()
+    {
+        var ids = await PartIds(1);
+        foreach (var qty in new object[] { 1.5, 2147483648L, "seven" })
+        {
+            var res = await api.Client.PostAsJsonAsync("/api/jobs", new { name = "QTY_BAD", parts = new[] { new { partId = ids[0], qty } } });
+            Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+            var body = await res.Content.ReadAsStringAsync();
+            Assert.Contains("could not be read", body);
+            Assert.Contains("parts[0].qty", body);
+        }
+        var broken = await api.Client.PostAsync("/api/jobs", new StringContent("{\"name\": ", System.Text.Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.BadRequest, broken.StatusCode);
+        Assert.Contains("not valid JSON", await broken.Content.ReadAsStringAsync());
     }
 
     [Fact]

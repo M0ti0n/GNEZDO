@@ -13,7 +13,7 @@ public static class SettingsEndpoints
     /// <summary>Keys that may be stored (more come as settings move to the server).</summary>
     /// <summary>Settings shared by everyone, changed by an admin: the machines, special tools, stock and
     /// remnants, import rules and nesting rules. (Personal settings stay in each browser.)</summary>
-    public static readonly string[] Keys = ["machines", "specialTools", "stock", "importRules", "nestingRules"];
+    public static readonly string[] Keys = ["machines", "specialTools", "stock", "importRules", "nestingRules", "costPrices"];
 
     /// <param name="Base">The version this change was made on (the ETag the value was read with): when
     /// someone saved the setting since, the save is refused (409) instead of putting back what they changed.

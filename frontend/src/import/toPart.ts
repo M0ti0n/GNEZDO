@@ -126,5 +126,6 @@ export function partGeometry(d: Drawing, marks?: SurfaceMarks): Pick<SavePart, "
 export function geometryJson(d: Drawing, marks?: SurfaceMarks): PartGeometryJson {
   const entities = d.entities.map((e) => ({ ...e, role: roleOf(e) }));
   const m = marks && (marks.grain || marks.foil) ? { marks: { ...(marks.grain ? { grain: marks.grain } : {}), ...(marks.foil ? { foil: true } : {}) } } : {};
-  return { format: "gnezdo-part", version: 2, units: "mm", entities, operations: operationsOf(entities), ...m, ...(d.aids?.length ? { aids: d.aids } : {}) };
+  // the operations from the drawing's own list (the same roles: roleOf), so its geometry check is not run again
+  return { format: "gnezdo-part", version: 2, units: "mm", entities, operations: operationsOf(d.entities), ...m, ...(d.aids?.length ? { aids: d.aids } : {}) };
 }

@@ -8,7 +8,8 @@
 // the part's corner (its box, lower X and Y). A part with marking gets two: its marking (T2) and its
 // cutting (T1); all marking is placed before the first cut (a T2 subprogram with cuts in it does not
 // run with pre-pierce on).
-//   N10 G0 X.. Y..            rapid to the pierce point (G0 G40 from the second contour on); Process →
+//   N10 G0 G40 X.. Y..        rapid to the pierce point, the kerf compensation off (every contour, the first
+//                             too: it did not rely on the macros to have it off); Process →
 //                             Movement's points first, one G0 each (the part then has a subprogram
 //                             of its own: the moves between parts are the machine's, made at G980)
 //   M98P8036                  pierce (after a micro joint: M98P8037 quick pierce when the row's MJ
@@ -37,7 +38,9 @@ function postprocess(p) {
     if (Math.abs(r) < 0.0005) r = 0;
     return String(r);
   };
-  const text = (s) => String(s == null ? "" : s).replace(/[()%:;]/g, " ").replace(/\s+/g, " ").trim().toUpperCase();
+  // a name for a comment: no characters the control reads, at most 24 long (a 200-character part name made a
+  // 207-character block)
+  const text = (s) => String(s == null ? "" : s).replace(/[()%:;]/g, " ").replace(/\s+/g, " ").trim().toUpperCase().slice(0, 24).trim();
   const tech = Math.round(t.techProgram || 0);
   if (!tech) throw new Error(`no Tech program in the Technology row for ${p.sheet.material} ${p.sheet.thicknessMm} mm (Settings → Machines → Technology → Laser)`);
 
@@ -82,7 +85,7 @@ function postprocess(p) {
   // A part's marking and its cutting are two subprograms: marking only (T2) and cutting only (T1),
   // every marking placed before the first cut. A T2 subprogram with pierced cuts in it does not
   // run with pre-pierce on (#516=1).
-  const subs = new Map();   // body text -> { no, marking, name, body }
+  const subs = new Map();   // name and body text -> { no, marking, name, body }
   const placed = [];
   const counters = p.contours.map(() => null);
   let nextSub = 101;
@@ -96,7 +99,7 @@ function postprocess(p) {
       // the rapid to the pierce point, through Movement's points first (the first block carries N:
       // a restart at this contour goes the same way)
       const to = [...(c.via || []), c.start];
-      to.forEach((q, j) => body.push(j ? `G0 X${X(q.x)} Y${Y(q.y)}` : `N${n} G0 ${i ? "G40 " : ""}X${X(q.x)} Y${Y(q.y)}`));
+      to.forEach((q, j) => body.push(j ? `G0 X${X(q.x)} Y${Y(q.y)}` : `N${n} G0 G40 X${X(q.x)} Y${Y(q.y)}`));
       if (marking) body.push(`IF[#516GT0]GOTO${n + 10}`, "M98P8033");
       else {
         // after a micro joint (no lead-in): the row's MJ restart; quick pierce (M98P8037) also stands
@@ -121,7 +124,9 @@ function postprocess(p) {
     // the last marking jumps past the end: the end gets its number
     body.push(marking ? `N${contours.length * 10 + 10} M98P8045` : "M98P8045");
 
-    const k = body.join("\n");
+    // shared by the parts cut the same way, under their own name: the same drawing under two part names gets
+    // two subprograms (one was named after the other part)
+    const k = `${text(u.name)}\n${body.join("\n")}`;
     let sub = subs.get(k);
     if (!sub) {
       if (nextSub > 5999) throw new Error("more than 5899 different subprograms on one sheet");

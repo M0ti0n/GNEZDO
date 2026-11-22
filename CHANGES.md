@@ -4,6 +4,30 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+**QA round 2, batch 3: import, technology, LVD program, server checks:**
+- **Drawings in inches (or feet, centimeters, ...)** get a **Read as inches** button in the import list: one click scales the drawing to millimeters (undoable), and the note says "converted from inches". It used to read 1 inch as 1 mm with only a note.
+- **Blocks inserted with different X and Y scales** keep their arcs and circles as the ellipses they become, sampled every 2° or less. They used to stay circles of the X scale.
+- **An arc whose start and end are the same angle is flagged** in the import check ("read as a whole circle"), with **Remove full arcs**. Some CAD programs write such arcs, and they used to be cut as an extra hole without a word.
+- **Islands** no longer stop a part from being saved: Auto cut now cuts them as pieces of their own. Whether a contour lies inside another is decided by up to 7 points on it, not one, so a contour that touches another's edge is placed right.
+- **The import check is faster:** a plate with 51,000 holes is read, checked and saved in about 6 s. The note in the 22 Nov build said about 4 s for the check, but it took 33 s. The check runs once per drawing, and saving reuses it.
+- **Technology:** lead in / out lengths are refused above 100 mm and the size limits for little and middle holes above 1000 mm. A hole exactly at a size limit is now in the right class (the limit was off by 0.01 mm).
+- **Post process refuses a sheet bigger than the machine's cutting area.**
+- **LVD program:**
+  - every first rapid move now has G40 (`N.. G0 G40 X.. Y..`);
+  - part names in comments are cut to 24 characters;
+  - two parts with the same name but different programs no longer share a subprogram.
+- **Server checks:**
+  - part names longer than 200 characters and materials longer than 60 are refused with a clear message (descriptions over 400, projects over 60), the same on every database;
+  - a thickness must be 0.01 – 1000 mm with at most 2 decimals, when importing, editing a part or changing it in a job. A thickness like 1.255 used to become 1.26 on the server and stay 1.255 on the desktop;
+  - a database error is no longer reported as "Someone else saved this part at the same moment";
+  - a quantity like 1.5 or 2,147,483,648, or a request that can't be read, gets a message instead of an error page.
+- **Cost report prices are shared:**
+  - they are kept on the server like the stock and the rules, and are in the settings file. Only an admin changes them; the others can change them for one report;
+  - a material is priced whatever its spelling ("S355" and "s355");
+  - the report warns about materials that have no price.
+- **The source no longer holds a `frontend/node_modules` link** (it pointed at a folder that exists only on the computer it came from); `node_modules` is ignored as a link too.
+- **Number fields say what's wrong:** text that is not a number keeps the old value, a number under the minimum becomes the minimum, and a fraction in a whole-number field is rounded. The field turns red for a moment and its tooltip says why. "1.234,5" is not read as a number, and Arabic digits are read as digits.
+
 **QA round 2, batch 2: several users and computers:**
 - **Settings saved by two admins no longer overwrite each other.** A change made on settings someone else saved since you loaded them is refused, names who changed them, and the settings are loaded again as they are now, so you can make your change on top.
 - **Every page reads changed settings again:** every minute, when its window comes back to the front, and always right before Auto cut and Post process. It used to keep what it read when it opened, so the same job could get other E codes, tech program or leads depending on which computer posted it.
