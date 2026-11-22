@@ -235,13 +235,14 @@ public sealed class JobSaveTests(ApiFixture api) : IClassFixture<ApiFixture>
             parts = new[] { new { partId = ids[0], qty = 1 }, new { partId = ids[1], qty = 2 } },
             nest = Nest(1),
         });
-        var id = (await first.Content.ReadFromJsonAsync<JobSavedDto>())!.Id;
+        var firstDto = (await first.Content.ReadFromJsonAsync<JobSavedDto>())!;
+        var id = firstDto.Id;
 
         var res = await api.Client.PutAsJsonAsync($"/api/jobs/{id}", new
         {
             name = "Test job 2b",
             parts = new[] { new { partId = ids[2], qty = 5 } },
-            baseModifiedAt = (await first.Content.ReadFromJsonAsync<JobSavedDto>())!.ModifiedAt,
+            baseModifiedAt = firstDto.ModifiedAt,
         });
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var saved = (await res.Content.ReadFromJsonAsync<JobSavedDto>())!;
