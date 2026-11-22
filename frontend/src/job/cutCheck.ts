@@ -45,9 +45,13 @@ const listOf = (names: string[], max = 4) => {
 /** marksChanged: the parts whose tracing or open cut lines changed since Auto cut (changedMarks, read before);
  *  settingsNow: the machine's cutting settings for the sheet now (cutSettingsSig); kerfMm: the kerf it is cut with */
 export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: number) => string, marksChanged?: Set<number>,
-  opts?: { settingsNow?: string; kerfMm?: number }): SheetCheck {
+  opts?: { settingsNow?: string; kerfMm?: number; machine?: { name: string; cutLengthMm: number; cutWidthMm: number } }): SheetCheck {
   const errors: string[] = [], warns: string[] = [];
   if (!sheet.cut) return { errors, warns };
+  // a sheet bigger than the machine's cutting area: the control stops on its limits (QA F-05)
+  const mc = opts?.machine;
+  if (mc && ((mc.cutLengthMm > 0 && sheet.lengthMm > mc.cutLengthMm + 0.5) || (mc.cutWidthMm > 0 && sheet.widthMm > mc.cutWidthMm + 0.5)))
+    errors.push(`the sheet (${sheet.lengthMm} × ${sheet.widthMm} mm) is bigger than what ${mc.name} cuts (${mc.cutLengthMm} × ${mc.cutWidthMm} mm, Settings → Machines)`);
   if (opts?.settingsNow && sheet.cut.techSig && sheet.cut.techSig !== opts.settingsNow)
     errors.push(`the Technology row for ${sheet.material} ${sheet.thicknessMm} mm or the machine's cutting settings changed since Auto cut (leads, gaps, E code sizes, ...): process the sheet again`);
   // -- every part processed, as it is now

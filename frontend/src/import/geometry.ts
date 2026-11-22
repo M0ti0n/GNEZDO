@@ -67,7 +67,7 @@ export interface Contour {
   outer: boolean;          // the largest contour is the outside of the part
 }
 
-export type CheckId = "noOutline" | "doubles" | "separate" | "crossing" | "insideOpen" | "outsideOpen" | "outerNotCut" | "closedOpenCut" | "outsidePart" | "islands" | "splines";
+export type CheckId = "noOutline" | "doubles" | "separate" | "crossing" | "insideOpen" | "outsideOpen" | "outerNotCut" | "closedOpenCut" | "outsidePart" | "islands" | "fullArcs" | "splines";
 
 export interface CheckResult {
   id: CheckId;
@@ -134,6 +134,7 @@ function unionFind(n: number) {
 }
 
 /** Boxes in a grid: which of them may hold a point (its cell's, and the very big ones always). */
+const NONE: readonly number[] = [];
 function boxGrid(boxes: Box[]) {
   const sides = boxes.map((b) => Math.max(b.maxX - b.minX, b.maxY - b.minY)).sort((a, b) => a - b);
   const s = Math.max(1, sides[Math.floor(sides.length / 2)] ?? 1);
@@ -148,8 +149,11 @@ function boxGrid(boxes: Box[]) {
       if (l) l.push(i); else cells.set(k, [i]);
     }
   });
-  /** indexes, in order */
-  const at = (p: Pt): number[] => [...(cells.get(`${Math.floor(p.x / s)},${Math.floor(p.y / s)}`) ?? []), ...big].sort((a, b) => a - b);
+  /** indexes, in order (a cell's list is filled in order: no copy, no sort, unless there are big boxes) */
+  const at = (p: Pt): readonly number[] => {
+    const c = cells.get(`${Math.floor(p.x / s)},${Math.floor(p.y / s)}`) ?? NONE;
+    return big.length ? [...c, ...big].sort((a, b) => a - b) : c;
+  };
   return { at };
 }
 
@@ -272,7 +276,16 @@ export function buildContours(entities: Entity[]): Contour[] {
  * open cut lines are left open on purpose and are joined separately, so a slit
  * that touches the outside does not count as a branch of it.
  */
+/** The check of a list of entities, once: saving a part checked it again (51,000 holes: 4 s more). A
+ *  drawing's entities are a new list after every change, so a list's report never goes stale. */
+const reports = new WeakMap<Entity[], GeometryReport>();
 export function checkGeometry(entities: Entity[]): GeometryReport {
+  let r = reports.get(entities);
+  if (!r) reports.set(entities, (r = checkGeometryOnce(entities)));
+  return r;
+}
+
+function checkGeometryOnce(entities: Entity[]): GeometryReport {
   // double and tiny lines would make a closed contour look open (three lines at a corner), so
   // they are reported on their own and left out of the contours until they are removed
   const doubles = findDoubles(entities);
@@ -305,6 +318,7 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
   // (contours that cross are reported as such: one is partly in the other, not an island)
   const crossed = new Set(crossing.groups.flat());
   const islands = islandsOf(entities, rest.filter((c) => !c.entityIds.some((id) => crossed.has(id))));
+  const fullArcs = entities.filter((e) => e.kind === "arc" && Math.abs(((((e.end - e.start) % 360) + 360) % 360)) < 1e-6).map((e) => e.id);
 
   // lines, but none of them cutting (all tracing / open cut): nothing would be cut out
   const noOutline = entities.length > 0 && !contours.length;
@@ -336,6 +350,9 @@ export function checkGeometry(entities: Entity[]): GeometryReport {
     },
     // a closed contour in a hole of the part (and whatever is in it): a piece of its own, not a hole
     { id: "islands", label: "Contour inside a hole", count: islands.length, entityIds: islands.flat(), points: [] },
+    // an ARC whose start and end are the same angle: read as a whole circle (some programs write such arcs
+    // for circles, some for nothing): said, not chosen silently (QA A-05)
+    { id: "fullArcs", label: "Arc with the same start and end", count: fullArcs.length, entityIds: fullArcs, points: [] },
     { id: "splines", label: "Splines", count: splines.length, entityIds: splines.map((e) => e.id), points: [] },
   ];
 
@@ -366,8 +383,17 @@ const MIN_ARC_CHORDS = 6;
 /** Arcs bigger than this are cut as lines (job/ncArcs.ts MAX_R). */
 const ARC_MAX_R = 20000;
 
-/** Points along an entity, close enough together to follow arcs and splines. */
+/** Points along an entity, close enough together to follow arcs and splines (a new list each time: callers
+ *  may reverse or extend it; the points themselves are shared, made once per entity). */
+const along = new WeakMap<Entity, Pt[]>();
 export function pointsAlong(e: Entity, arcStepDeg = 7.5): Pt[] {
+  if (arcStepDeg !== 7.5) return pointsAlongOnce(e, arcStepDeg);
+  let p = along.get(e);
+  if (!p) along.set(e, (p = pointsAlongOnce(e, 7.5)));
+  return p.slice();
+}
+
+function pointsAlongOnce(e: Entity, arcStepDeg: number): Pt[] {
   const on = (c: Pt, r: number, d: number): Pt => ({ x: c.x + r * Math.cos(rad(d)), y: c.y + r * Math.sin(rad(d)) });
   switch (e.kind) {
     case "line": return Array.from({ length: 9 }, (_, i) => ({ x: e.a.x + ((e.b.x - e.a.x) * i) / 8, y: e.a.y + ((e.b.y - e.a.y) * i) / 8 }));
@@ -471,16 +497,20 @@ function islandsOf(entities: Entity[], contours: Contour[]): string[][] {
   const out: string[][] = [];
   closed.forEach((c, i) => {
     if (c.outer) return;
-    const e = byId.get(c.entityIds[0]);
-    if (!e) return;
-    const p = pointsAlong(e)[0];
+    // a few of its points round it, the most of them deciding: one point alone could be where it touches
+    // another contour (two holes touching were taken for an island: QA R2-13)
+    const all = c.entityIds.flatMap((id) => { const e = byId.get(id); return e ? pointsAlong(e) : []; });
+    if (!all.length) return;
+    const ps = Array.from({ length: Math.min(7, all.length) }, (_, k) => all[Math.floor((k * all.length) / Math.min(7, all.length))]);
     // how many other closed contours hold it: the outline is 1, an island in a hole 2 or more
     let depth = 0;
-    for (const j of grid.at(p)) {
+    const seen = new Set<number>();
+    for (const p0 of ps) for (const j of grid.at(p0)) seen.add(j);
+    for (const j of seen) {
       if (j === i) continue;
       const b = closed[j].box;
-      if (p.x < b.minX || p.x > b.maxX || p.y < b.minY || p.y > b.maxY) continue;
-      if (inside(p, segsOf(j))) depth++;
+      const held = ps.filter((p) => p.x >= b.minX && p.x <= b.maxX && p.y >= b.minY && p.y <= b.maxY && inside(p, segsOf(j))).length;
+      if (held * 2 > ps.length) depth++;
       if (depth >= 2) break;
     }
     if (depth >= 2) out.push(c.entityIds);

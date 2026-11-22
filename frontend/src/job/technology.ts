@@ -91,6 +91,14 @@ const low = (s: string) => s.trim().toLowerCase();
 /** Is this thickness row for the material (one of its technology's tags, not skipped)? */
 export const rowForMaterial = (r: TechRow, material: string) => !r.skip?.some((x) => low(x) === low(material));
 
+/** The longest lead the Technology table takes [mm] (a 1,000,000 mm lead was posted: QA GB-17). */
+export const LEAD_MAX = 100;
+/** The biggest E002 / E003 size limit [mm] (no limit: a typo of 80 000 made every contour slow: QA R2-17). */
+export const SIZE_CLASS_MAX = 1000;
+/** A contour this much over a size limit still counts as within it [mm]: the outline path keeps 0.01 mm, so a
+ *  4 mm hole may measure 4.004 (was 0.01 mm: a 4.009 mm contour took the 4 mm class, QA R2-16). */
+export const SIZE_CLASS_TOL = 0.005;
+
 export interface TechColumn {
   key: RowKey; label: string; unit: string; min?: number; max?: number;
   /** a whole number (a program number, a switch): 6021.5 is refused, not rounded to another program */
@@ -130,14 +138,14 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; except?: Techno
     { key: "quickPierceS", label: "Quick pierce", unit: "s" },
   ] },
   { group: "Holes · leads", cols: [
-    { key: "holeLeadInMm", label: "Lead-in", unit: "mm" },
-    { key: "holeLeadOutMm", label: "Lead-out", unit: "mm" },
+    { key: "holeLeadInMm", label: "Lead-in", unit: "mm", max: LEAD_MAX },
+    { key: "holeLeadOutMm", label: "Lead-out", unit: "mm", max: LEAD_MAX },
     { key: "holeGapMm", label: "Gap", unit: "mm", min: -1000 },
     { key: "holeLeadRadiusMm", label: "Arc radius", unit: "mm" },
   ] },
   { group: "Outline · leads", cols: [
-    { key: "outLeadInMm", label: "Lead-in", unit: "mm" },
-    { key: "outLeadOutMm", label: "Lead-out", unit: "mm" },
+    { key: "outLeadInMm", label: "Lead-in", unit: "mm", max: LEAD_MAX },
+    { key: "outLeadOutMm", label: "Lead-out", unit: "mm", max: LEAD_MAX },
     { key: "outGapMm", label: "Gap", unit: "mm", min: -1000 },
     { key: "outLeadRadiusMm", label: "Arc radius", unit: "mm" },
   ] },
@@ -153,19 +161,19 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; except?: Techno
     { key: "remGapInMm", label: "Gap in", unit: "mm", min: -1000 },
     { key: "remGapOutMm", label: "Gap out", unit: "mm", min: -1000 },
     { key: "remMinDistMm", label: "To parts", unit: "mm" },
-    { key: "remLeadInMm", label: "Lead-in", unit: "mm" },
-    { key: "remLeadOutMm", label: "Lead-out", unit: "mm" },
+    { key: "remLeadInMm", label: "Lead-in", unit: "mm", max: LEAD_MAX },
+    { key: "remLeadOutMm", label: "Lead-out", unit: "mm", max: LEAD_MAX },
   ] },
   { group: "Micro joint", cols: [
     { key: "mjGapMm", label: "Length", unit: "mm", def: () => 1 },
     { key: "mjPierce", label: "Restart", unit: "0 none, 1 pierce, 2 quick", max: 2, whole: true, def: () => 1 },
   ] },
   { group: "Laser", only: ["laser"], cols: [
-    { key: "midSizeMm", label: "Medium (E002) up to", unit: "mm" },
-    { key: "littleSizeMm", label: "Slow (E003) up to", unit: "mm" },
+    { key: "midSizeMm", label: "Medium (E002) up to", unit: "mm", max: SIZE_CLASS_MAX },
+    { key: "littleSizeMm", label: "Slow (E003) up to", unit: "mm", max: SIZE_CLASS_MAX },
     { key: "prePierce", label: "Pre-pierce", unit: "1 = on", max: 1, whole: true },
     { key: "techProgram", label: "Tech program", unit: "no.", max: 99999, whole: true },
-    { key: "traceShortest", label: "Trace shortest", unit: "1 = on", max: 1, def: traceDefault },
+    { key: "traceShortest", label: "Trace shortest", unit: "1 = on", max: 1, whole: true, def: traceDefault },
   ] },
 ];
 
@@ -182,8 +190,8 @@ export function laserClass(row: TechRow, c: { kind: string; w: number; h: number
   if (c.kind === "trace") return 4;
   if (c.kind === "open") return 1;
   const size = Math.max(c.w, c.h);
-  if ((row.littleSizeMm ?? 0) > 0 && size <= row.littleSizeMm! + 0.01) return 3;
-  if ((row.midSizeMm ?? 0) > 0 && size <= row.midSizeMm! + 0.01) return 2;
+  if ((row.littleSizeMm ?? 0) > 0 && size <= row.littleSizeMm! + SIZE_CLASS_TOL) return 3;
+  if ((row.midSizeMm ?? 0) > 0 && size <= row.midSizeMm! + SIZE_CLASS_TOL) return 2;
   return 1;
 }
 

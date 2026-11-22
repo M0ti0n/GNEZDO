@@ -34,6 +34,11 @@ const compose = (outer: Xf, inner: Xf): Xf => ({
   f: outer.b * inner.e + outer.d * inner.f + outer.f,
 });
 const det = (t: Xf) => t.a * t.d - t.b * t.c;
+/** Keeps circles round: the same scale both ways and no skew (an insert scaled 2 × 0.5 does not). */
+const conformal = (t: Xf) => {
+  const s1 = Math.hypot(t.a, t.b), s2 = Math.hypot(t.c, t.d), m = Math.max(s1, s2, 1e-12);
+  return Math.abs(s1 - s2) <= 1e-9 * m && Math.abs(t.a * t.c + t.b * t.d) <= 1e-9 * m * m;
+};
 const MIRROR_X: Xf = { a: -1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 
 /**
@@ -41,6 +46,8 @@ const MIRROR_X: Xf = { a: -1, b: 0, c: 0, d: 1, e: 0, f: 0 };
  * over from a template, so the drawing is always read as mm and other units are only reported.
  */
 const UNIT_NAME: Record<number, string> = { 1: "inches", 2: "feet", 5: "centimeters", 6: "meters", 8: "microinches", 9: "mils", 10: "yards", 14: "decimeters" };
+/** Millimeters in one of those units (Import list → "Read as inches": the drawing scaled by it). */
+export const UNIT_MM: Record<string, number> = { inches: 25.4, feet: 304.8, centimeters: 10, meters: 1000, microinches: 0.0000254, mils: 0.0254, yards: 914.4, decimeters: 100 };
 
 const deg = (r: number) => (r * 180) / Math.PI;
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -115,8 +122,19 @@ export function readDxf(text: string, fileName: string): DxfResult {
     if (Math.hypot(b.x - a.x, b.y - a.y) > 1e-9) push({ id: id(), kind: "line", a, b });
   };
 
+  /** A circle or arc under a transform that does not keep it round (a block inserted with different X and Y
+   *  scales): the ellipse (arc) it becomes, as points every 2° at most. It was kept a circle of the mean
+   *  radius: a Ø20 hole in a block inserted 2 × 0.5 stayed Ø20 instead of 40 × 10 (QA A-02). */
+  const emitStretched = (t: Xf, c: Pt, r: number, start: number, sweep: number) => {
+    const n = Math.max(24, Math.ceil(sweep / 2));
+    const fit = Array.from({ length: n + 1 }, (_, i) => apply(t, { x: c.x + r * Math.cos(rad(start + (sweep * i) / n)), y: c.y + r * Math.sin(rad(start + (sweep * i) / n)) }));
+    if (sweep >= 360 - 1e-9) fit[n] = fit[0];
+    push({ id: id(), kind: "spline", fit, sampled: true });
+  };
+
   /** Arc given in drawing coordinates, transformed; mirroring reverses its direction. */
   const emitArc = (t: Xf, c: Pt, r: number, start: number, end: number, layer: string) => {
+    if (!conformal(t)) { emitStretched(t, c, r, start, ((end - start) % 360 + 360) % 360 || 360); return; }
     const scale = Math.sqrt(Math.abs(det(t)));
     const cc = apply(t, c);
     const ang = (d: number) => {
@@ -171,6 +189,7 @@ export function readDxf(text: string, fileName: string): DxfResult {
           emitLine(apply(t, { x: num(r, 10), y: num(r, 20) }), apply(t, { x: num(r, 11), y: num(r, 21) }), layer);
           break;
         case "CIRCLE": {
+          if (!conformal(t)) { emitStretched(t, { x: num(r, 10), y: num(r, 20) }, num(r, 40), 0, 360); break; }
           const c = apply(t, { x: num(r, 10), y: num(r, 20) });
           push({ id: id(), kind: "circle", c, r: num(r, 40) * Math.sqrt(Math.abs(det(t))) });
           break;

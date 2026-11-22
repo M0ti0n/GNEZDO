@@ -15,6 +15,8 @@ export interface ImportItem {
   drawing?: Drawing;
   ignored?: Record<string, number>;
   declaredUnits?: string;
+  /** the drawing was scaled to mm from declaredUnits (Import list → Read as ...) */
+  unitsApplied?: boolean;
   checked: boolean;          // Check lines has run on it (or it was opened)
   processed: boolean;
   /** Process all found a part with the same project and name in the database; process it by hand to replace it. */
@@ -144,7 +146,8 @@ export function statusOf(item: ImportItem): ItemStatus {
     return { verdict, openContours: 0, problems: [], splines: 0 };
   }
   const report = checkedOnce(item.drawing.entities);
-  const blocking = report.checks.filter((c) => c.id !== "splines" && c.count > 0);
+  // (islands are said, not in the way: Auto cut cuts them as pieces of their own)
+  const blocking = report.checks.filter((c) => c.id !== "splines" && c.id !== "islands" && c.count > 0);
   const open = blocking.reduce((n, c) => n + c.count, 0);
   const splines = report.checks.find((c) => c.id === "splines")?.count ?? 0;
   const verdict: Verdict = !item.checked ? "unchecked" : open > 0 ? "attention"

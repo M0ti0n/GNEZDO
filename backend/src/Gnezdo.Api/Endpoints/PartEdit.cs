@@ -50,7 +50,8 @@ public static class PartEdit
         var name = r.Name?.Trim() ?? "";
         if (name.Length == 0) errors["name"] = ["Name is required."];
         if (string.IsNullOrWhiteSpace(r.Material)) errors["material"] = ["Material is required."];
-        if (r.ThicknessMm <= 0) errors["thicknessMm"] = ["Thickness must be more than 0."];
+        if (PartSave.ThicknessError(r.ThicknessMm) is { } te) errors["thicknessMm"] = [te];
+        if (PartSave.LengthErrors(r.Name, r.Material, r.Description, r.Project).ToArray() is { Length: > 0 } le) errors["length"] = le;
         if (r.Rotations?.Any(x => !PartSave.AllowedRotations.Contains(x)) == true) errors["rotations"] = ["Rotations can be 180, 90, 45, 30 or 5."];
         Project? project = null;
         // a part is always in a project

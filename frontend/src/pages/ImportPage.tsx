@@ -1553,7 +1553,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
   // Double / tiny lines and lines outside the outline: removed in one step (Undo brings them back)
   const removeCheck = (id: CheckId, ids: string[]) => {
     const drop = new Set(ids);
-    commit({ ...drawing, entities: drawing.entities.filter((e) => !drop.has(e.id)) }, id === "doubles" ? "Remove double lines" : id === "islands" ? "Remove contours in a hole" : "Remove lines outside");
+    commit({ ...drawing, entities: drawing.entities.filter((e) => !drop.has(e.id)) }, id === "doubles" ? "Remove double lines" : id === "islands" ? "Remove contours in a hole" : id === "fullArcs" ? "Remove full arcs" : "Remove lines outside");
     setSelected(null);
     setMessage({ text: `${ids.length} ${ids.length === 1 ? "line" : "lines"} removed` });
   };
@@ -2102,7 +2102,7 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
               <li key={c.id}>
                 <button className={`gc-row ${!c.count ? "is-ok" : c.id === "splines" ? "is-warn" : "is-bad"}${selected === c.id ? " is-on" : ""}`}
                   onClick={() => choose(c.id)} disabled={c.count === 0}
-                  title={!c.count ? "No problems" : c.id === "noOutline" ? "Every line is tracing or open cut: there is nothing to cut the part out. Mark its outline as cutting (Trace / Open cut again unmarks a line). Show on the drawing" : c.id === "splines" ? "Splines are cut as short straight lines. To polyline changes them into lines and arcs. Show on the drawing" : c.id === "islands" ? "A closed contour inside a hole of the part is a piece of its own: it would be cut as a hole (the wrong way round, too late). Import it as a part of its own, or mark it as tracing. Show on the drawing" : "Show on the drawing"}>
+                  title={!c.count ? "No problems" : c.id === "noOutline" ? "Every line is tracing or open cut: there is nothing to cut the part out. Mark its outline as cutting (Trace / Open cut again unmarks a line). Show on the drawing" : c.id === "splines" ? "Splines are cut as short straight lines. To polyline changes them into lines and arcs. Show on the drawing" : c.id === "islands" ? "A closed contour inside a hole of the part is a piece of its own: Auto cut cuts it as one (round it from the outside, before the hole it lies in). Remove it if it is not wanted, or import it as a part of its own. Show on the drawing" : c.id === "fullArcs" ? "An arc whose start and end are the same angle: it is read as a whole circle. Remove it if it is not one. Show on the drawing" : "Show on the drawing"}>
                   <span className="gc-mark" aria-hidden="true">{c.count ? "!" : "✓"}</span>
                   <span className="gc-label">{c.label}</span>
                   {c.count > 0 && <span className="gc-count">{c.count}</span>}
@@ -2119,10 +2119,11 @@ export function ImportPage({ drawing, processed, properties, nestRules, onEdit, 
                     To polyline
                   </button>
                 )}
-                {c.count > 0 && (c.id === "doubles" || c.id === "separate" || c.id === "islands") && (
+                {c.count > 0 && (c.id === "doubles" || c.id === "separate" || c.id === "islands" || c.id === "fullArcs") && (
                   <button type="button" className="gc-fix gc-remove" onClick={() => removeCheck(c.id, c.entityIds)}
                     title={c.id === "doubles" ? "Remove the double and tiny lines (one of each double stays)"
                       : c.id === "islands" ? "Remove the contours lying in a hole of the part (a piece in a hole is a part of its own: import it as one)"
+                      : c.id === "fullArcs" ? "Remove the arcs with the same start and end"
                       : "Remove everything outside the part outline"}>
                     Remove
                   </button>

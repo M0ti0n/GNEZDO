@@ -125,7 +125,7 @@ public static class JobSave
         }
         if (ids.Count != ids.Distinct().Count()) errors["parts"] = ["A part is in the list twice."];
         if (parts.Any(p => p.Qty < 0)) errors["qty"] = ["Qty req cannot be negative."];
-        if (parts.Any(p => p.ThicknessMm is <= 0 or > 1000)) errors["thicknessMm"] = ["Thickness must be between 0 and 1000 mm."];
+        if (parts.Select(p => p.ThicknessMm is { } t ? PartSave.ThicknessError(t) : null).FirstOrDefault(x => x is not null) is { } te) errors["thicknessMm"] = [te];
         if (parts.Any(p => p.Material is { Length: > 100 })) errors["material"] = ["Material is longer than 100 characters."];
         if (errors.Count > 0) return Results.ValidationProblem(errors);
 

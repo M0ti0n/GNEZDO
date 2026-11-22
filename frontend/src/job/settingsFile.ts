@@ -4,6 +4,7 @@
 // have stays as it is).
 
 import { normalizeRules, type ImportRules } from "../import/rules";
+import { normalizeCostPrices, type CostPrices } from "./costPrices";
 import { normalizeMachines, type MachineList } from "./machine";
 import { normalizeNestingRules, type NestingRules } from "./nestRules";
 import { normalizeStock, type StockSettings } from "./stock";
@@ -17,6 +18,7 @@ export interface SettingsBundle {
   importRules?: ImportRules;
   nestingRules?: NestingRules;
   specialTools?: ToolsSetting;
+  costPrices?: CostPrices;
 }
 
 /** The parts of a settings file, as Import lists them. */
@@ -26,6 +28,7 @@ export const SETTING_PARTS: { key: keyof SettingsBundle; label: string }[] = [
   { key: "importRules", label: "Import rules" },
   { key: "nestingRules", label: "Nesting rules" },
   { key: "specialTools", label: "Special tools" },
+  { key: "costPrices", label: "Cost prices" },
 ];
 
 const KIND = "gnezdo-settings";
@@ -53,6 +56,7 @@ export function readSettingsFile(text: string): { bundle: SettingsBundle; export
   if (o.stock !== undefined) { b.stock = normalizeStock(o.stock) ?? undefined; if (!b.stock) throw bad("stock and remnants"); }
   if (o.importRules !== undefined) { b.importRules = normalizeRules(o.importRules) ?? undefined; if (!b.importRules) throw bad("import rules"); }
   if (o.nestingRules !== undefined) { b.nestingRules = normalizeNestingRules(o.nestingRules) ?? undefined; if (!b.nestingRules) throw bad("nesting rules"); }
+  if (o.costPrices !== undefined) { b.costPrices = normalizeCostPrices(o.costPrices) ?? undefined; if (!b.costPrices) throw bad("cost prices"); }
   if (o.specialTools !== undefined) {
     const t = o.specialTools as Partial<ToolsSetting> | null;
     if (!t || !Array.isArray(t.tools)) throw bad("special tools");

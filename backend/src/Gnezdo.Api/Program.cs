@@ -90,6 +90,7 @@ else if (!demo && sqlite) builder.Services.AddDbContext<GnezdoDb, GnezdoSqliteDb
 else if (!demo && dbKind == DbKind.Postgres) builder.Services.AddDbContext<GnezdoDb, GnezdoPostgresDb>((sp, o) => o.UseNpgsql(Cs(sp)));
 else if (!demo) builder.Services.AddDbContext<GnezdoDb>((sp, o) => o.UseSqlServer(Cs(sp)));
 builder.Services.AddProblemDetails();
+builder.Services.AddBadRequests();
 
 var app = builder.Build();
 
@@ -97,6 +98,7 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseDiagLog();
+app.UseBadRequests();
 if (setup) app.UseDatabaseSetup();
 app.UseGnezdoAuth();
 app.Services.GetRequiredService<DiagLog>().Write("start", $"GNEZDO started{(demo ? " (demo, no database)" : setup ? " (waiting for the database to be set up)" : "")}", new { version = typeof(Program).Assembly.GetName().Version?.ToString(), machine = Environment.MachineName });

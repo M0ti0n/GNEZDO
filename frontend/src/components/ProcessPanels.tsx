@@ -271,7 +271,7 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
       const remarked = await changedMarks(sh);
       const kerfMm = sh.kerfMm ?? gapsFor(mNow, sh.material, sh.thicknessMm).kerfMm;
       const check = checkSheet(sh, (id) => partOf?.(id)?.path, (k) => partName(sh, k) ?? `part ${k + 1}`, remarked,
-        { settingsNow: cutSettingsSig(mNow, sh), kerfMm });
+        { settingsNow: cutSettingsSig(mNow, sh), kerfMm, machine: mNow });
       if (check.errors.length) { out.push({ sheet: i + 1, error: `not post processed: ${check.errors.join("; ")}` }); continue; }
       const prog = sheetProgram(sh, mNow, origin, nameOf(i), (k) => partName(sh, k));
       if ("error" in prog) { out.push({ sheet: i + 1, error: prog.error }); continue; }

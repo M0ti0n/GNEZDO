@@ -6,6 +6,7 @@ import { NumInput } from "../components/NumInput";
 import { partCutSeconds, partKg } from "../job/report";
 import { techRowFor } from "../job/technology";
 import { rowAsCut } from "../job/machine";
+import { priceFor, withPrice, type CostPrices } from "../job/costPrices";
 import type { ReportJob } from "./NestReportPage";
 
 // Cost report (toolbar -> Report -> Cost report), after Fab's layout: on the right who it is for, the
@@ -13,19 +14,17 @@ import type { ReportJob } from "./NestReportPage";
 // pages list each part with its price per piece and the sum.
 
 const ROWS_FIRST = 12, ROWS_MORE = 14;
-const PRICES_KEY = "gnezdo.costPrices";
-
-interface Prices { currency: string; materials: Record<string, { kg: number; min: number }>; fixed: number }
-
-function loadPrices(): Prices {
-  try { return { currency: "€", materials: {}, fixed: 0, ...JSON.parse(localStorage.getItem(PRICES_KEY) ?? "{}") }; }
-  catch { return { currency: "€", materials: {}, fixed: 0 }; }
-}
 
 const money = (n: number, cur: string) => `${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`;
 const day = (d: Date) => `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`;
 
-export function CostReportPage({ job, jobParts, userName }: { job: ReportJob; jobParts: JobPart[]; userName: string }) {
+export function CostReportPage({ job, jobParts, userName, prices: shared, onPrices }: {
+  job: ReportJob; jobParts: JobPart[]; userName: string;
+  /** the shared prices (Settings → Data: in the settings file too) */
+  prices: CostPrices;
+  /** changes the shared prices (an admin); missing: changes are for this report only */
+  onPrices?: (p: CostPrices) => void;
+}) {
   const [who, setWho] = useState(() => { try { return localStorage.getItem(`gnezdo.costFor.${job.id}`) ?? ""; } catch { return ""; } });
   useEffect(() => { try { localStorage.setItem(`gnezdo.costFor.${job.id}`, who); } catch { /* not kept */ } }, [who, job.id]);
   const projects = useMemo(() => [...new Set(jobParts.map((jp) => jp.part.project).filter(Boolean))].sort(), [jobParts]);
@@ -34,11 +33,15 @@ export function CostReportPage({ job, jobParts, userName }: { job: ReportJob; jo
   const [off, setOff] = useState<Set<string>>(new Set());     // parts left out
   const picked = inProject.filter((jp) => !off.has(jp.part.id));
   const allOn = inProject.length > 0 && picked.length === inProject.length;
-  const [prices, setPricesState] = useState<Prices>(loadPrices);
-  const setPrices = (p: Prices) => { setPricesState(p); try { localStorage.setItem(PRICES_KEY, JSON.stringify(p)); } catch { /* not kept */ } };
-  const mats = [...new Set(picked.map((jp) => jp.part.material))].sort();
-  const priceOf = (m: string) => prices.materials[m] ?? { kg: 0, min: 0 };
-  const setMat = (m: string, patch: Partial<{ kg: number; min: number }>) => setPrices({ ...prices, materials: { ...prices.materials, [m]: { ...priceOf(m), ...patch } } });
+  // not an admin: the shared prices, changed for this report only
+  const [own, setOwn] = useState<CostPrices | null>(null);
+  const prices = own ?? shared;
+  const setPrices = (p: CostPrices) => { if (onPrices) onPrices(p); else setOwn(p); };
+  // one row per material whatever its spelling ("S355", "s355")
+  const mats = [...new Map(picked.map((jp) => [jp.part.material.trim().toLowerCase(), jp.part.material.trim()])).values()].sort();
+  const priceOf = (m: string) => priceFor(prices, m) ?? { kg: 0, min: 0 };
+  const setMat = (m: string, patch: Partial<{ kg: number; min: number }>) => setPrices(withPrice(prices, m, patch));
+  const unpriced = mats.filter((m) => !(priceFor(prices, m)?.kg));
 
   // what the pages show: taken with GENERATE (and when the report opens)
   const build = () => ({
@@ -159,8 +162,9 @@ export function CostReportPage({ job, jobParts, userName }: { job: ReportJob; jo
           ))}
           <label className="cp-fixed"><span>Fixed cost</span><NumInput value={prices.fixed} min={0} aria-label="Fixed cost" onCommit={(n) => setPrices({ ...prices, fixed: n })} /><span>{prices.currency}</span></label>
         </div>
+        {unpriced.length > 0 && <p className="report-warn">No price per kg for {unpriced.join(", ")}: {unpriced.length === 1 ? "its" : "their"} material is counted as 0.</p>}
         {noTime > 0 && <p className="report-warn">{noTime} {noTime === 1 ? "part has" : "parts have"} no Technology row on {job.machine.name}: no cutting cost.</p>}
-        <p className="report-help">Price per piece = weight × price per kg + cutting minutes × cut cost (estimated from the Technology table). Prices are kept in this browser. Generate after changes.</p>
+        <p className="report-help">Price per piece = weight × price per kg + cutting minutes × cut cost (estimated from the Technology table). {onPrices ? "The prices are shared: everyone's cost reports use them." : own ? "Your changes are for this report only (only an admin changes the shared prices)." : "The shared prices; changes here are for this report only (only an admin changes the shared ones)."} Generate after changes.</p>
       </aside>
       {printing && createPortal(<div className="print-root">{pageEls()}</div>, document.body)}
     </div>

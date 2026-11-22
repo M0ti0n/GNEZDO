@@ -1,3 +1,4 @@
+import { UNIT_MM } from "../import/dxf";
 import { useRef, useState } from "react";
 import { loadDefaultProject } from "../job/defaultProject";
 import { Combobox } from "../components/Combobox";
@@ -29,6 +30,8 @@ export interface ImportPanelProps {
   onRemove: (id: string) => void;
   onClear: () => void;
   onSamples: () => void;
+  /** A file that says it is in other units (inches, ...): its drawing scaled to mm (undo takes it back). */
+  onUnits: (id: string) => void;
   openId: string | null;      // part shown in the main area
   /** Properties section expanded (the Properties tool opens it). */
   propsOpen: boolean;
@@ -282,7 +285,7 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
             st.verdict === "attention" && st.problems.join(" · "),
             st.verdict === "duplicate" && "already in the database: double-click, then process to replace",
             st.splines > 0 && `${st.splines} ${st.splines === 1 ? "spline" : "splines"}`,
-            item.declaredUnits && `file says ${item.declaredUnits}, read as mm`,
+            item.declaredUnits && (item.unitsApplied ? `converted from ${item.declaredUnits}` : `file says ${item.declaredUnits}, read as mm`),
             item.ignored?.[HIDDEN] && `${item.ignored[HIDDEN]} on hidden layers left out`,
             item.error,
           ].filter(Boolean) as string[];
@@ -299,6 +302,12 @@ export function ImportPanel(p: ImportPanelProps & { onClose: () => void }) {
                 {item.from3d && <span className="imp-3d" title={`A flat pattern from the 3D Extractor${item.qty ? `, ${item.qty} pieces in the assembly` : ""}`}>3D{item.qty ? ` ×${item.qty}` : ""}</span>}
                 {notes.length > 0 && <span className="imp-notes">{notes.join(" · ")}</span>}
               </button>
+              {item.declaredUnits && !item.unitsApplied && UNIT_MM[item.declaredUnits] && item.state === "ready" && (
+                <button className="btn btn-plain imp-units" onClick={() => p.onUnits(item.id)}
+                  title={`The file says it is drawn in ${item.declaredUnits}: scale it to millimeters (× ${UNIT_MM[item.declaredUnits]}). Undo takes it back`}>
+                  Read as {item.declaredUnits}
+                </button>
+              )}
               <button className="icon-btn imp-remove" onClick={() => p.onRemove(item.id)} aria-label={`Remove ${item.name}`} title="Remove from list">×</button>
             </li>
           );
