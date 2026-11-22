@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 22 Nov 2026, 5 (`1a8e3c8`)
+
 - **3D Extractor: new icons** for **Send to Import 2D** (a part with a bend line and an arrow) and **Export to DXF** (a sheet with a part and DXF in red; the button was called Flat DXF).
 
 ## Build 22 Nov 2026, 4 (`de86398`)
