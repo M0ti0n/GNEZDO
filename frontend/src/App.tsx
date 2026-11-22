@@ -203,10 +203,21 @@ export function App() {
   // said once to an admin: which settings each browser still keeps on its own
   const toldUnshared = useRef(false);
   useEffect(() => {
-    if (!unshared.length || !isAdmin || toldUnshared.current) return;
+    if (!unshared.length || !authState) return;
+    // without sign-in (the desktop: one computer) this browser's copy simply becomes the stored one
+    if (!authState.required) {
+      const keys = unshared;
+      void settingsNow().then((all) => {
+        const b: SettingsBundle = {};
+        for (const k of keys) (b as Record<string, unknown>)[k] = all[k as keyof SettingsBundle];
+        return putSettings(b);
+      }).catch(() => { /* asked again on the next start */ });
+      return;
+    }
+    if (!isAdmin || toldUnshared.current) return;
     toldUnshared.current = true;
     setToast("Stock and rules are not shared on the server yet: each browser uses its own. Settings → Data shares this browser's, or imports a settings file");
-  }, [unshared, isAdmin]);
+  }, [unshared, isAdmin, authState]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { startDiag(userName); }, [userName]);
   const newJobCount = useRef(0);
   // Last job search: results show in the Job search view on the main screen.
