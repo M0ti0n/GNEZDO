@@ -130,7 +130,8 @@ export function buildPieces(ctx: LeadCtx, base: CutContour, plan: BreakPlan, mir
     };
     for (const pc of pieces) for (let i = 1; i < pc.pts.length; i++) {
       const a = pc.pts[i - 1], b = pc.pts[i];
-      if (near(b) > 0.1 || near([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) > 0.1) return false;
+      // (a piece may end on the circle a chord stands for, a little off the chord: onArc)
+      if (near(b) > 0.5 || near([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) > 0.5) return false;
     }
     return true;
   };

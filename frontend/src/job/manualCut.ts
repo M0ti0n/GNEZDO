@@ -30,7 +30,7 @@ export function pickContour(cut: SheetCut, live: Set<CutContour>, p: Pt, reach: 
 export function contourKind(c: CutContour): string {
   if (c.common) return "Common cut line";
   if (c.kind === "outer") return c.parts ? "Block outline" : "Outline";
-  if (c.kind === "inner") return c.parts ? "Block hole" : "Hole";
+  if (c.kind === "inner") return c.parts ? "Block hole" : c.island ? "Island" : "Hole";
   return c.kind === "trace" ? "Marking" : "Open cut";
 }
 

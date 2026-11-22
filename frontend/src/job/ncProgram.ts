@@ -33,7 +33,7 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
   const mapped = (pts: Pt[]): NcPt[] => pts.map(map).filter((p, i, a) => !i || Math.hypot(p.x - a[i - 1].x, p.y - a[i - 1].y) > 0.001);
 
   const restart = (["none", "pierce", "quick"] as const)[row.mjPierce ?? 1] ?? "pierce";
-  const contour = (c: Pick<CutContour, "kind" | "pts" | "leadIn" | "leadOut" | "small" | "restart" | "inline"> & { part?: number; parts?: number[] }, part?: string): NcContour | null => {
+  const contour = (c: Pick<CutContour, "kind" | "pts" | "leadIn" | "leadOut" | "small" | "restart" | "inline" | "island"> & { part?: number; parts?: number[] }, part?: string): NcContour | null => {
     const { leadIn, pts, leadOut } = c;
     // lead-in, contour and lead-out each as lines and arcs (job/ncArcs.ts)
     const body = mapped(pts);
@@ -53,7 +53,8 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
     const xs = pts.map(([x, y]) => x * ca + y * sa), ys = pts.map(([x, y]) => -x * sa + y * ca);
     const size = (v: number[]) => Math.round((Math.max(...v) - Math.min(...v)) * 1000) / 1000;
     return {
-      kind: c.kind, start, segs,
+      // an island is the outline of a piece of its own: the machine cuts it as one (compensation, speed)
+      kind: c.island ? "outer" : c.kind, start, segs,
       leadIn: segIn.length, leadOut: segOut.length,
       // an inline cut's stretch: the whole contour's size (its size class), its own pierce
       widthMm: c.inline ? c.inline.w : size(xs),
@@ -111,6 +112,10 @@ function checkedRow(machine: Machine, row: TechRow, of: string): TechRow | strin
     const n = typeof v === "number" ? v : typeof v === "string" ? Number(v.trim().replace(",", ".")) : NaN;
     if (!Number.isFinite(n)) return `${g.group} "${col.label}" is ${JSON.stringify(v)} ${where}: it must be a number`;
     if (n < (col.min ?? 0)) return `${g.group} "${col.label}" is ${n} ${where}: it must be ${col.min ?? 0} or more`;
+    // above the column's maximum, or not whole where it must be: refused, never rounded (6021.5 called
+    // program 6022, another technology: QA R2-05)
+    if (col.max !== undefined && n > col.max) return `${g.group} "${col.label}" is ${n} ${where}: it must be ${col.max} or less`;
+    if (col.whole && !Number.isInteger(n)) return `${g.group} "${col.label}" is ${n} ${where}: it must be a whole number`;
     out[col.key] = n;
   }
   if (machine.technology === "laser") {

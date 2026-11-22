@@ -93,6 +93,8 @@ export const rowForMaterial = (r: TechRow, material: string) => !r.skip?.some((x
 
 export interface TechColumn {
   key: RowKey; label: string; unit: string; min?: number; max?: number;
+  /** a whole number (a program number, a switch): 6021.5 is refused, not rounded to another program */
+  whole?: boolean;
   /** the value of a row that has none set (else 0) */
   def?: (r: TechRow) => number;
 }
@@ -156,13 +158,13 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; except?: Techno
   ] },
   { group: "Micro joint", cols: [
     { key: "mjGapMm", label: "Length", unit: "mm", def: () => 1 },
-    { key: "mjPierce", label: "Restart", unit: "0 none, 1 pierce, 2 quick", max: 2, def: () => 1 },
+    { key: "mjPierce", label: "Restart", unit: "0 none, 1 pierce, 2 quick", max: 2, whole: true, def: () => 1 },
   ] },
   { group: "Laser", only: ["laser"], cols: [
     { key: "midSizeMm", label: "Medium (E002) up to", unit: "mm" },
     { key: "littleSizeMm", label: "Slow (E003) up to", unit: "mm" },
-    { key: "prePierce", label: "Pre-pierce", unit: "1 = on", max: 1 },
-    { key: "techProgram", label: "Tech program", unit: "no.", max: 99999 },
+    { key: "prePierce", label: "Pre-pierce", unit: "1 = on", max: 1, whole: true },
+    { key: "techProgram", label: "Tech program", unit: "no.", max: 99999, whole: true },
     { key: "traceShortest", label: "Trace shortest", unit: "1 = on", max: 1, def: traceDefault },
   ] },
 ];

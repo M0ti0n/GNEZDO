@@ -4,7 +4,15 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+**QA round 2, batch 1: G-code that looked right and wasn't:**
+- **Gentle arcs (15° or less) were cut as two straight lines,** up to 1.3 mm off the drawing on an R600. Arcs now always keep at least 6 points, so the NC program cuts them as arcs. Arcs too big for G2/G3 (over R20000) are cut as lines within 0.005 mm. This applies to parts imported or saved from now on; parts already saved keep their outline until they are imported or saved again.
+- **Round contours on parts nested at 5°, 15°, 30°, 45° and so on had flat 7.5° chords** (0.1–0.2 mm off). The cut path now keeps its points to 0.001 mm instead of 0.01 mm, so circles, slots and obrounds are cut as arcs at every angle.
+- **A part whose tracing or open cut lines changed was posted with the old lines.** Auto cut now remembers them, and Post process reads the part's drawing again from the database (not this browser's copy) and refuses: "the tracing or open cut lines of X changed since Auto cut: process it again".
+- **A Tech program like 6021.5 called program 6022.** Technology values that must be whole numbers (Tech program, Pre-pierce, micro joint Restart) are refused when they aren't, and every value above its column's maximum is refused (Tech program up to 99999).
+- **Parts and cuts off the sheet were posted.** Post process refuses a part that lies wholly or partly outside the sheet (or outside a remnant's outline), and a cut or lead that leaves the sheet. The remnant's own cuts may still run off it.
+- **Islands (a contour inside a hole) are cut as what they are:** the outline of a piece of their own. Each one is cut clockwise with its lead from the scrap around it, before the hole it lies in; its own holes are cut before it. The NC program gets it as an outline. They used to be cut as holes, with the kerf going into the piece. Lead in / out, micro joints, break cuts and inline cuts leave islands as Auto cut made them.
+- **Micro joints, breaks and hand-placed leads on round contours** now start and end exactly on the arc, instead of on the straight chord between two of its points (up to 0.2 mm inside an R100). The pieces are cut as arcs and the joints come out at the length set; on arcs they used to be up to 25 times longer.
+
 
 ## Build 22 Nov 2026 (`b0eca91`)
 
