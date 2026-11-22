@@ -141,7 +141,8 @@ export function ExtractPanel(p: ExtractPanelProps & { onClose: () => void }) {
                 </button>
                 {open && list.map((x) => {
                   const i = x.step.info;
-                  const note = [
+                  // a tube or profile: its section and length (cut to length, not unfolded)
+                  const note = (kind === "tube" || kind === "profile") ? [x.material, x.section, files > 1 ? x.fileName : ""].filter(Boolean).join(" · ") : [
                     [x.material, i.thickness ? `${i.thickness} mm` : ""].filter(Boolean).join(" "),
                     i.ok && i.w ? `${Math.round(i.w)} × ${Math.round(i.h)}` : "",
                     i.bends ? `${i.bends} ${i.bends === 1 ? "bend" : "bends"}` : "",

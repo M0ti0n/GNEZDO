@@ -1838,7 +1838,7 @@ export function App() {
             )}
             {shownPart && (
               <ErrorBoundary key={shownPart.id} what={shownPart.name}>
-              <UnfoldPage key={shownPart.id} name={shownPart.name} kind={shownPart.kind} qty={shownPart.qty} sent={!!shownPart.sentTo}
+              <UnfoldPage key={shownPart.id} name={shownPart.name} kind={shownPart.kind} section={shownPart.section} qty={shownPart.qty} sent={!!shownPart.sentTo}
                 step={shownPart.step} material={shownPart.material || importProps.material} partMaterial={shownPart.material ?? ""} fileMaterial={shownPart.fileMaterial}
                 onChange={(step) => patchPart(shownPart.id, { step })}
                 onSend={() => sendToImport([shownPart.id])}
