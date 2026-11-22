@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 22 Nov 2026 (`b0eca91`)
+
 **Fixes from the check before the build:**
 - The desktop build no longer says stock and rules aren't shared yet. It has no other browsers, so it quietly stores its own copy, as before.
 - The server forgets job locks that lapsed (a computer that stopped without closing the job) instead of keeping them in memory.
