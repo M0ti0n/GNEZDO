@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 22 Nov 2026, 2 (`02ee03a`)
+
 **QA round 2, batch 3: import, technology, LVD program, server checks:**
 - **Drawings in inches (or feet, centimeters, ...)** get a **Read as inches** button in the import list: one click scales the drawing to millimeters (undoable), and the note says "converted from inches". It used to read 1 inch as 1 mm with only a note.
 - **Blocks inserted with different X and Y scales** keep their arcs and circles as the ellipses they become, sampled every 2° or less. They used to stay circles of the X scale.
