@@ -20,6 +20,8 @@ import { MachineFoldersSettings } from "../components/MachineFoldersSettings";
 import { ToolsSettings } from "../components/ToolsSettings";
 import { AdminSettings } from "../components/AdminSettings";
 import type { NestingRules } from "../job/nestRules";
+import { SETTING_PARTS, partSummary, readSettingsFile, settingsFileName, settingsFileText, type SettingsBundle } from "../job/settingsFile";
+import { downloadText } from "../job/ncFile";
 import type { Me } from "../api/auth";
 import { usePickLists } from "../components/pickLists";
 import { DEFAULT_STOCK_SETTINGS, MACHINE_LIMIT, fitsMachine, type StockSettings } from "../job/stock";
@@ -41,10 +43,12 @@ const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
 ];
 
 // The GNEZDO button -> Settings. Stock: the global sheet size and the three default sheet slots.
-export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, rules, onRules, startSection, startNo, onOpenJob, admin , nesting, onNesting}: {
+export function SettingsPage({ stock, onStock, machines, onMachines, shared, isAdmin = true, onClose, rules, onRules, startSection, startNo, onOpenJob, admin , nesting, onNesting, settingsFile }: {
   /** the section shown first (else Stock and remnants); shown again when startNo changes (the user menu -> Administration) */
   startSection?: Section;
   startNo?: number;
+  /** Data -> Settings file: this page's shared settings, saving settings on the server, and which are not there yet */
+  settingsFile?: SettingsFileProps;
   /** Rules -> Nesting rules */
   nesting: NestingRules;
   onNesting: (r: NestingRules) => void;
@@ -133,7 +137,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
       {section === "personal" && <PersonalSettings machines={machines} />}
       {section === "projects" && <ProjectsSettings onOpenJob={onOpenJob} isAdmin={isAdmin} />}
       {section === "rules" && <RulesTabs rules={rules} onChange={onRules} nesting={nesting} onNesting={onNesting} shared={shared} isAdmin={isAdmin} />}
-      {section === "data" && <DataSettings />}
+      {section === "data" && <DataSettings settingsFile={settingsFile} isAdmin={isAdmin} />}
       {section === "tools" && <ToolsSettings isAdmin={isAdmin} />}
       {section === "log" && <LogSettings isAdmin={isAdmin} />}
       {section === "admin" && admin && <AdminSettings me={admin.me} onMe={admin.onMe} />}
@@ -591,7 +595,7 @@ function LogSettings({ isAdmin }: { isAdmin: boolean }) {
 // Settings -> Data: where GNEZDO keeps parts, jobs and settings. The desktop: a database file in the
 // user's app-data folder (open it, back it up). The server: its SQL Server database (an admin may
 // point GNEZDO at another one, used after a restart).
-function DataSettings() {
+function DataSettings({ settingsFile, isAdmin }: { settingsFile?: SettingsFileProps; isAdmin: boolean }) {
   const [d, setD] = useState<DataInfo | null | undefined>(undefined);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [changing, setChanging] = useState(false);
@@ -684,8 +688,84 @@ function DataSettings() {
           )}
         </section>
       )}
+      {settingsFile && d !== undefined && <SettingsFileSection f={settingsFile} isAdmin={isAdmin} />}
       {msg && <p className={`log-msg${msg.ok ? "" : " is-bad"}`} role="status">{msg.text}</p>}
     </div>
+  );
+}
+
+interface SettingsFileProps {
+  now: () => Promise<SettingsBundle>;
+  put: (b: SettingsBundle) => Promise<void>;
+  /** shared settings not on the server yet (each browser keeps its own) */
+  unshared: string[];
+  userName?: string;
+}
+
+/** Settings → Data → Settings file: export / import the shared settings; share this browser's copy. */
+function SettingsFileSection({ f, isAdmin }: { f: SettingsFileProps; isAdmin: boolean }) {
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState<null | { name: string; bundle: SettingsBundle; exportedAt?: string; exportedBy?: string }>(null);
+  const pick = useRef<HTMLInputElement>(null);
+  const run = async (what: () => Promise<string>) => {
+    setBusy(true); setMsg(null);
+    try { setMsg({ ok: true, text: await what() }); }
+    catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+    finally { setBusy(false); }
+  };
+  const exportNow = () => void run(async () => {
+    const name = settingsFileName();
+    downloadText(name, settingsFileText(await f.now(), f.userName), "application/json");
+    return `Saved as ${name}, like any download.`;
+  });
+  const read = async (file: File) => {
+    setMsg(null);
+    try { setAsking({ name: file.name, ...readSettingsFile(await file.text()) }); }
+    catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+  };
+  const importNow = () => {
+    if (!asking) return;
+    const b = asking.bundle;
+    setAsking(null);
+    void run(async () => { await f.put(b); return `Imported: ${partSummary(b).join(", ")}.`; });
+  };
+  const share = () => void run(async () => {
+    const all = await f.now();
+    const b: SettingsBundle = {};
+    for (const k of f.unshared) (b as Record<string, unknown>)[k] = all[k as keyof SettingsBundle];
+    await f.put(b);
+    return "This browser's settings are now on the server, for everyone.";
+  });
+  const unsharedLabels = SETTING_PARTS.filter((p) => f.unshared.includes(p.key)).map((p) => p.label.toLowerCase());
+  return (
+    <section className="rule">
+      <h3>Settings file</h3>
+      <p className="rule-help">The shared settings as one readable file (gnezdo-settings-date.json): machines, stock and remnants, import and nesting rules, and added special tools.
+        Keep it with the backups, or use it to set up a new installation. Personal settings are not in it. A database backup has these settings too.</p>
+      {isAdmin ? (
+        <div className="rule-row">
+          <button type="button" className="btn btn-plain" disabled={busy} onClick={exportNow}>Export settings</button>
+          <button type="button" className="btn btn-plain" disabled={busy} onClick={() => pick.current?.click()}>Import settings…</button>
+          <input ref={pick} type="file" accept=".json,application/json" hidden
+            onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void read(file); }} />
+        </div>
+      ) : <p className="admin-only">Only an admin can export and import the settings.</p>}
+      {isAdmin && unsharedLabels.length > 0 && (
+        <div className="sf-unshared">
+          <p className="rule-help"><b>Not on the server yet:</b> {unsharedLabels.join(", ")}. Each browser still uses its own copy (they were kept in the browsers before).
+            On the computer whose settings you want, share this browser's, or import a settings file.</p>
+          <div className="rule-row"><button type="button" className="btn btn-save" disabled={busy} onClick={share}>Share this browser's settings</button></div>
+        </div>
+      )}
+      {msg && <p className={`log-msg${msg.ok ? "" : " is-bad"}`} role="status">{msg.text}</p>}
+      {asking && (
+        <ConfirmDialog title="Import these settings?" confirmLabel="Import" onCancel={() => setAsking(null)} onConfirm={importNow}>
+          {asking.name}{asking.exportedAt ? `, exported ${new Date(asking.exportedAt).toLocaleString()}` : ""}{asking.exportedBy ? ` by ${asking.exportedBy}` : ""}.
+          {" "}These replace the shared settings, for everyone: {partSummary(asking.bundle).join(", ")}. Whatever the file does not have stays as it is.
+        </ConfirmDialog>
+      )}
+    </section>
   );
 }
 

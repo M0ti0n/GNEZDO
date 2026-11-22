@@ -2929,3 +2929,6 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .admin-warn { margin: 0 0 10px; padding: 8px 12px; border-radius: 8px; background: #fff4e0; border: 1px solid #f0c27a; color: #7a4a00; }
 .admin-nopw { color: #b45309; font-weight: 600; }
 .rule .users-add h4 { width: 100%; margin: 4px 0 0; font-size: 14px; }
+
+/* Settings → Data → Settings file: shared settings not on the server yet */
+.sf-unshared { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--warn, #d08a00); background: var(--warn-bg, rgba(208, 138, 0, 0.08)); border-radius: 4px; }

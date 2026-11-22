@@ -26,6 +26,8 @@ import { forgetPartMarks, remapCut, shiftSheet } from "./job/cutPath";
 import { loadDefaultProject } from "./job/defaultProject";
 import { applyRules, loadRules, normalizeRules, saveRules, type ImportRules, type Rotation } from "./import/rules";
 import { loadNestingRules, normalizeNestingRules, saveNestingRules, type NestingRules } from "./job/nestRules";
+import type { SettingsBundle } from "./job/settingsFile";
+import { replaceToolsSetting, toolsSetting } from "./tools/toolStore";
 import { quantityFromName } from "./import/geometry";
 import { NestReportPage } from "./pages/NestReportPage";
 import { CostReportPage } from "./pages/CostReportPage";
@@ -108,16 +110,17 @@ export function App() {
       if (m) { setMachinesState(m); saveLocalMachines(m); }
       else if (!demoMode) void api.saveSetting("machines", machines).catch(() => {});  // first time: this browser's list
     }).catch(() => { /* server without settings: the browser's list */ });
-    // the other shared settings the same way (first time: an admin's browser gives its own; anyone else's is refused)
-    const pull = <T,>(key: string, norm: (v: unknown) => T | null, apply: (v: T) => void, mine: T) =>
+    // the other shared settings: the server's; none there yet (they were kept in each browser before), this
+    // browser's own, until an admin shares one browser's (Settings → Data) or imports a settings file
+    if (demoMode) return;
+    const pull = <T,>(key: string, norm: (v: unknown) => T | null, apply: (v: T) => void) =>
       api.setting<unknown>(key).then((v) => {
         const n = norm(v);
-        if (n) apply(n);
-        else if (!demoMode) void api.saveSetting(key, mine).catch(() => {});
+        if (n) apply(n); else setUnshared((u) => [...new Set([...u, key])]);
       }).catch(() => { /* server without settings: this browser's copy */ });
-    void pull("stock", normalizeStock, (v) => { setStockSettingsState(v); saveStockSettings(v); }, stockSettings);
-    void pull("importRules", normalizeRules, (v) => { setRulesState(v); saveRules(v); }, rules);
-    void pull("nestingRules", normalizeNestingRules, (v) => { setNestingRulesState(v); saveNestingRules(v); }, nestingRules);
+    void pull("stock", normalizeStock, (v) => { setStockSettingsState(v); saveStockSettings(v); });
+    void pull("importRules", normalizeRules, (v) => { setRulesState(v); saveRules(v); });
+    void pull("nestingRules", normalizeNestingRules, (v) => { setNestingRulesState(v); saveNestingRules(v); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // the machine each job tab is nested for
@@ -131,7 +134,24 @@ export function App() {
   const shareSetting = <T,>(key: string, label: string, v: T, keep: (v: T) => void) => {
     if (!isAdmin) return;
     keep(v);
-    api.saveSetting(key, v).catch((e) => setToast(`${label} not saved on the server: ${(e as Error).message}`));
+    api.saveSetting(key, v).then(() => setUnshared((u) => u.filter((k) => k !== key)))
+      .catch((e) => setToast(`${label} not saved on the server: ${(e as Error).message}`));
+  };
+  /** Shared settings not on the server yet (each browser uses its own copy): Settings → Data shares them. */
+  const [unshared, setUnshared] = useState<string[]>([]);
+  /** This page's shared settings (Export settings, Share this browser's). */
+  const settingsNow = async (): Promise<SettingsBundle> => ({ machines, stock: stockSettings, importRules: rules, nestingRules, specialTools: await toolsSetting() });
+  /** Saves settings on the server (Import settings, Share this browser's), then uses them here. */
+  const putSettings = async (b: SettingsBundle) => {
+    if (!demoMode) {
+      for (const key of ["machines", "stock", "importRules", "nestingRules"] as const) if (b[key] !== undefined) await api.saveSetting(key, b[key]);
+    }
+    if (b.specialTools) await replaceToolsSetting(b.specialTools);
+    if (b.machines) { setMachinesState(b.machines); saveLocalMachines(b.machines); }
+    if (b.stock) { setStockSettingsState(b.stock); saveStockSettings(b.stock); }
+    if (b.importRules) { setRulesState(b.importRules); saveRules(b.importRules); }
+    if (b.nestingRules) { setNestingRulesState(b.nestingRules); saveNestingRules(b.nestingRules); }
+    setUnshared((u) => u.filter((k) => b[k as keyof SettingsBundle] === undefined));
   };
   const setStockSettings = (s: StockSettings) => { setStockSettingsState(s); shareSetting("stock", "Stock settings", s, saveStockSettings); };
   // Import list: files read from DXF, opened in tabs for checking; kept here so marks survive switching tabs.
@@ -179,6 +199,13 @@ export function App() {
   if (me) signedInAs.current = me.name;
   const userName = me?.name ?? signedInAs.current ?? deskUser ?? USER_NAME;
   const isAdmin = !authState?.required || !!me?.isAdmin;
+  // said once to an admin: which settings each browser still keeps on its own
+  const toldUnshared = useRef(false);
+  useEffect(() => {
+    if (!unshared.length || !isAdmin || toldUnshared.current) return;
+    toldUnshared.current = true;
+    setToast("Stock and rules are not shared on the server yet: each browser uses its own. Settings → Data shares this browser's, or imports a settings file");
+  }, [unshared, isAdmin]);
   useEffect(() => { startDiag(userName); }, [userName]);
   const newJobCount = useRef(0);
   // Last job search: results show in the Job search view on the main screen.
@@ -1708,7 +1735,8 @@ export function App() {
                 setRules(r);
                 // a list that has not been touched yet follows the new defaults
                 if (imports.length === 0) setImportProps((p) => ({ ...p, rotations: [...r.defaultRotations], mirror: r.mirrorWithoutOpenCut, filler: r.defaultFiller, commonCut: r.commonOnOutline }));
-              }} onOpenJob={(id, name) => void openSaved(id, name)} stock={stockSettings} onStock={setStockSettings} nesting={nestingRules} onNesting={setNestingRules} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin} />}
+              }} onOpenJob={(id, name) => void openSaved(id, name)} stock={stockSettings} onStock={setStockSettings} nesting={nestingRules} onNesting={setNestingRules} machines={machines} onMachines={setMachines} shared={!demoMode} isAdmin={isAdmin}
+              settingsFile={{ now: settingsNow, put: putSettings, unshared, userName: me?.name }} />}
             {active.kind !== "home" && active.kind !== "job" && active.kind !== "jobSearch" && active.kind !== "remnants" && active.kind !== "drawing" && active.kind !== "rules" && active.kind !== "settings" && active.kind !== "extract" && active.kind !== "special" && <PlaceholderPage tab={active} />}
             {active.kind === "extract" && <ExtractEmpty onPick={() => setDrawer("extract")} />}
           </main>

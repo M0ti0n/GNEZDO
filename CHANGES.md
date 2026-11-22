@@ -4,8 +4,13 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+**Settings → Data → Settings file** (admins):
+- **Export settings** saves the shared settings as one readable file (gnezdo-settings-date.json): machines, stock and remnants, import rules, nesting rules and added special tools. Keep it with the backups, or use it to set up a new installation or move from the desktop to the server.
+- **Import settings…** loads such a file. It lists what it replaces and asks first; whatever the file doesn't have stays as it is. A file that isn't a GNEZDO settings file, or comes from a newer GNEZDO, is refused.
+- **Share this browser's settings:** after the update, stock and rules aren't on the server yet, and each browser keeps its own copy. An admin is told once and can share the right browser's copy from the right computer, or import a file. Nothing is uploaded on its own anymore.
+
 **Only Personal is each user's own; the rest of Settings is the admin's** (server build):
-- **Stock and remnants**, **Rules** (import and nesting rules) are now kept on the server, one copy for everyone, like the machines. They used to be kept in each browser. The first admin to open GNEZDO after the update gives them the values from their browser.
+- **Stock and remnants**, **Rules** (import and nesting rules) are now kept on the server, one copy for everyone, like the machines. They used to be kept in each browser. Until an admin shares them (see Settings file below), each browser keeps using its own copy.
 - **Locked for users who aren't admins**, who can still look: Stock and remnants, Machines, Rules, Special tools. Deleting projects (Projects and parts) is admin-only too, and the server refuses it for anyone else.
 - A remnant setting changed in Process → Remnant by someone who isn't an admin holds only on their page until it reloads; it isn't saved for others.
 - **Personal** (job names, the cut-path view, manual nest keys) stays each user's own, in their browser.
