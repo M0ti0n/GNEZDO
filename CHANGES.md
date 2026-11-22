@@ -4,7 +4,8 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- User manual (English, PDF) added to docs/, with a download link at the top of the README: white cover, descriptions checked against the app, real screenshots and buttons from the current build.
+
 
 ## Build 22 Nov 2026, 5 (`1a8e3c8`)
 
