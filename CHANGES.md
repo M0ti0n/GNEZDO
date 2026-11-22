@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 22 Nov 2026, 3 (`3f02c70`)
+
 - **3D Extractor: tubes, pipes and profiles are no longer unfolded.**
   - A tube or profile with holes, notches or mitered ends used to be taken for sheet metal (or "other"), and a flat pattern was made from one of its walls or its end. It is now sorted under **Tubes** or **Profiles** like a plain one.
   - Square and rectangular tubes are listed under Tubes too.
