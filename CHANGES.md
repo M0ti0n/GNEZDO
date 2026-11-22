@@ -9,7 +9,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 - **Blocks inserted with different X and Y scales** keep their arcs and circles as the ellipses they become, sampled every 2° or less. They used to stay circles of the X scale.
 - **An arc whose start and end are the same angle is flagged** in the import check ("read as a whole circle"), with **Remove full arcs**. Some CAD programs write such arcs, and they used to be cut as an extra hole without a word.
 - **Islands** no longer stop a part from being saved: Auto cut now cuts them as pieces of their own. Whether a contour lies inside another is decided by up to 7 points on it, not one, so a contour that touches another's edge is placed right.
-- **The import check is faster:** a plate with 51,000 holes is read, checked and saved in about 5 s (the note in the 22 Nov build said 4 s for the check; it took 33 s). The check runs once per drawing, and saving reuses it.
+- **The import check is faster:** a plate with 51,000 holes is read, checked and saved in about 6 s. The note in the 22 Nov build said about 4 s for the check, but it took 33 s. The check runs once per drawing, and saving reuses it.
 - **Technology:** lead in / out lengths are refused above 100 mm and the size limits for little and middle holes above 1000 mm. A hole exactly at a size limit is now in the right class (the limit was off by 0.01 mm).
 - **Post process refuses a sheet bigger than the machine's cutting area.**
 - **LVD program:**
@@ -25,6 +25,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
   - they are kept on the server like the stock and the rules, and are in the settings file. Only an admin changes them; the others can change them for one report;
   - a material is priced whatever its spelling ("S355" and "s355");
   - the report warns about materials that have no price.
+- **The source no longer holds a `frontend/node_modules` link** (it pointed at a folder that exists only on the computer it came from); `node_modules` is ignored as a link too.
 - **Number fields say what's wrong:** text that is not a number keeps the old value, a number under the minimum becomes the minimum, and a fraction in a whole-number field is rounded. The field turns red for a moment and its tooltip says why. "1.234,5" is not read as a number, and Arabic digits are read as digits.
 
 **QA round 2, batch 2: several users and computers:**
