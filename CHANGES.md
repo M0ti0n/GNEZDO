@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- **HACO plasma machine file** (POST PROCESSOR → HACO-KOMPAKT-plasma zip): both tables (80 A and 130 A, O2 / air) are tagged with the materials **MS, Mn12 and Hardox** only (S235, S355 and St37-2 are removed). An installed plasma gets them by importing the zip again (Replace) or by changing the tags in Settings → Machines → Technology.
 
 ## Build 22 Nov 2026, 3 (`3f02c70`)
 
