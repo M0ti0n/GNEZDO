@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 22 Nov 2026, 4 (`da2a46b`)
+
 - **Special tools: no tools built in.** A new installation starts with an empty Special tools; tools are added in Settings → Special tools → Add tool… (a .gnezdo-tool.zip).
   - The six fittings (segmented elbow, rect. → round, branch reducer, flange, threaded flange, screw flight) are now plug-in tools in SPECIAL TOOLS on GitHub, one zip each, with their pictures and value boxes as before. Their parts are the same.
   - Their forms change a little: on the flanges, **Sizes from the table** fills B, E, N and the slot width or thread from A (untick it to enter them), and the part's label gives the recommended thickness, the outside diameter and the tap drill. The screw flight's label gives the blank's angle and radii.
