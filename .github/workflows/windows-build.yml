@@ -557,7 +557,9 @@ jobs:
             echo
             echo "**Desktop, one PC:** gnezdo-desktop-windows.zip (unzip, double-click GNEZDO.exe) or gnezdo-desktop-linux.tar.gz - see INSTALL.txt inside."
             echo
-            gh api "repos/${GITHUB_REPOSITORY}/contents/CHANGES.md?ref=${GITHUB_SHA}" -H "Accept: application/vnd.github.raw" || true
+            # a release's text may be at most 125000 characters: the newest builds, then a link to the rest
+            gh api "repos/${GITHUB_REPOSITORY}/contents/CHANGES.md?ref=${GITHUB_SHA}" -H "Accept: application/vnd.github.raw" \
+              | awk -v max=100000 '/^## Build/ && n > max { cut = 1; exit } { n += length($0) + 1; print } END { if (cut) print "\n## Older builds\n\nSee [CHANGES.md](https://github.com/'"${GITHUB_REPOSITORY}"'/blob/main/CHANGES.md)." }' || true
           } > notes.md
           gh release create test-build dl/gnezdo-server-windows.zip dl/gnezdo-desktop-windows.zip dl/gnezdo-desktop-linux.tar.gz dl/gnezdo-server-linux.tar.gz \
             --prerelease --target "$GITHUB_SHA" \
