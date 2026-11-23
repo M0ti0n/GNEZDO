@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-- Auto cut, outline leads: the lead place now wins over the lead type. A sharp corner (corner lead) is used only when it lies in the place's corner area: a square at that corner of the part's box, its side half the box's shorter side (a 200 x 200 part: 100 x 100; a 2000 x 50 bar: 25 x 25 at its end). Otherwise the lead goes to the edge point nearest the place, with the other lead type, instead of to a sharp corner on the far side of the part. Corners outside the area are tried last, only when nothing nearer fits. Holes are unchanged.
+- Auto cut, outline leads: the lead place now wins over the lead type. A sharp corner (corner lead) is used only when it lies in the place's corner area: a square at that corner of the part's box, its side half the box's shorter side (a 200 x 200 part: 100 x 100; a 2000 x 50 bar: 25 x 25 at its end). Otherwise the lead goes to the edge point nearest the place, with the other lead type, instead of to a sharp corner on the far side of the part. A sharp corner that is the outline's nearest point to the place (the box's corner itself empty: an L's notch, a triangle) also keeps the corner lead. Corners outside the area are tried last, only when nothing nearer fits. Holes are unchanged.
 
 - User manual (English, PDF) added to docs/, with a download link at the top of the README: white cover, descriptions checked against the app, real screenshots and buttons from the current build.
 - Slovenian user manual (GNEZDO_Navodila_za_uporabo-slo.pdf) added to docs/, with its own download link at the top of the README.
