@@ -8,6 +8,7 @@ import { partColor, type NestedSheet } from "../job/nest";
 import type { Machine, Origin } from "../job/machine";
 import { prePierceSplit } from "../job/ncProgram";
 import { hmsOf, labelPoint, mmss, parsePages, sheetReport, type SheetReport } from "../job/report";
+import { useWheelSideways } from "../components/wheelScroll";
 
 // Nest report (toolbar -> Report -> Nest report), after Fab's layout: A4 pages side by side, a page
 // per sheet (more when its part list is long); on the right GENERATE, PRINT and which pages to print.
@@ -113,6 +114,8 @@ export function NestReportPage({ job, sheets, jobParts }: { job: ReportJob; shee
 
   // previews scaled to the height there is
   const area = useRef<HTMLDivElement>(null);
+  // the pages in a row: the mouse wheel scrolls them sideways
+  useWheelSideways(area);
   const [scale, setScale] = useState(0.6);
   useEffect(() => {
     const el = area.current;

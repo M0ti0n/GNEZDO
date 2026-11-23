@@ -8,6 +8,7 @@ import { techRowFor } from "../job/technology";
 import { rowAsCut } from "../job/machine";
 import { priceFor, withPrice, type CostPrices } from "../job/costPrices";
 import type { ReportJob } from "./NestReportPage";
+import { useWheelSideways } from "../components/wheelScroll";
 
 // Cost report (toolbar -> Report -> Cost report), after Fab's layout: on the right who it is for, the
 // project and its parts, prices per material (per kg, per minute of cutting) and a fixed cost; the
@@ -76,6 +77,8 @@ export function CostReportPage({ job, jobParts, userName, prices: shared, onPric
   }, [printing]);
 
   const area = useRef<HTMLDivElement>(null);
+  // the pages in a row: the mouse wheel scrolls them sideways
+  useWheelSideways(area);
   const [scale, setScale] = useState(0.6);
   useEffect(() => {
     const el = area.current;
