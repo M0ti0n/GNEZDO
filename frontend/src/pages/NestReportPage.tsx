@@ -279,8 +279,8 @@ function SheetDrawing({ sheet, rep, W = 690, H = 360 }: { sheet: NestedSheet; re
   }).filter((m): m is NonNullable<typeof m> => !!m);
   // small parts: numbered above the sheet, a line down to the part (at most 40). One copy each (the one nearest
   // the top: the shortest line): the other copies are found by their shape, so a sheet of small parts keeps readable
-  const one = new Map<number, (typeof marks)[number]>();
-  for (const m of marks) if (!m.big && (!one.has(m.jp.no) || m.cy < one.get(m.jp.no)!.cy)) one.set(m.jp.no, m);
+  const one = new Map<string, (typeof marks)[number]>();
+  for (const m of marks) if (!m.big && (!one.has(m.p.partId) || m.cy < one.get(m.p.partId)!.cy)) one.set(m.p.partId, m);
   const small = [...one.values()].sort((a, b) => a.cx - b.cx).slice(0, 40);
   let lastX = -99;
   const callouts = small.map((m) => { const x = Math.max(m.cx, lastX + 21); lastX = x; return { ...m, lx: Math.min(w, x) }; });
