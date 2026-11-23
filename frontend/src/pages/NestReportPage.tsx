@@ -8,6 +8,7 @@ import { partColor, type NestedSheet } from "../job/nest";
 import type { Machine, Origin } from "../job/machine";
 import { prePierceSplit } from "../job/ncProgram";
 import { hmsOf, labelPoint, mmss, parsePages, sheetReport, type SheetReport } from "../job/report";
+import { useWheelSideways } from "../components/wheelScroll";
 
 // Nest report (toolbar -> Report -> Nest report), after Fab's layout: A4 pages side by side, a page
 // per sheet (more when its part list is long); on the right GENERATE, PRINT and which pages to print.
@@ -113,6 +114,8 @@ export function NestReportPage({ job, sheets, jobParts }: { job: ReportJob; shee
 
   // previews scaled to the height there is
   const area = useRef<HTMLDivElement>(null);
+  // the pages in a row: the mouse wheel scrolls them sideways
+  useWheelSideways(area);
   const [scale, setScale] = useState(0.6);
   useEffect(() => {
     const el = area.current;
@@ -257,7 +260,7 @@ function F({ k, v, est, strong }: { k: string; v: string; est?: boolean; strong?
   return <div className={`rp-f${strong ? " is-strong" : ""}`}><span>{k}{est && v !== "—" ? <i> est.</i> : null}</span><b>{v}</b></div>;
 }
 
-/** The sheet to scale with its parts numbered (small ones by a line from the margin), and rulers. */
+/** The sheet to scale with its parts numbered (small ones by a line from the margin, one copy of each), and rulers. */
 function SheetDrawing({ sheet, rep, W = 690, H = 360 }: { sheet: NestedSheet; rep: SheetReport; W?: number; H?: number }) {
   // W × H: the drawing area in page px (the rulers outside it)
   const s = Math.min(W / sheet.lengthMm, H / sheet.widthMm);
@@ -277,8 +280,11 @@ function SheetDrawing({ sheet, rep, W = 690, H = 360 }: { sheet: NestedSheet; re
     const big = lp.room * s >= 11 || (jp.part.w * s >= 34 && jp.part.h * s >= 26 && lp.room * s >= 3);
     return { jp, p, cx, cy, big };
   }).filter((m): m is NonNullable<typeof m> => !!m);
-  // small parts: numbered above the sheet, a line down to the part (at most 40)
-  const small = marks.filter((m) => !m.big).sort((a, b) => a.cx - b.cx).slice(0, 40);
+  // small parts: numbered above the sheet, a line down to the part (at most 40). One copy each (the one nearest
+  // the top: the shortest line): the other copies are found by their shape, so a sheet of small parts keeps readable
+  const one = new Map<string, (typeof marks)[number]>();
+  for (const m of marks) if (!m.big && (!one.has(m.p.partId) || m.cy < one.get(m.p.partId)!.cy)) one.set(m.p.partId, m);
+  const small = [...one.values()].sort((a, b) => a.cx - b.cx).slice(0, 40);
   let lastX = -99;
   const callouts = small.map((m) => { const x = Math.max(m.cx, lastX + 21); lastX = x; return { ...m, lx: Math.min(w, x) }; });
   const step = [50, 100, 200, 250, 500, 1000].find((d) => d * s >= 36) ?? 1000;
