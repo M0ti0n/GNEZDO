@@ -26,8 +26,9 @@ right-click it -> Pin to Start / Pin to taskbar.
 
 2. LINUX
 --------
-Needs: Chromium, Google Chrome, Microsoft Edge or Brave (any one; without one GNEZDO
-opens in the default browser). Everything else is in the folder.
+Needs: Ungoogled Chromium, Chromium, Google Chrome, Microsoft Edge or Brave (any one,
+installed any way: a package, a snap, a flatpak or an AppImage in ~/Applications, ~/Downloads
+and the like; without one GNEZDO opens in the default browser). Everything else is in the folder.
 
     tar xzf gnezdo-desktop-linux.tar.gz -C ~/
     ~/gnezdo/install-menu-entry.sh      # GNEZDO in the applications menu and on the desktop
@@ -86,7 +87,8 @@ A config.json in the GNEZDO folder (next to GNEZDO.exe / gnezdo) can change:
       }
     }
 
-DesktopPort: when another program uses port 8095. Browser: a different browser.
+DesktopPort: when another program uses port 8095. Browser: a different browser: a program,
+an AppImage, or (Linux) a flatpak's id such as "io.github.ungoogled_software.ungoogled_chromium".
 DesktopRoot: keep the data in another folder (e.g. "D:\\GNEZDO-data").
 
 DWG DRAWINGS: GNEZDO reads DXF and SVG itself; a DWG is converted to DXF on the
