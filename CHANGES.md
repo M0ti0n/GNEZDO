@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 23 Nov 2026, 1 (`ab04bdf`)
+
 - Nest report and cost report: the mouse wheel scrolls the row of pages sideways (Shift no longer needed).
 
 - Nest report: a small part (numbered above the sheet with a line to it) gets one number and line, on its copy nearest the top, however many times it is nested; the other copies are found by their shape. A sheet of many small parts had a line to every copy.
