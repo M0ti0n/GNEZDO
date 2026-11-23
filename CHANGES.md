@@ -8,6 +8,7 @@ Nothing yet.
 
 ## Build 23 Nov 2026, 3 (`7a8ea76`)
 
+- Test-build release: its text (the change log) had grown past GitHub's limit, so the release could not be published. It now lists the newest builds and links to CHANGES.md for the older ones.
 - The browser's page zoom is off: Ctrl + mouse wheel (and a touchpad pinch) and Ctrl + / Ctrl − no longer make the whole page, toolbars and panels bigger or smaller by accident. The drawing views keep their own wheel zoom (Import 2D, Manual nest, 3D Extractor's part and flat pattern), Ctrl held or not. Ctrl 0 still sets the page back to 100 % (for a page zoomed before this build).
 - Linux desktop: a browser that does not start (a broken install) no longer sends GNEZDO to the default browser: the next browser found is tried. A broken link left on the PATH by an uninstalled browser (such as google-chrome-stable) is passed over. Found when the Linux build was tried with Ungoogled Chromium as a package, in /opt, as a snap, behind Ubuntu's snap wrapper, as a system and a user flatpak, and as an AppImage: each opened GNEZDO in its own window.
 
