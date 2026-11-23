@@ -14,6 +14,7 @@ import { remnantCutPaths } from "./remnantCut";
 import type { Pt } from "./manualGeom";
 import { reusesPierce } from "./commonPierce";
 import { speedFor, techRowFor, type TechRow } from "./technology";
+import { prePierceSplit } from "./ncProgram";
 
 /** Cutting speed when the Technology row has none [mm/min] */
 const FALLBACK_SPEED = 2000;
@@ -51,10 +52,11 @@ const accOf = (pts: Pt[]) => { const a = [0]; for (let i = 1; i < pts.length; i+
 /** The whole cut of a contour: lead-in, contour, lead-out, as one polyline */
 const cutPts = (c: CutContour): Pt[] => [...c.leadIn, ...(c.leadIn.length ? c.pts.slice(1) : c.pts), ...(c.leadOut.length ? c.leadOut.slice(1) : [])];
 
-/** rapidMmMin: the machine's rapid speed (rapidOf); prePierce: pierce every contour first */
+/** rapidMmMin: the machine's rapid speed (rapidOf); prePierce: pierce every contour first; split: pre-pierce with
+ *  the first `split` contours a program of their own (ncProgram.prePierceSplit): they are pierced and cut, then the rest */
 export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | null, rapidMmMin: number, laser = false, prePierce = false,
   /** the nest angle of a part (index): a contour's size class is measured as the part is drawn */
-  angleOf: (part: number) => number = () => 0): SimTimeline {
+  angleOf: (part: number) => number = () => 0, split = 0): SimTimeline {
   const fromTech = !!row && row.speed > 0;
   const speed = fromTech ? row!.speed : FALLBACK_SPEED;
   const legs: Leg[] = [];
@@ -72,58 +74,64 @@ export function simTimeline(contours: CutContour[], from: Pt, row: TechRow | nul
   const pierceS = (c: CutContour, k: number) => (pierceOf(c, k) === "quick" ? row?.quickPierceS || 0 : row?.pierceS || 0) + (row?.torchS || 0);
   // the pre-pierce pass: to each pierce point (the machine's own moves), pierce only
   const prePierced = new Set<number>();
-  if (prePierce) {
+  let preEnd = 0;
+  const groups: [number, number][] = prePierce && split > 0 && split < contours.length ? [[0, split], [split, contours.length]] : [[0, contours.length]];
+  for (const [g0, g1] of groups) {
+    if (prePierce) {
+      contours.forEach((c, k) => {
+        if (k < g0 || k >= g1) return;
+        const path = cutPts(c);
+        if (!path.length || !pierces(c, k)) return;
+        const p0 = path[0];
+        const d = lenOf(at, p0);
+        if (d > 0.01) { const dt = (d / rapidMmMin) * 60; legs.push({ k, phase: "rapid", pre: true, t0: t, t1: t + dt, pts: [at, p0], acc: [0, d] }); t += dt; }
+        const dt = pierceS(c, k);
+        legs.push({ k, phase: "pierce", pre: true, t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt;
+        prePierced.add(k);
+        at = p0;
+      });
+    }
+    preEnd = t;
     contours.forEach((c, k) => {
+      if (k < g0 || k >= g1) return;
       const path = cutPts(c);
-      if (!path.length || !pierces(c, k)) return;
+      start.push(t);
+      if (!path.length) { end.push(t); return; }
       const p0 = path[0];
-      const d = lenOf(at, p0);
-      if (d > 0.01) { const dt = (d / rapidMmMin) * 60; legs.push({ k, phase: "rapid", pre: true, t0: t, t1: t + dt, pts: [at, p0], acc: [0, d] }); t += dt; }
-      const dt = pierceS(c, k);
-      legs.push({ k, phase: "pierce", pre: true, t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt;
-      prePierced.add(k);
-      at = p0;
+      // the rapid, through Movement's points
+      const rp: Pt[] = [at, ...viaOf(c, contours[k - 1]), p0];
+      const racc = accOf(rp), d = racc[racc.length - 1];
+      if (d > 0.01) { const dt = (d / rapidMmMin) * 60; legs.push({ k, phase: "rapid", t0: t, t1: t + dt, pts: rp, acc: racc }); t += dt; }
+      if (c.kind === "trace" && (row?.torchS || 0) > 0) {
+        // a trace: the torch down and up again too
+        const dt = row!.torchS!;
+        legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt;
+      }
+      if (pierces(c, k) && !prePierced.has(k)) {
+        const dt = pierceS(c, k);
+        if (dt > 0) { legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt; }
+      }
+      // its speed: laser by its class (E001 - E004, its size without the leads), else small holes slower
+      let v = speed;
+      if (fromTech) {
+        // (in the part's own frame, as the NC program measures it: the class does not change with the nest angle)
+        const ang = (angleOf(c.parts?.[0] ?? c.part) * Math.PI) / 180, ca = Math.cos(ang), sa = Math.sin(ang);
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const [px, py] of c.pts) {
+          const x = px * ca + py * sa, y = -px * sa + py * ca;
+          x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+        }
+        v = speedFor(row!, { kind: c.kind, w: x1 - x0, h: y1 - y0, small: c.small }, laser);
+      }
+      const acc = accOf(path);
+      const dt = (acc[acc.length - 1] / v) * 60;
+      legs.push({ k, phase: "cut", t0: t, t1: t + dt, pts: path, acc });
+      t += dt;
+      end.push(t);
+      at = path[path.length - 1];
+      if (c.kind === "outer") for (const p of c.parts ?? [c.part]) partDone.set(p, t);
     });
   }
-  const preEnd = t;
-  contours.forEach((c, k) => {
-    const path = cutPts(c);
-    start.push(t);
-    if (!path.length) { end.push(t); return; }
-    const p0 = path[0];
-    // the rapid, through Movement's points
-    const rp: Pt[] = [at, ...viaOf(c, contours[k - 1]), p0];
-    const racc = accOf(rp), d = racc[racc.length - 1];
-    if (d > 0.01) { const dt = (d / rapidMmMin) * 60; legs.push({ k, phase: "rapid", t0: t, t1: t + dt, pts: rp, acc: racc }); t += dt; }
-    if (c.kind === "trace" && (row?.torchS || 0) > 0) {
-      // a trace: the torch down and up again too
-      const dt = row!.torchS!;
-      legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt;
-    }
-    if (pierces(c, k) && !prePierced.has(k)) {
-      const dt = pierceS(c, k);
-      if (dt > 0) { legs.push({ k, phase: "pierce", t0: t, t1: t + dt, pts: [p0], acc: [0] }); t += dt; }
-    }
-    // its speed: laser by its class (E001 - E004, its size without the leads), else small holes slower
-    let v = speed;
-    if (fromTech) {
-      // (in the part's own frame, as the NC program measures it: the class does not change with the nest angle)
-      const ang = (angleOf(c.parts?.[0] ?? c.part) * Math.PI) / 180, ca = Math.cos(ang), sa = Math.sin(ang);
-      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (const [px, py] of c.pts) {
-        const x = px * ca + py * sa, y = -px * sa + py * ca;
-        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
-      }
-      v = speedFor(row!, { kind: c.kind, w: x1 - x0, h: y1 - y0, small: c.small }, laser);
-    }
-    const acc = accOf(path);
-    const dt = (acc[acc.length - 1] / v) * 60;
-    legs.push({ k, phase: "cut", t0: t, t1: t + dt, pts: path, acc });
-    t += dt;
-    end.push(t);
-    at = path[path.length - 1];
-    if (c.kind === "outer") for (const p of c.parts ?? [c.part]) partDone.set(p, t);
-  });
   return { contours, legs, total: t, start, end, partDone, fromTech, ...(prePierced.size ? { pre: { count: prePierced.size, end: preEnd } } : {}) };
 }
 
@@ -138,7 +146,7 @@ export function sheetTimeline(sheet: NestedSheet, machine: Machine, origin: Orig
   const live = liveContours(sheet), last = live[live.length - 1];
   const at = last ? last.leadOut[last.leadOut.length - 1] ?? last.pts[last.pts.length - 1] : from;
   const rem = live.length ? remnantCutPaths(sheet, machine, at).map((r): CutContour => ({ part: -1, kind: "open", ...r })) : [];
-  return simTimeline([...live, ...rem], from, row, rapidOf(machine), laser, prePierce, (i) => sheet.parts[i]?.angle ?? 0);
+  return simTimeline([...live, ...rem], from, row, rapidOf(machine), laser, prePierce, (i) => sheet.parts[i]?.angle ?? 0, prePierceSplit(sheet, machine));
 }
 
 /** The polyline cut `d` mm along */

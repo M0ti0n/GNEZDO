@@ -15,8 +15,31 @@ import { techColumnsFor, techRowFor, type TechRow } from "./technology";
 
 type Pt = [number, number];
 
-export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origin, name: string, partName: (i: number) => string | undefined): NcProgram | { error: string } {
+/**
+ * Pre-pierce on (a laser sheet, its own or its Technology row's) with parts processed first by hand (Auto cut →
+ * Selected parts, kept first when the rest was processed): those parts are a program of their own (A: pre-pierce,
+ * marking and cutting them), the rest a second one (B), so they are done whole before the rest is pierced.
+ * The number of contours (from the first, in the cut order) that are A; 0: one program.
+ */
+export function prePierceSplit(sheet: NestedSheet, machine: Machine): number {
+  if (machine.technology !== "laser") return 0;
+  const row = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row;
+  if (!(sheet.prePierce ?? !!row?.prePierce)) return 0;
   const live = liveContours(sheet);
+  let n = 0;
+  while (n < live.length && live[n].picked) n++;
+  // something to cut on both sides, and an outline among the first (a part, not only its marking)
+  return n > 0 && n < live.length && live.slice(0, n).some((c) => c.kind === "outer") ? n : 0;
+}
+
+/** Program A or B of a sheet split for pre-pierce (prePierceSplit): its contours, and a note for the operator */
+export interface ProgramHalf { which: "A" | "B"; n: number; note?: string }
+
+export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origin, name: string, partName: (i: number) => string | undefined, half?: ProgramHalf): NcProgram | { error: string } {
+  const all = liveContours(sheet);
+  // program A: the first n contours; B: the rest (and the remnant's cuts); cutNo stays the sheet's
+  const from = half?.which === "B" ? half.n : 0, to = half?.which === "A" ? half.n : all.length;
+  const live = all.slice(from, to);
   if (!live.length) return { error: "no cut path (Process → Auto cut first)" };
   if (!!sheet.cut?.mirrored !== originMirrors(origin)) return { error: "the machine's 0,0 corner changed since Auto cut: run Auto cut again" };
   const tech = techRowFor(machine.technologies, sheet.material, sheet.thicknessMm);
@@ -67,14 +90,15 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
 
   const contours: NcContour[] = [];
   const boxes = new Map<number, NcPart["box"]>();
-  live.forEach((c, i) => {
+  live.forEach((c, j) => {
+    const i = from + j;
     const k = contour(c, c.parts?.length ? undefined : plain(partName(c.part)));
     if (!k) return;
     k.cutNo = i;
     // Process → Common pierce: an outline starting in a hole pierced already starts with a quick pierce
-    if (reusesPierce(live, i)) k.restart = "quick";
+    if (reusesPierce(all, i)) k.restart = "quick";
     // Process → Movement: the rapid to it through these points
-    const via = mapped(viaOf(c, live[i - 1]));
+    const via = mapped(viaOf(c, all[i - 1]));
     if (via.length) k.via = via;
     contours.push(k);
     if (c.parts?.length) return;
@@ -83,14 +107,15 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
     boxes.set(c.part, b);
   });
   // the remnant's cuts last, as open cuts (from the end nearer the head; gaps and leads: remnantCut.ts)
-  const lastC = live[live.length - 1];
+  const lastC = all[all.length - 1];
   const at: Pt = lastC.leadOut[lastC.leadOut.length - 1] ?? lastC.pts[lastC.pts.length - 1];
-  for (const r of remnantCutPaths(sheet, machine, at)) {
+  if (half?.which !== "A") for (const r of remnantCutPaths(sheet, machine, at)) {
     const c = contour({ kind: "open", ...r }, "Remnant");
     if (c) contours.push(c);
   }
   return {
     name: plain(name) ?? "",
+    ...(half?.note ? { note: plain(half.note) } : {}),
     sheet: { lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, thicknessMm: sheet.thicknessMm, material: plain(sheet.material) ?? "" },
     tech: { ...rowAsCut(machine, row), name: plain(tech.tech.name) ?? "", ...(sheet.prePierce !== undefined ? { prePierce: sheet.prePierce ? 1 : 0 } : {}) },
     contours,

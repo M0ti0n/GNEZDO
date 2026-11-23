@@ -60,6 +60,9 @@ export interface NcPart {
 export interface NcProgram {
   /** Program name (the sheet's / file's) */
   name: string;
+  /** A note for the operator, as a comment at the program's start: a sheet cut with two programs (pre-pierce
+   *  with parts done first: A then B, the same 0,0) says which it is */
+  note?: string;
   sheet: { lengthMm: number; widthMm: number; thicknessMm: number; material: string };
   /** The Technology row for the sheet (speeds, pierce time, ...; `extra` holds an imported table's other columns) */
   tech: Partial<TechRow> & { name?: string };

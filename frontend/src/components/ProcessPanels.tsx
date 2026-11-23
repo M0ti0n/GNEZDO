@@ -9,7 +9,7 @@ import { changedMarks, cutSettingsSig, liveContours, type CutContour } from "../
 import { refreshShared } from "../job/freshSettings";
 import { checkSheet } from "../job/cutCheck";
 import { contourKind, pickContour } from "../job/manualCut";
-import { sheetProgram } from "../job/ncProgram";
+import { prePierceSplit, sheetProgram, type ProgramHalf } from "../job/ncProgram";
 import { techColumnsFor, techRowFor } from "../job/technology";
 import { saveNcFile } from "../job/ncFile";
 import { ncNameOf, runPostprocessor } from "../job/postprocessor";
@@ -187,6 +187,17 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
   const pp = machine.postprocessor;
   const ext = pp?.extension || ".nc";
   const nameOf = (i: number) => ncNameOf(pp, jobName, i + 1);
+  // a sheet with pre-pierce and parts processed first by hand: two programs, A (those parts) then B (the rest),
+  // named with A / B after the job's name (JOB_2 -> JOBA_2, JOBB_2); the operator keeps the same 0,0 for both
+  const programsOf = (i: number, m: Machine = machine): { name: string; half?: ProgramHalf }[] => {
+    const sh = sheets[i], n = sh ? prePierceSplit(sh, m) : 0;
+    if (!n) return [{ name: nameOf(i) }];
+    const a = ncNameOf(pp, `${jobName}A`, i + 1), b = ncNameOf(pp, `${jobName}B`, i + 1);
+    return [
+      { name: a, half: { which: "A", n, note: `Sheet ${i + 1}, 1 of 2, then ${b}` } },
+      { name: b, half: { which: "B", n, note: `Sheet ${i + 1}, 2 of 2, same 0,0 as ${a}` } },
+    ];
+  };
   // RESTART HELP (on / off; Settings → Machines → NC output): a contour clicked on the open sheet -> where the program restarts it
   const [counting, setCounting] = useState(false);
   const [count, setCount] = useState<{ c: CutContour; lines: string[]; bad?: boolean } | null>(null);
@@ -200,7 +211,9 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
     const c = sh.cut.contours[k];
     const live = liveContours(sh);
     const at = live.indexOf(c);
-    const prog = sheetProgram(sh, machine, origin, nameOf(index), (i) => partName(sh, i));
+    // two programs (pre-pierce, parts first): the one this contour is in
+    const progs = programsOf(index), inProg = progs.find((q) => !q.half || (q.half.which === "A" ? at < q.half.n : at >= q.half.n)) ?? progs[0];
+    const prog = sheetProgram(sh, machine, origin, inProg.name, (i) => partName(sh, i), inProg.half);
     if ("error" in prog) { setCount({ c, lines: [prog.error], bad: true }); return; }
     const r = runPostprocessor(pp.source, prog);
     if (!r.ok) { setCount({ c, lines: [r.error], bad: true }); return; }
@@ -208,7 +221,7 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
     const ni = prog.contours.findIndex((q) => q.cutNo === at);
     const cnt = ni >= 0 ? r.counters[ni] : null;
     if (!cnt) { setCount({ c, lines: ["This contour has no restart point"], bad: true }); return; }
-    const what = `${contourKind(c)}${c.inline ? " (inline cut stretch)" : ""} of ${c.parts ? "a common cut block" : partName(sh, c.part) ?? `part ${c.part + 1}`}`;
+    const what = `${contourKind(c)}${c.inline ? " (inline cut stretch)" : ""} of ${c.parts ? "a common cut block" : partName(sh, c.part) ?? `part ${c.part + 1}`}${inProg.half ? ` · program ${inProg.name}${ext}` : ""}`;
     if (cnt.part === undefined) {
       // a program without counters: the block where the contour starts
       const lines = [what];
@@ -226,7 +239,8 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
     if (others.size) lines.push(`The part is also at #530 = ${[...others].sort((a, b) => a - b).join(", ")} (its marking or other contours)`);
     setCount({ c, lines });
   };
-  const fileOf = (i: number) => `${nameOf(i)}${ext}`;
+  const filesOf = (i: number, m: Machine = machine) => programsOf(i, m).map((q) => `${q.name}${ext}`);
+  const fileOf = (i: number) => filesOf(i).join(", ");
   const folder = foldersOf(machine);
   // pre-pierce of the selected sheet: its Technology row's, or set for this sheet (laser tables have it)
   const sheet = sheets[index];
@@ -249,8 +263,9 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
     }
     // one sheet: ask before replacing its file (every sheet: replaced without asking)
     if (!all && !checked && folder.nc.trim() && api.hasServer) {
-      const exists = await api.ncExists(machine.id, fileOf(index)).catch(() => false);
-      if (exists) { setAsk({ kind: "over", name: fileOf(index) }); return; }
+      let over: string | undefined;
+      for (const f of filesOf(index)) if (await api.ncExists(machine.id, f).catch(() => false)) { over = f; break; }
+      if (over) { setAsk({ kind: "over", name: over }); return; }
     }
     const list = all ? sheets.map((_, i) => i) : [index];
     const out: Done[] = [];
@@ -273,19 +288,30 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
       const check = checkSheet(sh, (id) => partOf?.(id)?.path, (k) => partName(sh, k) ?? `part ${k + 1}`, remarked,
         { settingsNow: cutSettingsSig(mNow, sh), kerfMm, machine: mNow });
       if (check.errors.length) { out.push({ sheet: i + 1, error: `not post processed: ${check.errors.join("; ")}` }); continue; }
-      const prog = sheetProgram(sh, mNow, origin, nameOf(i), (k) => partName(sh, k));
-      if ("error" in prog) { out.push({ sheet: i + 1, error: prog.error }); continue; }
-      const r = runPostprocessor(ppNow!.source, prog);
-      if (!r.ok) { out.push({ sheet: i + 1, error: r.error }); continue; }
-      const warn = check.warns.length ? check.warns.join("; ") : undefined;
-      try { out.push({ sheet: i + 1, file: await saveNcFile(machine, fileOf(i), r.text), ...(warn ? { warn } : {}) }); }
-      catch (e) { out.push({ sheet: i + 1, error: (e as Error).message }); }
+      // one program, or two (pre-pierce with parts processed first: A, then B): all written, or none
+      const texts: { file: string; text: string }[] = [];
+      let failed: string | undefined;
+      for (const q of programsOf(i, mNow)) {
+        const prog = sheetProgram(sh, mNow, origin, q.name, (k) => partName(sh, k), q.half);
+        if ("error" in prog) { failed = prog.error; break; }
+        const r = runPostprocessor(ppNow!.source, prog);
+        if (!r.ok) { failed = r.error; break; }
+        texts.push({ file: `${q.name}${ext}`, text: r.text });
+      }
+      if (failed) { out.push({ sheet: i + 1, error: failed }); continue; }
+      const notes = [...check.warns, ...(texts.length > 1 ? ["two programs (pre-pierce, parts processed first): run A, then B with the same 0,0"] : [])];
+      const warn = notes.length ? notes.join("; ") : undefined;
+      try {
+        const files: string[] = [];
+        for (const f of texts) files.push(await saveNcFile(machine, f.file, f.text));
+        out.push({ sheet: i + 1, file: files.join(", "), ...(warn ? { warn } : {}) });
+      } catch (e) { out.push({ sheet: i + 1, error: (e as Error).message }); }
     }
     setBusy(null);
     const good = out.filter((d) => d.file).length;
     if (onSent && good) onSent({
       machine: machine.id, all,
-      sheets: out.filter((d) => d.file).map((d) => ({ sheet: d.sheet, file: fileOf(d.sheet - 1), parts: countsOf([sheets[d.sheet - 1]]) })),
+      sheets: out.filter((d) => d.file).map((d) => ({ sheet: d.sheet, file: filesOf(d.sheet - 1, mNow).join(", "), parts: countsOf([sheets[d.sheet - 1]]) })),
     });
     diag("process", `Post process: ${good} of ${out.length}`, { job: jobName, errors: out.filter((d) => d.error).map((d) => `${d.sheet}: ${d.error}`) });
     setDone({ ok: good === out.length, text: good === out.length ? `POST PROCESS successful: ${good} NC ${good === 1 ? "file" : "files"}${out.some((d) => d.warn) ? " (check the notes below)" : ""}` : `${good} of ${out.length} written`, list: out });
@@ -336,7 +362,7 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
             <ul>{done.list.map((d) => <li key={d.sheet} className={d.error ? "is-bad" : d.warn ? "is-warn" : ""}>Sheet {d.sheet}: {d.error ?? d.file}{d.warn && <><br /><span className="pp-warn">Check: {d.warn}</span></>}</li>)}</ul>
           </div>
         )}
-        <p className="rule-help ac-help">Selected sheet: the sheet open, or the one selected among all sheets. A sheet needs its cut path (Auto cut); its remnant&apos;s cuts come last.</p>
+        <p className="rule-help ac-help">Selected sheet: the sheet open, or the one selected among all sheets. A sheet needs its cut path (Auto cut); its remnant&apos;s cuts come last. With pre-pierce on and parts processed first (Selected parts), a sheet is two programs: A with those parts (pierced, marked and cut first), then B with the rest; run both with the same 0,0.</p>
       </div>
       {busy && createPortal(<div className="pp-overlay" role="progressbar" aria-label="Post processing"><span className="pp-spin is-big" /><b>Post processing…</b><span>{busy}</span></div>, document.body)}
       {ask?.kind === "save" && (
