@@ -4,6 +4,8 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Auto cut, outline leads: a pierce must stay at least half the sheet's trim off the sheet's edge (5 mm trim: 2.5 mm). A lead whose pierce would come nearer is not shortened; its start moves to the next choice (a part at the bottom-right of the sheet: its lead goes up its right side or to its bottom-left corner). An obtuse sharp corner (over 135°) whose straight lead does not fit (the pierce or lead-out too near the part's next edge, as at a 154° bend) gets 45° leads in and out there, with no gap, before the lead moves on.
+
 - Auto cut, outline leads, new order. When the outline comes within 25 mm of the lead place (the box corner, bottom-right by default), the lead goes there: a straight (corner) lead at a sharp corner, a 90° lead on a radius or edge. When that lead does not fit (a part next to it), it is first shortened there (75 %, then 50 %) before it moves to the next sharp corner, going up or down the place's side rather than across. When the box corner is empty (a triangle, an L's notch, a slope), the nearest sharp corners come first and a 90° lead on an edge only after them. Leads are never shortened below 50 % (was 35 %), outlines and holes. Tested on the 53 test DXF parts and 14 STEP flat patterns at 0/90/180/270 degrees, mirrored and not, packed 5 mm apart: leads at the place went from 297 to 420 of 516 (160 of them shortened to 75 %); the average distance from the place from 82 to 27 mm.
 
 - User manual (English, PDF) added to docs/, with a download link at the top of the README: white cover, descriptions checked against the app, real screenshots and buttons from the current build.
