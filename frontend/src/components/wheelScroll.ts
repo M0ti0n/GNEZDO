@@ -8,7 +8,7 @@ export function useWheelSideways(ref: RefObject<HTMLElement | null>): void {
     const el = ref.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;   // zoom, or already sideways
+      if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;   // Ctrl (page zoom, blocked: noPageZoom), or already sideways
       if (el.scrollWidth <= el.clientWidth) return;                         // nothing to scroll
       const by = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaMode === 2 ? e.deltaY * el.clientWidth : e.deltaY;
       const before = el.scrollLeft;
