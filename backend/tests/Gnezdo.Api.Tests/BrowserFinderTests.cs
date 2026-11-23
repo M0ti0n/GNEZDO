@@ -109,6 +109,29 @@ public sealed class BrowserFinderTests : IDisposable
     }
 
     [Fact]
+    public void A_broken_link_left_by_an_uninstalled_browser_is_passed_over()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Directory.CreateDirectory(Path.Combine(_root, "usr/bin"));
+        File.CreateSymbolicLink(Path.Combine(_root, "usr/bin/google-chrome-stable"), Path.Combine(_root, "usr/bin/google-chrome"));
+        var s = Put("/snap/bin/chromium");
+        Assert.Equal(s, Find("/usr/bin")!.File);
+    }
+
+    [Fact]
+    public void Every_browser_found_best_first_for_trying_the_next()
+    {
+        var u = Put("/usr/bin/ungoogled-chromium");
+        var o = Put("/opt/google/chrome/chrome");
+        Put("/usr/bin/flatpak");
+        Put("/var/lib/flatpak/exports/bin/org.chromium.Chromium");
+        var a = Put("/home/user/Applications/chromium.AppImage");
+        var all = BrowserFinder.CandidatesLinux(Home, Path.Combine(_root, "usr/bin"), Profile, _root).ToList();
+        Assert.Equal(new[] { u, o, Path.Combine(_root, "usr/bin/flatpak"), a }, all.Select(b => b.File));
+        Assert.Equal(new[] { "package", "package", "flatpak", "AppImage" }, all.Select(b => b.Kind));
+    }
+
+    [Fact]
     public void A_flatpak_named_in_config_json()
     {
         var fp = Put("/usr/bin/flatpak");

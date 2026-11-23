@@ -35,7 +35,12 @@ public static class BrowserFinder
     /// <param name="path">the PATH</param>
     /// <param name="profile">GNEZDO's browser profile folder (data/browser)</param>
     /// <param name="root">the file system's root ("/"; a test folder in tests)</param>
-    public static BrowserLaunch? FindLinux(string home, string? path, string profile, string root = "/")
+    public static BrowserLaunch? FindLinux(string home, string? path, string profile, string root = "/") =>
+        CandidatesLinux(home, path, profile, root).FirstOrDefault();
+
+    /// <summary>Every browser found, best first (FindLinux's order): the window tries the next one when one
+    /// does not start.</summary>
+    public static IEnumerable<BrowserLaunch> CandidatesLinux(string home, string? path, string profile, string root = "/")
     {
         string R(string p) => root == "/" ? p : Path.Combine(root, p.TrimStart('/'));
         var dirs = (path ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
@@ -46,20 +51,20 @@ public static class BrowserFinder
             {
                 var f = Path.Combine(d, n);
                 if (!IsFile(f)) continue;
-                if (SnapWrapper(f) is { } snap) return SnapLaunch(snap, home, R) ?? new BrowserLaunch(f, [], profile, "package");
-                return new BrowserLaunch(f, [], profile, "package");
+                yield return SnapWrapper(f) is { } snap ? SnapLaunch(snap, home, R) ?? new BrowserLaunch(f, [], profile, "package") : new BrowserLaunch(f, [], profile, "package");
+                break;   // the same name further on the PATH: the same browser
             }
         // 2. installed in /opt
-        foreach (var f in Opt.Select(R)) if (IsFile(f)) return new BrowserLaunch(f, [], profile, "package");
+        foreach (var f in Opt.Select(R)) if (IsFile(f)) yield return new BrowserLaunch(f, [], profile, "package");
         // 3. a snap (/snap/bin is not always on the PATH of a program started from the menu)
-        foreach (var s in Snaps) if (SnapLaunch(s, home, R) is { } l) return l;
+        foreach (var s in Snaps) if (SnapLaunch(s, home, R) is { } l) yield return l;
         // 4. a flatpak (for the whole system or this user): started with flatpak run, the profile folder opened to it
         var flatpak = new[] { "flatpak" }.SelectMany(n => dirs.Select(d => Path.Combine(d, n))).Concat([R("/usr/bin/flatpak")]).FirstOrDefault(IsFile);
         foreach (var id in Flatpaks)
         {
             var exp = new[] { R("/var/lib/flatpak/exports/bin/" + id), Path.Combine(home, ".local/share/flatpak/exports/bin", id) }.FirstOrDefault(IsFile);
             if (exp is null) continue;
-            return flatpak is not null
+            yield return flatpak is not null
                 ? new BrowserLaunch(flatpak, ["run", $"--filesystem={profile}", id], profile, "flatpak")
                 : new BrowserLaunch(exp, [], profile, "flatpak");
         }
@@ -74,9 +79,8 @@ public static class BrowserFinder
         {
             var f = images.Where(i => Path.GetFileName(i).Contains(kind, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
-            if (f is not null) return new BrowserLaunch(f, [], profile, "AppImage");
+            if (f is not null) yield return new BrowserLaunch(f, [], profile, "AppImage");
         }
-        return null;
     }
 
     /// <summary>The browser named in config.json (Gnezdo:Browser): a program, an AppImage, or a flatpak's id.</summary>
@@ -118,7 +122,19 @@ public static class BrowserFinder
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
     }
 
-    private static bool IsFile(string f) => File.Exists(f);
+    /// <summary>A file that is there (a link only when what it points to is: an uninstalled browser can leave
+    /// a broken link on the PATH, such as google-chrome-stable)</summary>
+    private static bool IsFile(string f)
+    {
+        try
+        {
+            var fi = new FileInfo(f);
+            if (!fi.Exists) return false;
+            if (fi.LinkTarget is null) return true;
+            return fi.ResolveLinkTarget(true) is { Exists: true };
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+    }
 
     private static bool Executable(string f)
     {

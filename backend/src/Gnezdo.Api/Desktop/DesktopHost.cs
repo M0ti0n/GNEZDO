@@ -133,11 +133,10 @@ public sealed class DesktopHost
     /// </summary>
     public void OpenWindow(DiagLog? log = null)
     {
-        var launch = FindBrowser();
-        var browser = launch?.File;
-        try
+        // every browser found, best first: when one does not start (a broken install), the next one
+        foreach (var launch in Browsers())
         {
-            if (launch is not null)
+            try
             {
                 var psi = new ProcessStartInfo(launch.File) { UseShellExecute = false };
                 foreach (var a in launch.Before) psi.ArgumentList.Add(a);
@@ -154,10 +153,10 @@ public sealed class DesktopHost
                 log?.Write("desktop", $"Window opened in {Path.GetFileName(launch.File)} ({launch.Kind})", new { browser = launch.File, args = launch.Before, profile = launch.ProfileDir, url = Url });
                 return;
             }
-        }
-        catch (Exception e) when (e is System.ComponentModel.Win32Exception or IOException or InvalidOperationException or UnauthorizedAccessException)
-        {
-            log?.Write("desktop", $"{browser} could not start: {e.Message}; opening the default browser");
+            catch (Exception e) when (e is System.ComponentModel.Win32Exception or IOException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                log?.Write("desktop", $"{launch.File} could not start: {e.Message}; trying the next browser");
+            }
         }
         try
         {
@@ -171,12 +170,12 @@ public sealed class DesktopHost
         }
     }
 
-    private BrowserLaunch? FindBrowser()
+    private IEnumerable<BrowserLaunch> Browsers()
     {
         var profile = Path.Combine(DataDir, "browser");
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var path = Environment.GetEnvironmentVariable("PATH");
-        if (_config["Gnezdo:Browser"] is { Length: > 0 } own) return BrowserFinder.Named(own, home, path, profile);
+        if (_config["Gnezdo:Browser"] is { Length: > 0 } own) return [BrowserFinder.Named(own, home, path, profile)];
         if (OperatingSystem.IsWindows())
         {
             var bases = new[]
@@ -192,10 +191,10 @@ public sealed class DesktopHost
                 @"Chromium\Application\chrome.exe",
                 @"BraveSoftware\Brave-Browser\Application\brave.exe",
             };
-            var exe = rel.SelectMany(r => bases.Select(b => Path.Combine(b, r))).FirstOrDefault(File.Exists);
-            return exe is null ? null : new BrowserLaunch(exe, [], profile, "package");
+            return rel.SelectMany(r => bases.Select(b => Path.Combine(b, r))).Where(File.Exists)
+                .Select(exe => new BrowserLaunch(exe, [], profile, "package")).ToList();
         }
-        return BrowserFinder.FindLinux(home, path, profile);
+        return BrowserFinder.CandidatesLinux(home, path, profile).ToList();
     }
 
     private static string? OnPath(string name) =>
