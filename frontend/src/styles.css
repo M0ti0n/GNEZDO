@@ -2176,12 +2176,11 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .cp-line2 { display: flex; gap: 14px; color: #6b7d83; font-size: 11.5px; margin-top: 2px; align-items: baseline; }
 .cp-mat { color: #1b2a30; background: #f3fae8; border: 1px solid #c8e3a8; border-radius: 4px; padding: 0 6px; }
 .cp-line { margin-left: auto; color: #1b2a30; font-variant-numeric: tabular-nums; }
-.cp-sum { margin-top: auto; border-top: 1.5px solid #1b2a30; padding-top: 10px; display: grid; gap: 4px; justify-items: end; }
+.cp-sum { margin-top: 6px; border-top: 1.5px solid #1b2a30; padding-top: 10px; display: grid; gap: 4px; justify-items: end; }
 .cp-sum div { display: flex; gap: 18px; align-items: baseline; }
 .cp-sum span { color: #6b7d83; }
 .cp-total b { font-size: 20px; }
 .cp-total span { font-size: 16px; color: #1b2a30; }
-.cp .cp-sum + .rp-foot { margin-top: 12px; }
 .cp-list { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-content: start; min-height: 120px; max-height: 260px; overflow-x: hidden; overflow-y: auto; }
 .cp-li { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-list .chk { display: flex; }
