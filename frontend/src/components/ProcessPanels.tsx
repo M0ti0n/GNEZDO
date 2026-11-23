@@ -188,11 +188,11 @@ export function usePostProcess({ index, single = false, sheets, machine, origin,
   const ext = pp?.extension || ".nc";
   const nameOf = (i: number) => ncNameOf(pp, jobName, i + 1);
   // a sheet with pre-pierce and parts processed first by hand: two programs, A (those parts) then B (the rest),
-  // named with A / B after the job's name (JOB_2 -> JOBA_2, JOBB_2); the operator keeps the same 0,0 for both
+  // the sheet's name with A / B after it (JOB_2 -> JOB_2A, JOB_2B; the nest report says JOB_2 [A-B])
   const programsOf = (i: number, m: Machine = machine): { name: string; half?: ProgramHalf }[] => {
     const sh = sheets[i], n = sh ? prePierceSplit(sh, m) : 0;
     if (!n) return [{ name: nameOf(i) }];
-    const a = ncNameOf(pp, `${jobName}A`, i + 1), b = ncNameOf(pp, `${jobName}B`, i + 1);
+    const a = `${nameOf(i)}A`, b = `${nameOf(i)}B`;
     return [
       { name: a, half: { which: "A", n, note: `Sheet ${i + 1}, 1 of 2, then ${b}` } },
       { name: b, half: { which: "B", n, note: `Sheet ${i + 1}, 2 of 2, same 0,0 as ${a}` } },
