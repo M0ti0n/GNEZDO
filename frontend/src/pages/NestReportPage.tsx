@@ -6,6 +6,7 @@ import { MarkPaths, usePartMarks } from "../components/PartMarks";
 import { RemnantOverlay } from "../components/RemnantOverlay";
 import { partColor, type NestedSheet } from "../job/nest";
 import type { Machine, Origin } from "../job/machine";
+import { prePierceSplit } from "../job/ncProgram";
 import { hmsOf, labelPoint, mmss, parsePages, sheetReport, type SheetReport } from "../job/report";
 
 // Nest report (toolbar -> Report -> Nest report), after Fab's layout: A4 pages side by side, a page
@@ -30,8 +31,9 @@ const fmtKg = (n: number) => (n >= 100 ? n.toFixed(0) : n.toFixed(1));
 const stamp = (d: Date) => `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}  ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 const PRINTED_KEY = (job: string) => `gnezdo.nestReportPrinted.${job}`;
 const FULL_KEY = (job: string) => `gnezdo.nestReportFull.${job}`;
-/** The job's name with the sheet's number: TESTJOB_2 (as the operator finds the program) */
-const jobSheet = (title: string, sheet: number) => `${title}_${sheet + 1}`;
+/** The job's name with the sheet's number: TESTJOB_2 (as the operator finds the program); [A-B]: the sheet is two
+ *  programs, TESTJOB_2A then TESTJOB_2B (pre-pierce with parts processed first: ncProgram.prePierceSplit) */
+const jobSheet = (title: string, sheet: number, two = false) => `${title}_${sheet + 1}${two ? " [A-B]" : ""}`;
 /** A full page sheet view lies across (landscape) unless the sheet is taller than wide. */
 const across = (sh: NestedSheet) => sh.lengthMm >= sh.widthMm;
 
@@ -170,7 +172,7 @@ function ReportPage({ page, no, total, job, sheet, rep, at }: {
   const head = (
     <header className="rp-head">
       <div className="rp-hcell"><span>Machine</span><b>{job.machine.name}</b></div>
-      <div className="rp-hcell rp-job"><span>Job</span><b>{jobSheet(job.title, page.sheet)}</b></div>
+      <div className="rp-hcell rp-job"><span>Job</span><b>{jobSheet(job.title, page.sheet, prePierceSplit(sheet, job.machine) > 0)}</b></div>
       <div className="rp-hcell rp-page"><span>Page</span><b>{no} / {total}</b></div>
       <div className="rp-hcell"><span>Date and hour</span><b>{stamp(at)}</b></div>
       <div className="rp-hcell"><span>Solution</span><b>{job.solutionNo ? `Solution ${job.solutionNo}` : "—"}</b></div>
@@ -238,7 +240,7 @@ function FullSheetPage({ no, total, job, sheet, sheetNo, rep }: { no: number; to
     <section className={`rp rp-full${wide ? " is-landscape" : ""}`} aria-label={`Page ${no}`}>
       <header className="rp-head rp-head-mini">
         <div className="rp-hcell"><span>Machine</span><b>{job.machine.name}</b></div>
-        <div className="rp-hcell rp-job"><span>Job</span><b>{jobSheet(job.title, sheetNo)}</b></div>
+        <div className="rp-hcell rp-job"><span>Job</span><b>{jobSheet(job.title, sheetNo, prePierceSplit(sheet, job.machine) > 0)}</b></div>
       </header>
       <div className="rp-full-sheet">
         <SheetDrawing sheet={sheet} rep={rep} W={wide ? 1000 : 660} H={wide ? 590 : 900} />

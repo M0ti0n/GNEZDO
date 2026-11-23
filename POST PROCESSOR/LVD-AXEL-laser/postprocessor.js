@@ -26,6 +26,8 @@
 // Inline cut (Process → Inline cut): the stretches of all its passes in a row are one subprogram
 // (INLINE CUT), each stretch a contour of its own with the pierce chosen there (quick: M98P8037)
 // and the E code of the whole contour it is part of.
+// A sheet with pre-pierce and parts processed first by hand is two programs (A: those parts, B: the rest,
+// the same 0,0): p.note says which, as a comment under the program's name.
 // Numbers: up to 3 decimals, whole numbers without them (X535 Y0.5). Lines end in CR LF.
 // Restart: N100 GOTO[#530+100] jumps to placement #530 (N101 = 1), GOTO[#529*10] in a subprogram to
 // its contour #529 (N10 = 1). postprocess returns these counters for every contour too, so GNEZDO can
@@ -146,11 +148,12 @@ function postprocess(p) {
   const out = [
     "%",
     `:0100(${text(p.name) || "GNEZDO"})`,
+    ...(p.note ? [`(${String(p.note).replace(/[()%:;]/g, " ").replace(/\s+/g, " ").trim().toUpperCase().slice(0, 60).trim()})`] : []),
     "G0 G40",
     "M98P8080",
     `(MAT = ${text(p.sheet.material)} * ${num(th)} MM)`,
     `(LAMIERA = X${num(L)} * Y${num(W)})`,
-    "(GNEZDO LVD LASER POSTPROCESSOR 1)",
+    "(GNEZDO LVD LASER POSTPROCESSOR 2)",
     "#521=0(SHEET MEASUREMENT)",
     "#519=0(SHIFTING X)",
     "#520=0(SHIFTING Y)",
