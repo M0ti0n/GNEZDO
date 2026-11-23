@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- Linux desktop: a browser that does not start (a broken install) no longer sends GNEZDO to the default browser: the next browser found is tried. A broken link left on the PATH by an uninstalled browser (such as google-chrome-stable) is passed over. Found when the Linux build was tried with Ungoogled Chromium as a package, in /opt, as a snap, behind Ubuntu's snap wrapper, as a system and a user flatpak, and as an AppImage: each opened GNEZDO in its own window.
 
 ## Build 23 Nov 2026, 2 (`841ccc6`)
 
