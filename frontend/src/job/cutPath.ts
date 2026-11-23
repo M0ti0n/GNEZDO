@@ -583,7 +583,10 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
   // A hole: a window's own place, else the nearest sharp corner, else the nearest edge point.
   const placeFirst = kind === "outer";
   const bx = boxOf(lp), half = Math.min(bx.x1 - bx.x0, bx.y1 - bx.y0) / 2 + 0.01;
-  const inArea = (c: Cand) => Math.abs(c.s.at[0] - target[0]) <= half && Math.abs(c.s.at[1] - target[1]) <= half;
+  // also a corner that is (about) the outline's nearest point to the place, when the box's corner itself is
+  // empty (an L's notch, a triangle): no farther than the nearest edge point and a lead-in (at least 5 mm)
+  const edgeD = edges.reduce((m, c) => Math.min(m, c.d), Infinity), slack = Math.max(5, v0.lin);
+  const inArea = (c: Cand) => (Math.abs(c.s.at[0] - target[0]) <= half && Math.abs(c.s.at[1] - target[1]) <= half) || c.d <= edgeD + slack;
   const near = corners.filter(inArea).sort(byDist), farCorners = corners.filter((c) => !inArea(c)).sort(byDist);
   const cands = placeFirst ? [...near, ...edges.sort(byDist), ...farCorners] : [...windows.sort(byDist), ...corners.sort(byDist), ...edges.sort(byDist)];
   if (!cands.length) cands.push({ s: { at: lp[0], edge: 0, vertex: true, t: unit(sub(next(0), lp[0])) }, type: oType, d: 0 });
