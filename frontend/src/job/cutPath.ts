@@ -20,7 +20,7 @@ import { tidyPierces } from "./commonPierce";
 import { commonEdges, partCommonLines, placedEdges, type CommonEdge } from "./commonCut";
 import { commonBlocks, sharedLineCut, type CommonBlock } from "./commonPath";
 import { cutOrderOf, gapsFor, holeCompOf, machineCan, type Machine, type Origin } from "./machine";
-import { partLoops, pointIn, transform, type Box, type Pt } from "./manualGeom";
+import { partLoops, pointIn, transform, usableBox, type Box, type Pt } from "./manualGeom";
 import type { NestedSheet, PlacedPart } from "./nest";
 import { TRACE_SHORTEST_FROM_MM, techRowFor, traceShortestOf, type TechRow } from "./technology";
 
@@ -521,7 +521,8 @@ export const cornerOnly = (t: LeadType) => !!LEAD_TYPES.find((x) => x.id === t)?
 const targetOf = (b: Box, rules: LeadRules): Pt => [rules.place.endsWith("right") ? b.x1 : b.x0, rules.place.startsWith("bottom") ? b.y1 : b.y0];
 
 /** Do these leads fit where they are (clear of the other parts, inside the sheet, not in the part itself)? */
-type LeadFit = (c: { leadIn: Pt[]; leadOut: Pt[] }) => boolean;
+/** Whether leads fit: true; false (try them shorter); "move" (not here at any length: start elsewhere). */
+type LeadFit = (c: { leadIn: Pt[]; leadOut: Pt[] }) => boolean | "move";
 /** How the leads of a PROCESS run were fitted: moved / shortened to fit, and those that still do not. */
 export interface LeadFitCount { fitted: number; tight: number }
 
@@ -529,6 +530,8 @@ export interface LeadFitCount { fitted: number; tight: number }
 const FIT_FACTORS = [1, 0.75, 0.5];
 /** An outline coming this near the lead place has material there (a sharp corner, a radius): the lead goes there. */
 const PLACE_NEAR_MM = 25;
+/** A sharp corner over this [°] whose straight lead does not fit gets 45° leads there before the lead moves. */
+const OBTUSE_DEG = 135;
 
 /**
  * A closed contour with its leads. An outline: at the place (the target) when the outline comes within
@@ -605,9 +608,20 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
     // a long outline has hundreds of starts: the 40 first corners and 40 nearest edge points are enough
     const tries = [...order.filter((c) => c.type === cType && c.s.vertex).slice(0, 40), ...order.filter((c) => !(c.type === cType && c.s.vertex)).slice(0, 40)];
     tries.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-    for (const c of tries) for (const f of FIT_FACTORS) {
-      const out = at(c, f);
-      if (fit(out)) { if (count && (c !== order[0] || f !== 1)) count.fitted++; return out; }
+    // an obtuse corner (over OBTUSE_DEG) whose straight lead does not fit (its pierce or lead-out comes too near
+    // the part's next edge): 45° in and out there, no gap, before the next start
+    const angled = (c: Cand, f: number) => {
+      const v = leadValues(kind, row, c.type), spec: LeadSpec = { ...v, lin: v.lin * f, lout: v.lout * f, gap: 0, aIn: 45, aOut: 45 };
+      return { ...leadsAt(lp, kind, rules, row, c.s, "angled", spec, side), spec: { ...spec, lin: v.lin, lout: v.lout } };
+    };
+    for (const c of tries) {
+      const ways = [(f: number) => at(c, f)];
+      if (c.type === cType && c.s.vertex && angleAt(c.s.edge) > OBTUSE_DEG) ways.push((f: number) => angled(c, f));
+      for (const way of ways) for (const f of FIT_FACTORS) {
+        const out = way(f), ok = fit(out);
+        if (ok === true) { if (count && (c !== order[0] || f !== 1 || way !== ways[0])) count.fitted++; return out; }
+        if (ok === "move") break;
+      }
     }
     if (count) count.tight++;
     return at(order[0], FIT_FACTORS[FIT_FACTORS.length - 1]);
@@ -616,13 +630,13 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
   const cands = [...windows.sort(byDist), ...corners.sort(byDist), ...edges.sort(byDist)];
   if (!cands.length) cands.push({ s: { at: lp[0], edge: 0, vertex: true, t: unit(sub(next(0), lp[0])) }, type: oType, d: 0 });
   const first = at(cands[0], 1);
-  if (!fit || fit(first)) return first;
+  if (!fit || fit(first) === true) return first;
   // the nearest starts are tried (a long outline has hundreds: the 40 nearest of each kind are enough)
   const tries = [...windows.slice(0, 40), ...corners.slice(0, 40), ...edges.slice(0, 40)];
   for (const f of FIT_FACTORS) for (const c of tries) {
     if (f === 1 && c === cands[0]) continue;
     const out = at(c, f);
-    if (fit(out)) { if (count) count.fitted++; return out; }
+    if (fit(out) === true) { if (count) count.fitted++; return out; }
   }
   if (count) count.tight++;
   return at(cands[0], FIT_FACTORS[FIT_FACTORS.length - 1]);
@@ -1174,7 +1188,13 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   };
   const fitCount: LeadFitCount = { fitted: 0, tight: 0 };
   /** The fit test of a contour: `own` the parts it belongs to, `lp` the contour itself. */
+  // an outline's pierce keeps at least half the sheet's trim off the sheet's edge (a 5 mm trim: 2.5 mm);
+  // nearer, its start moves (the lead is not shortened for it)
+  const ub = usableBox(sheet, q.origin);
+  const pierceRoom = (p: Pt) => sheet.outline?.length ? true
+    : p[0] >= ub.x0 / 2 && p[1] >= ub.y0 / 2 && p[0] <= sheet.lengthMm - (sheet.lengthMm - ub.x1) / 2 && p[1] <= sheet.widthMm - (sheet.widthMm - ub.y1) / 2;
   const fitOf = (own: number[], lp: Pt[], kind: "outer" | "inner"): LeadFit => (c) => {
+    if (kind === "outer" && c.leadIn.length > 1 && !pierceRoom(c.leadIn[0])) return "move";
     for (const [pl, isIn] of [[c.leadIn, true], [c.leadOut, false]] as const) {
       if (pl.length < 2) continue;
       const pts = along(pl, isIn);
