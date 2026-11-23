@@ -526,16 +526,18 @@ type LeadFit = (c: { leadIn: Pt[]; leadOut: Pt[] }) => boolean;
 export interface LeadFitCount { fitted: number; tight: number }
 
 /** The leads tried shorter, in this order, where the full ones do not fit. */
-const FIT_FACTORS = [1, 0.75, 0.5, 0.35];
+const FIT_FACTORS = [1, 0.75, 0.5];
+/** An outline coming this near the lead place has material there (a sharp corner, a radius): the lead goes there. */
+const PLACE_NEAR_MM = 25;
 
 /**
- * A closed contour with its leads, started nearest the target (the lead place). An outline: at the sharp
- * corner nearest it with the corner type when one lies in the place's corner area (a square at that corner
- * of the outline's box, its side half the box's shorter side), else at the point of a straight stretch
- * nearest it with the other type. A hole: at a sharp corner nearest the target, else at
- * an edge point (a curve: at one of its points, so the start lies on the curve itself, not on a chord of it). With `fit`: the nearest such start whose
- * leads fit at their full length, else at 75 %, 50 %, 35 % of it; when none does, the nearest start with
- * the shortest leads (counted as tight).
+ * A closed contour with its leads. An outline: at the place (the target) when the outline comes within
+ * PLACE_NEAR_MM of it: a sharp corner with the corner type, else the edge or radius point nearest it with
+ * the other type, then the other sharp corners (along the place's side counting half); when not, at the
+ * nearest sharp corners, an edge point only after them. Each start is tried at full length, 75 % and 50 % before the next. A hole: at a
+ * window's own place, a sharp corner nearest the target, else an edge point (a curve: at one of its points,
+ * so the start lies on the curve itself, not on a chord of it); the nearest that fits at full length, else
+ * at 75 %, 50 %. When none fits: the first start with its leads at 50 % (counted as tight).
  */
 function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row: TechRow | null, target: Pt, side: 1 | -1, fit?: LeadFit, count?: LeadFitCount): Omit<CutContour, "part" | "kind"> {
   const n = lp.length;
@@ -576,28 +578,47 @@ function closedContour(lp: Pt[], kind: "outer" | "inner", rules: LeadRules, row:
       edges.push({ s: { at: a, edge: i, vertex: true, t: unit(add(unit(sub(a, prev(i))), t)) }, type: oType, d: far(a) });
     }
   }
-  // An outline: the place wins over the lead type. A sharp corner is used (corner type) only when it lies in
-  // the place's corner area of the outline's box: a square at that corner, its side half the box's shorter
-  // side (a 200 x 200 part: 100 x 100; a 2000 x 50 bar: 25 x 25 at its end). Else the edge point nearest the
-  // place (the other type); corners outside the area come last, only when nothing nearer fits.
-  // A hole: a window's own place, else the nearest sharp corner, else the nearest edge point.
-  const placeFirst = kind === "outer";
-  const bx = boxOf(lp), half = Math.min(bx.x1 - bx.x0, bx.y1 - bx.y0) / 2 + 0.01;
-  // also a corner that is (about) the outline's nearest point to the place, when the box's corner itself is
-  // empty (an L's notch, a triangle): no farther than the nearest edge point and a lead-in (at least 5 mm)
-  const edgeD = edges.reduce((m, c) => Math.min(m, c.d), Infinity), slack = Math.max(5, v0.lin);
-  const inArea = (c: Cand) => (Math.abs(c.s.at[0] - target[0]) <= half && Math.abs(c.s.at[1] - target[1]) <= half) || c.d <= edgeD + slack;
-  const near = corners.filter(inArea).sort(byDist), farCorners = corners.filter((c) => !inArea(c)).sort(byDist);
-  const cands = placeFirst ? [...near, ...edges.sort(byDist), ...farCorners] : [...windows.sort(byDist), ...corners.sort(byDist), ...edges.sort(byDist)];
-  if (!cands.length) cands.push({ s: { at: lp[0], edge: 0, vertex: true, t: unit(sub(next(0), lp[0])) }, type: oType, d: 0 });
   const at = (c: Cand, f: number) => {
     const v = leadValues(kind, row, c.type);
     return leadsAt(lp, kind, rules, row, c.s, c.type, f === 1 ? v : { ...v, lin: v.lin * f, lout: v.lout * f, radius: v.radius * f }, side);
   };
+  if (kind === "outer") {
+    // An outline. When it comes within PLACE_NEAR_MM of the place (the box's corner), the lead goes there: a
+    // sharp corner with the corner type (a straight lead), a radius or an edge with the other type; a corner
+    // no farther than the nearest edge point and a lead-in counts as at the place. When the box's corner is
+    // empty (a triangle, an L's notch, a slope), the sharp corners come first, the nearest first; an edge
+    // point only after them. When the lead at the place does not fit, the next sharp corners: going along
+    // the place's side (up or down it) counts half of going across (a tall part: up its side, not across
+    // its bottom). Each start is tried at its full lead, then shorter (to 50 %), before the next one.
+    const edgeD = edges.reduce((m, c) => Math.min(m, c.d), Infinity), slack = Math.max(5, v0.lin);
+    const nearest = Math.min(edgeD, ...corners.map((c) => c.d));
+    const along = (c: Cand) => Math.hypot(2 * (c.s.at[0] - target[0]), c.s.at[1] - target[1]);
+    const byAlong = (a: Cand, b: Cand) => along(a) - along(b);
+    let order: Cand[];
+    if (nearest <= PLACE_NEAR_MM) {
+      const atPlace = corners.filter((c) => c.d <= edgeD + slack).sort(byDist)[0] ?? edges.slice().sort(byDist)[0];
+      order = [atPlace, ...corners.filter((c) => c !== atPlace).sort(byAlong), ...edges.filter((c) => c !== atPlace).sort(byDist)];
+    } else order = [...corners.sort(byDist), ...edges.sort(byDist)];
+    order = order.filter(Boolean);
+    if (!order.length) order.push({ s: { at: lp[0], edge: 0, vertex: true, t: unit(sub(next(0), lp[0])) }, type: oType, d: 0 });
+    if (!fit) return at(order[0], 1);
+    // a long outline has hundreds of starts: the 40 first corners and 40 nearest edge points are enough
+    const tries = [...order.filter((c) => c.type === cType && c.s.vertex).slice(0, 40), ...order.filter((c) => !(c.type === cType && c.s.vertex)).slice(0, 40)];
+    tries.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    for (const c of tries) for (const f of FIT_FACTORS) {
+      const out = at(c, f);
+      if (fit(out)) { if (count && (c !== order[0] || f !== 1)) count.fitted++; return out; }
+    }
+    if (count) count.tight++;
+    return at(order[0], FIT_FACTORS[FIT_FACTORS.length - 1]);
+  }
+  // A hole: a window's own place, else the nearest sharp corner, else the nearest edge point.
+  const cands = [...windows.sort(byDist), ...corners.sort(byDist), ...edges.sort(byDist)];
+  if (!cands.length) cands.push({ s: { at: lp[0], edge: 0, vertex: true, t: unit(sub(next(0), lp[0])) }, type: oType, d: 0 });
   const first = at(cands[0], 1);
   if (!fit || fit(first)) return first;
   // the nearest starts are tried (a long outline has hundreds: the 40 nearest of each kind are enough)
-  const tries = placeFirst ? [...near.slice(0, 40), ...edges.slice(0, 40), ...farCorners.slice(0, 40)] : [...windows.slice(0, 40), ...corners.slice(0, 40), ...edges.slice(0, 40)];
+  const tries = [...windows.slice(0, 40), ...corners.slice(0, 40), ...edges.slice(0, 40)];
   for (const f of FIT_FACTORS) for (const c of tries) {
     if (f === 1 && c === cands[0]) continue;
     const out = at(c, f);
