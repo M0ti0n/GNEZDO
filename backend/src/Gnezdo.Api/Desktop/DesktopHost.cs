@@ -198,6 +198,10 @@ public sealed class DesktopHost
         return BrowserFinder.FindLinux(home, path, profile);
     }
 
+    private static string? OnPath(string name) =>
+        (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(d => Path.Combine(d, name)).FirstOrDefault(File.Exists);
+
     // ---- open windows -------------------------------------------------------
 
     /// <summary>A window is open (its /api/desktop/session connection).</summary>
