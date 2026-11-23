@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- Linux desktop: the window's browser is found however it was installed: an ordinary package (on the PATH or in /opt), a snap (its profile in ~/snap/<name>, where a snap may write), a flatpak (started with flatpak run, GNEZDO's profile folder opened to it) or an AppImage in the usual folders (~/Applications, ~/Downloads, ~/.local/bin …). Ungoogled Chromium is looked for first, then Chromium, Chrome, Edge and Brave. config.json's Browser also takes a flatpak's id. Before, only Chromium, Chrome, Edge and Brave on the PATH were found, so an Ungoogled Chromium flatpak opened nothing.
 
 ## Build 23 Nov 2026, 1 (`ab04bdf`)
 

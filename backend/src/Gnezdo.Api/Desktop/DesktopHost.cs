@@ -127,19 +127,23 @@ public sealed class DesktopHost
 
     /// <summary>
     /// Edge / Chromium / Chrome / Brave in app mode, with a browser profile of GNEZDO's own (its own
-    /// window, settings and size; nothing mixed with the person's own browsing). None found: the
-    /// default browser. "Gnezdo:Browser" in config.json names another one.
+    /// window, settings and size; nothing mixed with the person's own browsing). On Linux also Ungoogled
+    /// Chromium, and a snap, flatpak or AppImage (BrowserFinder). None found: the default browser.
+    /// "Gnezdo:Browser" in config.json names another one (a program, an AppImage or a flatpak's id).
     /// </summary>
     public void OpenWindow(DiagLog? log = null)
     {
-        var browser = FindBrowser();
+        var launch = FindBrowser();
+        var browser = launch?.File;
         try
         {
-            if (browser is not null)
+            if (launch is not null)
             {
-                var psi = new ProcessStartInfo(browser) { UseShellExecute = false };
+                var psi = new ProcessStartInfo(launch.File) { UseShellExecute = false };
+                foreach (var a in launch.Before) psi.ArgumentList.Add(a);
+                Directory.CreateDirectory(launch.ProfileDir);
                 psi.ArgumentList.Add($"--app={Url}");
-                psi.ArgumentList.Add($"--user-data-dir={Path.Combine(DataDir, "browser")}");
+                psi.ArgumentList.Add($"--user-data-dir={launch.ProfileDir}");
                 psi.ArgumentList.Add("--no-first-run");
                 psi.ArgumentList.Add("--no-default-browser-check");
                 // no add-ons in GNEZDO's window: it needs none, and an antivirus's add-on put in this
@@ -147,11 +151,11 @@ public sealed class DesktopHost
                 psi.ArgumentList.Add("--disable-extensions");
                 if (OperatingSystem.IsLinux()) psi.ArgumentList.Add("--class=GNEZDO");
                 Process.Start(psi);
-                log?.Write("desktop", $"Window opened in {Path.GetFileName(browser)}", new { browser, url = Url });
+                log?.Write("desktop", $"Window opened in {Path.GetFileName(launch.File)} ({launch.Kind})", new { browser = launch.File, args = launch.Before, profile = launch.ProfileDir, url = Url });
                 return;
             }
         }
-        catch (Exception e) when (e is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or IOException or InvalidOperationException or UnauthorizedAccessException)
         {
             log?.Write("desktop", $"{browser} could not start: {e.Message}; opening the default browser");
         }
@@ -167,9 +171,12 @@ public sealed class DesktopHost
         }
     }
 
-    private string? FindBrowser()
+    private BrowserLaunch? FindBrowser()
     {
-        if (_config["Gnezdo:Browser"] is { Length: > 0 } own) return File.Exists(own) ? own : OnPath(own) ?? own;
+        var profile = Path.Combine(DataDir, "browser");
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (_config["Gnezdo:Browser"] is { Length: > 0 } own) return BrowserFinder.Named(own, home, path, profile);
         if (OperatingSystem.IsWindows())
         {
             var bases = new[]
@@ -185,18 +192,11 @@ public sealed class DesktopHost
                 @"Chromium\Application\chrome.exe",
                 @"BraveSoftware\Brave-Browser\Application\brave.exe",
             };
-            return rel.SelectMany(r => bases.Select(b => Path.Combine(b, r))).FirstOrDefault(File.Exists);
+            var exe = rel.SelectMany(r => bases.Select(b => Path.Combine(b, r))).FirstOrDefault(File.Exists);
+            return exe is null ? null : new BrowserLaunch(exe, [], profile, "package");
         }
-        return new[]
-        {
-            "chromium", "chromium-browser", "google-chrome", "google-chrome-stable",
-            "microsoft-edge", "microsoft-edge-stable", "brave-browser", "brave",
-        }.Select(OnPath).FirstOrDefault(p => p is not null);
+        return BrowserFinder.FindLinux(home, path, profile);
     }
-
-    private static string? OnPath(string name) =>
-        (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            .Select(d => Path.Combine(d, name)).FirstOrDefault(File.Exists);
 
     // ---- open windows -------------------------------------------------------
 
