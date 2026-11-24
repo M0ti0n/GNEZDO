@@ -237,8 +237,8 @@ function ReportPage({ page, no, total, job, sheet, rep, at }: {
 }
 
 /** ADD FULL PAGE SHEET VIEW: a small head (machine, job_sheet) and the sheet across the rest of the page (a
- *  portrait page; a sheet wider than tall turned 90°, its X along the page's height: turn the page right to read
- *  it as it lies on the machine). */
+ *  portrait page; a sheet wider than tall turned 90° clockwise, its X down the page and 0,0 at the top left: turn
+ *  the page left to read it as it lies on the machine). */
 function FullSheetPage({ no, total, job, sheet, sheetNo, rep }: { no: number; total: number; job: ReportJob; sheet: NestedSheet; sheetNo: number; rep: SheetReport }) {
   const wide = across(sheet);
   return (
@@ -265,7 +265,7 @@ function F({ k, v, est, strong }: { k: string; v: string; est?: boolean; strong?
 /** The sheet to scale with its parts numbered (small ones by a line from the margin, one copy of each), and rulers. */
 function SheetDrawing({ sheet, rep, W = 690, H = 360, turned = false }: { sheet: NestedSheet; rep: SheetReport; W?: number; H?: number; turned?: boolean }) {
   // W × H: the drawing area in page px (the rulers outside it), along the sheet's X and Y; turned: the whole
-  // drawing turned 90° counterclockwise (X up the page, 0,0 at the bottom right)
+  // drawing turned 90° clockwise (X down the page, the machine's 0,0 at the bottom left goes to the top left)
   const s = Math.min(W / sheet.lengthMm, H / sheet.widthMm);
   const w = sheet.lengthMm * s, h = sheet.widthMm * s;
   const byId = new Map(rep.parts.map((p) => [p.partId, p.jp]));
@@ -294,10 +294,10 @@ function SheetDrawing({ sheet, rep, W = 690, H = 360, turned = false }: { sheet:
   const ticks = (len: number) => Array.from({ length: Math.floor(len / step) + 1 }, (_, i) => i * step);
   const PAD = 32, TOP = small.length ? 27 : 4;
   const vw = w + PAD + 6, vh = h + TOP + PAD + 2;
-  // turned: rotate(-90) takes (x, y) to (y, -x), so the box -PAD..vw, -TOP..vh lies at -TOP..vh, -(vw - PAD)..PAD
+  // turned: rotate(90) takes (x, y) to (-y, x), so the box -PAD..vw - PAD, -TOP..vh - TOP lies at -(vh - TOP)..TOP, -PAD..vw - PAD
   return (
-    <svg className="rp-sheet" width={turned ? vh : vw} height={turned ? vw : vh} viewBox={turned ? `${-TOP} ${-(vw - PAD)} ${vh} ${vw}` : `${-PAD} ${-TOP} ${vw} ${vh}`}>
-      <g transform={turned ? "rotate(-90)" : undefined}>
+    <svg className="rp-sheet" width={turned ? vh : vw} height={turned ? vw : vh} viewBox={turned ? `${-(vh - TOP)} ${-PAD} ${vh} ${vw}` : `${-PAD} ${-TOP} ${vw} ${vh}`}>
+      <g transform={turned ? "rotate(90)" : undefined}>
       {sheet.outline?.length
         ? <path className="rp-plate" fillRule="evenodd" d={sheet.outline.map((lp) => lp.map(([x, y], i) => `${i ? "L" : "M"}${x * s} ${y * s}`).join("") + "Z").join("")} />
         : <rect className="rp-plate" x={0} y={0} width={w} height={h} />}
