@@ -12,6 +12,7 @@
 
 import { circleThrough, fitPoints } from "../arcs";
 import { add3, cross3, dot3, len3, lowHigh, mul3, normalAt, sub3, unit3, type Face, type Solid, type V3 } from "./step";
+import { cylParams, type CylParams } from "./cylStrips";
 
 export type V2 = [number, number];
 
@@ -404,29 +405,83 @@ export interface StitchOptions {
 }
 
 /**
- * Flat faces picked one by one, laid flat across the edges they share (sharp corners: a surface model, or
+ * Faces picked one by one, laid flat across the edges they share (sharp corners: a surface model, or
  * one side of a part drawn without bend radii). The first face stays; each next one turns about the edge
  * it shares with a face laid already. With compensation each bend gets its allowance less its setbacks
  * (the faces are the sheet's top or bottom side, thickness t, inner radius r, K-factor k).
+ * Round faces (a tube's corner radii, a pipe) are rolled out flat, as long as they are round (with
+ * compensation: at the bend's neutral radius); they join other faces across edges along their axis, and a
+ * whole pipe opens at its seam line.
  */
 export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfolded {
   const faces = s.faces;
   const comp = o.comp && o.comp.side !== "none" && o.comp.t > 0 ? o.comp : null;
   const problems: string[] = [];
-  const sel = picked.filter((i, k) => faces[i]?.surf.kind === "plane" && picked.indexOf(i) === k);
-  if (sel.length < picked.length) problems.push("Only flat faces are stitched");
+  const sel = picked.filter((i, k) => (faces[i]?.surf.kind === "plane" || faces[i]?.surf.kind === "cyl") && picked.indexOf(i) === k);
+  if (sel.length < picked.length) problems.push("Only flat and round faces are stitched");
+  // round faces: their points as angles round the axis; laid flat from the angle `ue` on, at radius rn
+  const params = new Map<number, CylParams>();
+  for (const i of sel) if (faces[i].surf.kind === "cyl") {
+    const P = cylParams(faces[i]);
+    if (P) params.set(i, P); else problems.push("A whole round face without a seam line cannot be opened: left out");
+  }
+  const dev = new Map<number, { ue: number; rn: number }>();
+  const rnOf = (i: number) => {
+    const f = faces[i], c = f.surf as { r: number };
+    if (!comp || comp.side === "direct") return c.r;
+    // its inner side (hollow: the normal points to the axis) is the bend's inner radius; else less the thickness
+    return Math.max(0, f.sense ? c.r - comp.t : c.r) + comp.k * comp.t;
+  };
+  /** a point of face k's loop li, edge ei, point pi: where it lies flat before the face is moved (round faces rolled out) */
+  const devPt = (k: number, li: number, ei: number, pi: number): V3 => {
+    const f = faces[k], p = f.loops[li].edges[ei].pts[pi];
+    if (f.surf.kind !== "cyl") return p;
+    const c = f.surf, D = dev.get(k)!, u = params.get(k)!.u[li][ei][pi];
+    const y = cross3(c.d, c.x);
+    const rad = add3(mul3(c.x, Math.cos(D.ue)), mul3(y, Math.sin(D.ue)));
+    const tan = add3(mul3(c.x, -Math.sin(D.ue)), mul3(y, Math.cos(D.ue)));
+    const sAx = dot3(sub3(p, c.a), c.d);
+    return add3(add3(add3(c.a, mul3(c.d, sAx)), mul3(rad, c.r)), mul3(tan, (u - D.ue) * D.rn));
+  };
+  /** the angle of an edge (along the axis) on round face k */
+  const edgeU = (k: number, id: number): number | null => {
+    const P = params.get(k)!;
+    for (let li = 0; li < faces[k].loops.length; li++) for (let ei = 0; ei < faces[k].loops[li].edges.length; ei++)
+      if (faces[k].loops[li].edges[ei].id === id) { const us = P.u[li][ei]; return us.reduce((a, b) => a + b, 0) / us.length; }
+    return null;
+  };
+  const devAll = (k: number): V3[] => faces[k].loops.flatMap((l, li) => l.edges.flatMap((e, ei) => e.pts.map((_, pi) => devPt(k, li, ei, pi))));
+  const avg = (ps: V3[]) => mul3(ps.reduce((a, q) => add3(a, q), [0, 0, 0] as V3), 1 / Math.max(1, ps.length));
+  /** straight, and along the axis of the round faces among i and j */
+  const alongAxis = (e: { pts: V3[] }, ks: number[]) => {
+    const a = e.pts[0], b = e.pts[e.pts.length - 1], L = len3(sub3(b, a));
+    if (L < 1e-6) return false;
+    const d = unit3(sub3(b, a));
+    if (e.pts.some((q) => len3(cross3(sub3(q, a), d)) > 1e-3)) return false;
+    return ks.every((k) => faces[k].surf.kind !== "cyl" || Math.abs(Math.abs(dot3((faces[k].surf as { d: V3 }).d, d)) - 1) < 1e-4);
+  };
   const stats = { faces: faces.length, skin: 0, planes: 0, cylinders: 0, other: 0, openEnds: 0 };
   const empty = (msg: string): Unfolded => ({ thickness: comp?.t ?? null, kFactor: comp?.k ?? 0, bends: [], outline: [], bendLines: [], box: { x0: 0, y0: 0, x1: 0, y1: 0 }, stats, problems: [...problems, msg], skinFaces: [] });
   if (!sel.length) return empty("Click the faces to stitch, one next to the other");
   const byEdge = new Map<number, number[]>();
   const seams = new Set(o.seams ?? []);
-  sel.forEach((i) => faces[i].loops.forEach((l) => l.edges.forEach((e) => {
+  sel.filter((i) => faces[i].surf.kind === "plane" || params.has(i)).forEach((i) => faces[i].loops.forEach((l) => l.edges.forEach((e) => {
     if (seams.has(e.id)) return; const u = byEdge.get(e.id) ?? []; if (!u.includes(i)) u.push(i); byEdge.set(e.id, u); })));
   const nOf = (i: number) => { const f = faces[i]; return mul3((f.surf as { n: V3 }).n, f.sense ? 1 : -1); };
   const cOf = (i: number) => { const p = faces[i].loops.flatMap((l) => l.edges.flatMap((e) => e.pts)); return mul3(p.reduce((a, q) => add3(a, q), [0, 0, 0] as V3), 1 / Math.max(1, p.length)); };
-  const base = sel[0];
+  const usable = sel.filter((i) => faces[i].surf.kind === "plane" || params.has(i));
+  if (!usable.length) return empty("Click the faces to stitch, one next to the other");
+  const base = usable[0];
   const flip = !!o.flip;
-  const top0 = mul3(nOf(base), flip ? -1 : 1);
+  // a round first face: rolled out from its first edge, lying in the plane that touches it there
+  if (faces[base].surf.kind === "cyl") dev.set(base, { ue: params.get(base)!.lo, rn: rnOf(base) });
+  const baseN = (): V3 => {
+    const f = faces[base];
+    if (f.surf.kind !== "cyl") return nOf(base);
+    const c = f.surf, y = cross3(c.d, c.x), ue = dev.get(base)!.ue;
+    return mul3(add3(mul3(c.x, Math.cos(ue)), mul3(y, Math.sin(ue))), f.sense ? 1 : -1);
+  };
+  const top0 = mul3(baseN(), flip ? -1 : 1);
   const g = new Map<number, Rigid>([[base, I]]);
   // each face's top side, in the file (from the base: whatever way the shell's faces point)
   const nTop = new Map<number, V3>([[base, top0]]);
@@ -443,6 +498,44 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
     for (const l of faces[i].loops) for (const e of l.edges) {
       for (const j of byEdge.get(e.id) ?? []) {
         if (j === i || g.has(j)) continue;
+        if (faces[i].surf.kind === "cyl" || faces[j].surf.kind === "cyl") {
+          // a round face on either side: joined across a straight edge along its axis (elsewhere: cut)
+          if (!alongAxis(e, [i, j])) continue;
+          if (faces[j].surf.kind === "cyl") { const ue = edgeU(j, e.id); if (ue === null) continue; dev.set(j, { ue, rn: rnOf(j) }); }
+          const a = e.pts[0], b = e.pts[e.pts.length - 1];
+          // the edge's two ends as each face lies flat (i: where it lies already; j: before it is moved)
+          const Fi = faces[i], Fj = faces[j];
+          const flatI = (p: V3): V3 => {
+            if (Fi.surf.kind !== "cyl") return app(g.get(i)!, p);
+            const c = Fi.surf, D = dev.get(i)!, u = edgeU(i, e.id)!, y = cross3(c.d, c.x);
+            const q = add3(add3(add3(c.a, mul3(c.d, dot3(sub3(p, c.a), c.d))), mul3(add3(mul3(c.x, Math.cos(D.ue)), mul3(y, Math.sin(D.ue))), c.r)),
+              mul3(add3(mul3(c.x, -Math.sin(D.ue)), mul3(y, Math.cos(D.ue))), (u - D.ue) * D.rn));
+            return app(g.get(i)!, q);
+          };
+          const devJ = (p: V3): V3 => {
+            if (Fj.surf.kind !== "cyl") return p;
+            const c = Fj.surf, D = dev.get(j)!, y = cross3(c.d, c.x);
+            return add3(add3(c.a, mul3(c.d, dot3(sub3(p, c.a), c.d))), mul3(add3(mul3(c.x, Math.cos(D.ue)), mul3(y, Math.sin(D.ue))), c.r));
+          };
+          const Ai = flatI(a), Bi = flatI(b), Aj = devJ(a), Bj = devJ(b);
+          const eI = unit3(sub3(Bi, Ai)), eJ = unit3(sub3(Bj, Aj));
+          const off = (w: V3, e0: V3) => sub3(w, mul3(e0, dot3(w, e0)));
+          const wI = off(sub3(avg(devAll(i).map((q) => app(g.get(i)!, q))), Ai), eI), wJ = off(sub3(avg(devAll(j)), Aj), eJ);
+          if (len3(wI) < 1e-6 || len3(wJ) < 1e-6) { if (faces[j].surf.kind === "cyl") dev.delete(j); continue; }
+          const intoI = unit3(wI), intoJ = unit3(wJ);
+          // j turned and moved so its edge lies on i's, on the far side of it, in the same plane
+          const bi = [eI, mul3(intoI, -1), cross3(eI, mul3(intoI, -1))], bj = [eJ, intoJ, cross3(eJ, intoJ)];
+          const R = new Array(9).fill(0);
+          for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) for (let k = 0; k < 3; k++) R[r * 3 + c] += bi[k][r] * bj[k][c];
+          const gj0: Rigid = { R, t: [0, 0, 0] };
+          const gj: Rigid = { R, t: sub3(Ai, app(gj0, Aj)) };
+          g.set(j, gj);
+          if (faces[j].surf.kind === "plane") { const nj = nOf(j); nTop.set(j, dot3(rot(gj, nj), top0) > 0 ? nj : mul3(nj, -1)); }
+          across.add(`${i}:${e.id}`);
+          across.add(`${j}:${e.id}`);
+          queue.push(j);
+          continue;
+        }
         const a = e.pts[0], b = e.pts[e.pts.length - 1];
         const d = unit3(sub3(b, a));
         if (len3(sub3(b, a)) < 1e-6) continue;
@@ -510,24 +603,26 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
     if (along.reduce((n, y) => n + y.mm, 0) >= hi - lo - 1e-6) along.forEach((y) => tooMuch.add(y.bend));
   }
   if (tooMuch.size) problems.push(`The compensation takes more off a face than it is wide (bend ${[...tooMuch].sort((p, q) => p - q).join(", ")}): check the thickness${comp?.side === "direct" ? "" : " and the inner radius"}`);
-  const missing = sel.filter((i) => !g.has(i));
+  const missing = usable.filter((i) => !g.has(i));
   if (missing.length) problems.push(`${missing.length} picked ${missing.length === 1 ? "face does" : "faces do"} not share an edge with the others: left out`);
-  stats.skin = stats.planes = g.size;
+  stats.skin = g.size;
+  stats.cylinders = [...g.keys()].filter((k) => faces[k].surf.kind === "cyl").length;
+  stats.planes = g.size - stats.cylinders;
 
   // the frame: the base face, its longest straight edge along X, seen from its top side
   const B = faces[base];
-  let u: V3 = (B.surf as { x: V3 }).x, best = 0;
-  for (const l of B.loops) for (const e of l.edges) if (e.line) { const v = sub3(e.pts[e.pts.length - 1], e.pts[0]); if (len3(v) > best) { best = len3(v); u = unit3(v); } }
+  let u: V3 = B.surf.kind === "cyl" ? B.surf.d : (B.surf as { x: V3 }).x, best = 0;
+  if (B.surf.kind === "plane") for (const l of B.loops) for (const e of l.edges) if (e.line) { const v = sub3(e.pts[e.pts.length - 1], e.pts[0]); if (len3(v) > best) { best = len3(v); u = unit3(v); } }
   const v = cross3(top0, u);
-  const org = B.loops[0].edges[0].pts[0];
+  const org = devPt(base, 0, 0, 0);
   const to2 = (q: V3): V2 => { const w = sub3(q, org); return [dot3(w, u), dot3(w, v)]; };
 
   let outline: FlatEdge[] = [];
-  for (const [k, gk] of g) for (const l of faces[k].loops) for (const e of l.edges) {
-    if (across.has(`${k}:${e.id}`)) continue;
-    const pts = e.pts.map((p) => to2(app(gk, p)));
+  for (const [k, gk] of g) faces[k].loops.forEach((l, li) => l.edges.forEach((e, ei) => {
+    if (across.has(`${k}:${e.id}`)) return;
+    const pts = e.pts.map((_, pi) => to2(app(gk, devPt(k, li, ei, pi))));
     let arc: FlatEdge["arc"];
-    if (e.arc) {
+    if (e.arc && faces[k].surf.kind === "plane") {
       const c = to2(app(gk, e.arc.c));
       const ccw = dot3(rot(gk, e.arc.z), top0) > 0;
       const ang = (q: V2) => Math.atan2(q[1] - c[1], q[0] - c[0]);
@@ -536,7 +631,7 @@ export function stitch(s: Solid, picked: number[], o: StitchOptions = {}): Unfol
       if (Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 1e-6) arc = { c, r: e.arc.r, a0: 0, a1: 2 * Math.PI };
     }
     outline.push({ pts: simplify(pts), ...(arc ? { arc } : {}) });
-  }
+  }));
   // compensation moved the faces apart (or over each other): close the ends across each bend
   const bendLines: [V2, V2][] = [];
   for (const jn of joins) {
