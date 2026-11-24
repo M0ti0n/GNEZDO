@@ -10,11 +10,13 @@ import { PartHistoryDialog } from "../components/PartHistoryDialog";
 import { PARTS_MIME } from "../shell/Drawer";
 import { sheetFromDxf } from "../job/dxfSheet";
 import { SheetPropertiesDialog } from "../components/SheetPropertiesDialog";
+import { RemnantPickDialog } from "../components/RemnantPickDialog";
+import type { SavedRemnant } from "../api/api";
 import { gapsFor, withGaps, type Machine, type MachineList } from "../job/machine";
 import { partColor } from "../job/nest";
 import { techMaterials, techThicknesses } from "../job/technology";
 import type { ComboOption } from "../components/Combobox";
-import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, newSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
+import { MACHINE_LIMIT, STOCK_SOURCES, fitsMachine, isFullSheet, newSheet, remnantSheet, sheetKey, slotOf, type StockSettings, type StockSheet, type StockSource } from "../job/stock";
 
 interface Props {
   title: string;
@@ -381,7 +383,18 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
     for (const jp of parts) m.set(sheetKey(jp.part.material, jp.part.thicknessMm), { material: jp.part.material, thicknessMm: jp.part.thicknessMm });
     return [...m.values()];
   }, [parts]);
-  const covered = new Set(stock.map((s) => sheetKey(s.material, s.thicknessMm)));
+  // a remnant or a DXF shape does not count: the job part list still adds a whole sheet next to it
+  const covered = new Set(stock.filter(isFullSheet).map((s) => sheetKey(s.material, s.thicknessMm)));
+  const [picking, setPicking] = useState(false);   // Add from Remnant: the remnant store to pick from
+  const fits = (l: number, w: number) => l <= machine.cutLengthMm && w <= machine.cutWidthMm;
+  const remnantFits = (r: SavedRemnant) => !remnantSheet(r, { material: r.material, thicknessMm: r.thicknessMm }, fits).tooBig;
+  const addRemnants = (rs: SavedRemnant[]) => {
+    setPicking(false);
+    const made = rs.map((r) => remnantSheet(r, gaps({ material: r.material, thicknessMm: r.thicknessMm }), fits));
+    const turned = rs.filter((_, i) => made[i].turned).map((r) => r.name);
+    if (turned.length) onNotice(`${turned.join(", ")}: turned 90° to fit ${machine.name} (${machine.cutLengthMm} × ${machine.cutWidthMm} mm)`);
+    onStock([...stock, ...made.map((m) => m.sheet)]);
+  };
   const nextPair = () => jobPairs.find((p) => !covered.has(sheetKey(p.material, p.thicknessMm))) ?? jobPairs[0] ?? { material: "", thicknessMm: 0 };
 
   const add = () => {
@@ -396,11 +409,7 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
       return;
     }
     if (from === "dxf") { file.current?.click(); return; }
-    if (from === "remnant") {
-      // until the remnant store exists: a sheet to fill in, one piece
-      onStock([...stock, newSheet({ ...gaps(nextPair()), source: "remnant", lengthMm: 0, widthMm: 0, qty: 1, unlimited: false })]);
-      return;
-    }
+    if (from === "remnant") { setPicking(true); return; }
     // a default slot: its size and material; the thickness from the part list (first one of that
     // material with no sheet yet), or empty to fill in
     const slot = slotOf(settings, from);
@@ -449,7 +458,7 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
         {stock.map((s, i) => (
           <div key={s.id} className="sheet-card">
             <div className="sheet-row">
-              <span className="sheet-name" onDoubleClick={() => setProps(i)} title={s.fileName ? `From ${s.fileName}.dxf` : s.source === "remnant" ? "Remnant" : undefined}>
+              <span className="sheet-name" onDoubleClick={() => setProps(i)} title={s.fileName ? `From ${s.fileName}.dxf` : s.source === "remnant" ? `Remnant${s.remnant ? ` ${s.remnant}` : ""}` : undefined}>
                 Sheet {i + 1}
                 <button type="button" className="sheet-info" onClick={() => setProps(i)} aria-label={`Properties of sheet ${i + 1}`} title="Sheet properties">i</button>
               </span>
@@ -496,6 +505,10 @@ function StockPanel({ parts, stock, settings, onStock, onNotice, machine }: {
       {props !== null && stock[props] && (
         <SheetPropertiesDialog sheet={stock[props]} index={props} machine={machine}
           onSave={(now) => onStock(stock.map((x) => (x.id === now.id ? now : x)))} onClose={() => setProps(null)} />
+      )}
+      {picking && (
+        <RemnantPickDialog pairs={jobPairs} taken={new Set(stock.flatMap((x) => (x.remnant ? [x.remnant] : [])))} fits={remnantFits}
+          onPick={addRemnants} onClose={() => setPicking(false)} />
       )}
     </aside>
   );

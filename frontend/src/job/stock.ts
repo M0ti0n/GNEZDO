@@ -15,6 +15,8 @@ export interface StockSheet {
   unlimited: boolean;
   /** For a sheet from a DXF file: the file it came from. */
   fileName?: string;
+  /** For a sheet taken from the remnant store: the saved remnant's name. */
+  remnant?: string;
   /**
    * Gap from each sheet edge to the parts [mm], by the machine's axes (X- is the edge at the machine's
    * 0,0 in X, ...): they stay with the machine when the sheet is turned or mirrored. Missing = default.
@@ -60,6 +62,35 @@ export function mirrorSheet(s: StockSheet, axis: "x" | "y"): StockSheet {
 /** The sheet's shape for drawing: its outline, else its rectangle. */
 export const sheetLoops = (s: { lengthMm: number; widthMm: number; outline?: Loops }): Loops =>
   s.outline?.length ? s.outline : [[[0, 0], [s.lengthMm, 0], [s.lengthMm, s.widthMm], [0, s.widthMm]]];
+
+/** A saved remnant (Remnants) as a stock sheet: its size, shape and pieces (one sheet per piece, not
+ *  unlimited). The material, thickness and gaps come in `base`. A plain rectangle gets no shape. Turned
+ *  90° when only that way it fits the machine (`fits`). */
+export function remnantSheet(
+  r: { name: string; qty?: number; outline: number[][]; holes?: number[][][] },
+  base: Omit<StockSheet, "id" | "source" | "lengthMm" | "widthMm" | "qty" | "unlimited">,
+  fits: (l: number, w: number) => boolean,
+): { sheet: StockSheet; turned: boolean; tooBig: boolean } {
+  const loops = [r.outline, ...(r.holes ?? [])].map((l) => l.map(([x, y]) => [x, y] as [number, number]));
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of loops[0]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const rd = (v: number) => Math.round(v * 100) / 100;
+  const at0 = loops.map((l) => l.map(([x, y]) => [rd(x - x0), rd(y - y0)] as [number, number]));
+  const l = rd(x1 - x0), w = rd(y1 - y0);
+  const rect = at0.length === 1 && at0[0].length === 4 && at0[0].every(([x, y]) => (Math.abs(x) < 0.05 || Math.abs(x - l) < 0.05) && (Math.abs(y) < 0.05 || Math.abs(y - w) < 0.05));
+  const outline = rect ? undefined : at0;
+  let sheet = newSheet({ ...base, source: "remnant", remnant: r.name, fileName: undefined, lengthMm: l, widthMm: w,
+    qty: Math.max(1, r.qty ?? 1), unlimited: false, outline, original: undefined });
+  const turned = !fits(l, w) && fits(w, l);
+  if (turned) {
+    sheet = rotateSheet(sheet);
+    sheet = { ...sheet, original: { lengthMm: sheet.lengthMm, widthMm: sheet.widthMm, outline: sheet.outline } };
+  }
+  return { sheet, turned, tooBig: !fits(l, w) && !turned };
+}
+
+/** Sheets the Job part list / default choices count as there for a material: not remnants or DXF shapes. */
+export const isFullSheet = (s: StockSheet) => s.source !== "remnant" && s.source !== "dxf";
 
 export const STOCK_SOURCES: { id: StockSource; label: string }[] = [
   { id: "parts", label: "Job part list" },

@@ -5,11 +5,13 @@ import { Combobox } from "./Combobox";
 import { NumInput } from "./NumInput";
 import { usePickLists } from "./pickLists";
 import {
-  fitsMachine, mirrorSheet, rotateSheet, sheetLoops, MACHINE_LIMIT,
+  fitsMachine, mirrorSheet, remnantSheet, rotateSheet, sheetLoops, MACHINE_LIMIT,
   type StockSheet, type Trims,
 } from "../job/stock";
 import { gapsFor, withGaps, type Machine, type Origin } from "../job/machine";
 import { sheetFromDxf } from "../job/dxfSheet";
+import { RemnantPickDialog } from "./RemnantPickDialog";
+import type { SavedRemnant } from "../api/api";
 
 const SOURCE: Record<string, string> = {
   parts: "From the job part list", default1: "Default 1", default2: "Default 2", default3: "Default 3", default4: "Default 4", remnant: "Remnant", dxf: "From a DXF file", manual: "Added in Manual nest",
@@ -44,10 +46,16 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
   // Add sheet: ADD FROM REMNANT (one piece, its size to fill in) / ADD FROM DXF (size and shape from the file)
   const file = useRef<HTMLInputElement>(null);
   const [fromNote, setFromNote] = useState<{ bad: boolean; text: string } | null>(null);
-  const fromRemnant = () => {
-    setFromNote(null);
-    setS((x) => ({ ...x, source: "remnant", qty: 1, unlimited: false, fileName: undefined, outline: undefined, original: undefined,
-      ...(x.outline ? { lengthMm: 0, widthMm: 0 } : {}) }));
+  // ADD FROM REMNANT: one of the saved remnants (Remnants), its size, shape, material and pieces
+  const [picking, setPicking] = useState(false);
+  const fits = (l: number, w: number) => l <= machine.cutLengthMm && w <= machine.cutWidthMm;
+  const fromRemnant = () => { setFromNote(null); setPicking(true); };
+  const takeRemnant = (r: SavedRemnant) => {
+    setPicking(false);
+    const g = { ...s, ...withGaps(machine, s, { material: r.material, thicknessMm: r.thicknessMm }) };
+    const m = remnantSheet(r, { material: g.material, thicknessMm: g.thicknessMm, trims: g.trims, partGapMm: g.partGapMm, kerfMm: g.kerfMm }, fits);
+    setS({ ...m.sheet, id: s.id });
+    setFromNote(m.turned ? { bad: false, text: `${r.name}: turned 90° to fit ${machine.name} (${machine.cutLengthMm} × ${machine.cutWidthMm} mm)` } : null);
   };
   const fromDxf = async (f: File) => {
     const r = await sheetFromDxf(f, s);
@@ -61,6 +69,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || (e.target as HTMLElement | null)?.closest("input")) return;
+      if (document.querySelector(".rp-dlg")) return;   // the remnant picker on top closes first
       onClose();
     };
     window.addEventListener("keydown", onKey);
@@ -92,7 +101,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
           </span>
           <div className="dlg-title">
             <h2 id="sp-title">{adding ? "Add sheet" : "Sheet properties"}</h2>
-            <p>{adding ? `A new sheet for manual nesting: it goes into the stock and opens empty in Manual nest${s.source === "remnant" || s.source === "dxf" ? ` · ${SOURCE[s.source]}${s.fileName ? ` (${s.fileName}.dxf)` : ""}` : ""}` : nested ? `Nested sheet ${index + 1}: changes apply to this sheet only` : `Sheet ${index + 1} · ${SOURCE[s.source] ?? s.source}${s.fileName ? ` (${s.fileName}.dxf)` : ""}`}</p>
+            <p>{adding ? `A new sheet for manual nesting: it goes into the stock and opens empty in Manual nest${s.source === "remnant" || s.source === "dxf" ? ` · ${SOURCE[s.source]}${s.fileName ? ` (${s.fileName}.dxf)` : s.remnant ? ` ${s.remnant}` : ""}` : ""}` : nested ? `Nested sheet ${index + 1}: changes apply to this sheet only` : `Sheet ${index + 1} · ${SOURCE[s.source] ?? s.source}${s.fileName ? ` (${s.fileName}.dxf)` : s.remnant ? ` ${s.remnant}` : ""}`}</p>
           </div>
           <button type="button" className="icon-btn dlg-close" onClick={onClose} aria-label="Close" title="Close (Esc)"><IconClose size={16} /></button>
         </header>
@@ -169,12 +178,17 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
             {adding && (
               <div className="sp-from">
                 <button type="button" className={`btn btn-plain${s.source === "remnant" ? " is-on" : ""}`} onClick={fromRemnant}
-                  title="A remnant: one piece; fill in its size (or turn it so its straight edges are at 0,0)">ADD FROM REMNANT</button>
+                  title="One of the saved remnants (Remnants): its size, shape, material and pieces">ADD FROM REMNANT</button>
                 <button type="button" className={`btn btn-plain${s.source === "dxf" ? " is-on" : ""}`} onClick={() => file.current?.click()}
                   title="A sheet or remnant drawn in a DXF, DWG or SVG file: its size and shape">ADD FROM DXF</button>
                 <input ref={file} type="file" accept=".dxf,.dwg,.svg" hidden
                   onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void fromDxf(f); }} />
                 {fromNote && <p className={fromNote.bad ? "sp-warn" : "sp-hint"} role="status">{fromNote.text}</p>}
+                {picking && (
+                  <RemnantPickDialog multi={false} pairs={[{ material: s.material, thicknessMm: s.thicknessMm }].filter((p) => p.material.trim() && p.thicknessMm > 0)}
+                    taken={new Set()} fits={(r) => !remnantSheet(r, { material: r.material, thicknessMm: r.thicknessMm }, fits).tooBig}
+                    onPick={(rs) => { if (rs[0]) takeRemnant(rs[0]); }} onClose={() => setPicking(false)} />
+                )}
               </div>
             )}
           </div>
