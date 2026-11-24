@@ -162,9 +162,17 @@ export function sectionOf(s: Solid): Section | null {
   const hollow = !!end && end.length > 1 && end[1].diag >= 0.4 * diag;
   // round: the faces along it are round faces about one axis
   const cyl = s.faces.filter((f) => f.surf.kind === "cyl" && runsAlong(f, d)).map((f) => f.surf as { a: V3; r: number });
-  const coaxial = cyl.length > 0 && !s.faces.some((f) => f.surf.kind === "plane" && runsAlong(f, d))
-    && cyl.every((c) => { const v = sub3(c.a, cyl[0].a); return len3(sub3(v, mul3(d, dot3(v, d)))) < 1e-3; });
   const radii = [...new Set(cyl.map((c) => Math.round(c.r * 1000) / 1000))].sort((x, y) => y - x);
+  // flat faces along it only as the sides of a slot or notch through the wall (no wider than the wall)
+  const wallR = radii.length > 1 ? radii[0] - radii[radii.length - 1] : 0;
+  const slotSide = (f: Face) => {
+    if (f.surf.kind !== "plane" || !wallR) return false;
+    const across = unit3(cross3(f.surf.n, d));
+    const [lo, hi] = lowHigh(facePts(f).map((p) => dot3(p, across)));
+    return hi - lo <= wallR + 0.05;
+  };
+  const coaxial = cyl.length > 0 && !s.faces.some((f) => f.surf.kind === "plane" && runsAlong(f, d) && !slotSide(f))
+    && cyl.every((c) => { const v = sub3(c.a, cyl[0].a); return len3(sub3(v, mul3(d, dot3(v, d)))) < 1e-3; });
   const round = coaxial ? { d: 2 * radii[0], ...(radii.length > 1 ? { wall: Math.round((radii[0] - radii[radii.length - 1]) * 1000) / 1000 } : {}) } : undefined;
   const wall = hollow && !round && end ? Math.round(((end[0].w - end[1].w) / 2) * 100) / 100 : undefined;
   return { length: a1 - a0, w, h, perimeter: end?.[0].per ?? 0, hollow: hollow || (!!round && radii.length > 1), ...(round ? { round } : {}), ...(wall ? { wall } : {}), strict: ax.strict };

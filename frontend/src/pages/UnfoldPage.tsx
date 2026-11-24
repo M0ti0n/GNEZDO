@@ -12,6 +12,7 @@ import {
 } from "../import/step/stepPart";
 import { KIND_LABEL, type BodyKind } from "../import/step/extract";
 import { cutProblem, edgeAlong, keepPicks, type FaceCut } from "../import/step/split";
+import { cylStrips, type CylStrip } from "../import/step/cylStrips";
 import { flatDxf, type Unfolded, type V2 } from "../import/step/unfold";
 import { dimensionOf, type Measure, type Pick as DimPick } from "../import/measure";
 
@@ -593,6 +594,8 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
   const stitchMode = st.mode === "stitch";
   const base = stitchMode ? st.stitch[0] : st.base ?? u.skinFaces[0];
   const picked = useMemo(() => new Set(stitchMode ? st.stitch : []), [stitchMode, st.stitch]);
+  // round faces (pipes, bends): drawn in strips, made once per solid
+  const strips = useMemo(() => solid.faces.map((f) => { try { return cylStrips(f); } catch { return null; } }), [solid]);
 
   useEffect(() => {
     const c = cv.current;
@@ -629,7 +632,15 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
         return c ? c.map((x) => x * 255) : null;
       };
       const L: V3 = [-0.29, -0.83, 0.48];
-      const items = solid.faces.map((f, i) => {
+      // the pieces to draw, the farthest first: a face, or a strip of a round face (a pipe, a bend)
+      type Piece = { f: (typeof solid.faces)[number]; i: number; depth: number; lit: number; strip?: CylStrip };
+      const litOf = (n: V3) => { const nr = rotN(n); return 0.4 + 0.6 * Math.abs(nr[0] * L[0] + nr[1] * L[1] + nr[2] * L[2]); };
+      const items: Piece[] = solid.faces.flatMap((f, i): Piece[] => {
+        const fs: CylStrip[] | null = strips[i] ?? null;
+        if (fs) return fs.map((sp) => {
+          const pts = sp.loops.length ? sp.loops.flat() : sp.segs.flatMap((q) => [q.a, q.b]);
+          return { f, i, strip: sp, depth: pts.reduce((sum, q) => sum + pr(q)[2], 0) / Math.max(1, pts.length), lit: litOf(sp.n) };
+        });
         const pts = f.loops.flatMap((l) => l.edges.flatMap((e) => e.pts));
         const depth = pts.reduce((sum, q) => sum + pr(q)[2], 0) / Math.max(1, pts.length);
         let n = normalAt(f, pts[Math.floor(pts.length / 2)] ?? [0, 0, 0]);
@@ -639,8 +650,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
           for (let k = 0; k < lp.length; k++) { const a = lp[k], b = lp[(k + 1) % lp.length]; nw[0] += (a[1] - b[1]) * (a[2] + b[2]); nw[1] += (a[2] - b[2]) * (a[0] + b[0]); nw[2] += (a[0] - b[0]) * (a[1] + b[1]); }
           const k = Math.hypot(...nw) || 1; n = [nw[0] / k, nw[1] / k, nw[2] / k];
         }
-        const nr = rotN(n);
-        return { f, i, depth, lit: 0.4 + 0.6 * Math.abs(nr[0] * L[0] + nr[1] * L[1] + nr[2] * L[2]) };
+        return [{ f, i, depth, lit: litOf(n) }];
       }).sort((a, b) => b.depth - a.depth);
       const out: { i: number; path: Path2D }[] = [];
       // wireframe, hidden lines dashed: every edge is drawn dashed first; the visible lines go on a layer of
@@ -672,11 +682,13 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
         const rgb = mine ?? (view.colors !== "roles" && k === "skin" ? [178, 192, 196] : roleRgb);
         const c2 = rgb.map((v) => Math.round(v * it.lit));
         const path = new Path2D();
-        for (const l of it.f.loops) {
-          let first = true;
-          for (const e of l.edges) for (const p of e.pts) { const q = pr(p); if (first) { path.moveTo(q[0], q[1]); first = false; } else path.lineTo(q[0], q[1]); }
+        const outlines: V3[][] = it.strip ? it.strip.loops : it.f.loops.map((l) => l.edges.flatMap((e) => e.pts));
+        for (const lp of outlines) {
+          lp.forEach((p, j) => { const q = pr(p); if (j) path.lineTo(q[0], q[1]); else path.moveTo(q[0], q[1]); });
           path.closePath();
         }
+        // the face's edges in this piece (a strip: the bits of them that run in it)
+        const edgesHere: { id: number; pts: V3[] }[] = it.strip ? it.strip.segs.map((q) => ({ id: q.id, pts: [q.a, q.b] })) : it.f.loops.flatMap((l) => l.edges);
         const hot = hover === it.i && pick && pick !== "measure3d";
         // wireframe: only the edges (a face under the pointer still shows)
         if (!view.wire || hot) {
@@ -690,10 +702,10 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
           : mine ? "#3c4a4e" : k === "skin" || k === "base" ? "#1d9641" : k === "stitch" ? "#1d7fd0" : k === "bad" ? "#c2412d" : "#7f9296";
         t.lineWidth = (k === "side" ? 0.9 : 1.2) * view.edge;
         t.beginPath();
-        for (const l of it.f.loops) for (const e of l.edges) e.pts.forEach((p, j) => { const q = pr(p); if (j) t.lineTo(q[0], q[1]); else t.moveTo(q[0], q[1]); });
+        for (const e of edgesHere) e.pts.forEach((p, j) => { const q = pr(p); if (j) t.lineTo(q[0], q[1]); else t.moveTo(q[0], q[1]); });
         t.stroke();
         // edges added across faces (ADD EDGE): green; existing edges made seams: red dashed
-        for (const l of it.f.loops) for (const e of l.edges) {
+        for (const e of edgesHere) {
           const col = seamSet.has(e.id) ? "#e3262b" : e.id <= -1_000_000 ? "#22b14c" : null;
           if (!col) continue;
           t.strokeStyle = col; t.lineWidth = 2.8 * Math.max(1, view.edge);
@@ -711,8 +723,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
       const mark = (m: MPick, col: string, w: number) => {
         g.strokeStyle = col; g.fillStyle = col; g.lineWidth = w;
         if (m.kind === "plane" || m.kind === "cyl") {
-          const sh = out.find((x) => x.i === m.face);
-          if (sh) { g.globalAlpha = 0.45; g.fill(sh.path, "evenodd"); g.globalAlpha = 1; g.lineWidth = 1.6; g.stroke(sh.path); }
+          for (const sh of out.filter((x) => x.i === m.face)) { g.globalAlpha = 0.45; g.fill(sh.path, "evenodd"); g.globalAlpha = 1; g.lineWidth = 1.6; g.stroke(sh.path); }
           if (m.kind === "cyl") { const a = pr(add3(m.c, mul3(m.d, -m.r * 1.6))), b = pr(add3(m.c, mul3(m.d, m.r * 1.6))); g.setLineDash([5, 3]); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); g.setLineDash([]); }
           return;
         }
@@ -761,7 +772,7 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
     const ro = new ResizeObserver(draw);
     ro.observe(c);
     return () => ro.disconnect();
-  }, [solid, cam, skin, base, hover, pick, picked, stitchMode, measure, hoverM, edgeA, hoverP, hoverCut, cuts, seamSet, view, material]);
+  }, [solid, strips, cam, skin, base, hover, pick, picked, stitchMode, measure, hoverM, edgeA, hoverP, hoverCut, cuts, seamSet, view, material]);
 
   const faceAt = (x: number, y: number) => {
     const g = cv.current?.getContext("2d");

@@ -4,6 +4,8 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- 3D Extractor: round faces are drawn right. A pipe or tube (and a round hole through a plate) showed only its end circles and a line, because the whole round face was filled as one flat outline. Round faces are now drawn as narrow strips around the axis, each shaded by its own direction, with slots and holes in them cut out. Bends also lose the dark half-discs that showed at their ends in some views.
+- 3D Extractor: a round tube with a slot or notch through its wall is read as round (Ø48.6 × 3.3 · L 530), not as a 48.6 × 48.6 box section.
 - Sheet properties (and Manual nest → Add sheet): the sheet's picture is shown again. It had shrunk to a narrow strip since the Send to a job dialog came (#389), whose part pictures used the same style name.
 - Jobs → job preview: the buttons (Send to, Mark sheet N as cut, Mark all as cut, Open job) keep their text on one line and the job's name stays shown. When the pane is too narrow for them, they move under the name, right-aligned, instead of squeezing the name out and breaking the labels over two lines.
 - Job → Stock → Add from **Remnant** opens the saved remnants (the ones saved in a job's Process → Remnant or in Import 2D → Save as remnant) to pick from: one or more, at first only those of the job's materials and thicknesses (Job materials only), searchable by name, material or note. Each goes into the stock with its shape, size, material, thickness and pieces, turned 90° when only that way it fits the machine. A remnant already in the stock is marked In stock and cannot be added twice. Before, it only added an empty sheet to fill in by hand.
