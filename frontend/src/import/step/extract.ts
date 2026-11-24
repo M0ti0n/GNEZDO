@@ -163,8 +163,9 @@ export function sectionOf(s: Solid): Section | null {
   // round: the faces along it are round faces about one axis
   const cyl = s.faces.filter((f) => f.surf.kind === "cyl" && runsAlong(f, d)).map((f) => f.surf as { a: V3; r: number });
   const radii = [...new Set(cyl.map((c) => Math.round(c.r * 1000) / 1000))].sort((x, y) => y - x);
-  // flat faces along it only as the sides of a slot or notch through the wall (no wider than the wall)
-  const wallR = radii.length > 1 ? radii[0] - radii[radii.length - 1] : 0;
+  // flat faces along it only as the sides of a slot or notch through the wall (no wider than the wall) of a
+  // tube that is closed all round (its end a ring); a rolled shell open along its length stays not round
+  const wallR = hollow && radii.length > 1 ? radii[0] - radii[radii.length - 1] : 0;
   const slotSide = (f: Face) => {
     if (f.surf.kind !== "plane" || !wallR) return false;
     const across = unit3(cross3(f.surf.n, d));
