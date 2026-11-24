@@ -2192,7 +2192,6 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .cp-list { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-content: start; min-height: 120px; max-height: 260px; overflow-x: hidden; overflow-y: auto; }
 .cp-li { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-list .chk { display: flex; }
-.rp.is-landscape { width: 1123px; height: 794px; }
 .rp-head-mini { grid-template-columns: 1fr 1.6fr; }
 .rp-head-mini .rp-hcell { border-bottom: 0; padding: 3px 9px; }
 .rp-head-mini .rp-hcell:nth-child(2) { border-right: 0; }
@@ -2215,9 +2214,6 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
   .print-root { display: block; }
   .print-root .rp { break-after: page; page-break-after: always; box-shadow: none; }
   .print-root .rp:last-child { break-after: auto; page-break-after: auto; }
-  /* a full page sheet view of a sheet wider than tall: on a landscape page */
-  @page landscape { size: A4 landscape; margin: 0; }
-  .print-root .rp.is-landscape { page: landscape; }
   html, body { background: #fff !important; }
 }
 
