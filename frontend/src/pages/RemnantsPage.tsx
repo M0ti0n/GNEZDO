@@ -100,11 +100,13 @@ export function RemnantsPage({ filter, run, onShowFilters, selected, onSelect, o
       {error && <p className="state state-error">Could not load the remnants: {error}.</p>}
       {all && !all.length && <p className="state">No remnants saved yet. Save them in a job: Process → Remnant → SAVE.</p>}
       {all && all.length > 0 && !shown.length && <p className="state">No remnants match these filters.</p>}
-      <div className="rb-grid pane-scroll">
+      {/* tiles of one size: 4 across, two whole rows and a bit of the third in view (the grid's height) */}
+      <div className="rb-wrap">
+      <div className="rb-grid rb-tiles pane-scroll">
         {shown.map((r) => (
           <article key={r.name} className={`rb-card${selected === r.name ? " is-sel" : ""}`} onClick={() => onSelect(r)} title={`Saved ${day(r.savedAt)}${r.savedBy ? ` by ${r.savedBy}` : ""}${r.modifiedAt ? ` · changed ${day(r.modifiedAt)}` : ""}`}>
             <header className="rb-head">
-              <b className="rb-name">{r.name}</b>
+              <b className="rb-name" title={r.name}>{r.name}</b>
               <button type="button" className="btn btn-plain rb-edit" onClick={(e) => { e.stopPropagation(); setEdit(r); }}>Edit</button>
               <button type="button" className="btn btn-plain rb-del" onClick={(e) => { e.stopPropagation(); setDel(r); }}>Delete</button>
             </header>
@@ -113,6 +115,7 @@ export function RemnantsPage({ filter, run, onShowFilters, selected, onSelect, o
             <footer className="rb-foot"><span>{r.material}</span>{r.note && <span className="rb-has-note" title={r.note}>✎</span>}<span>{r.thicknessMm} mm</span></footer>
           </article>
         ))}
+      </div>
       </div>
       {edit && <RemnantDialog r={edit} names={names} onCancel={() => setEdit(null)} onSave={(r) => void save(r, edit)} />}
       {del && (
