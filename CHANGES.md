@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 24 Nov 2026, 1 (`52119ac`)
+
 - Manual nest → aid lines: a line stays at its number on the ruler when the sheet is made bigger or smaller (with the 0,0 corner at the bottom or on the right, it stayed where it was on the screen while the ruler's numbers moved). An aid line just placed or moved shows its number with an × in front of it: a click on the × takes the line away (a right click still does too).
 - Nest report → Add full page sheet view: the page is portrait (A4 portrait) like the others, so printing needs no landscape page. A sheet longer in X than in Y is drawn turned 90° clockwise to fill the page (the machine's 0,0 at the bottom left is at the top left, X runs down the page), and the page's foot says "sheet turned 90°". A sheet longer in Y (or square) is drawn as it lies.
 - Nest report and Cost report: the pages are taller, with only a narrow edge of background round them (on a 900 px high window: 650 px pages instead of 561). The pages no longer keep growing and shrinking with three of them on screen: the sideways scrollbar is always shown, so it no longer comes and goes as the pages are sized.
