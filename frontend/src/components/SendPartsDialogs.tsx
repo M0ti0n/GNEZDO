@@ -121,7 +121,7 @@ export function SendPartsDialog({ parts, qtyOf, onClose, onSent }: {
             <tbody>
               {parts.map((p) => (
                 <tr key={p.id}>
-                  <td className="sp-thumb"><PartThumb part={p} size={34} marks={p.engraved} /></td>
+                  <td className="sp-part-thumb"><PartThumb part={p} size={34} marks={p.engraved} /></td>
                   <td><span className="sp-pname">{p.name}</span><span className="sp-proj">{p.project}</span></td>
                   <td><MatChip material={p.material} thicknessMm={p.thicknessMm} /></td>
                   <td><input className="sp-qty" type="number" min={0} step={1} value={qty[p.id] ?? 0} aria-label={`Quantity of ${p.name}`}
@@ -130,7 +130,7 @@ export function SendPartsDialog({ parts, qtyOf, onClose, onSent }: {
               ))}
             </tbody>
           </table>
-          <label className="sp-note"><span>Note (optional)</span>
+          <label className="sp-send-note"><span>Note (optional)</span>
             <input value={note} maxLength={300} placeholder="e.g. urgent, for the frame" onChange={(e) => setNote(e.target.value)} /></label>
           {error && <p className="log-msg is-bad" role="alert">{error}</p>}
           </section>
@@ -172,7 +172,7 @@ export function IncomingPartsDialog({ offer, more, busy, onAnswer }: {
             <tbody>
               {offer.parts.map(({ part: p, qty }) => (
                 <tr key={p.id}>
-                  <td className="sp-thumb"><PartThumb part={p} size={34} marks={p.engraved} /></td>
+                  <td className="sp-part-thumb"><PartThumb part={p} size={34} marks={p.engraved} /></td>
                   <td><span className="sp-pname">{p.name}</span><span className="sp-proj">{p.project}</span></td>
                   <td><MatChip material={p.material} thicknessMm={p.thicknessMm} /></td>
                   <td className="sp-n">{qty}</td>

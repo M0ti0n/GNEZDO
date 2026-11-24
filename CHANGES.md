@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Sheet properties (and Manual nest → Add sheet): the sheet's picture is shown again. It had shrunk to a narrow strip since the Send to a job dialog came (#389), whose part pictures used the same style name.
 - Jobs → job preview: the buttons (Send to, Mark sheet N as cut, Mark all as cut, Open job) keep their text on one line and the job's name stays shown. When the pane is too narrow for them, they move under the name, right-aligned, instead of squeezing the name out and breaking the labels over two lines.
 - Job → Stock → Add from **Remnant** opens the saved remnants (the ones saved in a job's Process → Remnant or in Import 2D → Save as remnant) to pick from: one or more, at first only those of the job's materials and thicknesses (Job materials only), searchable by name, material or note. Each goes into the stock with its shape, size, material, thickness and pieces, turned 90° when only that way it fits the machine. A remnant already in the stock is marked In stock and cannot be added twice. Before, it only added an empty sheet to fill in by hand.
 - Manual nest → Add sheet → ADD FROM REMNANT picks one saved remnant the same way.

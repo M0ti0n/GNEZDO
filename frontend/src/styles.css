@@ -2952,13 +2952,13 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .sp-parts { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13.5px; }
 .sp-parts th { text-align: left; font-weight: 600; font-size: 12px; color: var(--ink-3); padding: 4px 6px; border-bottom: 1px solid var(--line); }
 .sp-parts td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.sp-thumb { width: 40px; }
+.sp-part-thumb { width: 40px; }
 .sp-pname { display: block; font-weight: 600; }
 .sp-proj { display: block; font-size: 12px; color: var(--ink-3); }
 .sp-qty { width: 70px; height: 30px; padding: 0 6px; }
 .sp-n { font-weight: 600; }
-.sp-note { display: grid; gap: 4px; font-size: 13px; color: var(--ink-3); }
-.sp-note input { height: 34px; padding: 0 10px; }
+.sp-send-note { display: grid; gap: 4px; font-size: 13px; color: var(--ink-3); }
+.sp-send-note input { height: 34px; padding: 0 10px; }
 .sp-msg { margin: 0 0 10px; padding: 8px 12px; background: var(--green-tint); border-radius: 6px; font-style: italic; }
 
 /* Send to a job: two columns, the job to send to | the parts to send (one column on a narrow screen) */
