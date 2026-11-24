@@ -364,6 +364,8 @@ function JobPreview({ job, onOpen, targets, onSend, onStatus }: {
         <h2 title={job.name}>{job.name}</h2>
         <span className={`status status-${job.status}`}>{STATUS[job.status]}</span>
         {job.sheetCount > 0 && <ColsToggle cols={cols} onChange={setCols} />}
+        {/* the buttons keep their one line: in a narrow pane they move to a row of their own */}
+        <div className="preview-actions">
         {onSend && pickedParts && (
           <span className="send-sheet">
             <button type="button" className="btn btn-plain" disabled={!targets.length} aria-expanded={menu}
@@ -390,6 +392,7 @@ function JobPreview({ job, onOpen, targets, onSend, onStatus }: {
           : <button type="button" className="btn btn-plain" disabled={cutBusy || job.sheetCount === 0} onClick={() => void markCut(true)}
               title={job.sheetCount ? "The operator has cut the whole job: every sheet marked as cut (other apps see it through the status API)" : "Nest the job first"}>Mark all as cut</button>}
         <button className="btn btn-primary" onClick={onOpen}>Open job</button>
+        </div>
       </div>
 
       {/* sheets */}
