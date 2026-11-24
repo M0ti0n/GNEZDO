@@ -83,7 +83,8 @@ export function CostReportPage({ job, jobParts, userName, prices: shared, onPric
   useEffect(() => {
     const el = area.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setScale(Math.max(0.3, Math.min(1, (el.clientHeight - 40) / 1123))));
+    // the height there is less the padding and the outline
+    const ro = new ResizeObserver(() => setScale(Math.max(0.3, Math.min(1, (el.clientHeight - 18) / 1123))));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);

@@ -120,7 +120,8 @@ export function NestReportPage({ job, sheets, jobParts }: { job: ReportJob; shee
   useEffect(() => {
     const el = area.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setScale(Math.max(0.3, Math.min(1, (el.clientHeight - 74) / 1123))));
+    // the height there is less the check box above each page (26 + 8), the padding and the outline
+    const ro = new ResizeObserver(() => setScale(Math.max(0.3, Math.min(1, (el.clientHeight - 52) / 1123))));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
