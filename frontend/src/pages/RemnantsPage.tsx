@@ -7,7 +7,7 @@ import { matchRemnant, type RemnantFilter } from "../shell/RemnantsPanel";
 // The remnant store (left rail -> Remnants): the saved remnants as cards in a grid, with EDIT and
 // DELETE (after Fab's layout). Saved in Process -> Remnant -> SAVE.
 
-function RemnantPicture({ r }: { r: SavedRemnant }) {
+export function RemnantPicture({ r }: { r: SavedRemnant }) {
   const w = Math.max(1, r.widthMm), h = Math.max(1, r.heightMm), pad = Math.max(w, h) * 0.04;
   const loop = (l: number[][]) => l.map(([x, y], i) => `${i ? "L" : "M"}${x} ${y}`).join("") + "Z";
   return (

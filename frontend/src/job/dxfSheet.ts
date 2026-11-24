@@ -23,7 +23,7 @@ export async function sheetFromDxf(f: File, base: StockSheet): Promise<DxfSheet>
     const turn = !fitsMachine(l, w) && fitsMachine(w, l);
     if (!fitsMachine(l, w) && !turn) return { ok: false, tooBig: { l, w }, message: `${f.name} is ${l} × ${w} mm: bigger than the machine can cut` };
     let sheet: StockSheet = {
-      ...base, source: "dxf", lengthMm: l, widthMm: w, qty: 1, unlimited: false,
+      ...base, source: "dxf", remnant: undefined, lengthMm: l, widthMm: w, qty: 1, unlimited: false,
       fileName: f.name.replace(/\.(dxf|dwg|svg)$/i, ""), outline: dxfOutline(drawing.entities, b), original: undefined,
     };
     if (turn) {
