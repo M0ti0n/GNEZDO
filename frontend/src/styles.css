@@ -1732,6 +1732,12 @@ html.is-busy, html.is-busy * { cursor: progress !important; }
 .mn-ruler:hover { background: #a9dcec; }
 .mn-guide line { stroke: #1ea0e6; stroke-width: 1.2; stroke-dasharray: 8 5; opacity: .9; }
 .mn-guide.is-placing line { stroke-width: 1.5; opacity: 1; }
+.mn-guide.is-sel line { stroke-width: 1.6; opacity: 1; }
+.mn-guide-x { cursor: pointer; }
+.mn-guide-x rect { fill: #fff; stroke: #1ea0e6; stroke-width: 1.2; }
+.mn-guide-x path { stroke: #0f6f9e; stroke-width: 1.8; stroke-linecap: round; }
+.mn-guide-x:hover rect { fill: #fde8e8; stroke: #c8171d; }
+.mn-guide-x:hover path { stroke: #c8171d; }
 .mn-guide text, .mn-guide-typed { fill: #0f6f9e; font-size: 12px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
 .mn-parts { grid-row: 1 / span 2; grid-column: 2; display: flex; flex-direction: column; min-height: 0; background: #fff; border: 1.5px solid var(--line); border-radius: 8px; }
 .mn-parts-head { display: flex; align-items: baseline; justify-content: space-between; padding: 12px 14px 6px; }

@@ -482,19 +482,25 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
 
   // -- aid lines from the rulers: the X ruler gives a horizontal one, the Y ruler a vertical one (blue,
   // dashed, as Import 2D's). Click the ruler (or drag from it), then click where it goes, or type its
-  // distance from the 0,0 corner + Enter. Pick one up to move it; right click (or Esc while held): gone.
+  // distance from the 0,0 corner + Enter. Pick one up to move it; right click (or Esc while held), or the ×
+  // by its number (a line just placed or moved): gone. Kept as the rulers' number (from the 0,0 corner): a
+  // sheet made bigger or smaller keeps its lines at their numbers.
   const [guideMap, setGuideMap] = useState<Record<number, Guide[]>>({});
   const guides = guideMap[index] ?? [];
   const setGuides = (f: (g: Guide[]) => Guide[]) => setGuideMap((m) => ({ ...m, [index]: f(m[index] ?? []) }));
   const [placing, setPlacing] = useState<{ axis: "h" | "v"; mm: number | null; typed: string } | null>(null);
+  /** the aid line just placed or moved: its number shows, with an × to take it away */
+  const [selGuide, setSelGuide] = useState<Guide | null>(null);
   const placingRef = useRef(placing);
   placingRef.current = placing;
   /** Pressed on a ruler (or on an aid line), not let go yet: released over the sheet after a drag, it is placed. */
   const guideDrag = useRef<{ x: number; y: number } | null>(null);
-  useEffect(() => { setPlacing(null); }, [index]);
+  useEffect(() => { setPlacing(null); setSelGuide(null); }, [index]);
   const oRight = origin.endsWith("right"), oBottom = origin.startsWith("bottom");
   /** Sheet mm -> the rulers' number (from the 0,0 corner), and back (the same sum). */
   const shownOf = (axis: "h" | "v", mm: number) => (axis === "v" ? (oRight ? sheet.lengthMm - mm : mm) : (oBottom ? sheet.widthMm - mm : mm));
+  /** An aid line's place on the sheet (sheet mm from its top left), from its number on the ruler. */
+  const mmOf = (g: Guide) => shownOf(g.axis, g.at);
   /** Where an aid line under the pointer goes: onto an edge of the sheet, the trims or a part within a few
    *  pixels, else whole mm (tenths zoomed in) on the rulers. */
   const guideAt = (axis: "h" | "v", px: { x: number; y: number }): number => {
@@ -512,7 +518,7 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     if (!view) return -1;
     let k = -1, d = 5;
     guides.forEach((g, i) => {
-      const e = Math.abs(g.axis === "v" ? g.mm * view.s + view.tx - px.x : g.mm * view.s + view.ty - px.y);
+      const e = Math.abs(g.axis === "v" ? mmOf(g) * view.s + view.tx - px.x : mmOf(g) * view.s + view.ty - px.y);
       if (e <= d) { k = i; d = e; }
     });
     return k;
@@ -521,7 +527,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     setPlacing(null);
     guideDrag.current = null;
     if (mm === null || !isFinite(mm)) return;
-    setGuides((g) => [...g, { axis, mm }]);
+    const g: Guide = { axis, at: shownOf(axis, mm) };
+    setGuides((l) => [...l, g]);
+    setSelGuide(g);
     setNote(`${axis === "h" ? "Horizontal" : "Vertical"} aid line at ${axis === "h" ? "Y" : "X"} ${fmtGuide(shownOf(axis, mm))}`);
   };
   const startGuide = (axis: "h" | "v", e: { clientX: number; clientY: number }, mm: number | null = null) => {
@@ -562,8 +570,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
     // an aid line picked up (to move it, or right click / Esc: gone)
     if (e.button === 0 && !paste && !align && !cut?.onPoint && !cut?.picking) {
       const k = guideNear(local(e));
-      if (k >= 0) { const g = guides[k]; setGuides((l) => l.filter((_, i) => i !== k)); startGuide(g.axis, e, g.mm); return; }
+      if (k >= 0) { const g = guides[k]; setGuides((l) => l.filter((_, i) => i !== k)); setSelGuide(null); startGuide(g.axis, e, mmOf(g)); return; }
     }
+    if (e.button === 0) setSelGuide(null);
     if (paste) {
       if (e.button === 0) placePaste(toMm(local(e).x, local(e).y));
       else setPaste(null);
@@ -1234,13 +1243,25 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
               <RemnantOverlay sheet={shownSheet} s={v.s} />
               <circle cx={right ? sheet.lengthMm : 0} cy={bottom ? sheet.widthMm : 0} r={6 / v.s} className="mn-origin" />
             </g>
-            {[...guides, ...(placing && placing.mm !== null ? [{ axis: placing.axis, mm: placing.mm, now: true }] : [])].map((g, k) => {
-              const p = g.axis === "v" ? g.mm * v.s + v.tx : g.mm * v.s + v.ty;
-              const now = "now" in g;
+            {[...guides.map((g) => ({ axis: g.axis, mm: mmOf(g), g })), ...(placing && placing.mm !== null ? [{ axis: placing.axis, mm: placing.mm, g: null }] : [])].map(({ axis, mm, g }, k) => {
+              const p = axis === "v" ? mm * v.s + v.tx : mm * v.s + v.ty;
+              const now = !g, sel = !!g && g === selGuide;
+              const label = `${axis === "v" ? "X" : "Y"} ${fmtGuide(shownOf(axis, mm))}`;
+              // the × (a line just placed or moved): at the line's start, its number after it
+              const bx = axis === "v" ? p + 6 : 6, by = axis === "v" ? 4 : p - 19;
               return (
-                <g key={`gd${k}`} className={`mn-guide${now ? " is-placing" : ""}`} pointerEvents="none">
-                  {g.axis === "v" ? <line x1={p} x2={p} y1={0} y2={size.h} /> : <line x1={0} x2={size.w} y1={p} y2={p} />}
-                  {now && <text x={g.axis === "v" ? p + 6 : 8} y={g.axis === "v" ? 16 : p - 6}>{g.axis === "v" ? "X" : "Y"} {fmtGuide(shownOf(g.axis, g.mm))}</text>}
+                <g key={`gd${k}`} className={`mn-guide${now ? " is-placing" : ""}${sel ? " is-sel" : ""}`} pointerEvents="none">
+                  {axis === "v" ? <line x1={p} x2={p} y1={0} y2={size.h} /> : <line x1={0} x2={size.w} y1={p} y2={p} />}
+                  {now && <text x={axis === "v" ? p + 6 : 8} y={axis === "v" ? 16 : p - 6}>{label}</text>}
+                  {sel && (<>
+                    <g className="mn-guide-x" pointerEvents="auto" role="button" aria-label={`Delete the aid line at ${label}`}
+                      onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); setGuides((l) => l.filter((x) => x !== g)); setSelGuide(null); setNote("Aid line taken away"); }}>
+                      <title>Delete this aid line</title>
+                      <rect x={bx} y={by} width={15} height={15} rx={3} />
+                      <path d={`M${bx + 4} ${by + 4}L${bx + 11} ${by + 11}M${bx + 11} ${by + 4}L${bx + 4} ${by + 11}`} />
+                    </g>
+                    <text x={bx + 20} y={by + 12}>{label}</text>
+                  </>)}
                 </g>
               );
             })}
@@ -1292,7 +1313,8 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
   );
 }
 
-type Guide = { axis: "h" | "v"; mm: number };
+/** An aid line: horizontal (h) or vertical (v), at its number on the ruler (mm from the sheet's 0,0 corner). */
+type Guide = { axis: "h" | "v"; at: number };
 const fmtGuide = (mm: number) => String(Math.round(mm * 10) / 10);
 
 /** Rulers along the canvas (mm), following zoom and pan; 0 where the sheet's 0,0 corner is (`flip`: the
