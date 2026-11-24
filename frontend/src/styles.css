@@ -2100,8 +2100,12 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .ncout-pre.is-src { max-height: 480px; }
 
 /* ---------------------------------------------------------------- reports (Nest report, Cost report) */
-.report { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; height: 100%; min-height: 0; padding: 14px 16px; box-sizing: border-box; }
-.report-pages { display: flex; gap: 18px; align-items: flex-start; overflow-x: auto; overflow-y: hidden; padding: 6px 4px 14px; min-height: 0; }
+/* the report screens use the page's height: only a narrow edge of background round the pages */
+.page:has(> .report) { padding: 8px 12px 6px; }
+.report { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; height: 100%; min-height: 0; padding: 0; box-sizing: border-box; }
+/* the sideways scrollbar is always there: one that came and went as the pages were sized to the height
+   left made them grow and shrink without end (pages scaled to the height: see reportScale) */
+.report-pages { display: flex; gap: 18px; align-items: flex-start; overflow-x: scroll; overflow-y: hidden; padding: 4px 5px 8px; min-height: 0; }
 .report-thumb { flex: none; box-shadow: 0 2px 10px rgba(27,42,48,.18); background: #fff; overflow: hidden; outline: 2px solid transparent; outline-offset: 3px; border-radius: 2px; }
 .report-thumb.is-chosen { outline-color: var(--green); }
 .report-col { flex: none; display: flex; flex-direction: column; gap: 8px; }

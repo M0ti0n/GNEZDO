@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Nest report and Cost report: the pages are taller, with only a narrow edge of background round them (on a 900 px high window: 650 px pages instead of 561). The pages no longer keep growing and shrinking with three of them on screen: the sideways scrollbar is always shown, so it no longer comes and goes as the pages are sized.
 - Remnants: the tiles are all one size, 4 across (3 or 2 on a narrow screen), sized so two whole rows and part of the third show. The remnant's shape is scaled to fit inside its tile's frame, whatever its proportions (a 50 × 141 strip no longer makes a tile, and its whole row, very tall). The pieces mark (×3) has its own background so it does not cover the shape.
 - 3D Extractor → Stitch: round faces can be picked too, so a tube's or pipe's surface can be collected and laid flat. A round face is rolled out as long as it is round; a rectangular tube's corner radii come in between its flat sides, and a pipe opens at its seam line. Holes and slots in a round face are cut out of the flat pattern. Round faces join the faces next to them across edges along their axis. With Compensate (Top side / Bottom side), a round face is laid flat at the bend's neutral radius (its radius, the thickness and the K-factor); for a bent part this gives the same flat pattern as Sheet metal.
 - 3D Extractor: a tube or profile with stitched faces shows its flat pattern without Unfold anyway.
