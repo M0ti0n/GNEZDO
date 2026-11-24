@@ -174,7 +174,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
               <label className="sp-field"><NumInput value={s.kerfMm ?? 0} min={0} aria-label="Cut diameter (mm)" placeholder="–" onCommit={(n) => set({ kerfMm: n || undefined })} /><span className="sp-unit">mm</span></label>
               <span />
             </div>
-            {s.outline && <p className="sp-note">Shaped sheet from the DXF: its size follows the shape (rotate and mirror turn it).</p>}
+            {s.outline && <p className="sp-note">{s.source === "remnant" ? "Shaped remnant" : "Shaped sheet from the DXF"}: its size follows the shape (rotate and mirror turn it).</p>}
             {adding && (
               <div className="sp-from">
                 <button type="button" className={`btn btn-plain${s.source === "remnant" ? " is-on" : ""}`} onClick={fromRemnant}
