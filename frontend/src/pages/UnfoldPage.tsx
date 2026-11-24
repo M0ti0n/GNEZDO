@@ -133,7 +133,8 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
   // a tube or a profile is cut to length (saw, tube laser), not laid flat: no flat pattern unless asked for
   const cutToLength = kind === "tube" || kind === "profile";
   const [anyway, setAnyway] = useState(false);
-  const flatOff = cutToLength && !anyway;
+  // a tube or profile is cut to length, not unfolded; faces stitched on it: their flat pattern is wanted
+  const flatOff = cutToLength && !anyway && !(stitchMode && st.stitch.length > 0);
   const u = useMemo(() => (flatOff ? { ...u0, skinFaces: [] } : u0), [u0, flatOff]);
   const ready = step.info.ok && !flatOff;
   const [pick, setPick] = useState<Pick>(stitchMode && !st.stitch.length ? "stitch" : null);
@@ -192,7 +193,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
     </button>
   );
   const hint = pick === "base" ? "click a flat face to unfold from" : pick === "top" ? "click a face on the top side"
-    : pick === "stitch" ? "click flat faces one next to the other (again: out)"
+    : pick === "stitch" ? "click flat or round faces one next to the other (again: out)"
     : pick === "edge" ? (edgeA ? "click the second point of the same flat face (corners and middles snap; Ctrl: square to the edge); along an edge: a seam" : "click a corner or an edge's middle, then a second one: across a flat face it is split; along an edge (its two ends) that edge is a seam")
     : pick === "deledge" ? "click an added edge (green) to delete it"
     : pick === "one" ? "click the flat face to send as it is"
@@ -207,7 +208,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
   return (
     <div className="import uf">
       <div className="itools">
-        {tool("stitch", "Stitch", stitchMode, toggleStitch, "Stitch faces (manual): click flat faces one next to the other; they are laid flat across the edges they share (a surface, or a part with sharp corners). Off: unfolded as sheet metal")}
+        {tool("stitch", "Stitch", stitchMode, toggleStitch, "Stitch faces (manual): click flat or round faces one next to the other; they are laid flat across the edges they share (a surface, a part with sharp corners, a tube: round faces rolled out, a pipe opened at its seam line). Off: unfolded as sheet metal")}
         {tool("edge", "Add edge", pick === "edge", () => { if (!stitchMode) set({ mode: "stitch" }); setEdgeA(null); setPick(pick === "edge" ? null : "edge"); },
           "Stitch: add an edge across a flat face between two points of its outline: corners and edge middles snap, hold Ctrl for the second point square to the edge (a flange running all round, cut at its corners: one piece per wall; a seam in the middle of a face). The new edge is cut in the flat pattern. Along an existing edge (its two ends): that edge is a seam, not stitched (where a tube opens); again: stitched")}
         {tool("base", "Fixed face", pick === "base", () => setPick(pick === "base" ? null : "base"), "Click a flat face of the part: the flat pattern is unfolded from it (else from the biggest)", stitchMode)}
@@ -257,7 +258,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
               if (pick === "base") { if (k !== "plane") { setMsg("The fixed face must be flat"); return; } set({ base: f }); setPick(null); }
               else if (pick === "top") { set({ top: f }); setPick(null); }
               else if (pick === "stitch") {
-                if (k !== "plane") { setMsg("Only flat faces can be stitched"); return; }
+                if (k !== "plane" && k !== "cyl") { setMsg("Only flat and round faces can be stitched"); return; }
                 set({ stitch: st.stitch.includes(f) ? st.stitch.filter((x) => x !== f) : [...st.stitch, f] });
               }
             }} />
@@ -305,7 +306,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
           {flatOff ? <div className="uf-empty"><div><p>{KIND_LABEL[kind].replace(/s$/, "")}{section ? ` ${section}` : ""}: cut to length, not on the laser, so it is not unfolded.</p>
               <button type="button" className="btn btn-plain uf-anyway" onClick={() => setAnyway(true)}>Unfold anyway</button></div></div>
             : u.outline.length ? <FlatView u={u} st={st} measure={pick === "measure"} />
-            : <div className="uf-empty">{stitchMode ? "Click the faces to stitch on the part: the first one stays, each next one must share an edge with one picked before." : "Not unfolded."}</div>}
+            : <div className="uf-empty">{stitchMode ? "Click the faces to stitch on the part (flat or round): the first one stays, each next one must share an edge with one picked before." : "Not unfolded."}</div>}
           <div className="uf-leg"><span><i className="is-mark" />bend marks ({st.marks === "none" ? "off" : st.marks === "trace" ? "traced" : "open cut"}, up bends)</span>{st.marks !== "none" && st.marksDown && <span><i className="is-mark-down" />down bends (dashed)</span>}<span><i className="is-bend" />bend line (not cut)</span><span className="uf-up">UP</span><span className="uf-down">DOWN</span></div>
         </section>
       </div>
@@ -327,8 +328,8 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
             </div>
           </div>
           {cutToLength && (
-            <p className="uf-note uf-cut">{section && <b>{section}</b>}{section ? ": " : ""}{KIND_LABEL[kind] === "Tubes" ? "a tube" : "a profile"}, cut to length, not on the laser: {anyway ? "unfolded only because you asked." : "not unfolded."}{" "}
-              <button type="button" className="link" onClick={() => setAnyway(!anyway)}>{anyway ? "Don't unfold" : "Unfold anyway"}</button></p>
+            <p className="uf-note uf-cut">{section && <b>{section}</b>}{section ? ": " : ""}{KIND_LABEL[kind] === "Tubes" ? "a tube" : "a profile"}, cut to length, not on the laser: {!flatOff && !anyway ? "its faces stitched flat." : anyway ? "unfolded only because you asked." : "not unfolded."}{" "}
+              {(flatOff || anyway) && <button type="button" className="link" onClick={() => setAnyway(!anyway)}>{anyway ? "Don't unfold" : "Unfold anyway"}</button>}</p>
           )}
           {onSendOne && (
             <button type="button" className="btn btn-plain uf-send-one" disabled={!ready} onClick={onSendOne}
@@ -389,9 +390,9 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
               <span className="cols-toggle uf-seg" role="radiogroup" aria-label="Bend compensation">
                 {(["none", "top", "bottom", "direct"] as const).map((c) => (
                   <button key={c} type="button" role="radio" aria-checked={st.comp.side === c} className={st.comp.side === c ? "is-on" : ""}
-                    title={c === "none" ? "The faces laid flat as they are (fine for thin sheet)"
+                    title={c === "none" ? "The faces laid flat as they are (fine for thin sheet); round faces rolled out as long as they are round"
                       : c === "direct" ? "The faces are the top side: on every DOWN bend the top side is the outside, wider by the thickness, so the thickness comes off both faces (2 × thickness at a 90° bend). UP bends: as they are"
-                      : `The faces are the sheet's ${c} side: each bend gets its allowance less the setbacks (thickness, inner radius, K-factor below)`}
+                      : `The faces are the sheet's ${c} side: each bend gets its allowance less the setbacks (thickness, inner radius, K-factor below); a round face picked is laid flat at the bend's neutral radius (its own radius, the thickness and the K-factor)`}
                     onClick={() => set({ comp: { ...st.comp, side: c, t: st.comp.t || 2, r: st.comp.r || st.comp.t || 2 } })}>{c === "none" ? "No" : c === "top" ? "Top side" : c === "bottom" ? "Bottom side" : "Direct"}</button>
                 ))}
               </span></div>

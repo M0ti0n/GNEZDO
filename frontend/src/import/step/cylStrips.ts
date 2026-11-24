@@ -125,3 +125,44 @@ function clip(p: UH[], at: number, side: 1 | -1): UH[] {
   }
   return out;
 }
+
+/**
+ * A round face's points as angles round its axis, unwrapped along its loops (stitching lays it flat by
+ * them): per loop, per edge, per point, all in one range lo..hi (a pipe with its seam: hi = lo + 2π, the
+ * seam at both ends). Holes and slots are moved into the range by whole turns. Null: not a cylinder, or a
+ * whole round face without a seam line (it has nowhere to open).
+ */
+export interface CylParams { lo: number; hi: number; u: number[][][] }
+export function cylParams(f: Face): CylParams | null {
+  const s = f.surf;
+  if (s.kind !== "cyl") return null;
+  const y = cross3(s.d, s.x);
+  const ang = (p: V3) => { const v = sub3(p, s.a); return Math.atan2(dot3(v, y), dot3(v, s.x)); };
+  const loops = f.loops.map((l) => {
+    let prev: number | null = null, first = 0, last = 0;
+    const u = l.edges.map((e) => e.pts.map((p) => {
+      const t = ang(p);
+      const v = prev === null ? (first = t) : last + wrap(t - prev);
+      prev = t; last = v;
+      return v;
+    }));
+    // back to the start: how far round the loop goes (0: an outline or a hole; ±2π: a circle round the axis)
+    const net = prev === null ? 0 : last + wrap(ang(l.edges[0].pts[0]) - prev) - first;
+    return { u, net, all: u.flat() };
+  });
+  if (!loops.length || loops.some((l) => !l.all.length || Math.abs(l.net) > 1)) return null;
+  const span = (l: { all: number[] }) => Math.max(...l.all) - Math.min(...l.all);
+  const outer = loops.reduce((b, l) => (span(l) > span(b) ? l : b));
+  const lo = Math.min(...outer.all), hi = Math.max(...outer.all);
+  return {
+    lo, hi,
+    u: loops.map((l) => {
+      if (l === outer) return l.u;
+      const m = l.all.reduce((a, b) => a + b, 0) / l.all.length;
+      let k = 0;
+      while (m + k * TAU < lo) k++;
+      while (m + k * TAU > hi) k--;
+      return l.u.map((e) => e.map((v) => v + k * TAU));
+    }),
+  };
+}
