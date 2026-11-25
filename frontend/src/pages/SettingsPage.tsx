@@ -73,8 +73,10 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
   const setM = (patch: Partial<Machine>) => onMachines({ ...machines, list: machines.list.map((m) => (m.id === machine.id ? { ...m, ...patch } : m)) });
   const setTrim = (k: keyof Machine["trims"], v: number) => setM({ trims: { ...machine.trims, [k]: v } });
   const addMachine = () => {
-    const m = newMachine(machines.list.length + 1, { ...machine, id: undefined, name: `Machine ${machines.list.length + 1}` } as Partial<Machine>);
-    const fresh = { ...m, id: `m${Date.now().toString(36)}` };
+    // a copy of the machine shown, without its folders: a new machine's NC files must not go to another
+    // machine's folder unnoticed (its own folders are set in Folders)
+    const m = newMachine(machines.list.length + 1, { ...machine, id: undefined, name: `Machine ${machines.list.length + 1}`, folders: undefined } as Partial<Machine>);
+    const fresh = { ...m, id: `m${Date.now().toString(36)}`, folders: undefined };
     onMachines({ ...machines, list: [...machines.list, fresh] });
     setMSel(fresh.id);
   };

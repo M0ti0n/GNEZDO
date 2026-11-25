@@ -4,7 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
-Nothing yet.
+- Settings → Machines → Add machine: the new machine is still a copy of the machine shown, but without its folders. Its NC and job folders start empty and are set in Folders, so its NC programs cannot go to the other machine's folder unnoticed.
 
 ## Build 24 Nov 2026, 1 (`52119ac`)
 
