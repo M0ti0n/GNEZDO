@@ -35,8 +35,9 @@ const FULL_KEY = (job: string) => `gnezdo.nestReportFull.${job}`;
 /** The job's name with the sheet's number: TESTJOB_2 (as the operator finds the program); [A-B]: the sheet is two
  *  programs, TESTJOB_2A then TESTJOB_2B (pre-pierce with parts processed first: ncProgram.prePierceSplit) */
 const jobSheet = (title: string, sheet: number, two = false) => `${title}_${sheet + 1}${two ? " [A-B]" : ""}`;
-/** A full page sheet view is a portrait page like the others; a sheet wider than tall is drawn turned 90° on it
- *  (bigger: along the page's height). */
+/** A full page sheet view of a sheet longer in X than in Y (its size, not the parts on it) is printed on a
+ *  landscape page, the sheet as it lies; on screen that page is shown turned 90° clockwise, upright like the
+ *  others (the machine's 0,0 at the top left). Y longer (or square): a portrait page. */
 const across = (sh: NestedSheet) => sh.lengthMm > sh.widthMm;
 
 function loadPrinted(job: string): Record<string, string> {
@@ -132,14 +133,16 @@ export function NestReportPage({ job, sheets, jobParts }: { job: ReportJob; shee
       <div className="report-pages pane-scroll" ref={area}>
         {!snap.sheets.length && <p className="report-empty">Nothing nested yet: nest the job, then GENERATE.</p>}
         {pages.map((p, i) => {
+          const wide = p.full && across(snap.sheets[p.sheet]);
           return (
             <div key={p.key} className="report-col">
               {/* above a page with the sheet drawing: its full page view, added at the end */}
-              <label className={`chk report-full${p.first ? "" : " is-none"}`} title="A page more, at the end: the sheet across the whole page (a sheet wider than tall drawn turned 90°, the page stays portrait)">
+              <label className={`chk report-full${p.first ? "" : " is-none"}`} title="A page more, at the end: the sheet across the whole page (a sheet longer in X than in Y: printed on a landscape page, shown turned here)">
                 {p.first && <><input type="checkbox" checked={full.has(p.sheet)} onChange={() => toggleFull(p.sheet)} /> Add full page sheet view</>}
               </label>
               <div className={`report-thumb${chosen.includes(i + 1) ? " is-chosen" : ""}`} style={{ width: 794 * scale, height: 1123 * scale }}>
-                <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0" }}>{pageEls([i + 1])}</div>
+                {/* a landscape page (1123 × 794) turned 90° clockwise into the portrait place */}
+                <div style={{ transform: wide ? `translate(${794 * scale}px, 0) rotate(90deg) scale(${scale})` : `scale(${scale})`, transformOrigin: "0 0" }}>{pageEls([i + 1])}</div>
               </div>
             </div>
           );
@@ -236,22 +239,21 @@ function ReportPage({ page, no, total, job, sheet, rep, at }: {
   );
 }
 
-/** ADD FULL PAGE SHEET VIEW: a small head (machine, job_sheet) and the sheet across the rest of the page (a
- *  portrait page; a sheet wider than tall turned 90° clockwise, its X down the page and 0,0 at the top left: turn
- *  the page left to read it as it lies on the machine). */
+/** ADD FULL PAGE SHEET VIEW: a small head (machine, job_sheet) and the sheet across the rest of the page,
+ *  landscape for a sheet longer in X than in Y. */
 function FullSheetPage({ no, total, job, sheet, sheetNo, rep }: { no: number; total: number; job: ReportJob; sheet: NestedSheet; sheetNo: number; rep: SheetReport }) {
   const wide = across(sheet);
   return (
-    <section className="rp rp-full" aria-label={`Page ${no}`}>
+    <section className={`rp rp-full${wide ? " is-landscape" : ""}`} aria-label={`Page ${no}`}>
       <header className="rp-head rp-head-mini">
         <div className="rp-hcell"><span>Machine</span><b>{job.machine.name}</b></div>
         <div className="rp-hcell rp-job"><span>Job</span><b>{jobSheet(job.title, sheetNo, prePierceSplit(sheet, job.machine) > 0)}</b></div>
       </header>
       <div className="rp-full-sheet">
-        <SheetDrawing sheet={sheet} rep={rep} W={wide ? 880 : 660} H={wide ? 630 : 900} turned={wide} />
+        <SheetDrawing sheet={sheet} rep={rep} W={wide ? 1000 : 660} H={wide ? 590 : 900} />
       </div>
       <footer className="rp-foot">
-        <span>GNEZDO · {job.title} · sheet {sheetNo + 1} · {sheet.material} {sheet.thicknessMm} mm · {sheet.lengthMm} × {sheet.widthMm}{wide ? " · sheet turned 90°" : ""}</span>
+        <span>GNEZDO · {job.title} · sheet {sheetNo + 1} · {sheet.material} {sheet.thicknessMm} mm · {sheet.lengthMm} × {sheet.widthMm}</span>
         <span>Page {no} / {total}</span>
       </footer>
     </section>
@@ -263,9 +265,8 @@ function F({ k, v, est, strong }: { k: string; v: string; est?: boolean; strong?
 }
 
 /** The sheet to scale with its parts numbered (small ones by a line from the margin, one copy of each), and rulers. */
-function SheetDrawing({ sheet, rep, W = 690, H = 360, turned = false }: { sheet: NestedSheet; rep: SheetReport; W?: number; H?: number; turned?: boolean }) {
-  // W × H: the drawing area in page px (the rulers outside it), along the sheet's X and Y; turned: the whole
-  // drawing turned 90° clockwise (X down the page, the machine's 0,0 at the bottom left goes to the top left)
+function SheetDrawing({ sheet, rep, W = 690, H = 360 }: { sheet: NestedSheet; rep: SheetReport; W?: number; H?: number }) {
+  // W × H: the drawing area in page px (the rulers outside it)
   const s = Math.min(W / sheet.lengthMm, H / sheet.widthMm);
   const w = sheet.lengthMm * s, h = sheet.widthMm * s;
   const byId = new Map(rep.parts.map((p) => [p.partId, p.jp]));
@@ -293,11 +294,8 @@ function SheetDrawing({ sheet, rep, W = 690, H = 360, turned = false }: { sheet:
   const step = [50, 100, 200, 250, 500, 1000].find((d) => d * s >= 36) ?? 1000;
   const ticks = (len: number) => Array.from({ length: Math.floor(len / step) + 1 }, (_, i) => i * step);
   const PAD = 32, TOP = small.length ? 27 : 4;
-  const vw = w + PAD + 6, vh = h + TOP + PAD + 2;
-  // turned: rotate(90) takes (x, y) to (-y, x), so the box -PAD..vw - PAD, -TOP..vh - TOP lies at -(vh - TOP)..TOP, -PAD..vw - PAD
   return (
-    <svg className="rp-sheet" width={turned ? vh : vw} height={turned ? vw : vh} viewBox={turned ? `${-(vh - TOP)} ${-PAD} ${vh} ${vw}` : `${-PAD} ${-TOP} ${vw} ${vh}`}>
-      <g transform={turned ? "rotate(90)" : undefined}>
+    <svg className="rp-sheet" width={w + PAD + 6} height={h + TOP + PAD + 2} viewBox={`${-PAD} ${-TOP} ${w + PAD + 6} ${h + TOP + PAD + 2}`}>
       {sheet.outline?.length
         ? <path className="rp-plate" fillRule="evenodd" d={sheet.outline.map((lp) => lp.map(([x, y], i) => `${i ? "L" : "M"}${x * s} ${y * s}`).join("") + "Z").join("")} />
         : <rect className="rp-plate" x={0} y={0} width={w} height={h} />}
@@ -329,7 +327,6 @@ function SheetDrawing({ sheet, rep, W = 690, H = 360, turned = false }: { sheet:
         {ticks(sheet.lengthMm).map((d) => <g key={`x${d}`}><line x1={d * s} y1={h + 2} x2={d * s} y2={h + 9} /><text x={d * s} y={h + 18}>{d}</text></g>)}
         <line x1={-5} y1={0} x2={-5} y2={h} />
         {ticks(sheet.widthMm).map((d) => <g key={`y${d}`}><line x1={-9} y1={h - d * s} x2={-2} y2={h - d * s} /><text x={-12} y={h - d * s + 3} style={{ textAnchor: "end" }}>{d}</text></g>)}
-      </g>
       </g>
     </svg>
   );
