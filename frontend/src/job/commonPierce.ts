@@ -7,7 +7,9 @@
 // lead-in: the last part of it, next to the outline. From the common pierce point an arc runs to the
 // start of what is kept, tangent to it there (a straight line when the point lies in line with it).
 // A part joins when the start of its kept lead-in is within the radius of the point (and on the side
-// asked for: left or right of it) and the arc does not go through a part. Its lead-out stays its own.
+// asked for: left or right of it) and the arc does not go through a part. Its lead-out stays its own; to
+// the corner, the lead-out is the Technology row's Common pierce lead-out (0: none), in line with the
+// outline's last edge past the corner (else square to it, to the side clear of the parts).
 // With Break cut the parts first get the lead type with a gap like theirs, with the default gap (the
 // Technology row's outline gap when it is negative, else −5 mm): the outline stops short, a bridge
 // holds the part. The outlines of a group are cut one after another, the nearest the machine's 0,0
@@ -177,6 +179,22 @@ export interface CommonPierceJob {
   breakCut?: (base: SheetCut, k: number) => CutContour | string;
   /** the parts' material from their drawings (outlines cut in pieces count too) */
   solid?: (p: Pt) => boolean;
+  /** to the corner: each outline's lead-out [mm] (Technology → Common pierce → Lead-out); 0 / missing: none */
+  leadOut?: number;
+}
+
+/** The lead-out of an outline started at a corner from a common pierce: `l` mm in line with its last edge
+ *  (past the corner), else square to it, whichever way stays out of the parts; none when no way does. */
+function cornerLeadOut(pts: Pt[], l: number, inPart: (p: Pt) => boolean): Pt[] {
+  if (l <= 0 || pts.length < 2) return [];
+  const end = pts[pts.length - 1];
+  let k = pts.length - 2;
+  while (k > 0 && len(sub(end, pts[k])) < 1e-6) k--;
+  const t = unit(sub(end, pts[k]));
+  for (const d of [t, [-t[1], t[0]] as Pt, [t[1], -t[0]] as Pt]) {
+    if ([0.2, 0.4, 0.6, 0.8, 1].every((f) => !inPart(add(end, mul(d, l * f))))) return [r3(end), r3(add(end, mul(d, l)))];
+  }
+  return [];
 }
 
 /**
@@ -223,6 +241,7 @@ export function commonPierce(cut: SheetCut, live: Set<CutContour>, p: Pt, ks: nu
       else { left.push(`${name(c.part)}: the way from the pierce point goes through a part`); continue; }
     }
     const leadIn = [...arc.slice(0, -1).map(r3), ...kept.pts.map(r3)];
+    if (corner && !o.breakCut && (job.leadOut ?? 0) > 0) c = { ...c, leadOut: cornerLeadOut(c.pts, job.leadOut!, inPart) };
     const orig: NonNullable<CutContour["cp"]>["orig"] = { leadIn: own.leadIn, leadOut: own.leadOut, pts: own.pts, ...(own.lead ? { lead: own.lead } : {}), ...(own.spec ? { spec: own.spec } : {}) };
     members.push({ k, c: { ...c, leadIn, cp: { id: "", at: r3(p), orig } } });
   }
