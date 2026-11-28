@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type SavedRemnant } from "../api/api";
 import type { DateMode } from "../api/types";
-import { DateLine, EMPTY_DATE, PanelHead, SizeLine, dateFilterOf, type DateDraft } from "../components/FilterFields";
+import { DateLine, PanelHead, SizeLine, dateFilterOf, emptyDate, type DateDraft } from "../components/FilterFields";
 import { IconImport, IconSearch } from "../components/Icons";
 import { RemnantDialog } from "../pages/RemnantsPage";
 import { remnantFromFile } from "../job/remnantImport";
@@ -20,7 +20,8 @@ interface Draft {
   xOn: boolean; xMin: string; xMax: string; yOn: boolean; yMin: string; yMax: string;
 }
 
-const EMPTY: Draft = { job: "", material: "", thicknessMm: "", project: "", created: EMPTY_DATE, modified: EMPTY_DATE, xOn: false, xMin: "", xMax: "", yOn: false, yMin: "", yMax: "" };
+// the dates: today, not ticked
+const empty = (): Draft => ({ job: "", material: "", thicknessMm: "", project: "", created: emptyDate(), modified: emptyDate(), xOn: false, xMin: "", xMax: "", yOn: false, yMin: "", yMax: "" });
 const text = (v: string) => (v.trim() === "" ? undefined : v.trim());
 const num = (v: string) => (v.trim() === "" ? undefined : Number(v));
 
@@ -72,7 +73,7 @@ export function RemnantsPanel({ onSearch, onClose, selected, onChanged }: {
   /** a remnant was imported or changed here (its name: pick it) */
   onChanged: (name: string) => void;
 }) {
-  const [d, setD] = useState<Draft>(EMPTY);
+  const [d, setD] = useState<Draft>(empty);
   const [lastSearched, setLastSearched] = useState<string | null>(null);
   const [all, setAll] = useState<SavedRemnant[]>([]);
   useEffect(() => { api.remnants().then(setAll, () => setAll([])); }, [selected]);
@@ -110,7 +111,7 @@ export function RemnantsPanel({ onSearch, onClose, selected, onChanged }: {
   const key = JSON.stringify(filter);
   const dirty = lastSearched !== null && key !== lastSearched;
   const search = () => { setLastSearched(key); onSearch(filter); };
-  const reset = () => { setD(EMPTY); const f = toFilter(EMPTY); setLastSearched(JSON.stringify(f)); onSearch(f); };
+  const reset = () => { const e = empty(); setD(e); const f = toFilter(e); setLastSearched(JSON.stringify(f)); onSearch(f); };
   const active = Object.values(filter).filter((v) => v !== undefined).length;
 
   return (

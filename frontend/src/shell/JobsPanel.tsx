@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type PartFacets } from "../api/api";
 import type { JobFilter } from "../api/types";
-import { DateLine, EMPTY_DATE, PanelHead, dateFilterOf, type DateDraft } from "../components/FilterFields";
+import { DateLine, PanelHead, emptyDate, dateFilterOf, type DateDraft } from "../components/FilterFields";
 import { IconSearch } from "../components/Icons";
 import type { MachineList } from "../job/machine";
 
@@ -17,10 +17,11 @@ interface JobDraft {
   machine: string;          // machine id, "" = any
 }
 
-const EMPTY: JobDraft = {
+// the dates: today, not ticked (worked out each time: the app may stay open past midnight)
+const empty = (): JobDraft => ({
   name: "", material: "", thicknessMm: "", project: "",
-  created: EMPTY_DATE, modified: EMPTY_DATE, part: "", machine: "",
-};
+  created: emptyDate(), modified: emptyDate(), part: "", machine: "",
+});
 
 const text = (v: string) => (v.trim() === "" ? undefined : v.trim());
 
@@ -40,7 +41,7 @@ export function toJobFilter(d: JobDraft, defaultMachine?: string): JobFilter {
 
 // Job search filters. Pressing Search (or Enter) shows the results on the main screen.
 export function JobsPanel({ onSearch, onClose, machines }: { onSearch: (f: JobFilter) => void; onClose: () => void; machines?: MachineList }) {
-  const [d, setD] = useState<JobDraft>(EMPTY);
+  const [d, setD] = useState<JobDraft>(empty);
   const [lastSearched, setLastSearched] = useState<string | null>(null);
   const [facets, setFacets] = useState<PartFacets>({ materials: [], thicknesses: [] });
 
@@ -57,7 +58,7 @@ export function JobsPanel({ onSearch, onClose, machines }: { onSearch: (f: JobFi
   const key = JSON.stringify(filter);
   const dirty = lastSearched !== null && key !== lastSearched;
   const search = () => { setLastSearched(key); onSearch(filter); };
-  const reset = () => { setD(EMPTY); setLastSearched(JSON.stringify(toJobFilter(EMPTY, machines?.defaultId))); onSearch(toJobFilter(EMPTY, machines?.defaultId)); };
+  const reset = () => { const e = empty(); setD(e); setLastSearched(JSON.stringify(toJobFilter(e, machines?.defaultId))); onSearch(toJobFilter(e, machines?.defaultId)); };
   const active = Object.values(filter).filter((v) => v !== undefined).length;
 
   return (

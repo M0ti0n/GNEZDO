@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, materialKey, type PartFacets, type SavedRemnant } from "../api/api";
 import { DEFAULT_SORT, type DateMode, type JobFilter, type PartFilter, type PartSummary, type SortOrder } from "../api/types";
 import { SortControl, loadSort, saveSort } from "../components/SortControl";
-import { DateLine, PanelHead, SizeLine } from "../components/FilterFields";
+import { DateLine, PanelHead, SizeLine, todayIso } from "../components/FilterFields";
 import { IconHome, IconImport, IconLibrary, IconNewJob, IconRemnant, IconSearch } from "../components/Icons";
 import { RemnantsPanel, type RemnantFilter } from "./RemnantsPanel";
 import { PartThumb, sizeLabel } from "../components/PartThumb";
@@ -141,14 +141,15 @@ const loadView = (): PartView => {
   try { return localStorage.getItem(VIEW_KEY) === "list" ? "list" : "grid"; } catch { return "grid"; }
 };
 
-const EMPTY_DRAFT: Draft = {
+// the dates: today, not ticked (worked out each time: the app may stay open past midnight)
+const emptyDraft = (): Draft => ({
   name: "", material: "", thicknessMm: "", project: "", description: "",
-  createdOn: false, created: { mode: "on", date: "" },
-  modifiedOn: false, modified: { mode: "on", date: "" },
+  createdOn: false, created: { mode: "on", date: todayIso() },
+  modifiedOn: false, modified: { mode: "on", date: todayIso() },
   xOn: false, xMin: "", xMax: "",
   yOn: false, yMin: "", yMax: "",
   engraved: false,
-};
+});
 
 const numOrUndef = (v: string) => (v.trim() === "" ? undefined : Number(v));
 const textOrUndef = (v: string) => (v.trim() === "" ? undefined : v.trim());
@@ -174,8 +175,8 @@ function toFilter(d: Draft): PartFilter {
 const sameFilter = (a: PartFilter, b: PartFilter) => JSON.stringify(a) === JSON.stringify(b);
 
 function PartsPanel({ targetJob, onAddToJob, onSendParts, showQty, onClose }: Pick<Props, "targetJob" | "onAddToJob" | "onSendParts" | "showQty"> & { onClose: () => void }) {
-  const [d, setD] = useState<Draft>(EMPTY_DRAFT);
-  const [applied, setApplied] = useState<PartFilter>(toFilter(EMPTY_DRAFT));
+  const [d, setD] = useState<Draft>(emptyDraft);
+  const [applied, setApplied] = useState<PartFilter>(() => toFilter(emptyDraft()));
   const [more, setMore] = useState(false);   // extended filters open
   const [facets, setFacets] = useState<PartFacets>({ materials: [], thicknesses: [] });
   const [parts, setParts] = useState<PartSummary[] | null>(null);
@@ -197,7 +198,7 @@ function PartsPanel({ targetJob, onAddToJob, onSendParts, showQty, onClose }: Pi
   }, [applied, run, sort]);
 
   const search = () => { setApplied(toFilter(d)); setRun((n) => n + 1); setSelected(new Set()); };
-  const reset = () => { setD(EMPTY_DRAFT); setApplied(toFilter(EMPTY_DRAFT)); setRun((n) => n + 1); setSelected(new Set()); };
+  const reset = () => { const e = emptyDraft(); setD(e); setApplied(toFilter(e)); setRun((n) => n + 1); setSelected(new Set()); };
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
   const projectList = usePickLists("");
 

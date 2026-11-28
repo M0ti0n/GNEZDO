@@ -21,7 +21,11 @@ export function PanelHead({ title, onClose, children }: { title: string; onClose
 /** A date filter as typed in a panel. Only counts when ticked. */
 export interface DateDraft { on: boolean; mode: DateMode; date: string }
 
-export const EMPTY_DATE: DateDraft = { on: false, mode: "on", date: "" };
+/** Today as yyyy-mm-dd (the computer's day). */
+export const todayIso = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
+
+/** A date filter as a search panel opens (and after Reset): today's date, not ticked (so not used). */
+export const emptyDate = (): DateDraft => ({ on: false, mode: "on", date: todayIso() });
 
 export const dateFilterOf = (d: DateDraft) => (d.on && d.date ? { mode: d.mode, date: d.date } : undefined);
 
