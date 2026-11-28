@@ -606,6 +606,9 @@ function Part3d({ solid, u, st, flip, pick, onPick, measure, onMeasure, edgeA, o
     const draw = () => {
       const dpr = window.devicePixelRatio || 1;
       const W = c.clientWidth, H = c.clientHeight;
+      // the part's pane folded away (or not laid out yet): nothing to draw; a canvas of no size cannot be
+      // drawn from (wireframe's layer of visible lines), and the view failed whenever it was folded
+      if (W < 1 || H < 1) return;
       c.width = W * dpr; c.height = H * dpr;
       const g = c.getContext("2d")!;
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
