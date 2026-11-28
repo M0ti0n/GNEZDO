@@ -69,7 +69,7 @@ export function SheetPropertiesDialog({ sheet, index, machine, onSave, onClose, 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || (e.target as HTMLElement | null)?.closest("input")) return;
-      if (document.querySelector(".rp-dlg")) return;   // the remnant picker on top closes first
+      if (document.querySelector(".rpk-dlg")) return;   // the remnant picker on top closes first
       onClose();
     };
     window.addEventListener("keydown", onKey);

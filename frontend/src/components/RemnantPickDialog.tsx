@@ -49,15 +49,15 @@ export function RemnantPickDialog({ pairs, taken, multi = true, fits, onPick, on
 
   return createPortal(
     <div className="dlg-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="dlg rp-dlg" role="dialog" aria-modal="true" aria-labelledby="rp-title">
+      <div className="dlg rpk-dlg" role="dialog" aria-modal="true" aria-labelledby="rpk-title">
         <header className="dlg-head">
           <div className="dlg-title">
-            <h2 id="rp-title">Add from remnants</h2>
+            <h2 id="rpk-title">Add from remnants</h2>
             <p>{multi ? "Pick one or more saved remnants: each goes into the stock with its pieces." : "Pick the saved remnant for the new sheet."}</p>
           </div>
           <button type="button" className="dlg-close" onClick={onClose} aria-label="Close"><IconClose size={18} /></button>
         </header>
-        <div className="rp-filters">
+        <div className="rpk-filters">
           <input className="field" type="search" value={text} placeholder="Name, material, note …" aria-label="Search the remnants" onChange={(e) => setText(e.target.value)} />
           <label className="chk" title="Only remnants of a material and thickness of the job's part list">
             <input type="checkbox" checked={jobOnly} disabled={!pairs.length} onChange={(e) => setJobOnly(e.target.checked)} /> Job materials only
@@ -67,7 +67,7 @@ export function RemnantPickDialog({ pairs, taken, multi = true, fits, onPick, on
         {error && <p className="state state-error">Could not load the remnants: {error}.</p>}
         {all && !all.length && <p className="state">No remnants saved yet. Save them in a job (Process → Remnant → SAVE) or in Import 2D (Geometry check → Save as remnant).</p>}
         {all && all.length > 0 && !shown.length && <p className="state">{jobOnly ? "No remnants of the job's materials and thicknesses: turn off Job materials only to see all." : "No remnants match."}</p>}
-        <div className="rb-grid rp-grid">
+        <div className="rb-grid rpk-grid">
           {shown.map((r) => {
             const inStock = taken.has(r.name), big = !fits(r);
             return (
@@ -76,8 +76,8 @@ export function RemnantPickDialog({ pairs, taken, multi = true, fits, onPick, on
                 title={inStock ? "In the stock already" : big ? "Bigger than the machine can cut" : r.note || undefined}>
                 <header className="rb-head">
                   <b className="rb-name">{r.name}</b>
-                  {inStock && <span className="rp-tag">In stock</span>}
-                  {!inStock && big && <span className="rp-tag is-bad">Too big</span>}
+                  {inStock && <span className="rpk-tag">In stock</span>}
+                  {!inStock && big && <span className="rpk-tag is-bad">Too big</span>}
                 </header>
                 <div className="rb-frame"><RemnantPicture r={r} />{(r.qty ?? 1) > 1 && <span className="rb-qty">×{r.qty}</span>}</div>
                 <div className="rb-size">{r.widthMm}×{r.heightMm}</div>
