@@ -2992,3 +2992,18 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 
 /* Import list: a file drawn in other units, scaled to mm on request */
 .imp-units { align-self: center; height: 26px; padding: 0 8px; font-size: 12px; white-space: nowrap; margin-right: 4px; }
+
+/* Settings -> About */
+.rule.about { display: grid; gap: 10px; }
+.rule.about h3 { margin: 0; }
+.about-list { display: grid; gap: 6px; margin: 0; }
+.about-list > div { display: grid; grid-template-columns: 110px 1fr; gap: 10px; font-size: 14px; }
+.about-list dt { color: var(--ink-3); }
+.about-list dd { margin: 0; font-weight: 600; color: var(--ink); }
+.about-sha { color: var(--ink-3); font-weight: 400; font-family: var(--font-mono, monospace); font-size: 12.5px; }
+.about-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.about-links { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+.about-links span { color: var(--ink-3); }
+.about-mail { font-weight: 600; font-size: 15px; user-select: all; }
+.about-new { color: var(--green-ink); font-weight: 600; }
+.about-bad { color: #9a5b00; }

@@ -104,6 +104,9 @@ jobs:
       - name: Web pages (database and demo)
         working-directory: frontend
         run: |
+          # Settings -> About: this build's name (the newest "## Build" heading of CHANGES.md), time and commit
+          export VITE_BUILD_NAME="$(grep -m1 '^## Build ' ../CHANGES.md | sed -e 's/^## //' -e 's/ (.*$//')"
+          export VITE_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" VITE_BUILD_SHA="${GITHUB_SHA::7}"
           npm install --no-audit --no-fund
           npx tsc --noEmit
           VITE_USE_API=true npx vite build --outDir ../out/web-db --emptyOutDir
@@ -386,6 +389,8 @@ jobs:
       - name: Web pages
         working-directory: frontend
         run: |
+          export VITE_BUILD_NAME="$(grep -m1 '^## Build ' ../CHANGES.md | sed -e 's/^## //' -e 's/ (.*$//')"
+          export VITE_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" VITE_BUILD_SHA="${GITHUB_SHA::7}"
           npm install --no-audit --no-fund
           VITE_USE_API=true npx vite build --outDir ../out/web-db --emptyOutDir
       - name: GNEZDO for Linux (self-contained)

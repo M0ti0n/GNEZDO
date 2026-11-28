@@ -19,6 +19,7 @@ import { NcOutputSettings } from "../components/NcOutputSettings";
 import { MachineFoldersSettings } from "../components/MachineFoldersSettings";
 import { ToolsSettings } from "../components/ToolsSettings";
 import { AdminSettings } from "../components/AdminSettings";
+import { AboutSettings } from "../components/AboutSettings";
 import type { NestingRules } from "../job/nestRules";
 import { SETTING_PARTS, partSummary, readSettingsFile, settingsFileName, settingsFileText, type SettingsBundle } from "../job/settingsFile";
 import { downloadText } from "../job/ncFile";
@@ -29,7 +30,7 @@ import { DEFAULT_CUT_ORDER, DEFAULT_RAPID_MM_MIN, LINE_CAPABILITIES, ORIGINS, TE
 import { DEFAULT_KEYS, KEY_ACTIONS, RESERVED_KEYS, keyLabel, loadKeys, saveKeys, type KeyAction, type KeyMap } from "../job/manualKeys";
 import { DEFAULT_MANUAL_VIEW, loadManualView, saveManualView, type ManualView } from "../job/manualView";
 
-export type Section = "stock" | "machine" | "rules" | "tools" | "projects" | "personal" | "data" | "log" | "admin";
+export type Section = "stock" | "machine" | "rules" | "tools" | "projects" | "personal" | "data" | "log" | "admin" | "about";
 const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "stock", label: "Stock and remnants", ready: true },
   { id: "machine", label: "Machines", ready: true },
@@ -40,6 +41,7 @@ const SECTIONS: { id: Section; label: string; ready: boolean }[] = [
   { id: "data", label: "Data", ready: true },
   { id: "log", label: "Diagnostic log", ready: true },
   { id: "admin", label: "Administration", ready: true },
+  { id: "about", label: "About", ready: true },
 ];
 
 // The GNEZDO button -> Settings. Stock: the global sheet size and the three default sheet slots.
@@ -143,6 +145,7 @@ export function SettingsPage({ stock, onStock, machines, onMachines, shared, isA
       {section === "tools" && <ToolsSettings isAdmin={isAdmin} />}
       {section === "log" && <LogSettings isAdmin={isAdmin} />}
       {section === "admin" && admin && <AdminSettings me={admin.me} onMe={admin.onMe} />}
+      {section === "about" && <AboutSettings />}
 
       {section === "machine" && (
       <div className="settings-main">
