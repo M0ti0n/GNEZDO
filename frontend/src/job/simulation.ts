@@ -15,6 +15,7 @@ import type { Pt } from "./manualGeom";
 import { reusesPierce } from "./commonPierce";
 import { speedFor, techRowFor, type TechRow } from "./technology";
 import { prePierceSplit } from "./ncProgram";
+import { cutBody } from "./loopCorners";
 
 /** Cutting speed when the Technology row has none [mm/min] */
 const FALLBACK_SPEED = 2000;
@@ -50,7 +51,7 @@ export interface SimTimeline {
 const lenOf = (a: Pt, b: Pt) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 const accOf = (pts: Pt[]) => { const a = [0]; for (let i = 1; i < pts.length; i++) a.push(a[i - 1] + lenOf(pts[i - 1], pts[i])); return a; };
 /** The whole cut of a contour: lead-in, contour, lead-out, as one polyline */
-const cutPts = (c: CutContour): Pt[] => [...c.leadIn, ...(c.leadIn.length ? c.pts.slice(1) : c.pts), ...(c.leadOut.length ? c.leadOut.slice(1) : [])];
+const cutPts = (c: CutContour): Pt[] => { const b = cutBody(c); return [...c.leadIn, ...(c.leadIn.length ? b.slice(1) : b), ...(c.leadOut.length ? c.leadOut.slice(1) : [])]; };
 
 /** rapidMmMin: the machine's rapid speed (rapidOf); prePierce: pierce every contour first; split: pre-pierce with
  *  the first `split` contours a program of their own (ncProgram.prePierceSplit): they are pierced and cut, then the rest */

@@ -3010,3 +3010,7 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 
 /* 3D Extractor -> Measure 2D: take the measurements off */
 .uf-dim-clear { position: absolute; left: 10px; bottom: 10px; height: 30px; padding: 0 12px; font-size: 12.5px; z-index: 2; }
+
+/* Auto cut -> Loop corners */
+.ac-loops { margin: 2px 0 4px; }
+.ac-loops-warn { color: #9a5b00; font-size: 12px; }

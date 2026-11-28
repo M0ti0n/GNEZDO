@@ -38,6 +38,12 @@ export interface TechRow {
   /** Common pierce: the lead-out of each outline started from the pierce point (Process → Common pierce,
    *  To the corner) [mm]; its lead-in is the way from the pierce point. 0 / missing: none */
   cpLeadOutMm?: number;
+  /** Loop corners (Auto cut → Loop corners): at a sharp corner the cut goes on past it this far [mm] ... */
+  loopOutMm?: number;
+  /** ... turns round in a loop of this radius [mm] (0 / missing: no loops) ... */
+  loopRadiusMm?: number;
+  /** ... and comes back in to the corner along the next edge from this far [mm] */
+  loopInMm?: number;
   /** Angled leads: lead-in / lead-out angle to the edge [°]; 0 = the type's default (corner 90°, angled 45°) */
   leadInAngle?: number;
   leadOutAngle?: number;
@@ -155,6 +161,11 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; except?: Techno
   { group: "Common pierce", cols: [
     { key: "cpLeadOutMm", label: "Lead-out", unit: "mm", max: LEAD_MAX },
   ] },
+  { group: "Loop corners", cols: [
+    { key: "loopOutMm", label: "Lead-out", unit: "mm", max: LEAD_MAX },
+    { key: "loopRadiusMm", label: "Radius", unit: "mm", max: LEAD_MAX },
+    { key: "loopInMm", label: "Lead-in", unit: "mm", max: LEAD_MAX },
+  ] },
   { group: "Angled leads", cols: [
     { key: "leadInAngle", label: "In angle", unit: "°", max: 180 },
     { key: "leadOutAngle", label: "Out angle", unit: "°", max: 180 },
@@ -216,7 +227,7 @@ export function speedFor(row: TechRow, c: { kind: string; w: number; h: number; 
 
 export const emptyRow = (thicknessMm: number): TechRow => ({
   thicknessMm, kerfMm: 0, speed: 0, smallHoleSpeed: 0, smallHoleMm: 0, pierceS: 0,
-  holeLeadInMm: 0, holeLeadOutMm: 0, holeGapMm: 0, holeLeadRadiusMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outGapMm: 0, outLeadRadiusMm: 0, cpLeadOutMm: 0,
+  holeLeadInMm: 0, holeLeadOutMm: 0, holeGapMm: 0, holeLeadRadiusMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outGapMm: 0, outLeadRadiusMm: 0, cpLeadOutMm: 0, loopOutMm: 0, loopRadiusMm: 0, loopInMm: 0,
   leadInAngle: 0, leadOutAngle: 0, partGapMm: 0, borderMm: 0,
   remGapInMm: 0, remGapOutMm: 0, remMinDistMm: 0, remLeadInMm: 0, remLeadOutMm: 0,
   midSizeMm: 0, littleSizeMm: 0, prePierce: 0, techProgram: 0, mjGapMm: 1, mjPierce: 1, midSpeed: 0, traceSpeed: 0, quickPierceS: 0,
