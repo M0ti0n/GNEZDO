@@ -51,6 +51,8 @@ export interface NestRequest {
   blockMarginPct?: number;
   /** Rules -> Nesting rules: search step (each round this many times wider than the last) */
   searchGrowth?: number;
+  /** Rules -> Nesting rules: the last sheet's parts into the smallest box at 0,0, or as short as can be along X / Y */
+  lastSheet?: "box" | "x" | "y";
   /** blocks before the nest (Custom when chosen, experimental) */
   blocks?: boolean;
   /** Custom: parts with common cut join into blocks along their marked lines (parts with Common cut ticked) */
@@ -279,6 +281,7 @@ export async function buildRequest(parts: JobPart[], stock: StockSheet[], mode: 
     edgeGapMm: EDGE_GAP_MM,
     blockMarginPct: loadNestingRules().blockMarginPct,
     searchGrowth: loadNestingRules().searchGrowth,
+    lastSheet: loadNestingRules().lastSheet,
     parts: withQty.map((jp, i) => ({
       id: jp.part.id, name: jp.part.name, path: jp.part.path, qty: jp.qty,
       rotations: details[i].rotations, mirror: details[i].mirror,

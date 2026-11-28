@@ -41,7 +41,7 @@ LEVELS = {
                   stop_after=5.0, two_phase=False, variants=1,
                   pre_opts=dict(pair_max_fill=0.75, blocks=False),
                   post_opts=dict(pool_time=1.5, fill_time=1.5, fill_rounds=2, empty=True, empty_first=True, empty_again=False,
-                                 tail=False, pairs=False, chain=False, compact_time=5.0)),
+                                 tail=False, pairs=False, chain=False, compact_time=5.0, compact_max=8.0)),
     # Thorough: about 3 minutes, half nest, half post-pass (a server core is slower than a desktop's);
     # the post-pass time goes mostly to emptying the last sheet (the step that saved the most sheets),
     # fill is capped, the tail gets a short slot. Blocks off: on real jobs they never did better.
@@ -49,20 +49,20 @@ LEVELS = {
                      stop_after=15.0, two_phase=False, variants=2,
                      pre_opts=dict(blocks=False, block_budget=30.0),
                      post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, fill_max=30.0, empty_time=3.0, tail_time=3.0,
-                                    pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
+                                    pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0, compact_max=60.0)),
     # a short try of one way to nest (common cut block sizes, service.py): `budget` seconds in all,
     # most of it nest, the rest a quick post-pass (as Fast)
     "trial": dict(total=None, post=0.0, post_per_sheet=0.0, post_max=0.0, grace=10.0, min_nest=None, max_nest=None,
                   two_phase=False, variants=1,
                   pre_opts=dict(pair_max_fill=0.75, blocks=False),
                   post_opts=dict(pool_time=1.5, fill_time=1.5, fill_rounds=2, empty=True, empty_first=True, empty_again=False,
-                                 tail=False, pairs=False, chain=False, compact_time=3.0)),
+                                 tail=False, pairs=False, chain=False, compact_time=3.0, compact_max=3.0)),
     # the user sets the nest time (or none: until stopped); then the thorough post-pass
     "custom": dict(total=None, two_phase=False, post=30.0, post_per_sheet=2.5, post_max=150.0, grace=60.0, min_nest=None, max_nest=None,
                    variants=2,
                    pre_opts=dict(block_budget=60.0),
                    post_opts=dict(pool_time=3.0, fill_time=3.0, fill_rounds=3, fill_max=30.0, empty_time=3.0, tail_time=3.0,
-                                  pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0)),
+                                  pairs=True, chain_time=2.0, pair_time=5.0, compact_time=8.0, compact_max=60.0)),
 }
 
 
@@ -108,10 +108,10 @@ def pre_options(level: str, base: Options) -> Options:
 FOREVER = 7 * 24 * 3600.0
 
 
-def post_options(level: str, budget: float, quiet: bool = False) -> PostOptions:
+def post_options(level: str, budget: float, quiet: bool = False, last_goal: str = "box") -> PostOptions:
     if level not in LEVELS:
         raise SystemExit(f"level must be one of {', '.join(LEVELS)}, not {level}")
-    return PostOptions(budget=budget, quiet=quiet, **LEVELS[level]["post_opts"])
+    return PostOptions(budget=budget, quiet=quiet, last_goal=last_goal, **LEVELS[level]["post_opts"])
 
 
 class NestError(Exception):
@@ -170,7 +170,7 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
             minutes: float | None = None, stop_after: float | None = None,
             should_stop: Callable[[], bool] | None = None,
             on_progress: Callable[[dict], None] | None = None, variants: int = 1,
-            growth: float | None = None, budget: float | None = None) -> dict:
+            growth: float | None = None, budget: float | None = None, last_goal: str = "box") -> dict:
     """The whole nesting job within the level's time budget: pre-pass, nest, post-pass.
 
     level custom: the nest runs `minutes` (None: until stopped). stop_after: seconds with no
@@ -266,16 +266,21 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
         say({"stage": "improve"})
         if r.get("stopped"):
             # stopped by hand: only the last sheet is compacted, quickly
-            opts = PostOptions(fill=False, tail=False, pairs=False, chain=False, compact_time=5.0, budget=6.0, quiet=quiet)
+            opts = PostOptions(fill=False, tail=False, pairs=False, chain=False, compact_time=5.0, budget=6.0, quiet=quiet,
+                               last_goal=last_goal, compact_max=6.0)
         else:
             n = sum(int(b.get("copies", 1)) for b in r["solution"].get("bins", []))
-            opts = post_options(level, 0.3 * budget if level == "trial" else post_budget(level, n), quiet)
+            opts = post_options(level, 0.3 * budget if level == "trial" else post_budget(level, n), quiet, last_goal)
+            if level == "thorough":
+                # the nest ended early (no better layout for a while): its time left goes to the post-pass
+                opts.budget += max(0.0, nest_t - float(r.get("time") or nest_t))
         opts.workers = max(1, pre_opts.workers // n_var)
         pp = PostPass(pre, r["solution"], binary, opts, pool=small)
         sol = pp.run()
         m = metrics(inst, expand(sol, mapping)) if sol.get("bins") else {}
+        last = pp.goal_score(pp.sheets[-1].items) if pp.sheets else 10.0 ** 18
         return {"r": r, "sol": sol, "log": pp.log, "nest_done": nest_done,
-                "key": (m.get("sheets", 10 ** 9), m.get("sheet_equivalents", 10.0 ** 9))}
+                "key": (m.get("sheets", 10 ** 9), last, m.get("sheet_equivalents", 10.0 ** 9))}
 
     if n_var == 1:
         results = [variant(0)]
@@ -295,7 +300,7 @@ def run_job(inst: dict, binary: str, level: str, pre_opts: Options, outdir: str,
     if n_var > 1:
         log = [{"step": "variants", "seconds": 0.0, "moved": 0, "chosen": k + 1,
                 "results": [{"variant": j + 1, "args": " ".join(VARIANTS[j]) or "default",
-                             "sheets": x["key"][0], "equiv": x["key"][1]} for j, x in done]}] + log
+                             "sheets": x["key"][0], "equiv": x["key"][2]} for j, x in done]}] + log
     total = time.perf_counter() - t0
     dump(pre, os.path.join(outdir, "instance_pre.json"))
     dump(mapping, os.path.join(outdir, "composites.json"))

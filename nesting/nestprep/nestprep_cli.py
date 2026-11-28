@@ -138,7 +138,7 @@ def cmd_compare(a):
         # the whole job again, as GNEZDO would run it: pre-pass + nest + post-pass in the level's time
         out = os.path.join(a.outdir, a.post)
         os.makedirs(out, exist_ok=True)
-        job = run_job(inst, binary, a.post, opts_from(a), out, a.quiet)
+        job = run_job(inst, binary, a.post, opts_from(a), out, a.quiet, last_goal="x")
         sheets = expand(job["solution"], job["mapping"])
         v = validate(inst, sheets)
         m = metrics(inst, sheets)
@@ -158,7 +158,8 @@ def cmd_nest(a):
     inst = load(a.instance)
     os.makedirs(a.outdir, exist_ok=True)
     try:
-        job = run_job(inst, psrun.find_binary(a.solver), a.level, opts_from(a), a.outdir, a.quiet, variants=a.variants)
+        job = run_job(inst, psrun.find_binary(a.solver), a.level, opts_from(a), a.outdir, a.quiet, variants=a.variants,
+                      last_goal="x")
     except NestError as e:
         print(json.dumps({"valid": False, "error": str(e)}))
         sys.exit(2)
@@ -185,7 +186,7 @@ def cmd_post(a):
     nested = load(a.nested) if a.nested else inst
     mp = load(a.mapping) if a.mapping else None
     pp = PostPass(nested, load(a.solution), psrun.find_binary(a.solver),
-                  post_options(a.level, a.budget, a.quiet))
+                  post_options(a.level, a.budget, a.quiet, "x"))
     pp.opt.gap = a.gap
     new = pp.run()
     dump(new, a.output)

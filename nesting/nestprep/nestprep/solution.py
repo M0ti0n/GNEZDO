@@ -146,14 +146,15 @@ def metrics(instance: dict, sheets: list[dict]) -> dict:
     for sh in sheets:
         bx0, by0, bx1, by1 = g.bin_rect(sh["bin_type"])
         W = bx1 - bx0
-        xmax = 0.0
+        xmax = ymax = 0.0
         a = 0.0
         for p in sh["parts"]:
             for ps in g.placed(p["orig_type"], p["xf"]):
                 xmax = max(xmax, ps.bbox[2])
+                ymax = max(ymax, ps.bbox[3])
                 a += ps.area
         area_parts += a
-        per.append({"bin_area": (bx1 - bx0) * (by1 - by0), "xmax": xmax, "W": W,
+        per.append({"bin_area": (bx1 - bx0) * (by1 - by0), "xmax": xmax, "ymax": ymax, "W": W,
                     "parts_area": a, "parts": len(sh["parts"])})
     n = len(per)
     equiv = (n - 1) + (per[-1]["xmax"] / per[-1]["W"] if n else 0)
@@ -162,6 +163,8 @@ def metrics(instance: dict, sheets: list[dict]) -> dict:
         "sheets": n,
         "sheet_equivalents": round(equiv, 3),
         "last_sheet_xmax": round(per[-1]["xmax"], 1) if n else 0,
+        # how far the last sheet's parts reach from the engine's 0,0 (the machine's 0,0) along X and Y
+        "last_sheet_ymax": round(per[-1]["ymax"], 1) if n else 0,
         "utilisation_full_sheets": [round(x["parts_area"] / x["bin_area"], 3) for x in per],
         "parts_in_holes": nested_in_holes,
     }

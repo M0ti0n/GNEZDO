@@ -3,7 +3,7 @@ import { useState } from "react";
 import { NumInput } from "../components/NumInput";
 import { DEFAULT_RULES, ROTATIONS, SPLINE_TOL_DEFAULT, SPLINE_TOL_MAX, SPLINE_TOL_MIN, splineTolOf, type ImportRules } from "../import/rules";
 import { ColourLists } from "./ColourLists";
-import { DEFAULT_NESTING_RULES, SEARCH_GROWTH_MAX, SEARCH_GROWTH_MIN, type NestingRules } from "../job/nestRules";
+import { DEFAULT_NESTING_RULES, SEARCH_GROWTH_MAX, SEARCH_GROWTH_MIN, type LastSheetGoal, type NestingRules } from "../job/nestRules";
 
 type Tab = "import" | "nesting";
 
@@ -196,6 +196,18 @@ function NestingRulesPane({ r, set, shared }: { r: NestingRules; set: (n: Nestin
 
       <section className="rule">
         <h3>Automatic nest</h3>
+        <label className="rule-field">
+          <span>Last sheet</span>
+          <select className="field" value={r.lastSheet} aria-label="Last sheet" onChange={(e) => set({ ...r, lastSheet: e.target.value as LastSheetGoal })}>
+            <option value="box">Smallest box at 0,0</option>
+            <option value="x">Shortest along X</option>
+            <option value="y">Shortest along Y</option>
+          </select>
+        </label>
+        <p className="rule-help">How the parts of the last sheet (or of the only one) are packed once the nest is done. Smallest box at 0,0: into
+          the smallest rectangle from the machine's 0,0, so the rest of the sheet stays usable both ways (as Arrange packs). Shortest along
+          X: as short as they can be along X, over the sheet's whole width, leaving a strip of the full width. Shortest along Y: the same
+          along Y. Thorough gives this the time its nest did not need.</p>
         <label className="rule-field">
           <span>Search step</span>
           <span className="rule-num">

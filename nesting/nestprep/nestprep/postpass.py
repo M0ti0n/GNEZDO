@@ -15,7 +15,9 @@ Steps (each optional, each with its own time limit; the time for the compaction 
 3. pairs    Two neighbouring sheets are nested again together: as much as possible on the first,
             the rest must fit on the second. Kept only when it is better. Runs before the chain,
             from the last pair forward.
-Last, the last sheet is compacted to the left, so what is left of it is one clean remnant.
+Last, the last sheet is compacted (last_goal): into the smallest box at the machine's 0,0 (default),
+or as short as it can be along X or Y. For the box, bands of the sheet are tried (the parts kept
+below a line across the sheet, as short as they can be along it), both ways, the best kept.
 
 Every result comes from PackingSolver; the caller validates the final layout independently.
 """
@@ -58,6 +60,11 @@ class PostOptions:
     chain_rounds: int = 4
     pair_time: float = 8.0       # per solve (two per pair)
     compact_time: float = 5.0
+    # the last sheet, compacted: "box" the smallest box from the machine's 0,0 around its parts (the
+    # parts kept in the corner: the rest of the sheet stays usable both ways), "x" as short as it can
+    # be along X (the rest a strip the sheet's full width), "y" along Y
+    last_goal: str = "box"
+    compact_max: float = 8.0     # the compaction takes the time left of the post-pass, up to this
     # "anytime" uses every second it is given; "not-anytime-deterministic" returns when its search
     # is done (usually well inside the limit)
     solve_mode: str = "anytime"
@@ -728,16 +735,127 @@ class PostPass:
                 changed += 1
         self.note("pairs", time.perf_counter() - t, changed)
 
+    def item_box(self, p: Placed) -> tuple[float, float]:
+        bb = [geom.shape_to_poly(geom.transform_shape(s, p.xf)).bbox for s in self.shapes(p.id)]
+        return max(b[2] for b in bb), max(b[3] for b in bb)
+
+    def goal_score(self, items: list[Placed]) -> float:
+        """How good a layout of the last sheet is by last_goal (smaller is better): from the engine's
+        0,0 (the machine's 0,0 after the flips), the box's area, or how far it reaches along X or Y."""
+        if not items:
+            return 0.0
+        xs, ys = zip(*(self.item_box(p) for p in items))
+        if self.opt.last_goal == "x":
+            return max(xs) + 1e-6 * max(ys)
+        if self.opt.last_goal == "y":
+            return max(ys) + 1e-6 * max(xs)
+        return max(xs) * max(ys)
+
     def step_compact(self):
         t = time.perf_counter()
         last = self.sheets[-1]
         ids = Counter(p.id for p in last.items)
-        new = self.solve("open-dimension-x", last.bin_type, [], ids, max(1.0, min(self.opt.compact_time, self.left_total())))
+        if not ids:
+            return
+        goal = self.opt.last_goal
+        T = max(1.0, min(self.opt.compact_max, max(self.opt.compact_time, self.left_total())))
+        b = self.inst["bin_types"][last.bin_type]
+        bx0, by0, bx1, by1 = geom.shape_to_poly(b).bbox if "elements" in b else (0.0, 0.0, float(b["width"]), float(b["height"]))
+        need = sum(self.area(p.id) for p in last.items)
+
+        def band(axis: str, at: float) -> dict:
+            """The sheet with everything past `at` along `axis` taken (a defect), so the parts stay below it."""
+            bj = self.bin_json(last.bin_type, [])
+            r = [(bx0 - 1, at), (bx1 + 1, at), (bx1 + 1, by1 + 1), (bx0 - 1, by1 + 1)] if axis == "y" else \
+                [(at, by0 - 1), (bx1 + 1, by0 - 1), (bx1 + 1, by1 + 1), (at, by1 + 1)]
+            bj["defects"] = list(bj.get("defects", [])) + [{"type": "general", "elements": geom.polygon_to_elements(geom.ccw(np.array(r, dtype=float)))}]
+            return bj
+
+        def run(job, te: float):
+            objective, cut = job
+            bj = band(*cut) if cut else None
+            new = self.solve(objective, last.bin_type, [], ids, te, bin_json=bj)
+            return new if Counter(p.id for p in new) == ids else None
+
+        def jobs_for(fracs_y, fracs_x):
+            out = []
+            for f in fracs_y:
+                at = by0 + f * (by1 - by0)
+                if f >= 1.0:
+                    out.append(("open-dimension-x", None))
+                elif (at - by0) * (bx1 - bx0) > 1.15 * need:
+                    out.append(("open-dimension-x", ("y", at)))
+            for f in fracs_x:
+                at = bx0 + f * (bx1 - bx0)
+                if f >= 1.0:
+                    out.append(("open-dimension-y", None))
+                elif (at - bx0) * (by1 - by0) > 1.15 * need:
+                    out.append(("open-dimension-y", ("x", at)))
+            return out
+
+        def round_of(jobs, tt: float):
+            if not jobs:
+                return []
+            w = max(1, self.opt.workers)
+            te = max(1.0, min(10.0, tt * w / len(jobs)))
+            with ThreadPoolExecutor(max_workers=w) as ex:
+                return [(j, r) for j, r in zip(jobs, ex.map(lambda j: run(j, te), jobs)) if r]
+
+        best, best_s, best_job = last.items, self.goal_score(last.items), None
+        log = []
+
+        def keep(found):
+            nonlocal best, best_s, best_job
+            for j, r in found:
+                xs, ys = zip(*(self.item_box(p) for p in r))
+                log.append({"band": [j[1][0], round(j[1][1])] if j[1] else None, "box": [round(max(xs)), round(max(ys))]})
+                s_ = self.goal_score(r)
+                if s_ < best_s - 1.0:
+                    best, best_s, best_job = r, s_, j
+        if goal == "x":
+            tried = round_of([("open-dimension-x", None)], T)
+        elif goal == "y":
+            tried = round_of([("open-dimension-y", None)], T)
+        else:
+            # bands across the sheet both ways (and the whole sheet): the parts kept below a line, as
+            # short as they can be along it
+            fr = [1.0, 0.8, 0.65, 0.5, 0.4, 0.32, 0.25, 0.2, 0.15] if T >= 20 else [1.0, 0.65, 0.45, 0.32, 0.22, 0.15]
+            first = round_of(jobs_for(fr, fr[1:]), 0.45 * T)
+            keep(first)
+            # then the best few, squeezed in turn: the band moved to where they end along one axis
+            # (they may get shorter along the other), and a little inside it
+            def box_of(r):
+                xs, ys = zip(*(self.item_box(p) for p in r))
+                return max(xs), max(ys)
+            pool = sorted([r for _, r in first], key=self.goal_score)
+            each = max(1.0, min(5.0, 0.06 * T))       # per solve of a squeeze
+            seen = set()
+            while pool and T - (time.perf_counter() - t) > 1.0:
+                jobs = []
+                for r in pool[:3]:
+                    X, Y = box_of(r)
+                    for job in [("open-dimension-x", ("y", Y + 0.5)), ("open-dimension-y", ("x", X + 0.5))] + \
+                               [j for f in (0.97, 0.9) for j in (("open-dimension-x", ("y", by0 + f * (Y - by0))),
+                                                                ("open-dimension-y", ("x", bx0 + f * (X - bx0))))]:
+                        k = (job[1][0], round(job[1][1]))
+                        if k not in seen and (job[1][1] - (by0 if job[1][0] == "y" else bx0)) * ((bx1 - bx0) if job[1][0] == "y" else (by1 - by0)) > 1.05 * need:
+                            seen.add(k)
+                            jobs.append(job)
+                if not jobs:
+                    break
+                before = best_s
+                w = max(1, self.opt.workers)
+                found = round_of(jobs, max(1.0, min(T - (time.perf_counter() - t), each * len(jobs) / w)))
+                keep(found)
+                pool = sorted([r for _, r in found if self.goal_score(r) < before - 1.0], key=self.goal_score)
+            tried = []
+        keep(tried)
         done = 0
-        if Counter(p.id for p in new) == ids and self.xmax(Sheet(last.bin_type, new)) < self.xmax(last) - 1.0:
-            self.sheets[-1] = Sheet(last.bin_type, new)
+        if best is not last.items:
+            self.sheets[-1] = Sheet(last.bin_type, best)
             done = 1
         self.note("compact", time.perf_counter() - t, done)
+        self.log[-1]["tries"] = log
 
     def push_all(self) -> int:
         """Every sheet that changed since it was last pushed: its parts towards 0,0 (the free
