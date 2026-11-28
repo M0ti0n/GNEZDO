@@ -131,6 +131,9 @@ export function startNear(ctx: LeadCtx, lp: Pt[], p: Pt, type: LeadType | null, 
   return { at: onArc(lp, q.edge, q.at), edge: q.edge, vertex: false, t: unit(sub(b, a)) };
 }
 
+/** How far from a click a corner lead type looks for a sharp corner [mm]. */
+export const CORNER_SNAP_MM = 25;
+
 export type LeadOp =
   | { op: "move"; to: Pt }
   | { op: "set"; type: LeadType; spec: LeadSpec }
@@ -167,7 +170,11 @@ export function editLead(ctx: LeadCtx, k: number, op: LeadOp, all: boolean, live
     const at: Pt = op.op === "move" ? add(a, mul(sub(b, a), q0.t)) : c.pts[0];
     const cur = leadOf(ctx, c);
     let type: LeadType = op.op === "set" ? op.type : cur.type;
-    let s = startNear(ctx, L.lp, at, op.op === "reset" ? null : type, side, op.op === "reset" ? 0.05 : snap);
+    // a corner type (in line, at an angle, corner in / gap out) needs a sharp corner: the nearest one within
+    // CORNER_SNAP_MM of the click, so a click beside the corner still puts it there (else it fell back to
+    // the type for straight stretches whenever the click missed the corner by more than 3 mm)
+    const near = op.op === "reset" ? 0.05 : cornerOnly(type) ? Math.max(snap, CORNER_SNAP_MM) : snap;
+    let s = startNear(ctx, L.lp, at, op.op === "reset" ? null : type, side, near);
     if (typeof s === "string" && op.op === "move") {
       // a corner type taken somewhere else: the automatic cut's type for there, its values
       s = startNear(ctx, L.lp, at, null, side, snap);

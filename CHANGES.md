@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Process → Lead in / out: a corner type (Corner, in line; Corner, at an angle; Corner in, gap out) goes to the nearest sharp corner within 25 mm of the click, when moved or applied. Before, a click more than 3 mm from the corner made it fall back to the type for straight stretches (often Perpendicular). The other types still snap to a sharp corner within 3 mm only.
 - Job search, Parts and Remnants search panels: the Created and Modified dates now start at today's date with their boxes not ticked (not used until ticked). Before, the fields were empty and the calendar had to be paged from nothing. Reset sets them back the same way.
 - Process open: the parts not processed yet show their trace lines (and open cut lines) again, as in Manual nest. They were hidden for every part while Process was open; a processed part still shows them as part of its cut path.
 - Process → Remnant → TRIM: a part sticking out a little past the others (a band shorter than the smallest edge) no longer moves the remnant's edge along the whole free side. Before, the free rows beyond it were all given that part's level, so a long cut ran along the sheet's edge and a strip the whole length of the sheet was lost. Now the short band can take the level of the step next to it instead (that step grows by less than the smallest edge); of the two ways, the one leaving the bigger remnant is kept.
