@@ -386,27 +386,41 @@ function trimRegion(g: Grid, dil: Uint8Array, s: RemnantSettings): Region | null
   for (let v = 0; v < nv; v++) if (f[v] > 0 && nu - f[v] < minE) f[v] = nu;
   // runs of one level; a run too short, or a step too small, goes up to its neighbour
   type Run = { a: number; b: number; f: number };
-  let runs: Run[] = [];
-  for (let v = 0; v < nv; v++) { const l = runs[runs.length - 1]; if (l && l.f === f[v]) l.b = v + 1; else runs.push({ a: v, b: v + 1, f: f[v] }); }
-  while (runs.length > 1) {
-    // the shortest offending run first
-    let k = -1, worst = Infinity;
-    runs.forEach((r, i) => {
-      const short = r.b - r.a < minE;
-      const smallStep = (i > 0 && Math.abs(runs[i - 1].f - r.f) < minE) || (i < runs.length - 1 && Math.abs(runs[i + 1].f - r.f) < minE);
-      if ((short || smallStep) && r.b - r.a < worst) { worst = r.b - r.a; k = i; }
-    });
-    if (k < 0) break;
-    const r = runs[k];
-    const nb = [runs[k - 1], runs[k + 1]].filter(Boolean) as Run[];
-    // merge with the neighbour nearest in level, at the higher level (never into the parts)
-    const m = nb.reduce((a, b) => (Math.abs(a.f - r.f) <= Math.abs(b.f - r.f) ? a : b));
-    const lv = Math.max(m.f, r.f);
-    const merged = { a: Math.min(m.a, r.a), b: Math.max(m.b, r.b), f: lv };
-    runs = [...runs.filter((x) => x !== m && x !== r), merged].sort((p, q) => p.a - q.a);
-    // neighbours of the same level join
-    runs = runs.reduce<Run[]>((o, x) => { const l = o[o.length - 1]; if (l && l.f === x.f) l.b = x.b; else o.push({ ...x }); return o; }, []);
-  }
+  const start: Run[] = [];
+  for (let v = 0; v < nv; v++) { const l = start[start.length - 1]; if (l && l.f === f[v]) l.b = v + 1; else start.push({ a: v, b: v + 1, f: f[v] }); }
+  // a run is merged with a neighbour, at the higher level (never into the parts). Which neighbour:
+  // the one nearest in level, or the one whose merge loses the least remnant (raising a long neighbour
+  // to a short run's level cuts a long line along all of it: a part sticking out a little past the
+  // others, and the free rows beyond it all lost; raising the short run loses only its own few rows).
+  // Both ways are worked out; the one leaving the bigger remnant is kept.
+  const mergeRuns = (byLoss: boolean): Run[] => {
+    let runs = start.map((r) => ({ ...r }));
+    while (runs.length > 1) {
+      // the shortest offending run first
+      let k = -1, worst = Infinity;
+      runs.forEach((r, i) => {
+        const short = r.b - r.a < minE;
+        const smallStep = (i > 0 && Math.abs(runs[i - 1].f - r.f) < minE) || (i < runs.length - 1 && Math.abs(runs[i + 1].f - r.f) < minE);
+        if ((short || smallStep) && r.b - r.a < worst) { worst = r.b - r.a; k = i; }
+      });
+      if (k < 0) break;
+      const r = runs[k];
+      const nb = [runs[k - 1], runs[k + 1]].filter(Boolean) as Run[];
+      const lost = (m: Run) => (m.f < r.f ? (r.f - m.f) * (m.b - m.a) : (m.f - r.f) * (r.b - r.a));
+      const near = (m: Run) => Math.abs(m.f - r.f);
+      const m = nb.reduce((x, y) => (byLoss
+        ? (lost(x) < lost(y) || (lost(x) === lost(y) && near(x) <= near(y)))
+        : near(x) <= near(y)) ? x : y);
+      const merged = { a: Math.min(m.a, r.a), b: Math.max(m.b, r.b), f: Math.max(m.f, r.f) };
+      runs = [...runs.filter((x) => x !== m && x !== r), merged].sort((p, q) => p.a - q.a);
+      // neighbours of the same level join
+      runs = runs.reduce<Run[]>((o, x) => { const l = o[o.length - 1]; if (l && l.f === x.f) l.b = x.b; else o.push({ ...x }); return o; }, []);
+    }
+    return runs;
+  };
+  const left = (rs: Run[]) => rs.reduce((t, r) => t + (nu - r.f) * (r.b - r.a), 0);
+  const byLevel = mergeRuns(false), byLoss = mergeRuns(true);
+  const runs = left(byLoss) >= left(byLevel) ? byLoss : byLevel;
   // the outline (u, v in cells): along each run, a 45° corner instead of a step where it is clear
   const pts: [number, number][] = [];
   const clear = (u0: number, u1: number, v0: number, v1: number, rising: boolean) => {
