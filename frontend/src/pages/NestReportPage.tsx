@@ -200,11 +200,7 @@ function ReportPage({ page, no, total, job, sheet, rep, at }: {
           <F k="Remnant (kg)" v={fmtKg(st.remnantKg)} /><F k="Remnant (%)" v={st.remnantPct.toFixed(0)} /><F k="Unused (%)" v={st.unusedPct.toFixed(0)} />
         </div>
         <SheetDrawing sheet={sheet} rep={rep} />
-      </>) : (
-        <div className="rp-grid rp-grid-more">
-          <F k="Job file name" v={job.title} /><F k="Sheet No" v={`${page.sheet + 1}`} /><F k="Qty parts" v={`${qty}`} />
-        </div>
-      )}
+      </>) : null /* a page more of the same sheet: its head (job_sheet, page) and the parts only */}
       <table className="rp-table">
         <thead><tr><th>ID</th><th>Part info</th><th className="num">Qty</th><th className="num">Weight<br /><small>kg</small></th><th className="num">Cut time<br /><small>m:s</small></th><th>Part</th></tr></thead>
         <tbody>
