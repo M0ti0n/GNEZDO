@@ -1197,7 +1197,6 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
   const dim = (m: Measure) => {
     if (m.kind !== "distance") return null;
     const a: V2 = [m.from.x, m.from.y], b: V2 = [m.to.x, m.to.y];
-    const xy = picks.every((k) => k.kind !== "line");
     return (
       <g className="uf-dim">
         {m.ext.map(([p, q], i) => <path key={i} className="is-ext" d={`M${p.x} ${y(p.y)} L${q.x} ${y(q.y)}`} />)}
@@ -1205,7 +1204,7 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
         <circle cx={a[0]} cy={y(a[1])} r={r * 0.75} /><circle cx={b[0]} cy={y(b[1])} r={r * 0.75} />
         {/* the halo in drawing units too, so it stays round the letters at any zoom */}
         <text x={(a[0] + b[0]) / 2} y={y((a[1] + b[1]) / 2) - tf * 0.6} fontSize={tf} textAnchor="middle" style={{ strokeWidth: 3 * upp }}>
-          {fmt(m.value)}{xy ? ` (X ${fmt(Math.abs(b[0] - a[0]))}, Y ${fmt(Math.abs(b[1] - a[1]))})` : ` · ${m.note}`}</text>
+          {fmt(m.value)}</text>
       </g>
     );
   };
