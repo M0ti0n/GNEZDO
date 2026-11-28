@@ -35,6 +35,9 @@ export interface TechRow {
   outGapMm?: number;
   /** Arc leads on the outline: radius [mm] */
   outLeadRadiusMm: number;
+  /** Common pierce: the lead-out of each outline started from the pierce point (Process → Common pierce,
+   *  To the corner) [mm]; its lead-in is the way from the pierce point. 0 / missing: none */
+  cpLeadOutMm?: number;
   /** Angled leads: lead-in / lead-out angle to the edge [°]; 0 = the type's default (corner 90°, angled 45°) */
   leadInAngle?: number;
   leadOutAngle?: number;
@@ -149,6 +152,9 @@ export const TECH_COLUMNS: { group: string; only?: Technology[]; except?: Techno
     { key: "outGapMm", label: "Gap", unit: "mm", min: -1000 },
     { key: "outLeadRadiusMm", label: "Arc radius", unit: "mm" },
   ] },
+  { group: "Common pierce", cols: [
+    { key: "cpLeadOutMm", label: "Lead-out", unit: "mm", max: LEAD_MAX },
+  ] },
   { group: "Angled leads", cols: [
     { key: "leadInAngle", label: "In angle", unit: "°", max: 180 },
     { key: "leadOutAngle", label: "Out angle", unit: "°", max: 180 },
@@ -210,7 +216,7 @@ export function speedFor(row: TechRow, c: { kind: string; w: number; h: number; 
 
 export const emptyRow = (thicknessMm: number): TechRow => ({
   thicknessMm, kerfMm: 0, speed: 0, smallHoleSpeed: 0, smallHoleMm: 0, pierceS: 0,
-  holeLeadInMm: 0, holeLeadOutMm: 0, holeGapMm: 0, holeLeadRadiusMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outGapMm: 0, outLeadRadiusMm: 0,
+  holeLeadInMm: 0, holeLeadOutMm: 0, holeGapMm: 0, holeLeadRadiusMm: 0, outLeadInMm: 0, outLeadOutMm: 0, outGapMm: 0, outLeadRadiusMm: 0, cpLeadOutMm: 0,
   leadInAngle: 0, leadOutAngle: 0, partGapMm: 0, borderMm: 0,
   remGapInMm: 0, remGapOutMm: 0, remMinDistMm: 0, remLeadInMm: 0, remLeadOutMm: 0,
   midSizeMm: 0, littleSizeMm: 0, prePierce: 0, techProgram: 0, mjGapMm: 1, mjPierce: 1, midSpeed: 0, traceSpeed: 0, quickPierceS: 0,

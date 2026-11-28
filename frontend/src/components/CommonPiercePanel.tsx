@@ -7,6 +7,7 @@ import type { Machine, Origin } from "../job/machine";
 import { diag } from "../job/diag";
 import { sheetMaterial, type Pt } from "../job/manualGeom";
 import type { NestedSheet } from "../job/nest";
+import { techRowFor } from "../job/technology";
 import { NumInput } from "./NumInput";
 import type { CutMode } from "./ManualNest";
 import toolCommonPierce from "../shell/jobtools/tool-commonPierce.png";
@@ -79,7 +80,9 @@ export function useCommonPierce({ index, single, sheets, parts, machine, origin,
     return typeof r === "string" ? r : r.cut.contours[k];
   };
   const solid = useMemo(() => (sheet ? sheetMaterial(sheet, paths) : undefined), [sheet, paths]);
-  const job = (id?: string) => ({ from: sheet ? originPoint(sheet, origin) : ([0, 0] as Pt), name: nameOf, breakCut, solid, ...(id ? { id } : {}) });
+  // to the corner: the lead-out of the Technology row (Common pierce → Lead-out)
+  const cpOut = useMemo(() => (sheet ? techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row.cpLeadOutMm ?? 0 : 0), [sheet, machine]);
+  const job = (id?: string) => ({ from: sheet ? originPoint(sheet, origin) : ([0, 0] as Pt), name: nameOf, breakCut, solid, leadOut: cpOut, ...(id ? { id } : {}) });
 
   const apply = (r: ReturnType<typeof commonPierce>, what: string) => {
     if (typeof r === "string") { setMsg({ text: r, bad: true }); return false; }
