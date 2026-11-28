@@ -412,17 +412,22 @@ export interface SheetStats {
   sheetKg: number; partsKg: number;
   /** among the parts, inside the cut area */
   scrapKg: number;
-  /** reusable: the remnant worked out in Process → Remnant (its pieces not discarded), else the strip
-   *  after the parts (the sheet's length past the cut area) */
+  /** reusable: the remnant worked out in Process → Remnant (its pieces not discarded), else the sheet
+   *  outside the cut area: the strip past it along X (the sheet's full width) and the strip beside it
+   *  along Y (as long as the cut area), each when at least MIN_REMNANT_STRIP_MM wide */
   remnantKg: number; remnantPct: number;
-  /** the remnant is Process → Remnant's (else the strip) */
+  /** the remnant is Process → Remnant's (else the strips) */
   remnantProcessed: boolean;
-  /** the rest: beside the cut area, too narrow for a remnant strip of the full width */
+  /** the rest outside the cut area and the remnant: strips too narrow to be a remnant */
   unusedKg: number; unusedPct: number;
   /** cut length [m] and pierces (one per closed contour) */
   cutM: number; pierces: number;
   pieces: number;
 }
+
+/** A strip beside the cut area narrower than this is not counted as remnant [mm] (Process → Remnant's
+ *  default shortest remnant edge). */
+export const MIN_REMNANT_STRIP_MM = 100;
 
 /** processedA: the area of Process → Remnant's pieces (remnantArea in remnant.ts); null / missing: none */
 export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string; areaMm2: number }>, origin: Origin = "top-left", processedA: number | null = null): SheetStats {
@@ -448,7 +453,11 @@ export function sheetStats(sheet: NestedSheet, parts: Map<string, { path: string
   const shoelace = (lp: [number, number][]) => Math.abs(lp.reduce((a, p, i) => { const q = lp[(i + 1) % lp.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
   const sheetA = sheet.outline?.length ? shoelace(sheet.outline[0]) - sheet.outline.slice(1).reduce((a, lp) => a + shoelace(lp), 0) : L * W;
   const cutA = cutX * cutY;
-  const remnantA = processedA !== null ? Math.min(processedA, Math.max(0, sheetA - partsArea)) : Math.min((L - cutX) * W, Math.max(0, sheetA - cutA));
+  // no Process → Remnant: the sheet outside the cut area (the parts kept in the corner at 0,0 leave an L of
+  // two strips: past the cut area along X, the sheet's full width; beside it along Y, the cut area's length)
+  const stripX = L - cutX >= MIN_REMNANT_STRIP_MM ? (L - cutX) * W : 0;
+  const stripY = W - cutY >= MIN_REMNANT_STRIP_MM ? cutX * (W - cutY) : 0;
+  const remnantA = processedA !== null ? Math.min(processedA, Math.max(0, sheetA - partsArea)) : Math.min(stripX + stripY, Math.max(0, sheetA - cutA));
   const unusedA = Math.max(0, sheetA - cutA - remnantA);
   return {
     cutX, cutY, pieces: sheet.parts.length,

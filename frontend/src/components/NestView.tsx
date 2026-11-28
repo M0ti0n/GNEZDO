@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { JobPart } from "../api/types";
 import { IconClose } from "./Icons";
 import {
-  NEST_MODE_LABEL, bestFoundAt, countsOf, hms, isFinished, partColor, sheetProblems, sheetStats,
+  MIN_REMNANT_STRIP_MM, NEST_MODE_LABEL, bestFoundAt, countsOf, hms, isFinished, partColor, sheetProblems, sheetStats,
   type NestMode, type NestedSheet, type Solution,
 } from "../job/nest";
 import { gapsFor, type Machine, type Origin } from "../job/machine";
@@ -546,7 +546,7 @@ function SolutionInfo({ sheets, parts, jobParts, origin }: {
   return (
     <>
       <table className="info-table">
-        <thead><tr><th>Material</th><th className="num">Sheets</th><th className="num" title="Nesting efficiency: weight of the parts / weight of the sheets used (the remnant strips not counted)">Eff.</th><th className="num" title="Weight of the sheets">Sheet kg</th><th className="num" title="Weight of the parts">Part kg</th></tr></thead>
+        <thead><tr><th>Material</th><th className="num">Sheets</th><th className="num" title="Nesting efficiency: weight of the parts / weight of the sheets used (the remnants not counted)">Eff.</th><th className="num" title="Weight of the sheets">Sheet kg</th><th className="num" title="Weight of the parts">Part kg</th></tr></thead>
         <tbody>
           {data.list.map((g) => (
             <tr key={g.label}>
@@ -567,14 +567,14 @@ function NestInfo({ sheet, parts, origin }: { sheet: NestedSheet; parts: Map<str
   const st = useMemo(() => sheetStats(sheet, parts, origin, remnantArea(sheet)), [sheet, parts, origin]);
   const used = st.sheetKg - st.remnantKg;
   const rows: [string, string, string?][] = [
-    ["Efficiency (%)", (used > 0 ? (100 * st.partsKg) / used : 0).toFixed(1), `Weight of the parts / weight of the sheet without the remnant${st.remnantProcessed ? "" : " strip"}`],
+    ["Efficiency (%)", (used > 0 ? (100 * st.partsKg) / used : 0).toFixed(1), `Weight of the parts / weight of the sheet without the remnant${st.remnantProcessed ? "" : " (the strips beside the cut area)"}`],
     ["Cut Area XY (mm)", `${Math.round(st.cutX)} x ${Math.round(st.cutY)}`, "From the origin corner to the farthest part"],
     ["Sheet (kg)", kg(st.sheetKg)],
     ["Part weight (kg)", kg(st.partsKg)],
     ["Scrap (kg)", kg(st.scrapKg), "Inside the cut area, between the parts"],
-    ["Remnant (kg)", kg(st.remnantKg), st.remnantProcessed ? "Process → Remnant: its pieces (not the discarded ones)" : "The strip after the cut area, the sheet's full width (Process → Remnant not done)"],
+    ["Remnant (kg)", kg(st.remnantKg), st.remnantProcessed ? "Process → Remnant: its pieces (not the discarded ones)" : `Outside the cut area: the strip past it along X and the strip beside it along Y, each at least ${MIN_REMNANT_STRIP_MM} mm wide (Process → Remnant not done)`],
     ["Remnant (%)", st.remnantPct.toFixed(0)],
-    ["Unused (kg)", kg(st.unusedKg), `Beside the cut area, outside the remnant${st.remnantProcessed ? "" : " strip"}`],
+    ["Unused (kg)", kg(st.unusedKg), st.remnantProcessed ? "Outside the cut area and the remnant" : `Strips beside the cut area narrower than ${MIN_REMNANT_STRIP_MM} mm`],
     ["Unused (%)", st.unusedPct.toFixed(0)],
     ["Cutting Number", String(sheet.cutNumber ?? 1), "How many times this layout is cut (Sheet properties of the sheet)"],
     ["Time Rapid", "—", "Needs the technology tables"],
