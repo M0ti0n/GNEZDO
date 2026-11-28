@@ -22,7 +22,7 @@ import { dimensionOf, type Measure, type Pick as DimPick } from "../import/measu
 // on the machine): foil / finish on it when marked; bend marks are traced on the bends coming up from it.
 // SEND TO IMPORT 2D puts the flat pattern into the import list (sent again: replaced there).
 
-type Pick = "base" | "top" | "stitch" | "edge" | "deledge" | "one" | "measure3d" | "measure" | "look" | null;
+type Pick = "base" | "top" | "stitch" | "edge" | "deledge" | "one" | "measure3d" | "look" | null;
 
 const K = "#1b1b1b", R = "#e3262b", B = "#1d7fd0";
 
@@ -138,6 +138,8 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
   const u = useMemo(() => (flatOff ? { ...u0, skinFaces: [] } : u0), [u0, flatOff]);
   const ready = step.info.ok && !flatOff;
   const [pick, setPick] = useState<Pick>(stitchMode && !st.stitch.length ? "stitch" : null);
+  // Measure 2D: on its own, next to any tool on the part (Measure 3D too: both measures in view, to compare)
+  const [m2d, setM2d] = useState(false);
   // DEL: no added edges left, nothing to delete
   useEffect(() => { if (pick === "deledge" && !cuts.length) setPick(null); }, [pick, cuts.length]);
   const [profiles, setProfiles] = useState<UnfoldProfile[]>(loadProfiles);
@@ -167,7 +169,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
     set({ profile: p.name, kFactor: kFor(p, material, stitchMode ? (st.comp.t || null) : u.thickness), markLen: p.markLen, markInset: p.markInset, marks: p.marks, marksDown: !!p.marksDown, annotate: p.annotate, engraveText: !!p.engraveText, textMm: p.textMm ?? 6, foil: p.foil });
   };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setPick(null); setEdgeA(null); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setPick(null); setEdgeA(null); setM2d(false); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -217,7 +219,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
         {tool("one", "One face", pick === "one", () => setPick(pick === "one" ? null : "one"), "Click one flat face: its outline (with its holes) is the flat pattern, as it is (Stitch with one face)")}
         {tool("measure3d", "Measure 3D", pick === "measure3d", () => { setPick(pick === "measure3d" ? null : "measure3d"); setMeas([]); }, "Measure the part: click a face, an edge, a hole's edge or a corner, then a second one: offset between faces, hole sizes, distance between holes, angles")}
         {tool("look", "Face view", pick === "look", () => setPick(pick === "look" ? null : "look"), "Click a face of the part: the view turns to look straight at it")}
-        {tool("measure", "Measure 2D", pick === "measure", () => setPick(pick === "measure" ? null : "measure"), "Measure the flat pattern: click two things. Points (corners, hole centers, middles) snap; a click on an edge or a bend line takes the line, on an arc or a hole its center. Point to point: straight (X and Y); point to line: square to it; two lines: the distance between them")}
+        {tool("measure", "Measure 2D", m2d, () => setM2d(!m2d), "Measure the flat pattern (on with Measure 3D too, to compare): click two things. Points (corners, hole centers, middles) snap; a click on an edge or a bend line takes the line, on an arc or a hole its center. Point to point: straight (X and Y); point to line: square to it; two lines: the distance between them")}
         <span className="uf-sep" />
         {tool("send", sent ? "Send again" : "Send to Import 2D", false, onSend, ready
           ? `Put the flat pattern into Import 2D (×${qty}) to be processed there${sent ? "; it replaces the one sent before" : ""}`
@@ -244,7 +246,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
             <PaneButtons side="3d" panes={panes} onPanes={setPanes} /></h3>
           {viewOpen && <ViewOptions view={view} onView={setView} onClose={() => setViewOpen(false)}
             material={(partMaterial || fileMaterial || material).trim()} fileColor={solid.color} />}
-          <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick === "measure" ? null : pick} edgeA={edgeA} onCorner={edgeCorner}
+          <Part3d solid={solid} u={u} st={st} flip={flip} pick={pick} edgeA={edgeA} onCorner={edgeCorner}
             cuts={cuts} onDeleteCut={(i) => setCuts(cuts.filter((_, k) => k !== i), `Edge ${i + 1} deleted`)}
             view={view} material={(partMaterial || fileMaterial || material).trim().toLowerCase()} onLooked={() => setPick(null)}
             measure={pick === "measure3d" ? meas : []} onMeasure={(m) => setMeas((l) => (l.length >= 2 ? [m] : [...l, m]))}
@@ -305,7 +307,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
             <PaneButtons side="flat" panes={panes} onPanes={setPanes} /></h3>
           {flatOff ? <div className="uf-empty"><div><p>{KIND_LABEL[kind].replace(/s$/, "")}{section ? ` ${section}` : ""}: cut to length, not on the laser, so it is not unfolded.</p>
               <button type="button" className="btn btn-plain uf-anyway" onClick={() => setAnyway(true)}>Unfold anyway</button></div></div>
-            : u.outline.length ? <FlatView u={u} st={st} measure={pick === "measure"} />
+            : u.outline.length ? <FlatView u={u} st={st} measure={m2d} />
             : <div className="uf-empty">{stitchMode ? "Click the faces to stitch on the part (flat or round): the first one stays, each next one must share an edge with one picked before." : "Not unfolded."}</div>}
           <div className="uf-leg"><span><i className="is-mark" />bend marks ({st.marks === "none" ? "off" : st.marks === "trace" ? "traced" : "open cut"}, up bends)</span>{st.marks !== "none" && st.marksDown && <span><i className="is-mark-down" />down bends (dashed)</span>}<span><i className="is-bend" />bend line (not cut)</span><span className="uf-up">UP</span><span className="uf-down">DOWN</span></div>
         </section>
