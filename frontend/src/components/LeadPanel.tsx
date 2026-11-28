@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { diag } from "../job/diag";
 import { leadValues, liveContours, type LeadSpec } from "../job/cutPath";
-import { contourAt, editLead, editable, leadCtx, leadOf, type LeadOp } from "../job/leadEdit";
+import { CORNER_SNAP_MM, contourAt, editLead, editable, leadCtx, leadOf, type LeadOp } from "../job/leadEdit";
 import { LEAD_TYPES, type LeadType } from "../job/leads";
 import type { Machine } from "../job/machine";
 import type { NestedSheet } from "../job/nest";
@@ -98,7 +98,7 @@ export function useLeadInOut({ index, single, sheets, parts, machine, onCut }: {
           </span>
           <span className="li-scope-label">{all ? "All copies" : "This part"}</span>
           <button type="button" className={`btn btn-plain li-move${move ? " is-on" : ""}`} aria-pressed={move} disabled={!can}
-            title="Move: click a lead, then click where on its contour it goes (the nearest point; a sharp corner within 3 mm: the corner)"
+            title={`Move: click a lead, then click where on its contour it goes (the nearest point; a sharp corner within 3 mm: the corner). A corner type (in line, at an angle): the nearest sharp corner within ${CORNER_SNAP_MM} mm`}
             onClick={() => { setMove(!move); setArmed(!move && sel !== null); setMsg(null); }}>Move</button>
         </div>
         <button type="button" className="btn btn-plain li-type" disabled={!draft} onClick={() => setPicking(true)}
