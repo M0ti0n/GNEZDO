@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- 3D Extractor: Measure 2D is turned on and off on its own, so it can be on together with Measure 3D (or any other tool on the part): both measurements stay in view to compare. Esc turns both off.
 - Process → Manual cut no longer needs Auto cut first. SELECT on a sheet without a cut path processes it first (as Auto cut → Selected sheet, with the rule picked there last), then you click its contours in the order to cut them. Parts not processed yet (added or moved since) are processed after the rest of the path the same way. A Cut internal path is left as it is.
 - Auto cut → Cut internal: the sheet's cut path is only the picked parts' insides, in the order picked: holes, windows, and now their tracing and open cuts too (a Trace box per part, as in Selected parts). No outlines, nothing else of the sheet. For a part whose outline is the sheet's edge, or a program that adds forgotten holes to parts already cut. Cut internal again adds to it (a part picked again is made again); Post process writes it with the other parts left out. Any other mode (Multi sheet, Selected sheet, Selected parts, Trace) deletes it and starts from scratch. Before, Cut internal made only holes, kept the rest of the sheet's path, and a later Selected sheet or Multi sheet mixed it with the new path.
 - Process toolbar: PROCESS DEL is the last button, after SIMULATION.
