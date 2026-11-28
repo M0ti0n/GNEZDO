@@ -8,6 +8,7 @@ import { liveContours, originMirrors, originPoint, viaOf, type CutContour } from
 import { rowAsCut, type Machine, type Origin } from "./machine";
 import type { NestedSheet } from "./nest";
 import { fitMoves } from "./ncArcs";
+import { cutBody } from "./loopCorners";
 import type { NcContour, NcPart, NcProgram, NcPt } from "./postprocessor";
 import { remnantCutPaths } from "./remnantCut";
 import { reusesPierce } from "./commonPierce";
@@ -56,10 +57,10 @@ export function sheetProgram(sheet: NestedSheet, machine: Machine, origin: Origi
   const mapped = (pts: Pt[]): NcPt[] => pts.map(map).filter((p, i, a) => !i || Math.hypot(p.x - a[i - 1].x, p.y - a[i - 1].y) > 0.001);
 
   const restart = (["none", "pierce", "quick"] as const)[row.mjPierce ?? 1] ?? "pierce";
-  const contour = (c: Pick<CutContour, "kind" | "pts" | "leadIn" | "leadOut" | "small" | "restart" | "inline" | "island"> & { part?: number; parts?: number[] }, part?: string): NcContour | null => {
+  const contour = (c: Pick<CutContour, "kind" | "pts" | "leadIn" | "leadOut" | "small" | "restart" | "inline" | "island"> & { part?: number; parts?: number[]; loops?: CutContour["loops"]; bc?: CutContour["bc"] }, part?: string): NcContour | null => {
     const { leadIn, pts, leadOut } = c;
-    // lead-in, contour and lead-out each as lines and arcs (job/ncArcs.ts)
-    const body = mapped(pts);
+    // lead-in, contour (with its corner loops) and lead-out each as lines and arcs (job/ncArcs.ts)
+    const body = mapped(cutBody(c));
     if (!body.length) return null;
     const lin = leadIn.length > 1 ? mapped(leadIn) : [];
     const lout = leadOut.length > 1 ? mapped(leadOut) : [];

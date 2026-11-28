@@ -19,6 +19,7 @@ import { useViewPrefs } from "../job/viewPrefs";
 import { RemnantOverlay } from "./RemnantOverlay";
 import { MarkPaths, usePartMarks } from "./PartMarks";
 import { commonEdges, commonLayout, partCommonLines, placedEdges, sharedLines, snapMove, type CommonEdge, type CommonLayout } from "../job/commonCut";
+import { cutBody } from "../job/loopCorners";
 
 /** Ctrl+C: the copied parts, around the middle of their box (kept across sheets of the job). */
 let clipboard: PlacedPart[] | null = null;
@@ -1184,9 +1185,9 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                       const gl = cut?.glow?.strong === c ? 2 : cut?.glow?.all.has(c) ? 1 : 0;
                       return (
                         <g key={k}>
-                          {hl && <path className="cut-hl" d={line([...c.leadIn, ...c.pts, ...c.leadOut])} style={{ strokeWidth: 7 / v.s }} />}
-                          {gl > 0 && <path className={`cut-glow${gl === 2 ? " is-strong" : ""}`} d={line([...c.leadIn, ...c.pts, ...c.leadOut])} style={{ strokeWidth: (gl === 2 ? 9 : 6) / v.s }} />}
-                          <path className={`cut-${c.kind}${c.common ? " cut-common" : ""}${now ? " cut-now" : ""}`} d={line(c.pts)} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
+                          {hl && <path className="cut-hl" d={line([...c.leadIn, ...cutBody(c), ...c.leadOut])} style={{ strokeWidth: 7 / v.s }} />}
+                          {gl > 0 && <path className={`cut-glow${gl === 2 ? " is-strong" : ""}`} d={line([...c.leadIn, ...cutBody(c), ...c.leadOut])} style={{ strokeWidth: (gl === 2 ? 9 : 6) / v.s }} />}
+                          <path className={`cut-${c.kind}${c.common ? " cut-common" : ""}${now ? " cut-now" : ""}`} d={line(cutBody(c))} style={{ strokeWidth: (c.kind === "trace" ? 1.2 : 1.6) / v.s }} />
                           {c.leadIn.length > 1 && <path className="cut-in" d={line(c.leadIn)} style={{ strokeWidth: 1.6 / v.s }} />}
                           {c.leadOut.length > 1 && <path className="cut-out" d={line(c.leadOut)} style={{ strokeWidth: 1.6 / v.s }} />}
                           {viewPrefs.cutArrows && arrowsAlong(c.pts, 220 / v.s, 30 / v.s).map(([p, d], j) => (

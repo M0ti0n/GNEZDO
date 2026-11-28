@@ -23,6 +23,7 @@ import { cutOrderOf, gapsFor, holeCompOf, machineCan, type Machine, type Origin 
 import { partLoops, pointIn, transform, usableBox, type Box, type Pt } from "./manualGeom";
 import type { NestedSheet, PlacedPart } from "./nest";
 import { TRACE_SHORTEST_FROM_MM, techRowFor, traceShortestOf, type TechRow } from "./technology";
+import { cornerLoops, inPoly, type CornerLoop, type LoopSpec } from "./loopCorners";
 
 /** The order picked under AUTO CUT. */
 export type CutRule = "leftRight" | "rightLeft" | "bottomTop" | "topBottom" | "shortest" | "smallBig";
@@ -82,6 +83,8 @@ export interface CutContour {
   /** Process → Common pierce: this outline starts from the group's pierce point `at` (its lead-in from
    *  there); `orig`: its own leads, to go back to */
   cp?: { id: string; at: Pt; orig: { leadIn: Pt[]; leadOut: Pt[]; pts?: Pt[]; lead?: LeadType; spec?: LeadSpec } };
+  /** Auto cut → Loop corners: a loop at each sharp corner where it fits (job/loopCorners.ts; cut with cutBody) */
+  loops?: CornerLoop[];
 }
 
 /** Where an outline starts (one piece each), in cut order along it: the original lead, or a break cut
@@ -129,6 +132,8 @@ export interface SheetCut {
    *  no outlines, nothing else of the sheet (a part whose outline is the sheet's edge; a program that adds
    *  forgotten holes to parts cut already). Any other Auto cut mode on the sheet starts from scratch. */
   internal?: boolean;
+  /** made with Auto cut → Loop corners, with these values (the Technology row's); processed again: on too */
+  loops?: LoopSpec;
   /** from PROCESS only (not kept with the sheet): the leads moved or shortened to fit, and those that still do not */
   leadFit?: LeadFitCount;
   /** from PROCESS only: the whole sheet processed, parts kept first as picked by hand before (their count) */
@@ -1094,6 +1099,14 @@ export interface CutRequest {
   what: CutWhat;
   /** tracing of this part is cut (Skip trace lines / the trace box of a selected part) */
   traceOf: (i: number) => boolean;
+  /** Auto cut → Loop corners; missing: as the sheet's cut path before */
+  loopCorners?: boolean;
+}
+
+/** The loop corner values of a Technology row (Loop corners → Lead-out, Radius, Lead-in); none: its radius not set. */
+export function loopSpecOf(row: TechRow | null | undefined): LoopSpec | null {
+  if (!row || !(row.loopRadiusMm! > 0)) return null;
+  return { outMm: Math.max(0, row.loopOutMm ?? 0), rMm: row.loopRadiusMm!, inMm: Math.max(0, row.loopInMm ?? 0) };
 }
 
 /** The sheet's cut path after PROCESS (every part: a new one; chosen parts: theirs replaced, put after the others). */
@@ -1379,6 +1392,38 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   contours = [...first, ...contours];
   // a common pierce group one of whose outlines was processed again: the one left goes back to its own leads
   contours = tidyPierces(contours);
+  // Loop corners: a loop at each sharp corner of the outlines and holes, where it is clear of the part, the
+  // other parts (the kerf between) and the sheet's edge
+  const loopOn = q.loopCorners ?? !!sheet.cut?.loops;
+  const loopSpec = loopOn && q.what !== "trace" ? loopSpecOf(techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row) : null;
+  if (loopSpec) {
+    const all = await partGeos(sheet, q.paths, sheet.parts.map((_, i) => i), false, mirrored, holeCompOf(machine));
+    const geoOf = new Map(all.map((g) => [g.i, g]));
+    const clear = Math.max(kerf, 0.2);
+    const L = sheet.lengthMm, W = sheet.widthMm;
+    contours = contours.map((c) => {
+      const own = geoOf.get(c.part);
+      const blocked = (pt: Pt) => {
+        if (pt[0] < 0 || pt[1] < 0 || pt[0] > L || pt[1] > W) return true;
+        for (const g of all) {
+          if (g === own || pt[0] < g.box.x0 - clear || pt[0] > g.box.x1 + clear || pt[1] < g.box.y0 - clear || pt[1] > g.box.y1 + clear) continue;
+          if (inPoly(g.outer, pt[0], pt[1])) return true;
+          for (let k = 0; k < g.outer.length; k++) if (segDist(pt, g.outer[k], g.outer[(k + 1) % g.outer.length]) < clear) return true;
+        }
+        // a loop in a hole: not into an island (or a hole) inside it
+        if (own && c.kind === "inner") for (const h of own.holes) {
+          if (h.length === c.pts.length - 1 && h.every((v, k) => Math.abs(v[0] - c.pts[k][0]) + Math.abs(v[1] - c.pts[k][1]) < 0.02)) continue;
+          if (inPoly(h, pt[0], pt[1]) !== inPoly(c.pts, pt[0], pt[1]) && !inPoly(c.pts, pt[0], pt[1])) continue;
+          if (inPoly(h, pt[0], pt[1]) && inPoly(c.pts, pt[0], pt[1]) && !sameRing(h, c.pts)) return true;
+        }
+        return false;
+      };
+      const loops = cornerLoops(c, loopSpec, blocked);
+      if (loops.length) return { ...c, loops };
+      if (!c.loops) return c;
+      const { loops: _l, ...rest } = c; void _l; return rest;
+    });
+  } else contours = contours.map((c) => { if (!c.loops) return c; const { loops: _l, ...rest } = c; void _l; return rest; });
   // Selected parts / Trace / Cut internal pick an order by hand: the rule of the Auto cut before stays the sheet's
   const autoRule = q.parts && q.ordered ? sheet.cut?.autoRule ?? (sheet.cut && sheet.cut.rule !== "manual" ? sheet.cut.rule : q.rule) : q.rule;
   // the settings it was cut with; some parts only, with others cut with other settings before: those stay
@@ -1386,6 +1431,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   const sigNow = cutSettingsSig(machine, sheet);
   const techSig = q.parts && sheet.cut && sheet.cut.techSig !== undefined && sheet.cut.techSig !== sigNow && sheet.cut.contours.length ? sheet.cut.techSig : sigNow;
   return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, autoRule, contours, keys, sigs, techSig,
+    ...(loopSpec ? { loops: loopSpec } : {}),
     ...(q.what === "internal" ? { internal: true } : {}), ...(Object.keys(msigs).length ? { msigs } : {}), ...(mirrored ? { mirrored } : {}),
     ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}),
     ...(first.length ? { keptFirst: new Set(first.flatMap((c) => c.parts ?? [c.part])).size } : {}) };
@@ -1495,4 +1541,13 @@ export function shiftSheet(sheet: NestedSheet, dx: number, dy: number): NestedSh
     cut = { ...c0, contours, keys };
   }
   return { ...sheet, parts, cut };
+}
+
+/** two loops with the same corners (a hole and the contour cut from it) */
+function sameRing(a: Pt[], b: Pt[]): boolean {
+  const n = a.length;
+  if (Math.abs(n - (b.length - 1)) > 1) return false;
+  let hit = 0;
+  for (const v of a) if (b.some((w) => Math.abs(v[0] - w[0]) + Math.abs(v[1] - w[1]) < 0.05)) hit++;
+  return hit >= n - 1;
 }

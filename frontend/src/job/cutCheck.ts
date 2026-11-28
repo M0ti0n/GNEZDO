@@ -12,6 +12,7 @@
 import { changedDrawings, liveContours, partKey, processedParts, type CutContour, type PathOf } from "./cutPath";
 import { partLoops, pointIn, transform, type Pt } from "./manualGeom";
 import type { NestedSheet } from "./nest";
+import { cutBody } from "./loopCorners";
 
 export interface SheetCheck {
   /** why the sheet is not post processed (empty: it may be) */
@@ -138,7 +139,7 @@ export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: nu
   for (const c of liveContours(sheet, pathOf)) {
     const mine = c.parts ?? [c.part];
     if (mine.some((j) => offParts.includes(nameOf(j)))) continue;   // said above
-    if (![...c.leadIn, ...c.pts, ...c.leadOut].every(onSheet)) offCuts.push(own(c));
+    if (![...c.leadIn, ...cutBody(c), ...c.leadOut].every(onSheet)) offCuts.push(own(c));
   }
   if (offCuts.length) errors.push(`a cut or its lead leaves the sheet: ${listOf(offCuts)}. Shorten or move the lead (Lead in / out), or move the part`);
 

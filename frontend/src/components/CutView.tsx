@@ -1,7 +1,9 @@
 import { refreshShared } from "../job/freshSettings";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { JobPart } from "../api/types";
-import { CUT_RULES, handEdited, keepHandEdits, liveContours, processSheet, type CutRule, type CutWhat } from "../job/cutPath";
+import { CUT_RULES, handEdited, keepHandEdits, liveContours, loopSpecOf, processSheet, type CutRule, type CutWhat } from "../job/cutPath";
+import { LOOP_MAX_DEG, LOOP_MIN_DEG } from "../job/loopCorners";
+import { techRowFor } from "../job/technology";
 import { diag } from "../job/diag";
 import { machineCan, type Machine, type Origin } from "../job/machine";
 import { partColor, type NestedSheet } from "../job/nest";
@@ -27,6 +29,7 @@ const MODES: { id: SelectMode; label: string; hint: string }[] = [
 
 const RULE_KEY = "gnezdo.cutRule";
 /** The order picked under AUTO CUT last (kept in this browser). */
+const LOOP_KEY = "gnezdo.cut.loopCorners";
 export const loadRule = (): CutRule => { try { const r = localStorage.getItem(RULE_KEY); return CUT_RULES.some((x) => x.id === r) ? (r as CutRule) : "bottomTop"; } catch { return "bottomTop"; } };
 
 type PartRef = { path: string; areaMm2: number; name: string; no?: number };
@@ -69,6 +72,9 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
   const [rule, setRuleState] = useState<CutRule>(loadRule);
   const setRule = (r: CutRule) => { setRuleState(r); try { localStorage.setItem(RULE_KEY, r); } catch { /* not kept */ } };
   const [skipTrace, setSkipTrace] = useState(false);
+  // Loop corners: kept for next time
+  const [loopCorners, setLoopState] = useState(() => { try { return localStorage.getItem(LOOP_KEY) === "1"; } catch { return false; } });
+  const setLoopCorners = (v: boolean) => { setLoopState(v); try { localStorage.setItem(LOOP_KEY, v ? "1" : "0"); } catch { /* not kept */ } };
   const [picking, setPicking] = useState(false);
   const [picked, setPicked] = useState<number[]>([]);
   const [noTrace, setNoTrace] = useState<Set<number>>(new Set());
@@ -121,7 +127,7 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
     try {
       const what: CutWhat = mode === "trace" ? "trace" : mode === "internal" ? "internal" : "all";
       const list = mode === "multi" ? sheets.map((_, i) => i) : [index];
-      let contours = 0, metres = 0, fitted = 0, tight = 0, keptFirst = 0;
+      let contours = 0, metres = 0, fitted = 0, tight = 0, keptFirst = 0, loops = 0, noLoopRow = "";
       // the machine as it is on the server now (an admin may have changed it on another computer)
       const mNow = (await refreshShared())?.list.find((x) => x.id === machine.id) ?? machine;
       for (const i of list) {
@@ -130,7 +136,12 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
           sheet: sh, paths, machine: mNow, origin, rule, what,
           parts: picks ? picked : null, ordered: picks,
           traceOf: (k) => (picks ? !noTrace.has(k) : !skipTrace),
+          loopCorners: what !== "trace" && loopCorners,
         });
+        if (loopCorners && what !== "trace") {
+          if (cut.loops) loops += cut.contours.reduce((a, c) => a + (c.loops?.length ?? 0), 0);
+          else noLoopRow = `${sh.material} ${sh.thicknessMm} mm`;
+        }
         fitted += leadFit?.fitted ?? 0; tight += leadFit?.tight ?? 0; keptFirst += kf ?? 0;
         // (kept: made with the same settings only; settings changed since, Post process asks for them again)
         onCut(i, hand === "keep" ? keepHandEdits(sh, cut) : cut);
@@ -145,7 +156,10 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
         tight ? `${tight} ${tight === 1 ? "lead has" : "leads have"} no room: check ${tight === 1 ? "it" : "them"} (Lead in / out), or nest with a bigger part gap` : "",
       ].filter(Boolean).join("; ");
       const kept = keptFirst ? `. ${keptFirst} ${keptFirst === 1 ? "part" : "parts"} processed before with Selected parts kept first, in that order; the rest after ${keptFirst === 1 ? "it" : "them"} (Process del clears them to start over)` : "";
-      setMsg({ text: `${list.length > 1 ? `${list.length} sheets` : `Sheet ${index + 1}`}: ${contours} contours, ${metres.toFixed(1)} m of cut${kept}${fit ? `. ${fit}` : ""}`, bad: tight > 0 });
+      const loopText = !loopCorners || what === "trace" ? ""
+        : noLoopRow ? `. No loop corners: no loop radius in the Technology table (${noLoopRow})`
+        : `. ${loops} loop ${loops === 1 ? "corner" : "corners"}`;
+      setMsg({ text: `${list.length > 1 ? `${list.length} sheets` : `Sheet ${index + 1}`}: ${contours} contours, ${metres.toFixed(1)} m of cut${kept}${fit ? `. ${fit}` : ""}${loopText}`, bad: tight > 0 || !!noLoopRow });
       if (picks) { setPicked([]); setPicking(false); }
     } catch (e) {
       setMsg({ text: `Not processed: ${(e as Error).message}`, bad: true });
@@ -155,6 +169,7 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
   };
 
   const canTrace = machineCan(machine, "trace");
+  const loopRow = sheet?.material ? loopSpecOf(techRowFor(machine.technologies, sheet.material, sheet.thicknessMm)?.row) : null;
   // Selected parts and Cut internal: per part, its tracing too or not
   const withTrace = mode === "parts" || mode === "internal";
   const partNo = (i: number) => { const p = sheet.parts[i]; return p ? byPart.get(p.partId)?.no : undefined; };
@@ -179,6 +194,12 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
             </button>
           </div>
         </div>
+        {mode !== "trace" && (
+          <label className="chk ac-loops" title={`At each sharp corner (the part's angle ${LOOP_MIN_DEG}°–${LOOP_MAX_DEG}°) the cut goes on past the corner, loops round in the scrap and comes back in along the next edge, so the corner stays sharp. The lead-out, radius and lead-in are the Technology table's (Loop corners${loopRow ? `: ${loopRow.outMm} / R ${loopRow.rMm} / ${loopRow.inMm} mm` : ": not set for this sheet"}). Only where the loop stays clear of the part, the other parts (the kerf between) and the sheet's edge`}>
+            <input type="checkbox" checked={loopCorners} onChange={(e) => setLoopCorners(e.target.checked)} /> Loop corners
+            {loopCorners && !loopRow && <span className="ac-loops-warn"> (no loop radius in the Technology table)</span>}
+          </label>
+        )}
         {!picks && (<>
           <label className="ac-field"><span>Path generation rule</span>
             <select className="field" value={rule} title={CUT_RULES.find((r) => r.id === rule)?.hint} onChange={(e) => setRule(e.target.value as CutRule)}>
