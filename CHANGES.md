@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- 3D Extractor: with the part shown as a wireframe and the Part (3D) pane folded away, every part failed to show ("… could not be shown: Failed to execute 'drawImage' …"), in a new tab too, as both settings are kept. The folded pane is no longer drawn; unfolded again, the part is drawn as before.
 - 3D Extractor → Measure 2D: every measurement made stays on the flat pattern (before, the next one took the last one away). CLEAR (bottom left of the flat pattern) takes them off; so does turning Measure 2D off.
 - 3D Extractor → Measure 2D: the flat pattern shows only the measurement (the number), without the notes after it ("between parallel lines", "square to the line", "(X …, Y …)").
 - 3D Extractor: Measure 2D is turned on and off on its own, so it can be on together with Measure 3D (or any other tool on the part): both measurements stay in view to compare. Esc turns both off.
