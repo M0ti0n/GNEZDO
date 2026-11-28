@@ -220,6 +220,12 @@ The database is updated by EF Core migrations: `backend/src/Gnezdo.Api/Data/Migr
 
 </details>
 
+## License
+
+Copyright (C) 2026 the GNEZDO authors.
+
+GNEZDO is free software under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0): you may use, change and pass it on; whoever passes on a changed version, or offers one to others over a network (a GNEZDO server), has to make its source code available under the same license. The third-party software it uses keeps its own licenses: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ## Support the project
 
 If GNEZDO is useful to you, you can support development:

@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- GNEZDO is now licensed under the GNU Affero General Public License v3.0 (AGPL-3.0): LICENSE and THIRD-PARTY-NOTICES.md in the repository and in every download (the nesting engine's PackingSolver license as nesting/PACKINGSOLVER_LICENSE). Settings → About shows the license and links the source code.
 - Settings → About: the version (this build's name and commit), when it was built, the license, links to the README on GitHub and the user manuals (English, Slovenian), the contact address, and Check for updates: it asks GitHub whether the latest test build is newer than this one, with a link to the release page.
 - Technology tables: a new column, Common pierce → Lead-out. Process → Common pierce (To the corner) gives each joined outline a lead-out this long, in line with its last edge past the corner (else square to it, whichever way stays clear of the parts). The lead-in stays the way from the common pierce point. Before, those outlines had no lead-out. Empty or 0: none, as before.
 - Process → Lead in / out: a corner type (Corner, in line; Corner, at an angle; Corner in, gap out) goes to the nearest sharp corner within 25 mm of the click, when moved or applied. Before, a click more than 3 mm from the corner made it fall back to the type for straight stretches (often Perpendicular). The other types still snap to a sharp corner within 3 mm only.

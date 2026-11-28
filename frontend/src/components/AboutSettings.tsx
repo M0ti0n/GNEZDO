@@ -12,7 +12,9 @@ const MANUAL_EN = `${REPO}/blob/main/docs/GNEZDO_User_Manual-eng.pdf`;
 const MANUAL_SL = `${REPO}/blob/main/docs/GNEZDO_Navodila_za_uporabo-slo.pdf`;
 const CONTACT = "gnezdo.nest@proton.me";
 /** The license GNEZDO is published under. */
-const LICENSE = "Not chosen yet (no license file in the repository: all rights reserved)";
+const LICENSE = "GNU Affero General Public License v3.0 (AGPL-3.0)";
+const LICENSE_URL = `${REPO}/blob/main/LICENSE`;
+const NOTICES_URL = `${REPO}/blob/main/THIRD-PARTY-NOTICES.md`;
 
 /** This build, as the build put it in (Windows / Linux test build); a page built by hand has none. */
 const BUILD = {
@@ -64,9 +66,12 @@ export function AboutSettings() {
         <dl className="about-list">
           <div><dt>Version</dt><dd>{BUILD.name || "Development build"}{BUILD.sha && <span className="about-sha"> · {BUILD.sha}</span>}</dd></div>
           <div><dt>Released</dt><dd>{BUILD.time ? dateOf(BUILD.time) : "—"}</dd></div>
-          <div><dt>License</dt><dd>{LICENSE}</dd></div>
+          <div><dt>License</dt><dd><a href={LICENSE_URL} target="_blank" rel="noreferrer">{LICENSE}</a></dd></div>
+          <div><dt>Source code</dt><dd><a href={REPO} target="_blank" rel="noreferrer">{REPO.replace("https://", "")}</a></dd></div>
         </dl>
-        <p className="rule-help">The nesting engine uses PackingSolver (MIT license).</p>
+        <p className="rule-help">Free software: you may use, change and pass it on. Whoever passes on a changed version, or offers one to
+          others over a network, has to make its source code available under the same license. GNEZDO uses third-party software under its
+          own licenses (the nesting engine PackingSolver: MIT): see the <a href={NOTICES_URL} target="_blank" rel="noreferrer">third-party notices</a>.</p>
       </section>
 
       <section className="rule about">
