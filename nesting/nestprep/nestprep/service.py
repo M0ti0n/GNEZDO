@@ -296,6 +296,9 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
             bins.append(b)
         # one part gap per nest: the largest any of the group's sheets asks for
         group_gap = max([float(s["partGapMm"]) for s in sheets + fixed if s.get("partGapMm") is not None] or [gap])
+        # the sheets being continued go first: a knapsack run (limited stock) has no costs and fills the
+        # bins in their order, so after them it would open a new stock sheet with room left on these
+        fbins, fsheets = [], []
         for s in fixed:
             L, W = float(s["lengthMm"]), float(s["widthMm"])
             try:
@@ -304,8 +307,9 @@ def build_groups(req: dict) -> tuple[list[dict], list[dict]]:
                 continue
             if not limited:
                 b["cost"] = L * W * 1e-4     # already being cut: filled before any new sheet
-            bins.append(b)
-            sheets = sheets + [{**s, "_fixed": int(s.get("index", 0)), "qty": 1}]
+            fbins.append(b)
+            fsheets.append({**s, "_fixed": int(s.get("index", 0)), "qty": 1})
+        bins, sheets = fbins + bins, fsheets + sheets
         if limited:
             # not enough sheets for everything maybe: as many parts as fit (by area)
             for it in items:

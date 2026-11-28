@@ -1,0 +1,57 @@
+{
+ "mode": "fast",
+ "partGapMm": 5,
+ "edgeGapMm": 5,
+ "parts": [
+  {
+   "id": "1",
+   "name": "Plate 600x400",
+   "path": "M 0 0 L 600 0 L 600 400 L 0 400 Z",
+   "qty": 25,
+   "rotations": [
+    90
+   ],
+   "mirror": false,
+   "material": "S235",
+   "thicknessMm": 3
+  }
+ ],
+ "sheets": [
+  {
+   "id": "st",
+   "material": "S235",
+   "thicknessMm": 3,
+   "lengthMm": 3000,
+   "widthMm": 1500,
+   "qty": 3,
+   "source": "stock"
+  }
+ ],
+ "fixedSheets": [
+  {
+   "index": 0,
+   "id": "st",
+   "material": "S235",
+   "thicknessMm": 3,
+   "lengthMm": 3000,
+   "widthMm": 1500,
+   "trims": {},
+   "parts": [
+    {
+     "path": "M 0 0 L 400 0 L 400 300 L 0 300 Z",
+     "x": 5,
+     "y": 5,
+     "angle": 0,
+     "mirror": false
+    },
+    {
+     "path": "M 0 0 L 400 0 L 400 300 L 0 300 Z",
+     "x": 410,
+     "y": 5,
+     "angle": 0,
+     "mirror": false
+    }
+   ]
+  }
+ ]
+}
