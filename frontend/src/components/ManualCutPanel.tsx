@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CUT_RULES, liveContours, originPoint, partContainers, processedParts, rapidsOf, ruleOrder, type CutContour, type CutRule, type SheetCut } from "../job/cutPath";
+import { CUT_RULES, liveContours, originPoint, partContainers, processSheet, processedParts, rapidsOf, ruleOrder, type CutContour, type CutRule, type SheetCut } from "../job/cutPath";
 import { diag } from "../job/diag";
 import type { Machine, Origin } from "../job/machine";
 import { contourKind, keptEnd, pathReorder, pathSteps, pickContour, pickedPlan, reorderCut, type CutUnit } from "../job/manualCut";
@@ -22,6 +22,11 @@ import toolManualCut from "../shell/jobtools/tool-manualCut.png";
 // next and sorts the rest by the rule of the sheet's last Auto cut (their contours as they are: leads,
 // micro joints, break cuts). What is cut as one moves as one (a common cut block, the inline passes, a
 // common pierce group); a part in another part's hole still comes before it. UNDO takes the change back.
+//
+// No Auto cut needed first: SELECT on a sheet without a cut path processes it (Auto cut, Selected sheet,
+// the rule picked there last), and parts not processed yet (added or moved since) are processed after the
+// rest, so every contour can be picked. A Cut internal path is left as it is (its other parts are left
+// out on purpose).
 //
 // A part shows as its ID in the job part list and its copy on the sheet (12_3: part 12, its third copy),
 // the name on hover.
@@ -93,12 +98,15 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
   const sig = useMemo(() => steps.units.map((u) => u.parts.join("+")).join(","), [steps]);
   // another sheet, or the cut path changed (by any tool, processed again, moved parts): a fresh pick
   // the sheet and path the panel's state is for (brought back from another tab: the ones it was kept with)
+  const selectAfter = useRef(false);
   const shownFor = useRef<{ index: number; cut: SheetCut | undefined; sig: string } | null>(b0 ? { index, cut: sheet?.cut, sig } : null);
   useEffect(() => {
     const f = shownFor.current;
     if (f && f.index === index && f.cut === sheet?.cut && f.sig === sig) return;
     shownFor.current = { index, cut: sheet?.cut, sig };
     setPicked([]); setRowSel(null); setPicking(false); setNext([]);
+    // processed by SELECT just now: picking goes on
+    if (selectAfter.current) { selectAfter.current = false; setPicking(true); }
     const o = ours.current;
     setPos(o && o.cut === sheet?.cut ? o.pos : null);
     ours.current = null;
@@ -109,6 +117,40 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
 
   const cutPath = sheet?.cut;
   const can = single && !!cutPath && live.size > 0;
+  /** SELECT works on any open sheet with parts: what is not processed yet is processed first */
+  const canSelect = single && !!sheet?.parts.length;
+  const [busy, setBusy] = useState(false);
+  /** the parts not in the cut path (none processed: all), unless it is a Cut internal path */
+  const missing = useMemo(() => {
+    if (!sheet || sheet.cut?.internal) return [];
+    if (!sheet.cut) return sheet.parts.map((_, i) => i);
+    const ok = processedParts(sheet, (id) => paths.get(id));
+    return sheet.parts.map((_, i) => i).filter((i) => !ok.has(i));
+  }, [sheet, paths]);
+  /** SELECT: on (processing what is missing first) or off */
+  const toggleSelect = async () => {
+    if (picking) { setPicking(false); return; }
+    if (!sheet || busy) return;
+    if (!missing.length) { setPicking(true); setMsg(null); return; }
+    setBusy(true);
+    try {
+      const all = !sheet.cut || missing.length === sheet.parts.length;
+      const r = all ? loadRule() : rule;
+      const { leadFit: _f, keptFirst: _k, ...cut } = await processSheet({
+        sheet, paths, machine, origin, rule: r, what: "all", parts: all ? null : missing, ordered: false, traceOf: () => true,
+      });
+      void _f; void _k;
+      // Contour cut order: picking goes on; Path cut order: the timeline is moved back first
+      selectAfter.current = mode === "contour";
+      onCut(index, cut);
+      diag("process", `Manual cut: ${all ? "sheet" : `${missing.length} parts`} processed first on sheet ${index + 1}`, { rule: r });
+      setMsg({ text: all
+        ? `Sheet processed first (Auto cut, ${CUT_RULES.find((x) => x.id === r)?.label.toLowerCase() ?? r}): click its contours in the order to cut them`
+        : `${missing.length} ${missing.length === 1 ? "part" : "parts"} not processed yet: processed first, after the rest of the path` });
+    } catch (e) {
+      setMsg({ text: `Not processed: ${(e as Error).message}`, bad: true });
+    } finally { setBusy(false); }
+  };
   const n = steps.units.length;
   const at = pos === null ? n : Math.min(pos, n);
   const rule: CutRule = cutPath?.autoRule ?? (cutPath && cutPath.rule !== "manual" ? cutPath.rule : loadRule());
@@ -244,8 +286,8 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
       <button type="button" className="btn btn-plain mc-undo" disabled={!canUndo} onClick={undo} title="Take back the last PROCESS or COMPLETE of this sheet">Undo</button>
     </div>
     <div className="ac-pickbar">
-      <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} disabled={!can} onClick={() => setPicking((v) => !v)}
-        title={can ? "On: click contours on the sheet in the order to cut them, click one again to take it out" : "Open a processed sheet (VIEW / EDIT) to pick its contours"}>Select</button>
+      <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} disabled={!canSelect || busy} onClick={() => void toggleSelect()}
+        title={canSelect ? `On: click contours on the sheet in the order to cut them, click one again to take it out${missing.length ? " (what is not processed yet is processed first)" : ""}` : "Open a sheet (VIEW / EDIT) to pick its contours"}>{busy ? "Working…" : "Select"}</button>
       <button type="button" className="btn btn-plain ac-clear" disabled={!picked.length} onClick={() => { setPicked([]); setRowSel(null); setMsg(null); }}>Clear all</button>
     </div>
     <div className="ac-list pane-scroll">
@@ -273,7 +315,7 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
           );
         })}
         {!picked.length && <p className="ac-empty">{!single ? `Open a sheet (VIEW / EDIT) to pick its contours. Sheet ${index + 1} is selected.`
-          : !can ? "Process the sheet first (Auto cut)." : picking ? "Click the contours on the sheet in the order to cut them." : "Press SELECT, then click the contours on the sheet."}</p>}
+          : picking ? "Click the contours on the sheet in the order to cut them." : `Press SELECT, then click the contours on the sheet.${!can ? " The sheet is processed first (Auto cut)." : ""}`}</p>}
       </div>
     </div>
     <div className="ac-pickbar">
@@ -297,8 +339,8 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
       <span><b>Kept as cut:</b> {!can ? "—" : at === 0 ? "nothing (the timeline is at the start)" : at === 1 ? "part 1" : `parts 1–${at}`}</span>
     </div>
     <div className="ac-pickbar">
-      <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} disabled={!can || at >= n} onClick={() => { setPicking((v) => !v); setMsg(null); }}
-        title={!can ? "Open a processed sheet (VIEW / EDIT)" : at >= n ? "Move the timeline back to the last part cut right first" : "On: click the parts to cut next, in that order (click one again: out)"}>Select</button>
+      <button type="button" className={`btn btn-plain${picking ? " is-on" : ""}`} aria-pressed={picking} disabled={!canSelect || busy || (can && at >= n && !missing.length)} onClick={() => { setMsg(null); void toggleSelect(); }}
+        title={!canSelect ? "Open a sheet (VIEW / EDIT)" : !can || missing.length ? "Process what is not processed yet (Auto cut), then click the parts to cut next" : at >= n ? "Move the timeline back to the last part cut right first" : "On: click the parts to cut next, in that order (click one again: out)"}>{busy ? "Working…" : "Select"}</button>
       <button type="button" className="btn btn-plain ac-clear" disabled={!next.length} onClick={() => { setNext([]); setMsg(null); }}>Clear all</button>
     </div>
     <div className="ac-list pane-scroll">
@@ -324,7 +366,7 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
           );
         })}
         {!next.length && <p className="ac-empty">{!single ? `Open a sheet (VIEW / EDIT) to set its order. Sheet ${index + 1} is selected.`
-          : !can ? "Process the sheet first (Auto cut)."
+          : !can ? "Press SELECT: the sheet is processed first (Auto cut), then move the timeline back and pick the parts."
           : at >= n ? "Move the timeline under the sheet back to the last part that is cut right."
           : picking ? `Click the parts on the sheet in the order to cut them, from part ${at + 1} on.` : `Press SELECT, then click the parts to cut after part ${at}.`}</p>}
       </div>
@@ -332,7 +374,7 @@ export function useManualCut({ index, single, sheets, parts, machine, origin, on
     <div className="pco-rest">
       <div className="pco-rest-head"><span>Then the rest</span><span className="pco-rule" title="The order picked under AUTO CUT the last time this sheet was processed">{ruleLabel}</span></div>
       <p>{!can || at >= n ? "Nothing left after the timeline." : `${restCount} ${restCount === 1 ? "part" : "parts"}${next.length ? `, from part ${afterNext + 1} on` : `, from part ${at + 1} on`}, sorted as the last Auto cut of this sheet. Leads, micro joints and break cuts stay as they are.`}</p>
-      {can && notIn > 0 && <p className="pco-warn">{notIn} {notIn === 1 ? "part on this sheet is" : "parts on this sheet are"} not processed (added or moved since): not in the cut path, left as {notIn === 1 ? "it is" : "they are"}. Auto cut processes {notIn === 1 ? "it" : "them"}.</p>}
+      {can && notIn > 0 && <p className="pco-warn">{notIn} {notIn === 1 ? "part on this sheet is" : "parts on this sheet are"} not processed (added or moved since): not in the cut path yet. {cutPath?.internal ? "(A Cut internal path: left out.)" : `SELECT processes ${notIn === 1 ? "it" : "them"} first, after the rest.`}</p>}
     </div>
     <div className="mc-actions">
       <button type="button" className="btn btn-primary ac-process" disabled={!next.length} onClick={complete}
