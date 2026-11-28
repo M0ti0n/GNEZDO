@@ -100,6 +100,17 @@ jobs:
           assert r["state"] == "done" and r["valid"] and r["nested"] == {"1": 25}, r
           assert got[0][0] == 0 and got[0][1] >= 12 and len(got) == 2, got
           EOF
+          # one sheet's parts (an L frame, bent bars, plates), Fast: packed into the smallest box at 0,0
+          # (Rules -> Nesting rules -> Last sheet), not along X over the sheet's whole width (about 455 x 1470)
+          python nestprep_cli.py run examples/demo_last_sheet.json out_last --solver $PS
+          python - <<'EOF'
+          import json
+          r = json.load(open("out_last/result.json"))
+          x, y = r["groups"][0]["lastBox"]
+          print({k: r[k] for k in ("state", "seconds", "valid", "nested")}, "box", x, y)
+          assert r["state"] == "done" and r["valid"] and len(r["sheets"]) == 1, r
+          assert x * y < 0.45e6, (x, y)
+          EOF
           # common cut (Custom): copies joined along their marked lines, a kerf apart, then split back
           python nestprep_cli.py run examples/demo_common_cut.json out_common --solver $PS
           python - <<'EOF'

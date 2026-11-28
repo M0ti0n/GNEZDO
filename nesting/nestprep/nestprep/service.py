@@ -7,6 +7,8 @@ request.json (written by GNEZDO from the job tab):
    "partGapMm": 5, "edgeGapMm": 5,
    "blockMarginPct": 10,            Rules -> Nesting rules: how much a block's box may grow (missing: 10)
    "blocks": true | false,          blocks before the nest (Custom only; Fast and Thorough never)
+   "lastSheet": "box" | "x" | "y",  Rules -> Nesting rules: the last sheet's parts into the smallest box at
+                                    the machine's 0,0 (missing: box), or as short as can be along X / Y
    "searchGrowth": 1.5,             Rules -> Nesting rules: search step, each tree search round this many
                                     times wider than the last (1.2-2.0; missing: 1.5)
    "fixedSheets": [...],            continuing a solution: its sheets with the parts on them, which stay
@@ -345,6 +347,10 @@ class Run:
         self.best: dict[int, list] = {}  # group -> its best sheets so far (best.json)
         os.makedirs(rundir, exist_ok=True)
 
+    def last_goal(self) -> str:
+        g = self.req.get("lastSheet")
+        return g if g in ("box", "x", "y") else "box"
+
     def stop_requested(self) -> bool:
         return os.path.exists(os.path.join(self.dir, "stop"))
 
@@ -460,7 +466,7 @@ class Run:
                               os.path.join(self.dir, f"group{i + 1}"), quiet=True,
                               minutes=minutes, stop_after=stop_after * 60 if stop_after else None,
                               should_stop=self.stop_requested, on_progress=on_progress, variants=variants,
-                              growth=growth)
+                              growth=growth, last_goal=self.last_goal())
         except NestError as e:
             with self.lock:
                 self.status[i].update(stage="error", error=str(e))
@@ -484,7 +490,8 @@ class Run:
             st = (job["mapping"].get("stats") or {})
             common.update(blocks=int(st.get("common_blocks", 0)), sharedLines=int(st.get("common_lines", 0)), sheets=len(sheets))
         return {"commonCut": common, "sheets": sheets, "valid": v["ok"], "errors": v["errors"][:10],
-                "sheetEquivalents": m.get("sheet_equivalents"), "seconds": job["seconds"], "steps": job["steps"],
+                "sheetEquivalents": m.get("sheet_equivalents"),
+                "lastBox": [m["last_sheet_xmax"], m["last_sheet_ymax"]] if m else None, "seconds": job["seconds"], "steps": job["steps"],
                 "bestAt": job.get("bestAt"),
                 "tooBig": [{"partId": g["partIds"][n], "reason": f"Bigger than every stock sheet ({t})"}
                            for n, t in job["skipped"]],
@@ -527,7 +534,7 @@ class Run:
             o = dataclasses.replace(opts, common={**base, "share": sh} if sh > 0 else None)
             try:
                 r = run_job(g["instance"], self.bin, "trial", o, os.path.join(self.dir, f"group{i + 1}", f"trial{len(trials) + 1}"),
-                            quiet=True, should_stop=self.stop_requested, budget=each)
+                            quiet=True, should_stop=self.stop_requested, budget=each, last_goal=self.last_goal())
             except NestError:
                 continue
             placed = expand(r["solution"], r["mapping"])
@@ -569,7 +576,7 @@ class Run:
                   "commonCut": [dict(material=g["material"], thicknessMm=g["thicknessMm"], **r["commonCut"])
                                 for g, r in zip(self.groups, results) if r.get("commonCut")] or None,
                   "groups": [{"material": g["material"], "thicknessMm": g["thicknessMm"],
-                              **{k: r.get(k) for k in ("sheetEquivalents", "seconds", "valid", "error", "steps", "bestAt")}}
+                              **{k: r.get(k) for k in ("sheetEquivalents", "lastBox", "seconds", "valid", "error", "steps", "bestAt")}}
                              for g, r in zip(self.groups, results)]}
         self.write("result.json", result)
         self.progress("finished")

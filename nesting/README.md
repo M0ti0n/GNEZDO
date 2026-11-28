@@ -67,14 +67,21 @@ along the edge.
    (latest sheet first, its right-most parts first); repeated until nothing moves.
 3. **Sheet pairs**: two neighbouring sheets nested again together, as much as possible on the
    first; kept only when better. Runs before the chain, from the last pair forward.
-4. **Compaction**: the last sheet nested again as short as possible, leaving one clean remnant.
+4. **Compaction**: the last sheet nested again by Rules → Nesting rules → Last sheet (`lastSheet` in the
+   request). `box` (default): into the smallest box at the machine's 0,0. Bands across the sheet are
+   tried both ways (everything past a line is a defect, the parts as short as they can be along it),
+   then the best few are squeezed in turn (the band moved to where they end, and a little inside),
+   the smallest box wins. `x` / `y`: as short as possible along X / Y over the whole sheet, leaving
+   one strip of the full width. It takes the post-pass time the other steps left (Fast at most 8 s,
+   Thorough and Custom 60 s); Thorough's post-pass also gets the nest time the nest did not need.
+   The command line tools (`compare`, `nest`, `post`) compact along X, as the benchmarks below.
 
 A whole job (`nest` command, or `compare --post`) runs in the time of its level:
 
 | Level | Total | What |
 |---|---|---|
-| `quick` (Fast) | 35 s | pre-pass, nest (the time left, 10–30 s); more than one sheet: empty the last sheet once, fill with the time left; compaction (5 s). Post-pass 15 s + 0.6 s/sheet, at most 45 s |
-| `thorough` | about 3 min | pre-pass (no blocks), nest 30–60 s, empty, fill (≤ 30 s), empty, tail (3 s/sheet), pairs and chain from what is left, compaction (8 s). Post-pass 30 s + 2.5 s/sheet, at most 120 s |
+| `quick` (Fast) | 35 s | pre-pass, nest (the time left, 10–30 s); more than one sheet: empty the last sheet once, fill with the time left; compaction (at most 8 s). Post-pass 15 s + 0.6 s/sheet, at most 45 s |
+| `thorough` | about 3 min | pre-pass (no blocks), nest 30–60 s, empty, fill (≤ 30 s), empty, tail (3 s/sheet), pairs and chain from what is left, compaction (up to 60 s). Post-pass 30 s + 2.5 s/sheet, at most 120 s, plus the nest time not needed |
 | `custom` | the user's minutes | as thorough, with the user's nest time; blocks only when chosen (experimental) |
 
 **Nest variants** (Thorough and Custom): with 8 or more CPU threads for the job, two main nests run
