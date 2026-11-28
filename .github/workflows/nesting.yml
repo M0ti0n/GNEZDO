@@ -89,6 +89,17 @@ jobs:
           print({k: r[k] for k in ("state", "seconds", "valid", "errors")})
           assert r["state"] == "done" and r["valid"] and r["nested"] == {"1": 10, "2": 6}, r
           EOF
+          # continuing a solution with stock of set quantities (a knapsack run): the missing parts go into the
+          # free space of the sheet already nested first, and only what does not fit onto a new sheet
+          python nestprep_cli.py run examples/demo_continue.json out_continue --solver $PS
+          python - <<'EOF'
+          import json
+          r = json.load(open("out_continue/result.json"))
+          got = [(s.get("fixedIndex"), len(s["parts"])) for s in r["sheets"]]
+          print({k: r[k] for k in ("state", "seconds", "valid", "nested")}, got)
+          assert r["state"] == "done" and r["valid"] and r["nested"] == {"1": 25}, r
+          assert got[0][0] == 0 and got[0][1] >= 12 and len(got) == 2, got
+          EOF
           # common cut (Custom): copies joined along their marked lines, a kerf apart, then split back
           python nestprep_cli.py run examples/demo_common_cut.json out_common --solver $PS
           python - <<'EOF'

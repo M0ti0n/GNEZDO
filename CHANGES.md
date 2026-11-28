@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Automatic nest run again on a nested solution (Fast, Thorough or Custom) with stock sheets of a set quantity: the parts still missing go into the free space of the sheets already nested first, and onto a new sheet only what does not fit there. Before, they always went onto a new sheet.
 - Nest report → Add full page sheet view, as it should be: a sheet longer in X than in Y (by the sheet's size) is printed on a landscape page with the sheet as it lies; a sheet longer in Y (or square) on a portrait page. On screen every page stands upright: the landscape page is shown turned 90° clockwise (the machine's 0,0 at the top left). This replaces the portrait page with the sheet turned on it (Build 24 Nov 2026, 1).
 - Settings → Machines → Add machine: the new machine is still a copy of the machine shown, but without its folders. Its NC and job folders start empty and are set in Folders, so its NC programs cannot go to the other machine's folder unnoticed.
 
