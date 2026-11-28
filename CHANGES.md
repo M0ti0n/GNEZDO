@@ -4,6 +4,10 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+Nothing yet.
+
+## Build 28 Nov 2026, 2 (`fb739d2`)
+
 - Auto cut → Loop corners (a box, kept for next time): at each sharp corner of an outline (the part's angle 25°–145°, fixed for now) the cut goes on past the corner, loops round in the scrap and comes back in along the next edge, so the corner stays sharp. The lead-out, loop radius and lead-in are set per thickness in the Technology table (new group Loop corners); no radius set: no loops, and Auto cut says so. A loop is only made where it stays out of the part and clear of the other parts (the kerf between) and the sheet's edge; not at the contour's start (the lead is there), not on pieces of a break cut or inline cut. The loops are in the NC program (the loop an arc, the straight bits in line with the edges), the simulation and the times, and on the sheet.
 
 ## Build 28 Nov 2026, 1 (`a503eeb`)
