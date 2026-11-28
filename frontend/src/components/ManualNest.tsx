@@ -1149,8 +1149,10 @@ export function ManualNest({ sol, index, sheets, jobParts, parts: byId, edit, or
                   </path>
                 );
               })}
-              {/* tracing and open cut lines of the parts (processing draws them as its cut path instead) */}
-              {!cut && items.map((p, i) => partMk.has(p.partId) && geo[i] ? <MarkPaths key={`mk${i}`} marks={partMk.get(p.partId)} f={transform(p)} width={1.2 / v.s} /> : null)}
+              {/* tracing and open cut lines of the parts; with Process open only of the parts not processed yet
+                  (a processed part shows them in its cut path) */}
+              {items.map((p, i) => partMk.has(p.partId) && geo[i] && !(cut && (cut.sim ? cut.sim.done.has(i) : cutDone.has(i)))
+                ? <MarkPaths key={`mk${i}`} marks={partMk.get(p.partId)} f={transform(p)} width={1.2 / v.s} /> : null)}
               {shared.lines.map(([a, b], k) => (
                 <line key={`cc${k}`} className="mn-common" x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} style={{ strokeWidth: 3 / v.s }}>
                   <title>Common cut: one cut for both parts</title>
