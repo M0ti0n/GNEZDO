@@ -1,13 +1,19 @@
 // Cost report prices: per material a price per kg and a cutting cost per minute, a fixed cost and the
-// currency. Shared on the server like the stock and the rules (an admin changes them; the others can change
+// currency, and how much is added to the parts' net weight (gross weight: offcuts, skeleton). Shared on the server like the stock and the rules (an admin changes them; the others can change
 // them for one report); the browser keeps a copy (and is all there is in the demo). A material's price is
 // found whatever its spelling ("S355" and "s355 " are the same material).
 
 export interface MaterialPrice { kg: number; min: number }
-export interface CostPrices { currency: string; materials: Record<string, MaterialPrice>; fixed: number }
+export interface CostPrices {
+  currency: string; materials: Record<string, MaterialPrice>; fixed: number;
+  /** Gross weight: the material is priced on the net weight plus this share of it [%] (0: net weight only) */
+  grossPct: number;
+}
+
+export const GROSS_MAX_PCT = 500;
 
 const KEY = "gnezdo.costPrices";
-export const DEFAULT_COST_PRICES: CostPrices = { currency: "€", materials: {}, fixed: 0 };
+export const DEFAULT_COST_PRICES: CostPrices = { currency: "€", materials: {}, fixed: 0, grossPct: 0 };
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
 
@@ -22,7 +28,8 @@ export function normalizeCostPrices(v: unknown): CostPrices | null {
       const x = p as Partial<Record<keyof MaterialPrice, unknown>>;
       materials[m] = { kg: num(x.kg), min: num(x.min) };
     }
-  return { currency: typeof o.currency === "string" ? o.currency.slice(0, 10) : DEFAULT_COST_PRICES.currency, materials, fixed: num(o.fixed) };
+  return { currency: typeof o.currency === "string" ? o.currency.slice(0, 10) : DEFAULT_COST_PRICES.currency, materials, fixed: num(o.fixed),
+    grossPct: Math.min(GROSS_MAX_PCT, num(o.grossPct)) };
 }
 
 export function loadCostPrices(): CostPrices {

@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Cost report → prices: Gross weight, % added to the parts' net weight (offcuts, skeleton). The material is priced on the net weight plus that share: 0 % the net weight only, 20 % the net weight + 20 %. The pages show the gross weight per piece. Shared with the other cost prices (and in the settings file).
 - GNEZDO is now licensed under the GNU Affero General Public License v3.0 (AGPL-3.0): LICENSE and THIRD-PARTY-NOTICES.md in the repository and in every download (the nesting engine's PackingSolver license as nesting/PACKINGSOLVER_LICENSE). Settings → About shows the license and links the source code.
 - Settings → About: the version (this build's name and commit), when it was built, the license, links to the README on GitHub and the user manuals (English, Slovenian), the contact address, and Check for updates: it asks GitHub whether the latest test build is newer than this one, with a link to the release page.
 - Technology tables: a new column, Common pierce → Lead-out. Process → Common pierce (To the corner) gives each joined outline a lead-out this long, in line with its last edge past the corner (else square to it, whichever way stays clear of the parts). The lead-in stays the way from the common pierce point. Before, those outlines had no lead-out. Empty or 0: none, as before.

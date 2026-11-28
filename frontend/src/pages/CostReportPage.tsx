@@ -6,7 +6,7 @@ import { NumInput } from "../components/NumInput";
 import { partCutSeconds, partKg } from "../job/report";
 import { techRowFor } from "../job/technology";
 import { rowAsCut } from "../job/machine";
-import { priceFor, withPrice, type CostPrices } from "../job/costPrices";
+import { GROSS_MAX_PCT, priceFor, withPrice, type CostPrices } from "../job/costPrices";
 import type { ReportJob } from "./NestReportPage";
 import { useWheelSideways } from "../components/wheelScroll";
 
@@ -46,15 +46,17 @@ export function CostReportPage({ job, jobParts, userName, prices: shared, onPric
 
   // what the pages show: taken with GENERATE (and when the report opens)
   const build = () => ({
-    at: new Date(), who, project, currency: prices.currency, fixed: prices.fixed,
+    at: new Date(), who, project, currency: prices.currency, fixed: prices.fixed, grossPct: prices.grossPct,
     rows: picked.map((jp) => {
       const r0 = techRowFor(job.machine.technologies, jp.part.material, jp.part.thicknessMm)?.row;
       const row = r0 ? rowAsCut(job.machine, r0) : null;
-      const kg = partKg(jp.part);
+      const net = partKg(jp.part);
+      // the material priced on the gross weight: the net weight plus the share set (0: net only)
+      const kg = net * (1 + prices.grossPct / 100);
       const cutS = partCutSeconds(jp.part.path, row, false, job.machine.technology === "laser");
       const pm = priceOf(jp.part.material);
       const each = kg * pm.kg + ((cutS ?? 0) / 60) * pm.min;
-      return { jp, kg, cutS, each };
+      return { jp, net, kg, cutS, each };
     }),
   });
   const [snap, setSnap] = useState(build);
@@ -107,7 +109,8 @@ export function CostReportPage({ job, jobParts, userName, prices: shared, onPric
               <div className="cp-line1"><b>{r.jp.part.name}</b><span className="cp-qty">{r.jp.qty} pcs</span><span className="cp-each">{money(r.each, snap.currency)} / pcs</span></div>
               <div className="cp-line2">
                 <span className="cp-mat">{r.jp.part.material} {r.jp.part.thicknessMm} × {sizeLabel(r.jp.part)}</span>
-                <span>{r.kg.toFixed(2)} kg/pcs</span>
+                <span title={snap.grossPct > 0 ? `Net ${r.net.toFixed(2)} kg + ${snap.grossPct} %` : undefined}>
+                  {r.kg.toFixed(2)} kg/pcs{snap.grossPct > 0 ? " gross" : ""}</span>
                 <span>{r.cutS === null ? "no cutting time" : `${(r.cutS / 60).toFixed(2)} min/pcs`}</span>
                 <span className="cp-line">{money(r.each * r.jp.qty, snap.currency)}</span>
               </div>
@@ -164,11 +167,14 @@ export function CostReportPage({ job, jobParts, userName, prices: shared, onPric
               <label><span className="cp-cl">Cut cost</span><NumInput value={priceOf(m).min} min={0} aria-label={`${m} cut cost per minute`} onCommit={(n) => setMat(m, { min: n })} /><span>{prices.currency} / min</span></label>
             </div>
           ))}
+          <label className="cp-fixed" title="The material is priced on the parts' net weight plus this share of it (offcuts, skeleton). 0: the net weight only">
+            <span>Gross weight</span><NumInput value={prices.grossPct} min={0} aria-label="Gross weight, % added to the net weight"
+              onCommit={(n) => setPrices({ ...prices, grossPct: Math.min(GROSS_MAX_PCT, Math.max(0, n)) })} /><span>% of net</span></label>
           <label className="cp-fixed"><span>Fixed cost</span><NumInput value={prices.fixed} min={0} aria-label="Fixed cost" onCommit={(n) => setPrices({ ...prices, fixed: n })} /><span>{prices.currency}</span></label>
         </div>
         {unpriced.length > 0 && <p className="report-warn">No price per kg for {unpriced.join(", ")}: {unpriced.length === 1 ? "its" : "their"} material is counted as 0.</p>}
         {noTime > 0 && <p className="report-warn">{noTime} {noTime === 1 ? "part has" : "parts have"} no Technology row on {job.machine.name}: no cutting cost.</p>}
-        <p className="report-help">Price per piece = weight × price per kg + cutting minutes × cut cost (estimated from the Technology table). {onPrices ? "The prices are shared: everyone's cost reports use them." : own ? "Your changes are for this report only (only an admin changes the shared prices)." : "The shared prices; changes here are for this report only (only an admin changes the shared ones)."} Generate after changes.</p>
+        <p className="report-help">Price per piece = weight × price per kg + cutting minutes × cut cost (estimated from the Technology table). The weight is the net weight{prices.grossPct > 0 ? ` + ${prices.grossPct} % (gross weight)` : " (Gross weight 0 %)"}. {onPrices ? "The prices are shared: everyone's cost reports use them." : own ? "Your changes are for this report only (only an admin changes the shared prices)." : "The shared prices; changes here are for this report only (only an admin changes the shared ones)."} Generate after changes.</p>
       </aside>
       {printing && createPortal(<div className="print-root">{pageEls()}</div>, document.body)}
     </div>
