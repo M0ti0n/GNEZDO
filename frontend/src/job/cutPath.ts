@@ -125,6 +125,10 @@ export interface SheetCut {
   techSig?: string;
   /** made for a 0,0 corner that mirrors the sheet as drawn (outlines counter-clockwise on screen); missing = not */
   mirrored?: boolean;
+  /** made by Auto cut → Cut internal: only the picked parts' insides (holes, windows, tracing, open cuts),
+   *  no outlines, nothing else of the sheet (a part whose outline is the sheet's edge; a program that adds
+   *  forgotten holes to parts cut already). Any other Auto cut mode on the sheet starts from scratch. */
+  internal?: boolean;
   /** from PROCESS only (not kept with the sheet): the leads moved or shortened to fit, and those that still do not */
   leadFit?: LeadFitCount;
   /** from PROCESS only: the whole sheet processed, parts kept first as picked by hand before (their count) */
@@ -1107,7 +1111,10 @@ export function cutSettingsSig(machine: Machine, sheet: Pick<NestedSheet, "mater
 }
 
 export async function processSheet(q: CutRequest): Promise<SheetCut> {
-  const { sheet, machine } = q;
+  const { machine } = q;
+  // a Cut internal path is for itself only: any other mode starts from scratch (it is deleted), Cut internal
+  // again keeps the other parts' insides it made before
+  const sheet = q.what !== "internal" && q.sheet.cut?.internal ? { ...q.sheet, cut: undefined } : q.sheet;
   let idx = q.parts ?? sheet.parts.map((_, i) => i);
   // a chosen part of a common cut block brings the block's other parts along (it is cut as one)
   if (q.parts && q.what === "all") {
@@ -1131,7 +1138,7 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     const done = new Set(first.flatMap((c) => c.parts ?? [c.part]));
     idx = idx.filter((k) => !done.has(k));
   }
-  const geos = await partGeos(sheet, q.paths, idx, q.what !== "internal" && (canTrace || canOpen), mirrored, holeCompOf(machine));
+  const geos = await partGeos(sheet, q.paths, idx, canTrace || canOpen, mirrored, holeCompOf(machine));
   const from = originPoint(sheet, q.origin);
   const lastOfFirst = first[first.length - 1];
   const start: Pt = lastOfFirst ? (lastOfFirst.leadOut[lastOfFirst.leadOut.length - 1] ?? lastOfFirst.pts[lastOfFirst.pts.length - 1]) : from;
@@ -1242,11 +1249,10 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
     const g = by.get(i);
     if (!g || !g.outer.length) continue;
     const target = targetOf(g.box, rules);
-    if (q.what !== "internal") {
-      if (canTrace && q.traceOf(i)) openRuns(g.trace, i, "trace");
-      if (q.what === "trace") continue;
-      if (canOpen) openRuns(g.open, i, "open");
-    }
+    // Cut internal too: the tracing and open cuts are inside the part
+    if (canTrace && q.traceOf(i)) openRuns(g.trace, i, "trace");
+    if (q.what === "trace") continue;
+    if (canOpen) openRuns(g.open, i, "open");
     // the holes, the nearest next; a loop only once everything inside it is cut (an island before the hole
     // it lies in, the island's holes before the island)
     const holes = g.holes.map((lp, j) => {
@@ -1307,10 +1313,12 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   // chosen parts: their old contours of this kind go, the rest of the sheet's path stays before them
   let kept: CutContour[] = [];
   // the rest of the sheet's path stays only if it was made for the same 0,0 corner sense
-  if (q.parts && !!sheet.cut?.mirrored === mirrored) {
+  // (Cut internal: only what Cut internal made before stays; a whole cut path of the sheet goes)
+  if (q.parts && !!sheet.cut?.mirrored === mirrored && (q.what !== "internal" || !!sheet.cut?.internal)) {
     const good = processedParts(sheet);
     const chosen = new Set(idx);
-    const drop = (c: CutContour) => chosen.has(c.part) && (q.what === "all" || (q.what === "trace" ? c.kind === "trace" : c.kind === "inner"));
+    // (Cut internal again on a part: all it made of the part before; Trace: the part's tracing)
+    const drop = (c: CutContour) => chosen.has(c.part) && (q.what !== "trace" || c.kind === "trace");
     // a block one of whose parts is chosen goes whole
     const dropBlock = (c: CutContour) => q.what === "all" && !!c.parts?.some((k) => chosen.has(k));
     kept = (sheet.cut?.contours ?? []).filter((c) => (c.parts ?? [c.part]).every((k) => good.has(k)) && !drop(c) && !dropBlock(c));
@@ -1377,7 +1385,8 @@ export async function processSheet(q: CutRequest): Promise<SheetCut> {
   // (Post process asks for the whole sheet to be processed again)
   const sigNow = cutSettingsSig(machine, sheet);
   const techSig = q.parts && sheet.cut && sheet.cut.techSig !== undefined && sheet.cut.techSig !== sigNow && sheet.cut.contours.length ? sheet.cut.techSig : sigNow;
-  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, autoRule, contours, keys, sigs, techSig, ...(Object.keys(msigs).length ? { msigs } : {}), ...(mirrored ? { mirrored } : {}),
+  return { at: new Date().toISOString(), rule: q.parts && q.ordered ? "manual" : q.rule, autoRule, contours, keys, sigs, techSig,
+    ...(q.what === "internal" ? { internal: true } : {}), ...(Object.keys(msigs).length ? { msigs } : {}), ...(mirrored ? { mirrored } : {}),
     ...(fitCount.fitted || fitCount.tight ? { leadFit: fitCount } : {}),
     ...(first.length ? { keptFirst: new Set(first.flatMap((c) => c.parts ?? [c.part])).size } : {}) };
 }
