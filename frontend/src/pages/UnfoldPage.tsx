@@ -219,7 +219,7 @@ export function UnfoldPage({ name, kind, section, qty, sent, step, material, par
         {tool("one", "One face", pick === "one", () => setPick(pick === "one" ? null : "one"), "Click one flat face: its outline (with its holes) is the flat pattern, as it is (Stitch with one face)")}
         {tool("measure3d", "Measure 3D", pick === "measure3d", () => { setPick(pick === "measure3d" ? null : "measure3d"); setMeas([]); }, "Measure the part: click a face, an edge, a hole's edge or a corner, then a second one: offset between faces, hole sizes, distance between holes, angles")}
         {tool("look", "Face view", pick === "look", () => setPick(pick === "look" ? null : "look"), "Click a face of the part: the view turns to look straight at it")}
-        {tool("measure", "Measure 2D", m2d, () => setM2d(!m2d), "Measure the flat pattern (on with Measure 3D too, to compare): click two things. Points (corners, hole centers, middles) snap; a click on an edge or a bend line takes the line, on an arc or a hole its center. Point to point: straight (X and Y); point to line: square to it; two lines: the distance between them")}
+        {tool("measure", "Measure 2D", m2d, () => setM2d(!m2d), "Measure the flat pattern (on with Measure 3D too, to compare): click two things; each measurement stays (CLEAR takes them off). Points (corners, hole centers, middles) snap; a click on an edge or a bend line takes the line, on an arc or a hole its center. Point to point: straight; point to line: square to it; two lines: the distance between them")}
         <span className="uf-sep" />
         {tool("send", sent ? "Send again" : "Send to Import 2D", false, onSend, ready
           ? `Put the flat pattern into Import 2D (×${qty}) to be processed there${sent ? "; it replaces the one sent before" : ""}`
@@ -1110,10 +1110,12 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
   // threaded holes: a cross and the thread instead of the hole (as it goes to Import 2D)
   const { u, lines: threadLines } = useMemo(() => applyThreads(u0, st), [u0, st]);
   const svg = useRef<SVGSVGElement>(null);
-  // Measure 2D: two picks, each a point (snapped), a straight line, or an arc / circle (its center)
+  // Measure 2D: two picks, each a point (snapped), a straight line, or an arc / circle (its center); each
+  // measurement made stays on the flat pattern (CLEAR, or Measure 2D off, takes them away)
   const [picks, setPicks] = useState<FlatPick[]>([]);
+  const [done, setDone] = useState<Measure[]>([]);
   const [near, setNear] = useState<FlatPick | null>(null);
-  useEffect(() => { setPicks([]); setNear(null); }, [measure, u]);
+  useEffect(() => { setPicks([]); setDone([]); setNear(null); }, [measure, u]);
   const W = u.box.x1, H = u.box.y1;
   const pad = Math.max(W, H) * 0.09;
   const y = (v: number) => H - v;
@@ -1194,11 +1196,11 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
   };
   const result: Measure | string | null = picks.length === 2 ? (() => { const r = dimensionOf(asPick(picks[0]), asPick(picks[1])); return r.ok ? r.m : r.message; })() : null;
   const r = 4 * upp, tf = 13 * upp;
-  const dim = (m: Measure) => {
+  const dim = (m: Measure, key?: number) => {
     if (m.kind !== "distance") return null;
     const a: V2 = [m.from.x, m.from.y], b: V2 = [m.to.x, m.to.y];
     return (
-      <g className="uf-dim">
+      <g key={key} className="uf-dim">
         {m.ext.map(([p, q], i) => <path key={i} className="is-ext" d={`M${p.x} ${y(p.y)} L${q.x} ${y(q.y)}`} />)}
         <path d={`M${a[0]} ${y(a[1])} L${b[0]} ${y(b[1])}`} />
         <circle cx={a[0]} cy={y(a[1])} r={r * 0.75} /><circle cx={b[0]} cy={y(b[1])} r={r * 0.75} />
@@ -1237,7 +1239,15 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
         if (e.button !== 0 || !measure) { pan.current = { x: e.clientX, y: e.clientY, moved: false }; (e.currentTarget as Element).setPointerCapture(e.pointerId); return; }
         const q = pickAt(e);
         if (!q) return;
-        setPicks((l) => (l.length >= 2 ? [q] : [...l, q]));
+        // the second pick: the measurement is kept and the next one starts (one that cannot be measured
+        // shows why until the next click)
+        if (picks.length === 1) {
+          const m = dimensionOf(asPick(picks[0]), asPick(q));
+          if (m.ok && m.m.kind === "distance") { setDone((l) => [...l, m.m]); setPicks([]); return; }
+          setPicks([picks[0], q]);
+          return;
+        }
+        setPicks([q]);
       }}
       onPointerUp={() => { pan.current = null; }}
       onDoubleClick={() => { if (!measure) setVb(null); }}>
@@ -1271,12 +1281,17 @@ function FlatView({ u: u0, st, measure }: { u: Unfolded; st: StepSettings; measu
       {measure && near && pickMark(near, "near")}
       {measure && picks.length === 1 && pickMark(picks[0], "p0")}
       {measure && picks.length === 2 && picks.map((k, i) => (k.kind !== "point" ? pickMark(k, `p${i}`) : null))}
+      {done.map((m, i) => dim(m, i))}
       {result && typeof result !== "string" && dim(result)}
       {typeof result === "string" && picks[1] && (
         <text className="uf-dim-msg" x={picks[1].kind === "point" ? picks[1].p[0] : picks[1].at[0]} y={y(picks[1].kind === "point" ? picks[1].p[1] : picks[1].at[1]) - tf} fontSize={tf}
           textAnchor="middle" style={{ strokeWidth: 3 * upp }}>{result}</text>
       )}
     </svg>
+    {measure && done.length > 0 && (
+      <button type="button" className="btn btn-plain uf-dim-clear" onClick={() => { setDone([]); setPicks([]); }}
+        title="Take the measurements off the flat pattern">Clear {done.length > 1 ? `${done.length} measurements` : "measurement"}</button>
+    )}
     <div className="uf-zoom" role="group" aria-label="Zoom">
       <button type="button" className="icon-btn" onClick={() => zoomAt(1.4)} title="Zoom in (or the mouse wheel)" aria-label="Zoom in">+</button>
       <button type="button" className="icon-btn" onClick={() => zoomAt(1 / 1.4)} title="Zoom out (or the mouse wheel)" aria-label="Zoom out">−</button>

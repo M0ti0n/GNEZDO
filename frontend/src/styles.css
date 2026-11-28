@@ -3007,3 +3007,6 @@ fieldset.admin-lock:disabled .rule, fieldset.admin-lock:disabled .mc-tabs { opac
 .about-mail { font-weight: 600; font-size: 15px; user-select: all; }
 .about-new { color: var(--green-ink); font-weight: 600; }
 .about-bad { color: #9a5b00; }
+
+/* 3D Extractor -> Measure 2D: take the measurements off */
+.uf-dim-clear { position: absolute; left: 10px; bottom: 10px; height: 30px; padding: 0 12px; font-size: 12.5px; z-index: 2; }
