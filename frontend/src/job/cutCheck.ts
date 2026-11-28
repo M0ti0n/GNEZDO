@@ -68,7 +68,8 @@ export function checkSheet(sheet: NestedSheet, pathOf: PathOf, nameOf: (part: nu
   if (moved.length) errors.push(`${listOf(moved)} moved since Auto cut: process ${moved.length === 1 ? "it" : "them"} again`);
   const remarked = [...(marksChanged ?? [])].filter((k) => ok.has(k)).map(nameOf);
   if (remarked.length) errors.push(`the tracing or open cut lines of ${listOf(remarked)} changed since Auto cut: process ${remarked.length === 1 ? "it" : "them"} again`);
-  if (added.length) errors.push(`${listOf(added)} ${added.length === 1 ? "is" : "are"} not processed: Auto cut ${added.length === 1 ? "it" : "them"} first`);
+  // (Cut internal: only the parts picked are in the program, the others are left out on purpose)
+  if (added.length && !sheet.cut.internal) errors.push(`${listOf(added)} ${added.length === 1 ? "is" : "are"} not processed: Auto cut ${added.length === 1 ? "it" : "them"} first`);
 
   // -- the pierce points
   const placed = sheet.parts.map((p) => {

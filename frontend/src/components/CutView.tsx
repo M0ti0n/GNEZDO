@@ -22,7 +22,7 @@ const MODES: { id: SelectMode; label: string; hint: string }[] = [
   { id: "sheet", label: "Selected sheet", hint: "Only the sheet shown. Parts processed before with Selected parts stay first, in their order; the rest comes after them" },
   { id: "parts", label: "Selected parts", hint: "SELECT, then click the parts in the order to cut them" },
   { id: "trace", label: "Trace", hint: "Only the tracing of the picked parts, in the order picked" },
-  { id: "internal", label: "Cut internal", hint: "Only the holes of the picked parts, in the order picked" },
+  { id: "internal", label: "Cut internal", hint: "Only the insides of the picked parts (holes, windows, tracing, open cuts), in the order picked: no outlines, nothing else of the sheet. For a part whose outline is the sheet's edge, or a program that adds forgotten holes. Any other mode deletes it" },
 ];
 
 const RULE_KEY = "gnezdo.cutRule";
@@ -155,6 +155,8 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
   };
 
   const canTrace = machineCan(machine, "trace");
+  // Selected parts and Cut internal: per part, its tracing too or not
+  const withTrace = mode === "parts" || mode === "internal";
   const partNo = (i: number) => { const p = sheet.parts[i]; return p ? byPart.get(p.partId)?.no : undefined; };
   const panel = (
     <aside className="mn-parts ac" aria-label="Auto cut">
@@ -196,12 +198,12 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
           </div>
           <div className="ac-list pane-scroll">
             <div className="ac-table">
-              <div className={`ac-headrow${mode === "parts" ? " has-trace" : ""}`}><span /><span>Part</span>{mode === "parts" && <span>Trace</span>}</div>
+              <div className={`ac-headrow${withTrace ? " has-trace" : ""}`}><span /><span>Part</span>{withTrace && <span>Trace</span>}</div>
               {picked.map((i, k) => {
                 const no = partNo(i);
                 const c = no !== undefined ? partColor(no) : null;
                 return (
-                  <div key={k} className={`ac-row${mode === "parts" ? " has-trace" : ""}`}>
+                  <div key={k} className={`ac-row${withTrace ? " has-trace" : ""}`}>
                     {/* the place in the cut order: stays where it is when the parts are dragged */}
                     <span className="ac-no" style={c ? { color: c.stroke, borderColor: c.stroke } : undefined}>{k + 1}</span>
                     <span className={`ac-name${rowSel === i ? " is-sel" : ""}${dragFrom === k ? " is-drag" : ""}`} draggable title={nameOf(i)}
@@ -209,7 +211,7 @@ export function useAutoCut({ index, single, sheets, jobParts, parts, machine, or
                       onDragStart={(e) => { setDragFrom(k); setRowSel(i); e.dataTransfer.effectAllowed = "move"; }}
                       onDragOver={(e) => { e.preventDefault(); if (dragFrom !== null && dragFrom !== k) { move(dragFrom, k); setDragFrom(k); } }}
                       onDragEnd={() => setDragFrom(null)}>{nameOf(i)}</span>
-                    {mode === "parts" && (
+                    {withTrace && (
                       <input type="checkbox" className="ac-trace" checked={canTrace && !noTrace.has(i)} disabled={!canTrace} aria-label={`Trace ${nameOf(i)}`}
                         title={canTrace ? "Cut its tracing too" : `${machine.name} does not trace`}
                         onChange={() => setNoTrace((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; })} />

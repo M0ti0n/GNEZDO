@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Auto cut → Cut internal: the sheet's cut path is only the picked parts' insides, in the order picked: holes, windows, and now their tracing and open cuts too (a Trace box per part, as in Selected parts). No outlines, nothing else of the sheet. For a part whose outline is the sheet's edge, or a program that adds forgotten holes to parts already cut. Cut internal again adds to it (a part picked again is made again); Post process writes it with the other parts left out. Any other mode (Multi sheet, Selected sheet, Selected parts, Trace) deletes it and starts from scratch. Before, Cut internal made only holes, kept the rest of the sheet's path, and a later Selected sheet or Multi sheet mixed it with the new path.
 - Process toolbar: PROCESS DEL is the last button, after SIMULATION.
 - Cost report → prices: Gross weight, % added to the parts' net weight (offcuts, skeleton). The material is priced on the net weight plus that share: 0 % the net weight only, 20 % the net weight + 20 %. The pages show the gross weight per piece. Shared with the other cost prices (and in the settings file).
 - GNEZDO is now licensed under the GNU Affero General Public License v3.0 (AGPL-3.0): LICENSE and THIRD-PARTY-NOTICES.md in the repository and in every download (the nesting engine's PackingSolver license as nesting/PACKINGSOLVER_LICENSE). Settings → About shows the license and links the source code.
