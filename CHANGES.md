@@ -4,6 +4,7 @@ Newest first. Each build is the `test-build` release; earlier builds (up to 7 No
 
 ## Next build
 
+- Job search, Parts and Remnants search panels: the Created and Modified dates now start at today's date with their boxes not ticked (not used until ticked). Before, the fields were empty and the calendar had to be paged from nothing. Reset sets them back the same way.
 - Process open: the parts not processed yet show their trace lines (and open cut lines) again, as in Manual nest. They were hidden for every part while Process was open; a processed part still shows them as part of its cut path.
 - Process → Remnant → TRIM: a part sticking out a little past the others (a band shorter than the smallest edge) no longer moves the remnant's edge along the whole free side. Before, the free rows beyond it were all given that part's level, so a long cut ran along the sheet's edge and a strip the whole length of the sheet was lost. Now the short band can take the level of the step next to it instead (that step grows by less than the smallest edge); of the two ways, the one leaving the bigger remnant is kept.
 - Nest report: a page more of the same sheet (the rest of its part list) has the page head and the parts only, no box with the job file name, sheet number and number of parts (it came out tall and empty, the head squeezed above it). The first page's sheet info box was stretched as well. Both came from the Add from remnants picker (Build 24 Nov 2026, 1), whose layout used the same name as the report's box.
